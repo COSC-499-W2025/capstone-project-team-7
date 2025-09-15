@@ -17,5 +17,8 @@ Please use the provided folder structure for your project. You are free to organ
 └── README.md
 ```
 
+[Google Drive Folder](https://drive.google.com/drive/folders/1vJNqu4Zl6QOupt0wPc01l8TBoJSyBmJr?usp=drive_link)
+
+
 Please use a branching workflow, and once an item is ready, do remember to issue a PR, review, and merge it into the master branch.
 Be sure to keep your docs and README.md up-to-date.
