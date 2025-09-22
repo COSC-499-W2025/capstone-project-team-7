@@ -1,4 +1,4 @@
-Week 3: September 15 - 21
+# Week 3: September 15 - 21
 
 This week I worked on seeting up the project foundation which included creating functional and non functional requirements. 
 
