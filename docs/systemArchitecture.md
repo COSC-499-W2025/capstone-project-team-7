@@ -8,9 +8,6 @@
 
 The architecture is composed of distinct layers: the **Frontend (Data Layer)**, the **Processing and Analysis Layer**, the **Data Storage (Database)**, and the **Service Layers (routes/API)**.
 
----
-
-## Steps and Layers
 
 | Step                          | Layer/Component Involved          | Description                                                                                                                                                                                                                                                                 | Requirements Covered                                           |
 |-------------------------------|-----------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------|
