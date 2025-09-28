@@ -1,7 +1,5 @@
 # Aaron Banerjee (@aaronbanerjee123)
 
-# Aaron Banerjee (@Aaron Banerjee)
-
 ## Week 4: September 22 - 28
 
 *This week, I focused on designing the system architecture diagram with my team. I assisted in figuring out the different layers we would be utilizing and the technologies within each layer. For example, for the service layer, we decided to use REST API. I then worked on the "Requirements, Testing, Requirement Verification" with om in which I worked on the non functional requirements, test cases, and difficulty levels 
