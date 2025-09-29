@@ -12,7 +12,7 @@ Our proposed solution is to create a system that collects and manages projects a
 The tool will be built using [next.js](http://next.js) for the front end, supabase as a secure and scalable data storage. Unlike old school resume builders that rely on manual input, our solution would extend the capabilities to also use automated discovery and formatting. Our edge compared to other teams will be the systems ability to automatically detect, analyze and organize the data per the users preference. Our solution is not only effective but also uniquely customizable for each individual user. 
 
 3. **Use Cases**
-[Use Case Diagram](https://github.com/COSC-499-W2025/capstone-project-team-7/blob/0b3d164bd8c68096cd1f4d92f18e9ede8feed8dc/docs/assets/useCase.png)
+![Use Case Diagram](https://github.com/COSC-499-W2025/capstone-project-team-7/blob/0b3d164bd8c68096cd1f4d92f18e9ede8feed8dc/docs/assets/useCase.png)
 
 **Use Case 1: Select Artifact Locations**
 
