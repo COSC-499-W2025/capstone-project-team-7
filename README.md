@@ -5,8 +5,7 @@ Please use the provided folder structure for your project. You are free to organ
 │   ├── contract            # Team contract
 │   ├── proposal            # Project proposal 
 │   ├── design              # UI mocks
-│   ├── minutes             # Minutes from team meetings
-│   ├── logs                # Team and individual Logs
+│   ├── minutes             # Minutes from team meetings               
 │   └── ...          
 ├── src                     # Source files (alternatively `app`)
 ├── tests                   # Automated tests 
