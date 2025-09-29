@@ -11,7 +11,8 @@ Our project focuses on helping graduate students, early professional and freelan
 Our proposed solution is to create a system that collects and manages projects and work into a file designed to showcase their work in a clear and summarized format. This application is a tool targeted towards graduating students and individuals looking to build their career. The software would scan files and repositories selected by the user within their own computer. After scanning the files, the application would extract key data and important information. The summarized file would include the data most relevant to the user’s needs and requirements. A graduating computer science student might want to scan their projects saved in their github account, the tool would then summarize their projects by use case, language used, target audience and other relevant information.  
 The tool will be built using [next.js](http://next.js) for the front end, supabase as a secure and scalable data storage. Unlike old school resume builders that rely on manual input, our solution would extend the capabilities to also use automated discovery and formatting. Our edge compared to other teams will be the systems ability to automatically detect, analyze and organize the data per the users preference. Our solution is not only effective but also uniquely customizable for each individual user. 
 
-3. **Use Cases** 
+3. **Use Cases**
+[!Use Case Diagram](https://github.com/COSC-499-W2025/capstone-project-team-7/blob/0b3d164bd8c68096cd1f4d92f18e9ede8feed8dc/docs/assets/useCase.png)
 
 **Use Case 1: Select Artifact Locations**
 
