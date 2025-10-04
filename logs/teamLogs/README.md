@@ -1,5 +1,11 @@
 # Capstone Team 7 Logs
 
+## Week 5 (September 29 - October 5)
+
+This week our focus was on the Data Flow Diagrams (Level 0 and 1).
+
+We started off the week with listing down some simple processes from the start to the end in our google document. This process then led to us discovering some other interconnected processes which allowed us to narrow down onto the 7 main processes that would control the entire flow of data in our diagram. From here we had to just draw the shapes for each one of them and add appropriate description. The next steps were collective efforts into deciding the process flow directions for the different processes and their inputs and outputs. The end step was to add into picture the data storage aspect and connect it to the rest of the diagram.
+
 ## Week 4 (September 22 - 28)
 
 This week we focused on the system architecture and the project proposal.
