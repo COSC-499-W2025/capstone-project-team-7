@@ -1,0 +1,15 @@
+name: Burnup (caller on main)
+
+on:
+  workflow_dispatch: {}     # gives you the "Run workflow" button
+  schedule:
+    # Sunday 7:00 PM America/Vancouver
+    - cron: "0 2 * * 1"     # DST (Mar–Nov) 7pm PT → Mon 02:00 UTC
+    - cron: "0 3 * * 1"     # Standard (Nov–Mar) 7pm PT → Mon 03:00 UTC
+
+jobs:
+  call-burnup:
+    permissions:
+      contents: write
+      issues: read
+     uses: COSC-499-W2025/capstone-project-team-7/.github/workflows/burnup.yml@logs
