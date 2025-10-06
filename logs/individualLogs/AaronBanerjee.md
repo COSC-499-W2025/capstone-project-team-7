@@ -5,7 +5,7 @@
 *This week, my team and I worked on our DFD level 0 and level 1 diagrams. This entailed us identifying all the key proccees our application would have, and how these processes would communicate with one another. Next, we used a program called Lucid chart to define all the key entities in our DFD's. We then connected all our processes through the key entities, such as connecting the authentication entity to manage the configuration entity, as the user should only be able to manage scanning settings if they are authenticated. On Wednesday, I discussed the DFD's with team 4, team 13, and team 18. I learned some key points from each team during these discussions such as how to better improve our data flow.*
 
 
-![Uploading System Architecture Diagram.png…]()
+<img width="1180" height="665" alt="Screenshot 2025-10-05 215059" src="https://github.com/user-attachments/assets/219872f7-b4e9-4d4c-8845-6217b57f561f" />
 
 
 
