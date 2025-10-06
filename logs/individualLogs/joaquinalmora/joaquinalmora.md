@@ -1,5 +1,9 @@
 # Joaquin Almora / @joaquinalmora
 
+## Week 4 (September 29th - October 5th)
+
+![Peer Eval](
+
 ## Week 4 (September 22nd - 28th)
 This week I worked on creating the first version of our system diagram using mermaid.live. In the next class, I discussed it with other groups and compared our architecture with theirs, which helped me see where our flow wasn’t very clear. After that, we talked as a team about how we were going to split the project proposal, and then I focused on the UML use case diagram and use case scenarios alongside Jacob. Making the diagram readable was a bit challenging with all the arrows and interactions, but we managed to get it done and I added the updated architecture diagram to our repo.
 
