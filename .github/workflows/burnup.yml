@@ -3,6 +3,8 @@ name: Burnup Chart
 on:
   push:
     branches: [logs]       
+  pull_request:
+    branches: [main]
   workflow_dispatch: {}
   schedule:
     - cron: "0 2 * * 1"
