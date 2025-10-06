@@ -1,24 +1,19 @@
-name: Burnup (caller on main)
-
-on:
-  workflow_dispatch: {}     # "Run workflow" button
-  schedule:
-    # Sunday 7:00 PM America/Vancouver
-    - cron: "0 2 * * 1"     # DST (Mar–Nov) 7pm PT → Mon 02:00 UTC
-    - cron: "0 3 * * 1"     # Standard (Nov–Mar) 7pm PT → Mon 03:00 UTC
-
-permissions:
-  contents: write
-  issues: read
-
 jobs:
   burnup:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: read
     steps:
-      - name: Check out logs branch
+      - name: Checkout default branch
         uses: actions/checkout@v4
         with:
-          ref: logs
+          fetch-depth: 0
+
+      - name: Fetch and checkout Logs branch
+        run: |
+          git fetch origin Logs:Logs || exit 1
+          git checkout Logs
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -34,10 +29,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python scripts/burnup.py
 
-      - name: Commit chart back to logs
+      - name: Commit chart back to Logs
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add charts/burnup.png charts/burnup_data.csv
           git commit -m "Update burnup chart (from main workflow)" || echo "No changes"
-          git push origin HEAD:logs
+          git push origin HEAD:Logs
