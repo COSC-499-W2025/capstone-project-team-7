@@ -1,5 +1,14 @@
 # Aaron Banerjee (@aaronbanerjee123)
 
+## Week 5: September 29 - October 5
+
+*This week, my team and I worked on our DFD level 0 and level 1 diagrams. This entailed us identifying all the key proccees our application would have, and how these processes would communicate with one another. Next, we used a program called Lucid chart to define all the key entities in our DFD's. We then connected all our processes through the key entities, such as connecting the authentication entity to manage the configuration entity, as the user should only be able to manage scanning settings if they are authenticated. On Wednesday, I discussed the DFD's with team 4, team 13, and team 18. I learned some key points from each team during these discussions such as how to better improve our data flow.*
+
+
+![Uploading System Architecture Diagram.png…]()
+
+
+
 ## Week 4: September 22 - 28
 
 *This week, I focused on designing the system architecture diagram with my team. I assisted in figuring out the different layers we would be utilizing and the technologies within each layer. For example, for the service layer, we decided to use REST API. I then worked on the "Requirements, Testing, Requirement Verification" with om in which I worked on the non functional requirements, test cases, and difficulty levels* 
