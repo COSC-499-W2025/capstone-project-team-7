@@ -1,9 +1,19 @@
+name: Burnup (caller on main)
+
+on:
+  workflow_dispatch: {}     # enables the "Run workflow" button
+  schedule:
+    # Sunday 7:00 PM America/Vancouver
+    - cron: "0 2 * * 1"     # 7pm PT during DST
+    - cron: "0 3 * * 1"     # 7pm PT during Standard Time
+
+permissions:
+  contents: write
+  issues: read
+
 jobs:
   burnup:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      issues: read
     steps:
       - name: Checkout default branch
         uses: actions/checkout@v4
@@ -12,7 +22,7 @@ jobs:
 
       - name: Fetch and checkout Logs branch
         run: |
-          git fetch origin Logs:Logs || exit 1
+          git fetch origin Logs:Logs
           git checkout Logs
 
       - name: Set up Python
