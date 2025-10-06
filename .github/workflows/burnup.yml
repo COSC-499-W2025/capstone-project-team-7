@@ -1,22 +1,19 @@
-name: Burnup Chart
+name: Burnup (reusable on logs)
 
 on:
-  push:
-    branches: [logs]       
-  pull_request:
-    branches: [main]
-  workflow_dispatch: {}
-  schedule:
-    - cron: "0 2 * * 1"
-    - cron: "0 3 * * 1"
+  workflow_call: {}   # <-- makes this workflow callable from another workflow
+
 jobs:
   burnup:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write   # to commit PNG/CSV
       issues: read
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out logs branch
+        uses: actions/checkout@v4
+        with:
+          ref: logs      # ensure scripts & commits happen on logs
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -38,5 +35,5 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add charts/burnup.png charts/burnup_data.csv
-          git commit -m "Update burnup chart" || echo "No changes"
-          git push
+          git commit -m "Update burnup chart (reusable)" || echo "No changes"
+          git push origin HEAD:logs
