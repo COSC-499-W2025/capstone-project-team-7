@@ -27,7 +27,6 @@ def fetch_issues(repo):
         if not batch:
             break
         for it in batch:
-            # exclude PRs (they appear in issues API)
             if "pull_request" in it:
                 continue
             issues.append(it)
