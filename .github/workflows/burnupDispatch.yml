@@ -1,11 +1,7 @@
 name: Burnup (caller on main)
 
 on:
-  workflow_dispatch: {}     # enables the "Run workflow" button
-  schedule:
-    # Sunday 7:00 PM America/Vancouver
-    - cron: "0 2 * * 1"     # 7pm PT during DST
-    - cron: "0 3 * * 1"     # 7pm PT during Standard Time
+  workflow_dispatch: {}   
 
 permissions:
   contents: write
