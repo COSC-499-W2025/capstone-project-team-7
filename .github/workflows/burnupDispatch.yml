@@ -1,4 +1,4 @@
-name: Burnup (manual)
+name: Burnup (manual download)
 
 on:
   workflow_dispatch: {}   # Only runs when you click "Run workflow"
@@ -29,13 +29,14 @@ jobs:
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PROJECT_START: "2025-09-15"   # Monday anchor so W1 ends on Sep 21
+          PROJECT_START: "2025-09-15"   # adjust if you want a different Week 1 anchor
         run: python scripts/burnup.py
 
-      - name: Commit chart back to Logs
-        run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git add charts
-          git commit -m "Update burnup chart (manual run)" || echo "No changes"
-          git push origin HEAD:Logs
+      # ⬇️ New: upload the PNG/CSV as a downloadable artifact
+      - name: Upload chart artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: burnup-artifacts
+          path: |
+            charts/burnup.png
+            charts/burnup_data.csv
