@@ -1,11 +1,7 @@
-name: Burnup (caller on main)
+name: Burnup (manual)
 
 on:
-  workflow_dispatch: {}   
-
-permissions:
-  contents: write
-  issues: read
+  workflow_dispatch: {}   # Only runs when you click "Run workflow"
 
 jobs:
   burnup:
@@ -33,12 +29,13 @@ jobs:
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PROJECT_START: "2025-09-15"   # Monday anchor so W1 ends on Sep 21
         run: python scripts/burnup.py
 
       - name: Commit chart back to Logs
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git add charts/burnup.png charts/burnup_data.csv
-          git commit -m "Update burnup chart (from main workflow)" || echo "No changes"
+          git add charts
+          git commit -m "Update burnup chart (manual run)" || echo "No changes"
           git push origin HEAD:Logs
