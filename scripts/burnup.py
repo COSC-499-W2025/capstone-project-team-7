@@ -1,6 +1,3 @@
-# scripts/burnup.py
-# Burnup chart (Milestone 1 only), weekly (weeks end on Sunday), styled similar to GitHub Projects
-
 import os
 import requests
 import pandas as pd
@@ -9,8 +6,7 @@ import matplotlib.ticker as mtick
 from datetime import datetime, timezone, timedelta
 from dateutil import parser as dtparse
 
-# --- env & GitHub session ---
-REPO = os.environ["GITHUB_REPOSITORY"]         # e.g., COSC-499-W2025/capstone-project-team-7
+REPO = os.environ["GITHUB_REPOSITORY"]      
 TOKEN = os.environ["GITHUB_TOKEN"]
 
 session = requests.Session()
@@ -20,12 +16,10 @@ session.headers.update({
     "X-GitHub-Api-Version": "2022-11-28"
 })
 
-# --- helpers ---
 def to_date(s):
     return dtparse.isoparse(s).date() if s else None
 
 def points_from_labels(labels):
-    # story points via labels sp:1, sp:2, sp:3, sp:5 ...
     for lab in labels:
         name = lab.get("name", "").strip().lower()
         if name.startswith("sp:"):
@@ -33,13 +27,12 @@ def points_from_labels(labels):
                 return float(name.split(":", 1)[1])
             except Exception:
                 pass
-    return 1.0  # default if no sp:* label is present
+    return 1.0 
 
 def is_not_planned(labels):
     names = {l.get("name", "").strip().lower() for l in labels}
     return ("not-planned" in names) or ("wontfix" in names)
 
-# --- fetch all issues (exclude PRs) ---
 issues = []
 page = 1
 while True:
@@ -52,17 +45,15 @@ while True:
     if not batch:
         break
     for it in batch:
-        if "pull_request" in it:  # skip PRs
+        if "pull_request" in it: 
             continue
         issues.append(it)
     if len(batch) < 100:
         break
     page += 1
 
-# --- filter to Milestone 1 only ---
-issues = [i for i in issues if i.get("milestone") and i["milestone"]["title"] == "Milestone 1"]
+issues = [i for i in issues if i.get("milestone") and i["milestone"]["title"] == "Milestone #1"]
 
-# --- build dataframe of issue events ---
 rows = []
 for it in issues:
     created = to_date(it["created_at"])
