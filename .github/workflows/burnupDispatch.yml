@@ -1,7 +1,7 @@
 name: Burnup (manual download)
 
 on:
-  workflow_dispatch: {}   # Only runs when you click "Run workflow"
+  workflow_dispatch: {}  
 
 jobs:
   burnup:
@@ -29,10 +29,9 @@ jobs:
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PROJECT_START: "2025-09-15"   # adjust if you want a different Week 1 anchor
+          PROJECT_START: "2025-09-15"   
         run: python scripts/burnup.py
 
-      # ⬇️ New: upload the PNG/CSV as a downloadable artifact
       - name: Upload chart artifact
         uses: actions/upload-artifact@v4
         with:
