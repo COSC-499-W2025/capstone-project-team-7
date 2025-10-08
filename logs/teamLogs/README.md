@@ -6,7 +6,10 @@ This week our focus was on the Data Flow Diagrams (Level 0 and 1).
 
 We started off the week with listing down some simple processes from the start to the end in our google document. This process then led to us discovering some other interconnected processes which allowed us to narrow down onto the 7 main processes that would control the entire flow of data in our diagram. From here we had to just draw the shapes for each one of them and add appropriate description. The next steps were collective efforts into deciding the process flow directions for the different processes and their inputs and outputs. The end step was to add into picture the data storage aspect and connect it to the rest of the diagram. The shapes were then adjusted to match the notation from lecture so the diagram looked clear and consistent, and copies were printed to share with other groups. When comparing diagrams, it became clear that some groups had missing or inconsistent data stores, which made their flows harder to follow and less organized. We also checked over our own diagram to make sure the data stores were being reused correctly across processes. Finally, the repo was reorganized by moving the logs directory out of the docs folder and into its correct place, making the structure consistent with class practices.
 
-![Burnup](https://github.com/COSC-499-W2025/capstone-project-team-7/blob/f46b7ee48169b09372ba825071e17f2d19fce031/logs/teamLogs/charts/w5burnup.png)
+<p align="center">
+  <img src="https://github.com/COSC-499-W2025/capstone-project-team-7/blob/f46b7ee48169b09372ba825071e17f2d19fce031/logs/teamLogs/charts/w5burnup.png" alt="Week 5 Burnup Chart width="400"/>
+</p>
+
 
 ## Week 4 (September 22 - 28)
 
