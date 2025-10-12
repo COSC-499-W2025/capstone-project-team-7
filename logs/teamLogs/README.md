@@ -2,6 +2,10 @@
 
 ## Week 6 (October 6 - 12)
 
+<p align="center">
+  <img src="./charts/w6burnup.png" alt="Week 6 Burnup Chart width="400"/>
+</p>
+
 ## Week 5 (September 29 - October 5)
 
 This week our focus was on the Data Flow Diagrams (Level 0 and 1).
