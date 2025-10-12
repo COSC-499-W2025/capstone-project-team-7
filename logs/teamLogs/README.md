@@ -2,6 +2,10 @@
 
 ## Week 6 (October 6 - 12)
 
+This week our focus was on getting our project setup in place and updating some of our main documents. We started by creating a GitHub Project to organize all our tasks and make progress tracking easier with its built-in burnup chart. 
+
+All previous tasks and the new Milestone 1 requirements were added as issues, each labeled by category and assigned story points so the chart reflects effort more accurately. After that, we worked on updating our Level 1 DFD. Some of the key changes included adding a consent gate, splitting the analysis process into local and external parts, keeping the user more involved through the UI loop, and showing more detail on how data moves into the database. We also cleaned up the process descriptions and arrows so the flow is easier to follow. We also updated our System Architecture diagram to reflect the changes brought by the new requirements, specifically the disctintion between the local and external analysis options. The Work Breakdown Structure was also expanded to cover all the specific tasks and deliverables from Milestone 1, before, it was more general and based on our early understanding of the requirements. Morevoer, the repo was setup with all of our initialy directories so we can start working on our backend. FInally, A Dockerfile was also added to standardize the environment setupand the README was updated to match the current directory structure and now includes direct links to our main documentation: Work Breakdown Structure, Data flow diagrams, and System Architecture.
+
 <p align="center">
   <img src="./charts/w6burnup.png" alt="Week 6 Burnup Chart width="400"/>
 </p>
