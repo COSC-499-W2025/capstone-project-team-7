@@ -11,12 +11,7 @@
 │       └── main.py
 ├── docs
 │   ├── assets/
-│   │   ├── WBS.md
-│   │   ├── architectureDiagram.png
-│   │   ├── componentDiagram.png
-│   │   ├── dfd-0.png
-│   │   ├── dfd-1.png
-│   │   └── useCase.png
+│   ├── WBS.md
 │   ├── dfd.md
 │   ├── systemArchitecture.md
 │   ├── projectProposal.md
