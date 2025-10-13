@@ -16,7 +16,6 @@
 │   ├── systemArchitecture.md
 │   ├── projectProposal.md
 │   ├── projectRequirements.md
-│   └── README.md
 ├── tests
 ├── docker-compose.yml
 └── README.md
