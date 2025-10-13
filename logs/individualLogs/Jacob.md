@@ -4,7 +4,7 @@
 
 This week, I put my efforts into establishing the file hierarchy within the development environment we are working on. The creation of the first folders and files required for the project took place along with the addition of inline documentation to each file. The documentation covers the file's purpose, the functionality aimed at, and any future implementations that might need to be added are written as comments. Team collaboration will be simpler with this structure, as it will be clear for everybody through the documentation where each part is going to be placed while the system is still being built.
 
-![Tasks Completed](./assets/omistry_Week6.png)
+![Tasks Completed](./assets/Week6Jacob.png)
 
 ## Week 5: September 29 - October 5
 
