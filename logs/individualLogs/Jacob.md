@@ -1,6 +1,6 @@
 
 # Jacob Damery
-## Week 6: September 29 - October 5
+## Week 6 (October 6th - 12th)
 
 I was absent on Monday but joined the team on Wednesday when we were finalizing our Data Flow Diagrams (Levels 0 and 1). During that session, I helped review the process connections and verified that all data stores, inputs, and outputs were correctly linked. I also contributed to checking for any missing internal processes and ensuring that the diagrams accurately reflected the system’s workflow*
 
