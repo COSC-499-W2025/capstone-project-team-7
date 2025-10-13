@@ -1,5 +1,18 @@
 # Aaron Banerjee (@aaronbanerjee123)
 
+
+## Week 6: October 6 - October 12
+
+*This week was spent refining the project documents including the Data Flow Diagram, Requirements and the System Architecture diagram as well. After taking a look at the milestone 1 requirements we realised there were some missing components such as the consent process from the user and we were able to add it to our current design for the system. I specifically worked on refining the WBS based on the new requirements and the document has now been added to the codebase. Except that I was able to contribute to the discussions of our repository structure which will allow us to move forward with adding actual code and logic starting next week. I also spent quite a bit of time this week diving into the documentation for Docker and understanding how it works.*
+
+*This week, I spent lots of time studying Docker documentation and understanding how to implement it in our project. Aside from that, I made a code contribution which involed including a template for our fast api backend service. The commit I made will allow our team to move forward with implementing our backend api routes in the future. It involved ensuring using the FastAPI library and uvicorn to test our routes on a default ip to ensure we get a 200 status code. Apart from that, I discussed refinements we can make to our DFD and System architecture diagrams. 
+
+<img width="1438" height="765" alt="image" src="https://github.com/user-attachments/assets/e7ae96fb-b70a-4447-b079-b7e3bd16bcfa" />
+
+
+
+
+
 ## Week 5: September 29 - October 5
 
 *This week, my team and I worked on our DFD level 0 and level 1 diagrams. This entailed us identifying all the key proccees our application would have, and how these processes would communicate with one another. Next, we used a program called Lucid chart to define all the key entities in our DFD's. We then connected all our processes through the key entities, such as connecting the authentication entity to manage the configuration entity, as the user should only be able to manage scanning settings if they are authenticated. On Wednesday, I discussed the DFD's with team 4, team 13, and team 18. I learned some key points from each team during these discussions such as how to better improve our data flow.*
