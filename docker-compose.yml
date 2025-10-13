@@ -1,0 +1,12 @@
+services:
+  backend:
+    build: ./backend
+    container_name: backend
+    working_dir: /app
+    command: python src/main.py
+    volumes:
+      - ./backend/src:/app/src
+    ports:
+      - "8000:8000"
+    environment:
+      - ENV=development
