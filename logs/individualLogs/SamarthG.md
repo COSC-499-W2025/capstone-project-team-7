@@ -1,5 +1,9 @@
 # Samarth Grover (@Samarth-G)
 
+## Week 6: October 6 - October 12
+
+This week my team and I worked on amending our project to match the milestone 1 requirements and worked on setting up the basic code repo for the python backend. I personally worked on creating the basic Docker container setup and wrote the code for the needed dockerfiles. I also updated the System Architecture diagram based on the criteria of the milestone 1 requirements. Through the week I also took part in several discussions to map out our teams project setup and how we're going to approach all the different requirements listed as part of milestone 1.
+
 ## Week 5: September 29 - October 5
 
 This week I worked with my team to develop the Data Flow Diagrams for Level 0 and Level 1. We began by listing out all the core processes in a shared document and refining them into the seven main processes that defined the overall data flow in our system. Once finalized, we used a tool called Lucidchart as a collabrative platform to create the visual diagrams. During this process we iterated through a few designs and variations, ensuring that the connections, inputs and outputs between processes were logically accurate. The final step for us was fixing up the shapes we used in our diagram based on the ones mentioned in lecture.
