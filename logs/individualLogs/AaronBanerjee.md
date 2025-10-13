@@ -3,7 +3,7 @@
 
 ## Week 6: October 6 - October 12
 
-**This week, I spent lots of time studying Docker documentation and understanding how to implement it in our project. Aside from that, I made a code contribution which involed including a template for our fast api backend service. The commit I made will allow our team to move forward with implementing our backend api routes in the future. It involved ensuring using the FastAPI library and uvicorn to test our routes on a default ip to ensure we get a 200 status code. Apart from that, I discussed refinements we can make to our DFD and System architecture diagrams. **
+*This week, I spent lots of time studying Docker documentation and understanding how to implement it in our project. Aside from that, I made a code contribution which involed including a template for our fast api backend service. The commit I made will allow our team to move forward with implementing our backend api routes in the future. It involved ensuring using the FastAPI library and uvicorn to test our routes on a default ip to ensure we get a 200 status code. Apart from that, I discussed refinements we can make to our DFD and System architecture diagrams. *
 
 <img width="1438" height="765" alt="image" src="https://github.com/user-attachments/assets/e7ae96fb-b70a-4447-b079-b7e3bd16bcfa" />
 
