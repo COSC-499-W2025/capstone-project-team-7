@@ -1,5 +1,5 @@
 ## System Architecture Diagram
-![Architecture Diagram](/assets/sysArch.png)
+![Architecture Diagram](https://github.com/COSC-499-W2025/capstone-project-team-7/blob/33c1fa7c7b7b7819d53f6b5cb04b2e6b6a89a8e2/docs/assets/sysArch.png)
 
 ## System Component Diagram
 ![Component Diagram](https://github.com/COSC-499-W2025/capstone-project-team-7/blob/a51b2ecd844ba9c5b78f8e71f481ff9dec6c95b9/docs/assets/componentDiagram.png)
