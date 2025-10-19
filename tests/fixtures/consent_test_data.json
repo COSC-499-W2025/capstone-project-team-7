@@ -1,0 +1,55 @@
+{
+  "valid_consent_data": {
+    "analyze_uploaded_only": true,
+    "process_store_metadata": true,
+    "privacy_ack": true,
+    "allow_external_services": false
+  },
+  "valid_consent_with_external": {
+    "analyze_uploaded_only": true,
+    "process_store_metadata": true,
+    "privacy_ack": true,
+    "allow_external_services": true
+  },
+  "missing_required_field": {
+    "analyze_uploaded_only": true,
+    "process_store_metadata": true
+  },
+  "invalid_boolean_values": {
+    "analyze_uploaded_only": "true",
+    "process_store_metadata": true,
+    "privacy_ack": true,
+    "allow_external_services": false
+  },
+  "refused_consent": {
+    "analyze_uploaded_only": false,
+    "process_store_metadata": true,
+    "privacy_ack": true,
+    "allow_external_services": false
+  },
+  "sample_user_ids": {
+    "valid_user": "550e8400-e29b-41d4-a716-446655440000",
+    "another_user": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+    "invalid_user": ""
+  },
+  "sample_consent_records": {
+    "complete_consent": {
+      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "user_id": "550e8400-e29b-41d4-a716-446655440000",
+      "analyze_uploaded_only": true,
+      "process_store_metadata": true,
+      "privacy_ack": true,
+      "allow_external_services": true,
+      "created_at": "2025-10-16T10:30:00Z"
+    },
+    "no_external_services": {
+      "id": "223e4567-e89b-12d3-a456-426614174001",
+      "user_id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+      "analyze_uploaded_only": true,
+      "process_store_metadata": true,
+      "privacy_ack": true,
+      "allow_external_services": false,
+      "created_at": "2025-10-16T09:15:00Z"
+    }
+  }
+}
