@@ -1,1 +1,3 @@
 .tmp_archives/
+__pycache__/
+*.py[cod]
