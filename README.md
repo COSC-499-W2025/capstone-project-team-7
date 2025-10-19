@@ -33,11 +33,16 @@ Please use a branching workflow, and once an item is ready, do remember to issue
 
 ## Parser CLI
 
-Run the parser locally by pointing it at a `.zip` archive:
+Run the parser locally by pointing it at a `.zip` archive or a directory (directories will be zipped automatically into `.tmp_archives/`). Ensure the script is executable (`chmod +x scripts/parse_archive.py`) and run:
 
 ```bash
-cd backend
-python -m src.cli.parse_zip /path/to/archive.zip
+./scripts/parse_archive.py /path/to/archive-or-folder
 ```
 
-The command writes a JSON payload with file metadata (`path`, `size_bytes`, `mime_type`, `created_at`, `modified_at`) and a summary block that includes the number of processed files.
+Add `--json` to emit a machine-readable payload if you prefer structured output:
+
+```bash
+./scripts/parse_archive.py /path/to/archive-or-folder --json
+```
+
+By default the script prints an aligned table of file metadata (`path`, `mime_type`, `size` in KB/MB/GB) and an aggregate summary with both raw and human-readable byte counts. Requires Python 3.13.
