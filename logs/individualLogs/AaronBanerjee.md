@@ -1,5 +1,13 @@
 # Aaron Banerjee (@aaronbanerjee123)
 
+## Week 6: October 12 - October 19
+
+*This week, I worked on implementing the ConfigManager class which provides the user configuraiton profile logic. This class involved methods that allowed the user to create, delete, and switch between various file configs. The configs allow the user to scan for specific files based on the config they select. For example, the "all" config will scan for all the file extensions that exist, but the documents_only config only iterates through files with extensions like .txt or .md. I then implemented comprehensive testing (about 18 tests) to ensure validity and that the ConfigManager class works in all cases including edge cases. I also reviewed my teammate's pr (Om) for the consent validation module and approved it.*
+
+<img width="1349" height="675" alt="image" src="https://github.com/user-attachments/assets/d8a14dcd-3bae-4c23-9f65-bb7a00a25f43" />
+
+
+
 
 ## Week 6: October 6 - October 12
 
