@@ -10,6 +10,7 @@ from .models import FileMetadata, ParseIssue, ParseResult
 
 
 def parse_zip(archive_path: Path) -> ParseResult:
+    # Parse the given .zip archive into file metadata and capture parse issues.
     archive = Path(archive_path)
     if not archive.exists():
         raise UnsupportedArchiveError(f"Archive not found: {archive}", "FILE_MISSING")
@@ -45,6 +46,7 @@ def parse_zip(archive_path: Path) -> ParseResult:
 
 
 def _normalize_entry(filename: str) -> str | None:
+    # Reject absolute paths or traversal attempts; return cleaned archive path.
     path = PurePosixPath(filename)
     if path.is_absolute():
         return None
@@ -55,6 +57,7 @@ def _normalize_entry(filename: str) -> str | None:
 
 
 def _build_metadata(info: zipfile.ZipInfo, path: str) -> FileMetadata:
+    # Translate ZipInfo into the FileMetadata domain model.
     timestamp = _zip_datetime(info)
     mime_type, _ = mimetypes.guess_type(path)
     return FileMetadata(
@@ -67,6 +70,7 @@ def _build_metadata(info: zipfile.ZipInfo, path: str) -> FileMetadata:
 
 
 def _zip_datetime(info: zipfile.ZipInfo) -> datetime:
+    # Convert the zip timestamp into an aware datetime; fallback to now if invalid.
     try:
         return datetime(*info.date_time, tzinfo=timezone.utc)
     except ValueError:
