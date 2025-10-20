@@ -7,6 +7,7 @@ This week was our first real dive into backend development. After spending the p
 **Joaquin:** Focused on building the archive ingestion pipeline in `backend/src/scanner/parser.py`. Implemented path validation, zip handling, and traversal protection, while structuring results through `FileMetadata`, `ParseIssue`, and `ParseResult` dataclasses. Added clear error types (`UnsupportedArchiveError`, `CorruptArchiveError`) and a CLI tool in `scripts/parse_archive.py` for testing. Updated the `README.md` with setup and usage instructions for the new parser.
 
 **Jacob:** 
+Implemented the Consent Management Module responsible for handling user permissions when interacting with external services such as LLMs. Developed core functions to request, record, verify, and withdraw user consent, integrating a detailed privacy notice to inform users about data transmission and storage risks prior to granting permission. Added a comprehensive unit test suite with 5 test cases covering positive and negative consent flows, default states, and withdrawal handling. Resolved rebase conflicts with main to ensure seamless backend integration and submitted a structured pull request documenting all changes.
 
 **Vlad:** 
 
