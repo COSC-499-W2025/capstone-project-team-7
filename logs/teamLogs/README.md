@@ -14,7 +14,7 @@ This week was our first real dive into backend development. After spending the p
 
 **Om:** Designed and implemented the Consent Validation Module with comprehensive `ConsentValidator` class, custom exception handling, and `ConsentRecord` dataclass. Developed core validation methods for upload consent, external services, and permission checks. Created extensive unit test suite with 20+ test cases, fixtures, and integration scenarios to ensure robust privacy-compliant functionality.
 
-**Samarth:** 
+**Samarth:** Focused on building the LLM Integration setup enabling external AI service capabilities with secure API key verification and robust error handling. Developed the `LLMClient` class for OpenAI API integration, with complete configuration management and consent-based access control. Implemented RESTful API routes for key verification, model information, and service status. Built a comprehensive suite of 30+ unit and integration tests covering client initialization, authentication workflows, and endpoint behavior to ensure secure and reliable LLM operations.
 
 ## Week 6 (October 6 - 12)
 

@@ -1,5 +1,13 @@
 # Samarth Grover (@Samarth-G)
 
+## Week 7: October 13 - October 19
+
+This week I focused on setting up the LLM integration for the project. I started by building the LLMClient class, which wraps around the OpenAI API and handles everything from API key verification to error management. It validates keys up front, handles authentication, and keeps configuration clean through a shared global client state. <br>
+Once the client was in place, I added new REST endpoints under /api/llm/ for verifying keys, checking model info, clearing credentials, and viewing service status.
+To make sure everything was reliable, I wrote 30+ automated tests spanning both the client and the routes, covering initialization, key validation, failure cases, and full integration workflows. This sets up a solid foundation for future AI-driven analysis features.
+
+![Week 7 Image](./assets/SamarthG-W7.png)
+
 ## Week 6: October 6 - October 12
 
 This week my team and I worked on amending our project to match the milestone 1 requirements and worked on setting up the basic code repo for the python backend. I personally worked on creating the basic Docker container setup and wrote the code for the needed dockerfiles. I also updated the System Architecture diagram based on the criteria of the milestone 1 requirements. Through the week I also took part in several discussions to map out our teams project setup and how we're going to approach all the different requirements listed as part of milestone 1.
