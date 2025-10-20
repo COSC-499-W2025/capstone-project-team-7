@@ -1,5 +1,39 @@
 # Om Mistry (@OM200401)
 
+## Week 7: October 13 - October 19
+
+This week, I successfully designed and implemented the **Consent Validation Module**, a critical component for ensuring user privacy and data protection compliance in our portfolio analysis system.
+
+#### Module Development:
+- Created a comprehensive `ConsentValidator` class with full type annotations and dataclass structures
+- Implemented four custom exception classes (`ConsentError`, `ExternalServiceError`, `AuthorizationError`, `DatabaseError`) for granular error handling
+- Developed the `ConsentRecord` dataclass to represent user consent with fields for file analysis, metadata processing, privacy acknowledgment, and external services
+
+#### Core Functionality:
+- `validate_upload_consent()`: Validates all required consent fields before file uploads
+- `check_required_consent()`: Verifies users have granted necessary permissions
+- `validate_external_services_consent()`: Manages optional third-party service consent
+- Utility methods: `is_file_processing_allowed()` and `is_metadata_processing_allowed()` for permission checks
+- Prepared database integration hooks with `_get_latest_consent_record()` placeholder for future Supabase implementation
+
+#### Testing & Quality Assurance:
+- Developed comprehensive unit test suite with 20+ test cases covering all validation scenarios
+- Created test fixtures with sample data for different consent scenarios
+- Achieved extensive code coverage including edge cases, error conditions, and integration workflows
+- Validated proper exception handling and error messages for all failure scenarios
+
+#### Technical Highlights:
+- Used Python dataclasses and type hints for code clarity
+- Implemented logging for audit trails and debugging
+- Followed SOLID principles with factory pattern (`create_consent_validator()`)
+- Designed with future database integration in mind
+
+The module is now ready for integration with the file upload system and provides a robust foundation for privacy-compliant data processing.
+
+![Tests Passed](./assets/omistry_tests_Week7.png)
+
+![Tasks Completed](./assets/omistry_Week7.png)
+
 ## Week 6: October 6 - October 12
 
 *This week was spent refining the project documents including the Data Flow Diagram, Requirements and the System Architecture diagram as well. After taking a look at the milestone 1 requirements we realised there were some missing components such as the consent process from the user and we were able to add it to our current design for the system. I specifically worked on refining the WBS based on the new requirements and the document has now been added to the codebase. Except that I was able to contribute to the discussions of our repository structure which will allow us to move forward with adding actual code and logic starting next week. I also spent quite a bit of time this week diving into the documentation for Docker and understanding how it works.*
