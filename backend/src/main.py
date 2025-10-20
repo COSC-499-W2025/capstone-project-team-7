@@ -6,6 +6,11 @@
 # - Run with: uvicorn src.main:app --reload
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+from api.llm_routes import router as llm_router
 
 app = FastAPI(
     title="Capstone Backend API",
@@ -31,7 +36,9 @@ def health_check():
         return {"status":"ok"}
 
 
-# TODO: Register API routes here
+# Register API routes
+app.include_router(llm_router)
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("src.main:app", host="0.0.0.0", port=8000, reload=True)
