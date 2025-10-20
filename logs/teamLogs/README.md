@@ -12,7 +12,7 @@ This week was our first real dive into backend development. After spending the p
 
 **Aaron:** 
 
-**Ohm:** 
+**Om:** 
 
 **Samarth:** 
 
