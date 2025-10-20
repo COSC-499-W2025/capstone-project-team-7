@@ -1,7 +1,18 @@
-.tmp_archives/
 __pycache__/
-*.py[cod]
-.DS_Store
-.pytest_cache/
-.mypy_cache/
 
+venv/
+env/
+.venv
+.env
+.env.local
+*.env
+
+.vscode/
+.DS_Store
+
+.pytest_cache/
+
+*.log
+
+backend/__pycache__/
+tests/__pycache__/
