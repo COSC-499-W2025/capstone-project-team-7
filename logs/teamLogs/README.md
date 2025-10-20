@@ -10,7 +10,7 @@ This week was our first real dive into backend development. After spending the p
 
 **Vlad:** 
 
-**Aaron:** 
+**Aaron:** Implemented the configuration scanning profile logic by adding the 'ConfigManager' class which has various methods allowing the user to add, remove, switch between, and delete scanning profiles based on their own preferences in regard to file extensions. Currently stores the users config scanning profile in a json file, but will change to storing in database this week via Supabase. Also added a test suite with 18 test cases to cover all scenarios the user will encounter when utilizing any method pertaining to the configuration profile to ensure robust functionality.  
 
 **Om:** Designed and implemented the Consent Validation Module with comprehensive `ConsentValidator` class, custom exception handling, and `ConsentRecord` dataclass. Developed core validation methods for upload consent, external services, and permission checks. Created extensive unit test suite with 20+ test cases, fixtures, and integration scenarios to ensure robust privacy-compliant functionality.
 
