@@ -4,8 +4,6 @@
 
 This week was our first real dive into backend development. After spending the past few weeks planning and documenting, we finally started building the core of the system: setting up the main functions, initializing the database, adding user consent handling, and creating the first version of the file parsing pipeline. The main goal was to lay a solid foundation so future milestones can build on a working backend
 
----
-
 **Joaquin:** Focused on building the archive ingestion pipeline in `backend/src/scanner/parser.py`. Implemented path validation, zip handling, and traversal protection, while structuring results through `FileMetadata`, `ParseIssue`, and `ParseResult` dataclasses. Added clear error types (`UnsupportedArchiveError`, `CorruptArchiveError`) and a CLI tool in `scripts/parse_archive.py` for testing. Updated the `README.md` with setup and usage instructions for the new parser.
 
 **Jacob:** 
