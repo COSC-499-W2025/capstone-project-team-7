@@ -30,3 +30,19 @@ Key documentation
 Please use a branching workflow, and once an item is ready, do remember to issue a PR, review, and merge it into the master branch. Be sure to keep your docs and README.md up-to-date.
 
 [Drive](https://drive.google.com/drive/folders/1Ic_HO0ReyS5_xveO-FNnUX63wc-phoV9?usp=sharing)
+
+## Parser CLI
+
+Run the parser locally by pointing it at a `.zip` archive or a directory (directories will be zipped automatically into `.tmp_archives/`). Ensure the script is executable (`chmod +x scripts/parse_archive.py`) and run:
+
+```bash
+./scripts/parse_archive.py /path/to/archive-or-folder
+```
+
+Add `--json` to emit a machine-readable payload if you prefer structured output:
+
+```bash
+./scripts/parse_archive.py /path/to/archive-or-folder --json
+```
+
+By default the script prints an aligned table of file metadata (`path`, `mime_type`, `size` in KB/MB/GB) and an aggregate summary with both raw and human-readable byte counts. Requires Python 3.13.
