@@ -16,6 +16,10 @@ This week was our first real dive into backend development. After spending the p
 
 **Samarth:** Focused on building the LLM Integration setup enabling external AI service capabilities with secure API key verification and robust error handling. Developed the `LLMClient` class for OpenAI API integration, with complete configuration management and consent-based access control. Implemented RESTful API routes for key verification, model information, and service status. Built a comprehensive suite of 30+ unit and integration tests covering client initialization, authentication workflows, and endpoint behavior to ensure secure and reliable LLM operations.
 
+<p align="center">
+  <img src="./charts/w7burnup.png" alt="Week 5 Burnup Chart width="400"/>
+</p>
+
 ## Week 6 (October 6 - 12)
 
 This week our focus was on getting our project setup in place and updating some of our main documents. We started by creating a GitHub Project to organize all our tasks and make progress tracking easier with its built-in burnup chart. 
