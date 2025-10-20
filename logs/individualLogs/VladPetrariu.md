@@ -1,3 +1,11 @@
+# Week 7: October 13 - October 19
+
+This week I focused on setting up the full Supabase backend for our project. I created and tested the core database schema (01_initialize_database_schema.sql) defining user profiles, uploads, and triggers for automatic profile creation on new user sign-up. I also implemented row-level security (RLS) policies (02_storage_policies.sql) to ensure each user can only access their own uploaded files in Supabase Storage. To validate the setup, I wrote an end-to-end upload test (test_upload.mjs) that connects to Supabase using environment variables, uploads a sample file, and verifies that metadata is inserted correctly.
+
+Additionally, I managed the Git workflow for integrating these changes — opening and revising pull requests, handling a mistaken merge, and restoring the correct branch through reverts and reflog recovery. This experience helped me strengthen my understanding of Git branch management and backend database security configuration.
+
+<img width="1092" height="640" alt="Screenshot 2025-10-19 at 9 43 33 PM" src="https://github.com/user-attachments/assets/779fca52-5862-4e15-bcdb-4c10cb6ab9c3" />
+
 # Week 6: October 6 - October 12
 
 After reviewing the milestone 1 requirements, I was focused on developing the proof of concept for the user consent and upload gate component of our system. I designed and docuented a process that would make sure that users procide explicit consent before any data is uploaded or analyzed. The POC I worked on this week includes a blueprint for the consent interface, validation logic, and integration details using supabase for authentication and database storage. I make a full technical design, database schema, row-level security policies and storage layout for ulpoaded files. I defined validation rules and relevant output responses. Next week I plan to start implementing the POC with Supabase and demonstrate a working consent flow.
