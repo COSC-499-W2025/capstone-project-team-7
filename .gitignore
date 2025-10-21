@@ -16,3 +16,4 @@ env/
 
 backend/__pycache__/
 tests/__pycache__/
+backend/src/auth/__pycache__/
