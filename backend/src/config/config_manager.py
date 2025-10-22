@@ -1,7 +1,7 @@
 import json
 import os
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 
 # TODO: Uncomment when Supabase DB PR is merged
 # from supabase import create_client, Client
@@ -33,7 +33,8 @@ class ConfigManager:
 
         try:
             with open(self.config_path, "r") as f:
-                return json.load(f)
+                config = json.load(f)
+                return self._ensure_config_defaults(config)
         except json.JSONDecodeError:
             print(f"Error reading config file. Creating default config.")
             default_config = self._get_default_config()
@@ -89,7 +90,18 @@ class ConfigManager:
             "current_profile": "all",
             "max_file_size_mb": 10,
             "follow_symlinks": False,
+            "user_preferences": {},
         }
+
+    def _ensure_config_defaults(self, config: Dict) -> Dict:
+        """Backfill missing config keys when loading legacy files."""
+        updated = False
+        if "user_preferences" not in config:
+            config["user_preferences"] = {}
+            updated = True
+        if updated:
+            self._save_config(config)
+        return config
 
     def get_current_profile(self) -> str:
         """Get the name of the active config the user is using, default is all"""
@@ -263,3 +275,58 @@ class ConfigManager:
             "exclude_dirs": profile_details["exclude_dirs"],
             "max_file_size_mb": self.config.get("max_file_size_mb", 10),
         }
+
+    def get_user_preferences(self) -> Dict[str, Any]:
+        """Return all persisted user preferences."""
+        return self.config.setdefault("user_preferences", {})
+
+    def get_user_preference(self, key: str, default: Any = None) -> Any:
+        """
+        Fetch an individual preference.
+
+        Args:
+            key: Preference key to read
+            default: Value returned when key is absent
+        """
+        preferences = self.get_user_preferences()
+        return preferences.get(key, default)
+
+    def set_user_preference(self, key: str, value: Any) -> None:
+        """
+        Persist a single preference value.
+
+        Args:
+            key: Preference identifier
+            value: Preference value to store
+        """
+        preferences = self.get_user_preferences()
+        preferences[key] = value
+        self._save_config(self.config)
+
+    def update_user_preferences(self, preferences: Dict[str, Any]) -> None:
+        """
+        Merge a batch of preferences into the stored configuration.
+
+        Args:
+            preferences: Mapping of preference keys to values
+        """
+        current_preferences = self.get_user_preferences()
+        current_preferences.update(preferences)
+        self._save_config(self.config)
+
+    def delete_user_preference(self, key: str) -> bool:
+        """
+        Remove a stored preference if present.
+
+        Args:
+            key: Preference identifier
+
+        Returns:
+            True when a preference is removed, False if it did not exist
+        """
+        preferences = self.get_user_preferences()
+        if key not in preferences:
+            return False
+        del preferences[key]
+        self._save_config(self.config)
+        return True

@@ -205,3 +205,30 @@ def test_delete_profile_removes_from_json_file(temp_config_dir):
     
     # Verify profile is gone from file
     assert "temp_profile" not in file_contents["scan_profiles"]
+
+
+def test_user_preferences_persist_across_sessions(temp_config_dir):
+    """Preferences should be saved for reuse in later sessions."""
+    config_path = Path(temp_config_dir) / "test_config.json"
+    config = ConfigManager(config_path=str(config_path))
+    config.set_user_preference("theme", "dark")
+    config.set_user_preference("recent_project", "/path/to/project")
+
+    reloaded = ConfigManager(config_path=str(config_path))
+    assert reloaded.get_user_preference("theme") == "dark"
+    assert reloaded.get_user_preference("recent_project") == "/path/to/project"
+
+
+def test_delete_user_preference_updates_file(temp_config_dir):
+    """Removing a preference should update the persisted config."""
+    config_path = Path(temp_config_dir) / "test_config.json"
+    config = ConfigManager(config_path=str(config_path))
+    config.set_user_preference("experimental_mode", True)
+
+    removed = config.delete_user_preference("experimental_mode")
+    assert removed is True
+
+    with open(config_path, 'r') as f:
+        file_contents = json.load(f)
+
+    assert "experimental_mode" not in file_contents["user_preferences"]
