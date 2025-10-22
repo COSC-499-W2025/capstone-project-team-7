@@ -33,16 +33,32 @@ Please use a branching workflow, and once an item is ready, do remember to issue
 
 ## Parser CLI
 
-Run the parser locally by pointing it at a `.zip` archive or a directory (directories will be zipped automatically into `.tmp_archives/`). Ensure the script is executable (`chmod +x scripts/parse_archive.py`) and run:
+Install the CLI locally so the `parse` command is available on your `$PATH`:
 
 ```bash
-./scripts/parse_archive.py /path/to/archive-or-folder
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -e backend
+# If you're working offline, add --no-build-isolation to the last step.
+```
+
+Once installed (and the virtual environment is active), run the parser by pointing it at a `.zip` archive or a directory (directories will be zipped automatically into `.tmp_archives/`):
+
+```bash
+.venv/bin/parse /path/to/archive-or-folder
 ```
 
 Add `--json` to emit a machine-readable payload if you prefer structured output:
 
 ```bash
-./scripts/parse_archive.py /path/to/archive-or-folder --json
+.venv/bin/parse /path/to/archive-or-folder --json
+```
+
+If you prefer not to install the CLI, you can still execute the script directly:
+
+```bash
+./scripts/parse_archive.py /path/to/archive-or-folder
 ```
 
 By default the script prints an aligned table of file metadata (`path`, `mime_type`, `size` in KB/MB/GB) and an aggregate summary with both raw and human-readable byte counts. Requires Python 3.13.

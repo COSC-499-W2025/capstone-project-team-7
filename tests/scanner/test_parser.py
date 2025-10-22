@@ -118,3 +118,115 @@ def test_cli_outputs_json(
     assert payload["summary"]["files_processed"] == len(files)
     returned_paths = {item["path"] for item in payload["files"]}
     assert returned_paths == set(files.keys())
+
+
+@pytest.fixture
+def zip_with_dummy_files(tmp_path: Path) -> tuple[Path, dict[str, Path], dict[str, Path]]:
+    root = tmp_path / "complex_project"
+    relevant = {
+        "src/app.py": root / "src" / "app.py",
+        "docs/README.md": root / "docs" / "README.md",
+        "reports/project_overview.pdf": root / "reports" / "project_overview.pdf",
+        "presentations/demo_pitch.pptx": root / "presentations" / "demo_pitch.pptx",
+    }
+    irrelevant = {
+        "__pycache__/app.cpython-311.pyc": root / "__pycache__" / "app.cpython-311.pyc",
+        "dist/bundle.js": root / "dist" / "bundle.js",
+        "node_modules/pkg/index.js": root / "node_modules" / "pkg" / "index.js",
+        "assets/logo.png": root / "assets" / "logo.png",
+        "tmp/archive.bin": root / "tmp" / "archive.bin",
+    }
+
+    for path in list(relevant.values()) + list(irrelevant.values()):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("placeholder\n")
+
+    archive = tmp_path / "complex_project.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        for arcname, file_path in {**relevant, **irrelevant}.items():
+            zf.write(file_path, arcname)
+
+    return archive, relevant, irrelevant
+
+
+def test_parse_zip_relevant_only_filters(zip_with_dummy_files):
+    archive, relevant, irrelevant = zip_with_dummy_files
+
+    result = parse_zip(archive, relevant_only=True)
+
+    paths = {meta.path for meta in result.files}
+    assert paths == set(relevant.keys())
+    assert result.summary["files_processed"] == len(relevant)
+    assert result.summary["filtered_out"] == len(irrelevant)
+
+
+def test_cli_respects_relevant_only_flag(
+    zip_with_dummy_files: tuple[Path, dict[str, Path], dict[str, Path]],
+    project_root: Path,
+    backend_root: Path,
+):
+    archive, relevant, irrelevant = zip_with_dummy_files
+    command = [
+        sys.executable,
+        "-m",
+        "src.cli.parse_zip",
+        "--relevant-only",
+        str(archive),
+    ]
+    env = os.environ.copy()
+    env["PYTHONPATH"] = (
+        f"{backend_root}{os.pathsep}{env['PYTHONPATH']}"
+        if "PYTHONPATH" in env
+        else str(backend_root)
+    )
+    proc = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        cwd=project_root,
+        env=env,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout)
+    assert payload["summary"]["files_processed"] == len(relevant)
+    assert payload["summary"]["filtered_out"] == len(irrelevant)
+    returned_paths = {item["path"] for item in payload["files"]}
+    assert returned_paths == set(relevant.keys())
+
+
+def test_parse_archive_script_accepts_relevant_only(
+    zip_with_dummy_files: tuple[Path, dict[str, Path], dict[str, Path]],
+    project_root: Path,
+    backend_root: Path,
+):
+    archive, relevant, irrelevant = zip_with_dummy_files
+    script = project_root / "scripts" / "parse_archive.py"
+    command = [
+        sys.executable,
+        str(script),
+        "--json",
+        "--relevant-only",
+        str(archive),
+    ]
+    env = os.environ.copy()
+    env["PYTHONPATH"] = (
+        f"{backend_root}{os.pathsep}{env['PYTHONPATH']}"
+        if "PYTHONPATH" in env
+        else str(backend_root)
+    )
+    proc = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        cwd=project_root,
+        env=env,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout)
+    summary = payload["summary"]
+    assert summary["files_processed"] == len(relevant)
+    assert summary["filtered_out"] == len(irrelevant)
+    paths = {item["path"] for item in payload["files"]}
+    assert paths == set(relevant.keys())

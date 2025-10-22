@@ -12,10 +12,15 @@ from ..scanner.parser import parse_zip
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Parse a zipped project archive.")
     parser.add_argument("archive", type=Path, help="Path to the .zip archive to parse.")
+    parser.add_argument(
+        "--relevant-only",
+        action="store_true",
+        help="Only include files likely to demonstrate meaningful work.",
+    )
     args = parser.parse_args(argv)
 
     try:
-        result = parse_zip(args.archive)
+        result = parse_zip(args.archive, relevant_only=args.relevant_only)
     except ParserError as exc:
         payload = {"error": exc.code, "message": str(exc)}
         print(json.dumps(payload), file=sys.stderr)
