@@ -16,3 +16,5 @@ env/
 
 backend/__pycache__/
 tests/__pycache__/
+backend/build/
+backend/*.egg-info/

@@ -5,67 +5,15 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from shutil import make_archive
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-CACHE_DIR = PROJECT_ROOT / ".tmp_archives"
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from backend.src.cli.archive_utils import ensure_zip
+from backend.src.cli.display import format_bytes, format_rows
 from backend.src.scanner.errors import ParserError
 from backend.src.scanner.parser import parse_zip
-
-
-def format_bytes(size: int) -> str:
-    # Represent file sizes with a readable binary unit.
-    step = 1024.0
-    units = ["B", "KB", "MB", "GB", "TB", "PB"]
-    value = float(size)
-    for unit in units:
-        if value < step or unit == units[-1]:
-            return f"{value:.2f} {unit}"
-        value /= step
-
-
-def format_rows(rows: list[tuple[str, str, str]]) -> str:
-    # Build an aligned two-space padded table for readability.
-    col_widths = [0, 0, 0]
-    for path, mime, size in rows:
-        col_widths[0] = max(col_widths[0], len(path))
-        col_widths[1] = max(col_widths[1], len(mime))
-        col_widths[2] = max(col_widths[2], len(size))
-    header = ("PATH", "MIME TYPE", "SIZE")
-    col_widths = [max(col_widths[i], len(header[i])) for i in range(3)]
-    line = (
-        f"{header[0]:<{col_widths[0]}}  "
-        f"{header[1]:<{col_widths[1]}}  "
-        f"{header[2]:<{col_widths[2]}}"
-    )
-    separator = "-" * len(line)
-    formatted_rows = [
-        f"{path:<{col_widths[0]}}  {mime:<{col_widths[1]}}  {size:<{col_widths[2]}}"
-        for path, mime, size in rows
-    ]
-    return "\n".join([line, separator, *formatted_rows])
-
-
-def ensure_zip(target: Path) -> Path:
-    # Return a .zip path, zipping directories on demand to include the folder root.
-    resolved = target.expanduser().resolve()
-    if resolved.suffix.lower() == ".zip":
-        return resolved
-    if not resolved.is_dir():
-        raise ValueError(f"{resolved} is neither a directory nor a .zip file")
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    archive_base = CACHE_DIR / resolved.name
-    archive_path = archive_base.with_suffix(".zip")
-    make_archive(
-        base_name=str(archive_base),
-        format="zip",
-        root_dir=resolved.parent,
-        base_dir=resolved.name,
-    )
-    return archive_path
 
 
 def build_json_payload(archive_path: Path, result) -> dict[str, object]:

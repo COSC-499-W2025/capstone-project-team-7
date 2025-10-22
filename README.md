@@ -39,11 +39,11 @@ Install the CLI locally so the `parse` command is available on your `$PATH`:
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip setuptools wheel
-python -m pip install -e backend
-# If you're working offline, add --no-build-isolation to the last step.
+python -m pip install --no-build-isolation ./backend
+# Use -e backend if you prefer editable installs (re-run the command after code changes).
 ```
 
-Once installed (and the virtual environment is active), run the parser by pointing it at a `.zip` archive or a directory (directories will be zipped automatically into `.tmp_archives/`):
+Once installed (and the virtual environment is active), run the parser by pointing it at a `.zip` archive or a directory (directories will be zipped automatically into a `.tmp_archives/` folder alongside your working directory before parsing):
 
 ```bash
 .venv/bin/parse /path/to/archive-or-folder
@@ -55,6 +55,12 @@ Add `--json` to emit a machine-readable payload if you prefer structured output:
 .venv/bin/parse /path/to/archive-or-folder --json
 ```
 
+Use `--relevant-only` to filter out common noise files (caches, build artifacts, binaries) and keep documents or code that demonstrate work:
+
+```bash
+.venv/bin/parse /path/to/archive-or-folder --relevant-only
+```
+
 If you prefer not to install the CLI, you can still execute the script directly:
 
 ```bash
@@ -62,3 +68,5 @@ If you prefer not to install the CLI, you can still execute the script directly:
 ```
 
 By default the script prints an aligned table of file metadata (`path`, `mime_type`, `size` in KB/MB/GB) and an aggregate summary with both raw and human-readable byte counts. Requires Python 3.13.
+
+Tip: ensure `.venv/bin` is on your `PATH` (e.g., `export PATH="$(pwd)/.venv/bin:$PATH"`) if you want to invoke `parse` without the explicit prefix.

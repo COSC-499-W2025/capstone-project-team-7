@@ -14,8 +14,7 @@ from src.scanner.models import FileMetadata, ParseResult
 from src.scanner.parser import parse_zip
 
 
-@pytest.fixture
-def nested_zip(tmp_path: Path) -> tuple[Path, dict[str, Path]]:
+def _make_project(tmp_path: Path) -> tuple[Path, dict[str, Path]]:
     root = tmp_path / "project"
     src = root / "src"
     docs = root / "docs"
@@ -28,6 +27,18 @@ def nested_zip(tmp_path: Path) -> tuple[Path, dict[str, Path]]:
     }
     files["src/main.py"].write_text("print('hello world')\n")
     files["docs/README.md"].write_text("# Documentation\n")
+
+    return root, files
+
+
+@pytest.fixture
+def project_tree(tmp_path: Path) -> tuple[Path, dict[str, Path]]:
+    return _make_project(tmp_path)
+
+
+@pytest.fixture
+def nested_zip(tmp_path: Path) -> tuple[Path, dict[str, Path]]:
+    root, files = _make_project(tmp_path)
 
     archive = tmp_path / "project.zip"
     with zipfile.ZipFile(archive, "w") as zf:
@@ -97,6 +108,7 @@ def test_cli_outputs_json(
         sys.executable,
         "-m",
         "src.cli.parse_zip",
+        "--json",
         str(archive),
     ]
     env = os.environ.copy()
@@ -118,6 +130,41 @@ def test_cli_outputs_json(
     assert payload["summary"]["files_processed"] == len(files)
     returned_paths = {item["path"] for item in payload["files"]}
     assert returned_paths == set(files.keys())
+
+
+def test_cli_accepts_directory(
+    project_tree: tuple[Path, dict[str, Path]], project_root: Path, backend_root: Path
+):
+    root, files = project_tree
+    command = [
+        sys.executable,
+        "-m",
+        "src.cli.parse_zip",
+        "--json",
+        str(root),
+    ]
+    env = os.environ.copy()
+    env["PYTHONPATH"] = (
+        f"{backend_root}{os.pathsep}{env['PYTHONPATH']}"
+        if "PYTHONPATH" in env
+        else str(backend_root)
+    )
+    proc = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        cwd=project_root,
+        env=env,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout)
+    returned_paths = {item["path"] for item in payload["files"]}
+    normalized = {
+        path.split("/", 1)[1] if path.startswith(f"{root.name}/") else path
+        for path in returned_paths
+    }
+    assert normalized == set(files.keys())
 
 
 @pytest.fixture
@@ -171,6 +218,7 @@ def test_cli_respects_relevant_only_flag(
         "-m",
         "src.cli.parse_zip",
         "--relevant-only",
+        "--json",
         str(archive),
     ]
     env = os.environ.copy()
