@@ -11,17 +11,18 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from backend.src.cli.archive_utils import ensure_zip
-from backend.src.cli.display import format_bytes, format_rows
+from backend.src.cli.display import format_bytes, format_rows, render_language_table
+from backend.src.cli.language_stats import summarize_languages
 from backend.src.scanner.errors import ParserError
 from backend.src.scanner.parser import parse_zip
 
 
-def build_json_payload(archive_path: Path, result) -> dict[str, object]:
-    summary = result.summary
+def build_json_payload(archive_path: Path, result, languages) -> dict[str, object]:
+    summary = dict(result.summary)
     processed = summary.get("bytes_processed", 0)
     filtered = summary.get("filtered_out")
     # Surface filtered file counts only when relevant-only mode is active.
-    return {
+    payload = {
         "archive": str(archive_path),
         "files": [
             {
@@ -46,6 +47,9 @@ def build_json_payload(archive_path: Path, result) -> dict[str, object]:
             **({"filtered_out": filtered} if filtered is not None else {}),
         },
     }
+    if languages:
+        payload["summary"]["languages"] = languages
+    return payload
 
 
 def main() -> None:
@@ -63,6 +67,11 @@ def main() -> None:
         action="store_true",
         help="Skip files unlikely to showcase meaningful work when parsing.",
     )
+    parser.add_argument(
+        "--code",
+        action="store_true",
+        help="Include a language breakdown for the parsed project.",
+    )
     args = parser.parse_args()
 
     try:
@@ -75,8 +84,10 @@ def main() -> None:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
 
+    languages = summarize_languages(result.files) if args.code else []
+
     if args.json:
-        print(json.dumps(build_json_payload(archive_path, result), indent=2))
+        print(json.dumps(build_json_payload(archive_path, result, languages), indent=2))
         return
 
     print(f"Archive parsed: {archive_path}")
@@ -102,6 +113,12 @@ def main() -> None:
         f"issues_count={summary.get('issues_count', len(result.issues))}"
         f"{extra}"
     )
+
+    if languages:
+        table = render_language_table(languages)
+        if table:
+            print("Language breakdown:")
+            print(table)
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .archive_utils import ensure_zip
 from .display import render_table
+from .language_stats import summarize_languages
 from ..scanner.errors import ParserError
 from ..scanner.parser import parse_zip
 
@@ -28,6 +29,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Emit the parse result as JSON instead of a formatted table.",
     )
+    parser.add_argument(
+        "--code",
+        action="store_true",
+        help="Include a language breakdown for the parsed project.",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -42,17 +48,20 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(payload), file=sys.stderr)
         return 1
 
+    # Build the optional language breakdown only when requested to keep baseline runs fast.
+    languages = summarize_languages(result.files) if args.code else []
+
     if args.json:
-        print(json.dumps(_serialize_result(result), indent=2))
+        print(json.dumps(_serialize_result(result, languages), indent=2))
     else:
-        for line in render_table(archive_path, result):
+        for line in render_table(archive_path, result, languages=languages):
             print(line)
     return 0
 
 
-def _serialize_result(result):
-    return {
-        "summary": result.summary,
+def _serialize_result(result, languages):
+    payload = {
+        "summary": dict(result.summary),
         "files": [
             {
                 "path": meta.path,
@@ -68,6 +77,9 @@ def _serialize_result(result):
             for issue in result.issues
         ],
     }
+    if languages:
+        payload["summary"]["languages"] = languages
+    return payload
 
 
 if __name__ == "__main__":

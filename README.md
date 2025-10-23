@@ -55,10 +55,22 @@ Add `--json` to emit a machine-readable payload if you prefer structured output:
 .venv/bin/parse /path/to/archive-or-folder --json
 ```
 
+Add `--code` to include a language breakdown (file counts and size percentages):
+
+```bash
+.venv/bin/parse /path/to/archive-or-folder --code
+```
+
 Use `--relevant-only` to filter out common noise files (caches, build artifacts, binaries) and keep documents or code that demonstrate work:
 
 ```bash
 .venv/bin/parse /path/to/archive-or-folder --relevant-only
+```
+
+Combine flags as needed. For example:
+
+```bash
+.venv/bin/parse /path/to/archive-or-folder --relevant-only --json --code
 ```
 
 If you prefer not to install the CLI, you can still execute the script directly:
