@@ -3,20 +3,8 @@ import os
 from pathlib import Path
 from typing import List, Dict, Optional
 
-# TODO: Uncomment when Supabase DB PR is merged
-# from supabase import create_client, Client
-# SUPABASE_URL = os.getenv("SUPABASE_URL")
-# SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-# supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-
 from supabase import create_client, Client
 from dotenv import load_dotenv
-import os
-import json
-import time
-import random
-import string
 
 load_dotenv()
 
@@ -26,13 +14,12 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
-
 class ConfigManager:
-    
-  """
+    """
     Database-backed version of ConfigManager
     Works with the user_configs table in Supabase
     """
+    
     def __init__(self, user_id: str):
         """
         Initialize with a user ID
@@ -47,7 +34,7 @@ class ConfigManager:
         """Load user config from database"""
         try:
             result = supabase.table("user_configs").select("*").eq("owner", self.user_id).single().execute()
-            return result.datar
+            return result.data  # FIXED: was result.datar
         except Exception as e:
             print(f"Error loading config: {e}")
             print("Config should have been auto-created. Trying to create manually...")
