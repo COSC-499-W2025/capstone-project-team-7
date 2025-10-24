@@ -40,7 +40,7 @@ class DatabaseConfigManager:
         """Load user config from database"""
         try:
             result = supabase.table("user_configs").select("*").eq("owner", self.user_id).single().execute()
-            return result.data
+            return result.datar
         except Exception as e:
             print(f"Error loading config: {e}")
             print("Config should have been auto-created. Trying to create manually...")
