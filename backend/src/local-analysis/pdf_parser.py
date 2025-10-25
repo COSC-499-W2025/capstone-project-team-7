@@ -6,13 +6,12 @@ import io
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
-import PyPDF2
-from PyPDF2 import PdfReader
+from pypdf import PdfReader
 import logging
 
-# Ensure PdfReadError is available across PyPDF2 versions; fall back to a generic Exception subclass if not found
+# Ensure PdfReadError is available; fall back to a generic Exception subclass if not found
 try:
-    from PyPDF2.errors import PdfReadError
+    from pypdf.errors import PdfReadError
 except ImportError:
     PdfReadError = Exception  # type: ignore
 
