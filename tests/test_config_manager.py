@@ -181,7 +181,23 @@ def test_delete_profile(test_user):
     assert "to_delete" not in config.config["scan_profiles"]
 
 
+def test_get_allowed_extensions(test_user):
+    """Test 7: Get allowed extensions for current and specific profiles"""
+    config = ConfigManager(test_user)
 
+    # --- Case 1: Check current active profile ---
+    current_profile = config.get_current_profile()
+    extensions_current = config.get_allowed_extensions()
+
+    assert isinstance(extensions_current, list), "Extensions should be a list"
+    assert len(extensions_current) > 0, "Extensions list should not be empty"
+    print(f"✅ Current profile '{current_profile}' has extensions: {extensions_current}")
+
+    # --- Case 2: Check specific profile ---
+    extensions_python = config.get_allowed_extensions("python_only")
+
+    assert ".py" in extensions_python, "Python profile should include .py extension"
+    print(f"✅ 'python_only' profile extensions: {extensions_python}")
 
 
 
