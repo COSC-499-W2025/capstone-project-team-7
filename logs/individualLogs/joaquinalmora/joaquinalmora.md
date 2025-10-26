@@ -1,6 +1,6 @@
 # Joaquin Almora / @joaquinalmora
 
-## Week 8 (October 20th - 27th)
+## Week 8 (October 20th - 26th)
 This week I worked on improving the CLI for parsing. I replaced my previous zip shelling with a safe esnure_zip helper that skips files like .venv or node_modules. It also write ZIP64 archives so big asses don't blow up. I refactored so that the CLI has now reusable helpers for the table output display. Added the --relevant-only flag and --code flag. The first one includes only the important files given for a directory, so that in the future the LLM doesn't have to parse through a lot of unnecessary files, and the later one gives the language breakdown for a given project, excluding things like documents and images. It reports per-language file/byte percentages. Everything’s wired through src.cli.parse_zip and scripts/parse_archive.py, and the README documents the new flags with examples. Added tests for the new coverage (language breakdown, auto-zip exclusions), and the updated command passes both manual runs and pytest.
 
 ![Peer Eval](./images/w8peer.png)
