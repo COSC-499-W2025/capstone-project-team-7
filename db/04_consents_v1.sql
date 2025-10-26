@@ -22,3 +22,8 @@ create policy "consent_v1_insert_own"
 create policy "consent_v1_update_own"
   on public.consents_v1 for update using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
+
+  drop policy if exists "consent_v1_delete_own" on public.consents_v1;
+
+create policy "consent_v1_delete_own"
+  on public.consents_v1 for delete using (auth.uid() = user_id);

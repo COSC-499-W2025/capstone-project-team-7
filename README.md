@@ -54,3 +54,5 @@ pip install -r backend/requirements.txt
 python3 scripts/auth_cli.py signup demo+1@example.com StrongPass123!
 python3 scripts/auth_cli.py consent demo+1@example.com StrongPass123!
 python3 scripts/auth_cli.py check   demo+1@example.com StrongPass123!
+
+Note: The CLI will securely prompt for your password (no echo). Avoid passing --password unless in CI.
