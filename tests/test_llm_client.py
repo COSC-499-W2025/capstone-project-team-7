@@ -11,8 +11,7 @@ sys.path.insert(0, str(backend_src))
 from analyzer.llm.client import (
     LLMClient,
     LLMError,
-    InvalidAPIKeyError,
-    create_llm_client
+    InvalidAPIKeyError
 )
 
 
@@ -51,17 +50,6 @@ class TestLLMClient:
                 LLMClient(api_key="test-key-123")
             
             assert "Failed to initialize LLM client" in str(exc_info.value)
-    
-    def test_create_llm_client_factory(self):
-        """Test the factory function for creating LLM clients."""
-        client = create_llm_client()
-        assert isinstance(client, LLMClient)
-        assert not client.is_configured()
-        
-        with patch('analyzer.llm.client.OpenAI'):
-            client_with_key = create_llm_client(api_key="test-key")
-            assert isinstance(client_with_key, LLMClient)
-            assert client_with_key.is_configured()
 
 
 class TestVerifyAPIKey:
@@ -178,25 +166,6 @@ class TestClientMethods:
         with patch('analyzer.llm.client.OpenAI'):
             client = LLMClient(api_key="test-key")
             assert client.is_configured()
-    
-    def test_get_model_info_unconfigured(self):
-        """Test get_model_info for unconfigured client."""
-        client = LLMClient()
-        info = client.get_model_info()
-        
-        assert info["provider"] == "openai"
-        assert info["default_model"] == "gpt-3.5-turbo"
-        assert info["configured"] is False
-    
-    def test_get_model_info_configured(self):
-        """Test get_model_info for configured client."""
-        with patch('analyzer.llm.client.OpenAI'):
-            client = LLMClient(api_key="test-key")
-            info = client.get_model_info()
-            
-            assert info["provider"] == "openai"
-            assert info["default_model"] == "gpt-3.5-turbo"
-            assert info["configured"] is True
 
 
 class TestIntegrationScenarios:
@@ -205,7 +174,7 @@ class TestIntegrationScenarios:
     def test_complete_setup_workflow(self):
         """Test complete workflow of setting up and verifying LLM client."""
         with patch('analyzer.llm.client.OpenAI') as mock_openai:
-            client = create_llm_client(api_key="sk-test123")
+            client = LLMClient(api_key="sk-test123")
             assert client.is_configured()
             
             mock_response = Mock()
@@ -214,22 +183,17 @@ class TestIntegrationScenarios:
             
             is_valid = client.verify_api_key()
             assert is_valid is True
-            
-            info = client.get_model_info()
-            assert info["configured"] is True
     
     def test_workflow_without_api_key(self):
         """Test workflow when API key is not provided."""
-        client = create_llm_client()
+        client = LLMClient()
         
         assert not client.is_configured()
         
         with pytest.raises(InvalidAPIKeyError):
             client.verify_api_key()
-        
-        info = client.get_model_info()
-        assert info["configured"] is False
 
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+

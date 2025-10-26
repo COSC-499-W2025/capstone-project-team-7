@@ -2,7 +2,7 @@
 # Handles integration with OpenAI API for analysis tasks
 
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional
 import openai
 from openai import OpenAI
 
@@ -97,29 +97,3 @@ class LLMClient:
             bool: True if API key is set, False otherwise
         """
         return self.api_key is not None and self.client is not None
-    
-    def get_model_info(self) -> Dict[str, Any]:
-        """
-        Get information about the configured LLM model.
-        
-        Returns:
-            Dict containing model configuration information
-        """
-        return {
-            "provider": "openai",
-            "default_model": "gpt-3.5-turbo",
-            "configured": self.is_configured()
-        }
-
-
-def create_llm_client(api_key: Optional[str] = None) -> LLMClient:
-    """
-    Function to create an LLM client instance.
-    
-    Args:
-        api_key: OpenAI API key
-        
-    Returns:
-        LLMClient: Configured LLM client instance
-    """
-    return LLMClient(api_key=api_key)
