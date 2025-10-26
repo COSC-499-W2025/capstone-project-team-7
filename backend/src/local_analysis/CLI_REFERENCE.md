@@ -4,7 +4,7 @@
 
 Navigate to the CLI directory:
 ```bash
-cd backend/src/local-analysis
+cd backend/src/local_analysis
 ```
 
 ---

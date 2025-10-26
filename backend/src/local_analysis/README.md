@@ -27,7 +27,7 @@ This module provides in-house PDF parsing and summarization capabilities without
 ### Installation
 
 ```bash
-cd backend/src/local-analysis
+cd backend/src/local_analysis
 pip install -r requirements.txt
 ```
 

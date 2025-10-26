@@ -205,6 +205,6 @@ summary.error_message    # str or None
 
 ## Resources
 
-- Full Documentation: `backend/src/local-analysis/README.md`
-- Examples: `backend/src/local-analysis/example_usage.py`
+- Full Documentation: `backend/src/local_analysis/README.md`
+- Examples: `backend/src/local_analysis/example_usage.py`
 - Tests: `tests/test_pdf_analysis.py`

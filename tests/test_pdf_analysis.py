@@ -13,7 +13,7 @@ from pypdf import PdfReader, PdfWriter
 # Import using the helper function from conftest
 from conftest import import_from_local_analysis
 
-# Import modules from local-analysis directory
+# Import modules from local_analysis directory
 pdf_parser = import_from_local_analysis("pdf_parser")
 pdf_summarizer = import_from_local_analysis("pdf_summarizer")
 
