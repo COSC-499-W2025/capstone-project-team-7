@@ -1,7 +1,8 @@
 # Joaquin Almora / @joaquinalmora
 
 ## Week 8 (October 20th - 27th)
-This week I wrapped up the CLI refactor so parsing is much smoother. I replaced the brittle zip shelling with a safe ensure_zip helper that walks directories, skips things like .venv or node_modules, and writes ZIP64 archives so big assets don’t blow up. The CLI now has reusable display helpers for the table output, a --code flag that reports per-language file/byte percentages, and the language analyzer skips unknown/binary extensions so “Other” doesn’t dominate the stats. Everything’s wired through src.cli.parse_zip and scripts/parse_archive.py, and the README documents the new flags with examples. Added tests for the new coverage (language breakdown, auto-zip exclusions), and the updated command passes both manual runs and pytest.
+This week I worked on improving the CLI for parsing. I replaced my previous zip shelling with a safe esnure_zip helper that skips files like .venv or node_modules. It also write ZIP64 archives so big asses don't blow up. I refactored so that the CLI has now reusable helpers for the table output display. Added the --relevant-only flag and --code flag. The first one includes only the 
+The CLI now has reusable display helpers for the table output, a --code flag that reports per-language file/byte percentages, and the language analyzer skips unknown/binary extensions so “Other” doesn’t dominate the stats. Everything’s wired through src.cli.parse_zip and scripts/parse_archive.py, and the README documents the new flags with examples. Added tests for the new coverage (language breakdown, auto-zip exclusions), and the updated command passes both manual runs and pytest.
 
 ## Week 7 (October 13th - 19th)
 This week I focused on implementing the archive parsing pipeline for the backend. I started by building the core parser in backend/src/scanner/parser.py, which validates archive paths, ensures proper .zip 
