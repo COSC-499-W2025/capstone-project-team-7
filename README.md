@@ -46,3 +46,11 @@ Add `--json` to emit a machine-readable payload if you prefer structured output:
 ```
 
 By default the script prints an aligned table of file metadata (`path`, `mime_type`, `size` in KB/MB/GB) and an aggregate summary with both raw and human-readable byte counts. Requires Python 3.13.
+
+### Terminal Auth + Consent (Supabase)
+export SUPABASE_URL="https://<your>.supabase.co"
+export SUPABASE_ANON_KEY="ey..."
+pip install -r backend/requirements.txt
+python3 scripts/auth_cli.py signup demo+1@example.com StrongPass123!
+python3 scripts/auth_cli.py consent demo+1@example.com StrongPass123!
+python3 scripts/auth_cli.py check   demo+1@example.com StrongPass123!
