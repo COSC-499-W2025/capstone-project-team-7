@@ -19,6 +19,11 @@ This week we continued developing the backend, moving from setup into more funct
 All the updates this week build on each other to make the whole system smarter and more reliable. The new CLI features make it easier to parse and display project data, while the authentication and consent setup ensures everything stays secure and user-specific. The local PDF tools keep things privacy-first but still powerful enough for deep analysis, and the LLM module ties it all together by turning that data into useful insights. Altogether, these improvements connect the technical, privacy, and intelligence sides of the system so it runs more efficiently and feels more seamless to use.
 
 
+<p align="center">
+  <img src="./charts/w8burnup.png" alt="Week 5 Burnup Chart width="400"/>
+</p>
+
+
 ## Week 7 (October 13 - 19)
 
 This week was our first real dive into backend development. After spending the past few weeks planning and documenting, we finally started building the core of the system: setting up the main functions, initializing the database, adding user consent handling, adding configuration profiles, and creating the first version of the file parsing pipeline. The main goal was to lay a solid foundation so future milestones can build on a working backend
