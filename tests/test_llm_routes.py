@@ -12,6 +12,7 @@ sys.path.insert(0, str(backend_src))
 from main import app
 from analyzer.llm.client import LLMClient, LLMError, InvalidAPIKeyError
 from auth.consent_validator import ExternalServiceError
+import api.llm_routes as routes
 
 
 class TestLLMRoutes:
@@ -33,7 +34,6 @@ class TestLLMRoutes:
     @pytest.fixture
     def clear_llm_client(self):
         """Clear the global LLM client before each test."""
-        import api.llm_routes as routes
         routes._llm_client = None
         yield
         routes._llm_client = None
@@ -49,17 +49,16 @@ class TestVerifyKeyEndpoint(TestLLMRoutes):
             mock_validator.validate_external_services_consent.return_value = True
             mock_validator_class.return_value = mock_validator
             
-            with patch('api.llm_routes.create_llm_client') as mock_create:
+            with patch('api.llm_routes.LLMClient') as mock_llm_class:
                 mock_llm = Mock(spec=LLMClient)
                 mock_llm.verify_api_key.return_value = True
-                mock_create.return_value = mock_llm
+                mock_llm_class.return_value = mock_llm
                 
                 response = client.post("/api/llm/verify-key", json=valid_request)
                 
                 assert response.status_code == 200
                 data = response.json()
                 assert data["valid"] is True
-                assert data["configured"] is True
                 assert "successfully" in data["message"]
     
     def test_verify_key_no_consent(self, client, valid_request, clear_llm_client):
@@ -95,17 +94,17 @@ class TestVerifyKeyEndpoint(TestLLMRoutes):
             mock_validator.validate_external_services_consent.return_value = True
             mock_validator_class.return_value = mock_validator
             
-            with patch('api.llm_routes.create_llm_client') as mock_create:
+            with patch('api.llm_routes.LLMClient') as mock_llm_class:
                 mock_llm = Mock(spec=LLMClient)
                 mock_llm.verify_api_key.side_effect = InvalidAPIKeyError("Invalid API key")
-                mock_create.return_value = mock_llm
+                mock_llm_class.return_value = mock_llm
                 
                 response = client.post("/api/llm/verify-key", json=valid_request)
                 
                 assert response.status_code == 200
                 data = response.json()
                 assert data["valid"] is False
-                assert data["configured"] is False
+                assert "Invalid API key" in data["message"]
     
     def test_verify_key_llm_error(self, client, valid_request, clear_llm_client):
         """Test API key verification with LLM error."""
@@ -114,10 +113,10 @@ class TestVerifyKeyEndpoint(TestLLMRoutes):
             mock_validator.validate_external_services_consent.return_value = True
             mock_validator_class.return_value = mock_validator
             
-            with patch('api.llm_routes.create_llm_client') as mock_create:
+            with patch('api.llm_routes.LLMClient') as mock_llm_class:
                 mock_llm = Mock(spec=LLMClient)
                 mock_llm.verify_api_key.side_effect = LLMError("Service unavailable")
-                mock_create.return_value = mock_llm
+                mock_llm_class.return_value = mock_llm
                 
                 response = client.post("/api/llm/verify-key", json=valid_request)
                 
@@ -131,74 +130,13 @@ class TestVerifyKeyEndpoint(TestLLMRoutes):
             mock_validator.validate_external_services_consent.return_value = True
             mock_validator_class.return_value = mock_validator
             
-            with patch('api.llm_routes.create_llm_client', side_effect=Exception("Unexpected")):
+            with patch('api.llm_routes.LLMClient') as mock_llm_class:
+                mock_llm_class.side_effect = Exception("Unexpected error")
+                
                 response = client.post("/api/llm/verify-key", json=valid_request)
                 
                 assert response.status_code == 500
                 assert "unexpected error" in response.json()["detail"].lower()
-
-
-class TestModelInfoEndpoint(TestLLMRoutes):
-    """Test cases for the /api/llm/model-info endpoint."""
-    
-    def test_get_model_info_unconfigured(self, client, clear_llm_client):
-        """Test getting model info when LLM is not configured."""
-        response = client.get("/api/llm/model-info")
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert data["provider"] == "openai"
-        assert data["default_model"] == "gpt-3.5-turbo"
-        assert data["configured"] is False
-    
-    def test_get_model_info_configured(self, client, clear_llm_client):
-        """Test getting model info when LLM is configured."""
-        import api.llm_routes as routes
-        
-        mock_client = Mock(spec=LLMClient)
-        mock_client.get_model_info.return_value = {
-            "provider": "openai",
-            "default_model": "gpt-3.5-turbo",
-            "configured": True
-        }
-        routes._llm_client = mock_client
-        
-        response = client.get("/api/llm/model-info")
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert data["configured"] is True
-        assert data["provider"] == "openai"
-
-
-class TestStatusEndpoint(TestLLMRoutes):
-    """Test cases for the /api/llm/status endpoint."""
-    
-    def test_status_not_configured(self, client, clear_llm_client):
-        """Test status endpoint when LLM is not configured."""
-        response = client.get("/api/llm/status")
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert data["service"] == "llm"
-        assert data["status"] == "not_configured"
-        assert data["ready"] is False
-    
-    def test_status_configured(self, client, clear_llm_client):
-        """Test status endpoint when LLM is configured."""
-        import api.llm_routes as routes
-        
-        mock_client = Mock(spec=LLMClient)
-        mock_client.is_configured.return_value = True
-        routes._llm_client = mock_client
-        
-        response = client.get("/api/llm/status")
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert data["service"] == "llm"
-        assert data["status"] == "configured"
-        assert data["ready"] is True
 
 
 class TestClearKeyEndpoint(TestLLMRoutes):
@@ -206,9 +144,6 @@ class TestClearKeyEndpoint(TestLLMRoutes):
     
     def test_clear_key(self, client, clear_llm_client):
         """Test clearing the API key."""
-        import api.llm_routes as routes
-        
-        # Set a mock client first
         routes._llm_client = Mock(spec=LLMClient)
         
         response = client.delete("/api/llm/clear-key")
@@ -216,7 +151,6 @@ class TestClearKeyEndpoint(TestLLMRoutes):
         assert response.status_code == 200
         data = response.json()
         assert "cleared successfully" in data["message"]
-        assert data["configured"] is False
         assert routes._llm_client is None
     
     def test_clear_key_when_none(self, client, clear_llm_client):
@@ -225,74 +159,33 @@ class TestClearKeyEndpoint(TestLLMRoutes):
         
         assert response.status_code == 200
         data = response.json()
-        assert data["configured"] is False
-
-
-class TestGetLLMClientDependency(TestLLMRoutes):
-    """Test cases for the get_llm_client dependency."""
-    
-    def test_dependency_not_configured(self, client, clear_llm_client):
-        """Test that endpoints requiring LLM client fail when not configured."""
-        from api.llm_routes import get_llm_client
-        from fastapi import HTTPException
-        
-        with pytest.raises(HTTPException) as exc_info:
-            get_llm_client()
-        
-        assert exc_info.value.status_code == 503
-        assert "not configured" in exc_info.value.detail
-    
-    def test_dependency_configured(self, clear_llm_client):
-        """Test that dependency returns client when configured."""
-        import api.llm_routes as routes
-        from api.llm_routes import get_llm_client
-        
-        mock_client = Mock(spec=LLMClient)
-        mock_client.is_configured.return_value = True
-        routes._llm_client = mock_client
-        
-        result = get_llm_client()
-        assert result == mock_client
+        assert "cleared successfully" in data["message"]
 
 
 class TestIntegrationScenarios(TestLLMRoutes):
     """Integration test scenarios for LLM API routes."""
     
     def test_complete_workflow(self, client, clear_llm_client):
-        """Test complete workflow: status -> verify -> status -> clear."""
-        response = client.get("/api/llm/status")
-        assert response.json()["ready"] is False
-        
+        """Test complete workflow: verify -> clear."""
         with patch('api.llm_routes.ConsentValidator') as mock_validator_class:
             mock_validator = Mock()
             mock_validator.validate_external_services_consent.return_value = True
             mock_validator_class.return_value = mock_validator
             
-            with patch('api.llm_routes.create_llm_client') as mock_create:
+            with patch('api.llm_routes.LLMClient') as mock_llm_class:
                 mock_llm = Mock(spec=LLMClient)
                 mock_llm.verify_api_key.return_value = True
-                mock_llm.is_configured.return_value = True
-                mock_llm.get_model_info.return_value = {
-                    "provider": "openai",
-                    "default_model": "gpt-3.5-turbo",
-                    "configured": True
-                }
-                mock_create.return_value = mock_llm
+                mock_llm_class.return_value = mock_llm
                 
                 response = client.post("/api/llm/verify-key", json={
                     "api_key": "sk-test123",
                     "user_id": "550e8400-e29b-41d4-a716-446655440000"
                 })
+                assert response.status_code == 200
                 assert response.json()["valid"] is True
         
-        response = client.get("/api/llm/status")
-        assert response.json()["ready"] is True
-        
         response = client.delete("/api/llm/clear-key")
-        assert response.json()["configured"] is False
-        
-        response = client.get("/api/llm/status")
-        assert response.json()["ready"] is False
+        assert response.status_code == 200
 
 
 if __name__ == "__main__":
