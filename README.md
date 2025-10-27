@@ -82,3 +82,12 @@ If you prefer not to install the CLI, you can still execute the script directly:
 By default the script prints an aligned table of file metadata (`path`, `mime_type`, `size` in KB/MB/GB) and an aggregate summary with both raw and human-readable byte counts. Requires Python 3.13.
 
 Tip: ensure `.venv/bin` is on your `PATH` (e.g., `export PATH="$(pwd)/.venv/bin:$PATH"`) if you want to invoke `parse` without the explicit prefix.
+### Terminal Auth + Consent (Supabase)
+export SUPABASE_URL="https://<your>.supabase.co"
+export SUPABASE_ANON_KEY="ey..."
+pip install -r backend/requirements.txt
+python3 scripts/auth_cli.py signup demo+1@example.com StrongPass123!
+python3 scripts/auth_cli.py consent demo+1@example.com StrongPass123!
+python3 scripts/auth_cli.py check   demo+1@example.com StrongPass123!
+
+Note: The CLI will securely prompt for your password (no echo). Avoid passing --password unless in CI.

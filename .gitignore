@@ -16,5 +16,4 @@ env/
 
 backend/__pycache__/
 tests/__pycache__/
-backend/build/
-backend/*.egg-info/
+backend/src/auth/__pycache__/
