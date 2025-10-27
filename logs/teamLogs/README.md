@@ -16,6 +16,8 @@ This week we continued developing the backend, moving from setup into more funct
 
 **Samarth:** Worked on developing the LLM-powered summarization and analysis module for the system, generating structured insights from portfolio data. Implemented the `summarize_tagged_file()` and `analyze_project()` functions to produce detailed summaries, technical highlights, and qualitative analysis for resume-ready reports. Also built helper functions including `chunk_and_summarize()` for efficient large-file handling, `_count_tokens()` for dynamic token measurement, and `_make_llm_call()` for standardized LLM communication. Finally, added `suggest_feedback()` to deliver personalized career aligned insights. 
 
+All the updates this week build on each other to make the whole system smarter and more reliable. The new CLI features make it easier to parse and display project data, while the authentication and consent setup ensures everything stays secure and user-specific. The local PDF tools keep things privacy-first but still powerful enough for deep analysis, and the LLM module ties it all together by turning that data into useful insights. Altogether, these improvements connect the technical, privacy, and intelligence sides of the system so it runs more efficiently and feels more seamless to use.
+
 
 ## Week 7 (October 13 - 19)
 
