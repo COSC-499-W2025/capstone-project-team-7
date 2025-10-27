@@ -8,7 +8,7 @@ This week we continued developing the backend, moving from setup into more funct
 
 **Jacob:** 
 
-**Vlad:** 
+**Vlad:** Focused on integrating Supabase authentication and consent management into the backend CLI as part of issue #86. Extended auth_cli.py to support secure sign-up, log-in, and access-token retrieval directly from the terminal, allowing verified users to authenticate and submit consent records to the Supabase database. Added a new SQL migration file, 04_consent_policies.sql, to define row level security (RLS) policies ensuring that each user can only access or modify their own consent data. Tested the complete CLI workflow end to end, including token handling, database persistence, and error cases and confirmed seamless interaction between the authentication layer and the Consent Validation Module. 
 
 **Aaron:** 
 
