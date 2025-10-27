@@ -61,17 +61,7 @@ def test_user():
         "password": test_password
     })
     
-    # Create profile
-    # supabase.table("profiles").insert({
-    #     "id": user_id,
-    #     "email": test_email,
-    #     "full_name": "Test User1"
-    # }).execute()
-    
-    # Create config
-    # supabase.table("user_configs").insert({
-    #     "owner": user_id
-    # }).execute()
+ 
     
     print(f"✅ Test user created: {test_email}")
     
