@@ -1,6 +1,14 @@
 # Week 8: October 20 - October 26
 
+This week I focused on integrating Supabase authentication and consent management directly into our command line interface as part of issue #86. I extended the existing auth_cli.py to support secure sign-up, log-in, and access-token generation through terminal commands, allowing developers to authenticate and interact with the Supabase backend entirely through the CLI.
 
+To complement this, I created a new SQL migration script, 04_consent_policies.sql, defining the necessary row-level security (RLS) policies and permission logic for storing and retrieving user consent records in Supabase. These policies ensure that only authenticated users can access or modify their own consent data while maintaining strict data isolation between accounts.
+
+I integrated the authentication flow with the Consent Validation Module, enabling verified users to record and query consent data directly from the terminal. This involved implementing structured JSON outputs, token validation methods, and secure environment-based configuration for API credentials. I also refined how consent records are linked to authenticated user profiles in the database to ensure consistent cross-module data handling.
+
+For testing, I ran multiple end-to-end authentication and consent workflows—verifying successful sign-up, log-in, token refresh, and Supabase record persistence across sessions. I collaborated with teammates to align schema fields between local and remote consent management systems and confirm the database behavior matched the intended API flow.
+
+Finally, I reviewed and approved PR #94, which introduced the local PDF parsing and summarization modules. I validated the documentation and code quality to ensure alignment with our privacy-first backend architecture.
 
 <img width="1078" height="632" alt="Screenshot 2025-10-26 at 6 43 19 PM" src="https://github.com/user-attachments/assets/1be119eb-6457-4f09-88e3-8716f2600e58" />
 
