@@ -1,3 +1,9 @@
+# Week 8: October 20 - October 26
+
+
+
+<img width="1078" height="632" alt="Screenshot 2025-10-26 at 6 43 19 PM" src="https://github.com/user-attachments/assets/1be119eb-6457-4f09-88e3-8716f2600e58" />
+
 # Week 7: October 13 - October 19
 
 This week I focused on setting up the full Supabase backend for our project. I created and tested the core database schema (01_initialize_database_schema.sql) defining user profiles, uploads, and triggers for automatic profile creation on new user sign-up. I also implemented row-level security (RLS) policies (02_storage_policies.sql) to ensure each user can only access their own uploaded files in Supabase Storage. To validate the setup, I wrote an end-to-end upload test (test_upload.mjs) that connects to Supabase using environment variables, uploads a sample file, and verifies that metadata is inserted correctly.
