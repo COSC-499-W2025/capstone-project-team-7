@@ -5,7 +5,7 @@
 ## Week 8: October 19 - October 26
 
 *This week, I worked on integrating Supabase into our Portfolio Manager backend. I set up the environment with the project URL and anon key, and began building out the database schema and storage policies. I also started creating an upload test to verify file and metadata storage, but ran into bugs that prevented it from running successfully. I wasn’t able to finish the work or open a PR this week, but made progress on the Supabase integration that I’ll continue next week.*
-<img width="1304" height="683" alt="image" src="https://github.com/user-attachments/assets/10068db4-4b1f-48e5-a20c-92e133f6abb5" />
+<img width="1101" height="649" alt="Screenshot 2025-10-26 at 11 36 32 PM" src="https://github.com/user-attachments/assets/7386e278-1bfb-433c-9a3b-b04cbbc3575d" />
 
 ## Week 7: October 12 - October 19
 
