@@ -1,5 +1,14 @@
 # Aaron Banerjee (@aaronbanerjee123)
 
+
+
+## Week 8: October 19 - October 26
+
+*This week, I worked on implementing the database connection to the config manager class. This consisted of refactoring the config manager class to utilize the supabase db in all the CRUD methods. Then I had to update RLS policies for our database so that certain triggers would occur upon a new user being added such as default user configs being added. I then made a test suite for my refactored and new changes to verify that when a new user is made, they can modify their scanning configuration profiles via any CRUD method and our config manager works. The tests all passed. I also reviewed my teammate, Samarths PR for llm integration in analysis. Lastly, I began working towards a new pr in regard to local analysis of coding files in a branch called "local-analysis-coding". This pr isn't finished but so will allow a user to get key metrics and insights on coding files once finished.
+
+<img width="1304" height="683" alt="image" src="https://github.com/user-attachments/assets/10068db4-4b1f-48e5-a20c-92e133f6abb5" />
+
+
 ## Week 7: October 12 - October 19
 
 *This week, I worked on implementing the ConfigManager class which provides the user configuraiton profile logic. This class involved methods that allowed the user to create, delete, and switch between various file configs. The configs allow the user to scan for specific files based on the config they select. For example, the "all" config will scan for all the file extensions that exist, but the documents_only config only iterates through files with extensions like .txt or .md. I then implemented comprehensive testing (about 18 tests) to ensure validity and that the ConfigManager class works in all cases including edge cases. I also reviewed my teammate's pr (Om) for the consent validation module and approved it.*
