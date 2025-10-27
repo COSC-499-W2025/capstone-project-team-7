@@ -354,7 +354,4 @@ class ConfigManager:
             print(f"Error updating settings: {e}")
             return False
         
-    def get_allowed_extensions(self,profile_name=None):
-        profile = profile_name or self.get_current_profile()
-        return self.config["scan_profiles"][profile]["extensions"]
-            
+   
