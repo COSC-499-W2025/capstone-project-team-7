@@ -1,5 +1,14 @@
 # Samarth Grover (@Samarth-G)
 
+## Week 8: October 20 - October 26
+
+This week I implemented the LLM-powered summarization and analysis capabilities for the project. I started by building the `summarize_tagged_file()` function, which returns structured outputs with key insights including Summary, Core Functionality, and Notable Patterns. It detects when a file exceeds 2000 tokens and automatically applies chunking. <br>
+Next, I added `analyze_project()`, designed to generate resume-ready reports summarizing a project’s technical and qualitative aspects including an executive summary, technical highlights, tech stack used, and project quality assessment. <br>
+After which, I implemented a helper function to handle large files efficiently `chunk_and_summarize()`, which splits text into 2000-token chunks with 100-token overlaps, summarizes each part independently, and merges the results into a coherent final output. On top of that, I added `suggest_feedback()` to provide personalized, career-aligned insights based on both local and AI results. <br>
+Finally, I built supporting functions like `_count_tokens()` (using tiktoken with a character-count fallback) and `_make_llm_call()` to standardize LLM interactions. These functions will be used together in the app workflow to make up the LLM analysis module, with more functions that we might add in the future.
+
+![Week 8 Image](./assets/SamarthG-W8.png)
+
 ## Week 7: October 13 - October 19
 
 This week I focused on setting up the LLM integration for the project. I started by building the LLMClient class, which wraps around the OpenAI API and handles everything from API key verification to error management. It validates keys up front, handles authentication, and keeps configuration clean through a shared global client state. <br>

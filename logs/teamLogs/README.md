@@ -14,8 +14,7 @@ This week we continued developing the backend, moving from setup into more funct
 
 **Om:** 
 
-**Samarth:** 
-
+**Samarth:** Worked on developing the LLM-powered summarization and analysis module for the system, generating structured insights from portfolio data. Implemented the `summarize_tagged_file()` and `analyze_project()` functions to produce detailed summaries, technical highlights, and qualitative analysis for resume-ready reports. Also built helper functions including `chunk_and_summarize()` for efficient large-file handling, `_count_tokens()` for dynamic token measurement, and `_make_llm_call()` for standardized LLM communication. Finally, added `suggest_feedback()` to deliver personalized career aligned insights. 
 
 
 ## Week 7 (October 13 - 19)
