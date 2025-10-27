@@ -1,5 +1,27 @@
 # Om Mistry (@OM200401)
 
+## Week 8: October 20 - October 26
+
+This week I implemented a privacy-first local PDF analysis pipeline, CLI tooling, and a secure consent integration with comprehensive tests. Key functionality added:
+
+- PDF parsing: `backend/src/local_analysis/pdf_parser.py` now includes `PDFParser` with configurable limits (file size, pages, batch), metadata extraction (`PDFMetadata`), parsing from `Path` or bytes, and batch processing. A `create_parser()` factory simplifies instantiation.
+
+- Summarization: `backend/src/local_analysis/pdf_summarizer.py` provides `PDFSummarizer` (TF‑IDF extractive scoring), text cleaning, sentence splitting, tokenization, keyword extraction, statistics, `generate_summary`, and batch summarization. Tuning via `SummaryConfig` and `create_summarizer()` is supported.
+
+- CLI & docs: `backend/src/local_analysis/pdf_cli.py` offers `info`, `parse`, `summarize`, and `batch` commands with output-to-file options. Updated `CLI_REFERENCE.md` and `QUICK_REFERENCE.md` give quick presets and examples.
+
+- Consent/auth integration: `backend/src/auth/consent.py` and `consent_validator.py` were updated to improve validation logic and integrate seamlessly with the CLI. Consent validation now includes stricter checks for user permissions and better error handling. The CLI (`auth_cli.py`) was updated to interact with these modules for consent upsert, check, and revoke flows.
+
+Roadblocks cleared
+- Replaced deprecated `PyPDF2` with `pypdf` and adapted imports/errors to remove warnings.
+- Fixed sentence-length filtering and sentence-splitting discrepancies that broke summarizer tests by aligning tests with `SummaryConfig` or relaxing filters.
+- Removed unsafe `--password` use on command lines and added interactive prompts plus warnings for CI usage.
+- Resolved test import path issues by adding `tests/conftest.py` helpers for clean imports from `local_analysis`.
+
+![Tests Passed](./assets/omistry_tests_Week8.png)
+
+![Tasks Completed](./assets/omistry_Week8.png)
+
 ## Week 7: October 13 - October 19
 
 This week, I successfully designed and implemented the **Consent Validation Module**, a critical component for ensuring user privacy and data protection compliance in our portfolio analysis system.
