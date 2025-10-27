@@ -6,7 +6,7 @@ This week we continued developing the backend, moving from setup into more funct
 
 **Joaquin:** This week I improved the CLI’s parsing features. I added safer zip handling that skips unnecessary folders, made the table display reusable, and introduced two new flags: --relevant-only (to include only key project files) and --code (to show language breakdowns). The README now includes examples, and all new features are tested and verified to work.
 
-**Jacob:** 
+**Jacob:** This week I worked on the backend by starting the Supabase integration. I set up the environment with the project URL and anon key, created the initial database schema, and began defining storage policies. I also started on an upload test to check file and metadata handling, but ran into bugs that I’m still working through. While I didn’t get to a finished PR yet, this lays the base for connecting secure storage to the CLI in the next step.
 
 **Vlad:** Focused on integrating Supabase authentication and consent management into the backend CLI as part of issue #86. Extended auth_cli.py to support secure sign-up, log-in, and access-token retrieval directly from the terminal, allowing verified users to authenticate and submit consent records to the Supabase database. Added a new SQL migration file, 04_consent_policies.sql, to define row level security (RLS) policies ensuring that each user can only access or modify their own consent data. Tested the complete CLI workflow end to end, including token handling, database persistence, and error cases and confirmed seamless interaction between the authentication layer and the Consent Validation Module. 
 
