@@ -73,6 +73,18 @@ Combine flags as needed. For example:
 .venv/bin/parse /path/to/archive-or-folder --relevant-only --json --code
 ```
 
+### Using Saved Scan Preferences
+
+If you want the CLI to apply the scan profile a user configured in Supabase, set these environment variables before running `parse`:
+
+```bash
+export SUPABASE_URL="https://<your-project>.supabase.co"
+export SUPABASE_KEY="ey..."           # same value the backend uses
+export SCAN_USER_ID="00000000-0000-0000-0000-000000000000"  # the profile owner
+```
+
+When `SCAN_USER_ID` is present, the CLI fetches the user's active profile and applies its extensions, excluded directories, size limits, and symlink rules automatically.
+
 If you prefer not to install the CLI, you can still execute the script directly:
 
 ```bash
