@@ -82,6 +82,19 @@ If you prefer not to install the CLI, you can still execute the script directly:
 By default the script prints an aligned table of file metadata (`path`, `mime_type`, `size` in KB/MB/GB) and an aggregate summary with both raw and human-readable byte counts. Requires Python 3.13.
 
 Tip: ensure `.venv/bin` is on your `PATH` (e.g., `export PATH="$(pwd)/.venv/bin:$PATH"`) if you want to invoke `parse` without the explicit prefix.
+
+### Loading user preferences from Supabase
+
+When `SCAN_USER_ID` is set, the CLI fetches that user’s saved configuration from Supabase (`public.user_configs`) and applies the active profile to the scan (extensions, excluded directories, max file size, and the follow-symlinks flag). If the variable is missing—or the config cannot be retrieved—the parser falls back to its built-in defaults.
+
+```bash
+export SUPABASE_URL="https://<your>.supabase.co"
+export SUPABASE_KEY="<service-role-key>"
+export SCAN_USER_ID="<supabase-user-uuid>"
+```
+
+Make sure the chosen account has a config row (sign in via the app or insert a profile manually). You can tweak profiles through the dashboard or the backend `ConfigManager`.
+
 ### Terminal Auth + Consent (Supabase)
 export SUPABASE_URL="https://<your>.supabase.co"
 export SUPABASE_ANON_KEY="ey..."
