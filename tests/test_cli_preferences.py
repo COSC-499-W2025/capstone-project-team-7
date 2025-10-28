@@ -4,7 +4,7 @@ from contextlib import contextmanager
 import pytest
 
 from src.cli import parse_zip as cli_parse_zip
-from src.scanner.models import ScanPreferences
+from src.scanner.models import ParseResult, ScanPreferences
 
 
 def test_preferences_from_config_populates_fields():
@@ -81,3 +81,56 @@ def test_load_preferences_respects_environment(monkeypatch):
 def test_load_preferences_returns_none_when_env_missing(monkeypatch):
     monkeypatch.delenv(cli_parse_zip.USER_ID_ENV, raising=False)
     assert cli_parse_zip.load_preferences(profile_name=None) is None
+
+
+def test_main_passes_user_preferences_to_parser(monkeypatch, tmp_path, capsys):
+    dummy_config = {
+        "scan_profiles": {
+            "all": {
+                "extensions": [".py"],
+                "exclude_dirs": ["__pycache__"],
+            },
+            "custom": {
+                "extensions": [".rs"],
+                "exclude_dirs": ["target"],
+            },
+        },
+        "current_profile": "all",
+        "max_file_size_mb": 5,
+        "follow_symlinks": True,
+    }
+
+    class DummyManager:
+        def __init__(self, user_id: str):
+            self.user_id = user_id
+            self.config = dummy_config
+
+        def get_current_profile(self) -> str:
+            return self.config["current_profile"]
+
+    captured = {}
+
+    def fake_parse_zip(archive_path, *, relevant_only=False, preferences=None):
+        captured["preferences"] = preferences
+        return ParseResult(summary={"files_processed": 0, "bytes_processed": 0, "issues_count": 0})
+
+    def fake_ensure_zip(path, *, preferences=None):
+        return path
+
+    monkeypatch.setenv(cli_parse_zip.USER_ID_ENV, "user-123")
+    monkeypatch.setattr(cli_parse_zip, "_get_config_manager", lambda user_id: DummyManager(user_id))
+    monkeypatch.setattr(cli_parse_zip, "parse_zip", fake_parse_zip)
+    monkeypatch.setattr(cli_parse_zip, "ensure_zip", fake_ensure_zip)
+    monkeypatch.setattr(cli_parse_zip, "render_table", lambda *args, **kwargs: ["ok"])
+
+    archive = tmp_path / "project.zip"
+    archive.write_text("dummy")
+
+    exit_code = cli_parse_zip.main([str(archive), "--profile", "custom"])
+
+    assert exit_code == 0
+    assert isinstance(captured["preferences"], ScanPreferences)
+    assert captured["preferences"].allowed_extensions == [".rs"]
+    assert captured["preferences"].excluded_dirs == ["target"]
+    assert captured["preferences"].max_file_size_bytes == 5 * 1024 * 1024
+    assert captured["preferences"].follow_symlinks is True
