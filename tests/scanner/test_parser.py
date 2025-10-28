@@ -12,7 +12,7 @@ import pytest
 from src.cli.archive_utils import ensure_zip
 from src.cli.language_stats import summarize_languages
 from src.scanner.errors import CorruptArchiveError, UnsupportedArchiveError
-from src.scanner.models import FileMetadata, ParseResult
+from src.scanner.models import FileMetadata, ParseResult, ScanPreferences
 from src.scanner.parser import parse_zip
 
 
@@ -369,3 +369,45 @@ def test_parse_archive_script_accepts_relevant_only(
     assert "Python" in language_map
     paths = {item["path"] for item in payload["files"]}
     assert paths == set(relevant.keys())
+
+
+def test_parse_zip_respects_allowed_extensions(tmp_path: Path):
+    root = tmp_path / "ext_project"
+    (root / "src").mkdir(parents=True)
+    (root / "docs").mkdir()
+    (root / "src" / "main.py").write_text("print('hello')\n")
+    (root / "docs" / "guide.md").write_text("# Guide\n")
+
+    archive = tmp_path / "ext_project.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.write(root / "src" / "main.py", "src/main.py")
+        zf.write(root / "docs" / "guide.md", "docs/guide.md")
+
+    prefs = ScanPreferences(allowed_extensions=[".md"])
+    result = parse_zip(archive, preferences=prefs)
+    paths = {meta.path for meta in result.files}
+    assert paths == {"docs/guide.md"}
+
+
+def test_parse_zip_respects_max_file_size(tmp_path: Path):
+    archive = tmp_path / "size_project.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("src/small.py", "print('ok')\n")
+        zf.writestr("src/large.py", "x" * 10_000)
+
+    prefs = ScanPreferences(max_file_size_bytes=1000)
+    result = parse_zip(archive, preferences=prefs)
+    paths = {meta.path for meta in result.files}
+    assert paths == {"src/small.py"}
+
+
+def test_parse_zip_respects_excluded_dirs(tmp_path: Path):
+    archive = tmp_path / "dirs_project.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("src/app.py", "print('app')\n")
+        zf.writestr("secret/plan.txt", "top secret\n")
+
+    prefs = ScanPreferences(excluded_dirs=["secret"])
+    result = parse_zip(archive, preferences=prefs)
+    paths = {meta.path for meta in result.files}
+    assert paths == {"src/app.py"}

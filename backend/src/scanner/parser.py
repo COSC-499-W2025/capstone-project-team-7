@@ -6,7 +6,7 @@ from pathlib import Path, PurePosixPath
 import zipfile
 
 from .errors import CorruptArchiveError, UnsupportedArchiveError
-from .models import FileMetadata, ParseIssue, ParseResult
+from .models import FileMetadata, ParseIssue, ParseResult, ScanPreferences
 
 
 _EXCLUDED_DIRS = {
@@ -112,7 +112,12 @@ _ALLOWED_MIME_TYPES = {
 }
 
 
-def parse_zip(archive_path: Path, *, relevant_only: bool = False) -> ParseResult:
+def parse_zip(
+    archive_path: Path,
+    *,
+    relevant_only: bool = False,
+    preferences: ScanPreferences | None = None,
+) -> ParseResult:
     # Parse the given .zip archive into file metadata and capture parse issues.
     archive = Path(archive_path)
     if not archive.exists():
@@ -127,6 +132,22 @@ def parse_zip(archive_path: Path, *, relevant_only: bool = False) -> ParseResult
     total_bytes = 0
     filtered_out = 0
 
+    allowed_extensions = (
+        {ext.lower() for ext in preferences.allowed_extensions}
+        if preferences and preferences.allowed_extensions is not None
+        else None
+    )
+    excluded_dirs = (
+        {name for name in preferences.excluded_dirs}
+        if preferences and preferences.excluded_dirs is not None
+        else set(_EXCLUDED_DIRS)
+    )
+    max_file_size = (
+        preferences.max_file_size_bytes
+        if preferences and preferences.max_file_size_bytes is not None
+        else None
+    )
+
     try:
         with zipfile.ZipFile(archive) as zf:
             for info in zf.infolist():
@@ -136,6 +157,9 @@ def parse_zip(archive_path: Path, *, relevant_only: bool = False) -> ParseResult
                 if info.is_dir():
                     continue
                 metadata = _build_metadata(info, normalized)
+                if _should_skip(metadata, excluded_dirs, allowed_extensions, max_file_size):
+                    filtered_out += 1
+                    continue
                 if relevant_only and not _is_relevant(metadata):
                     filtered_out += 1
                     continue
@@ -193,6 +217,28 @@ def _is_relevant(metadata: FileMetadata) -> bool:
     extension = path.suffix.lower()
     if extension in _ALLOWED_EXTENSIONS:
         return True
+
+    return False
+
+
+def _should_skip(
+    metadata: FileMetadata,
+    excluded_dirs: set[str],
+    allowed_extensions: set[str] | None,
+    max_file_size: int | None,
+) -> bool:
+    path = PurePosixPath(metadata.path)
+
+    if any(part in excluded_dirs for part in path.parts):
+        return True
+
+    if max_file_size is not None and metadata.size_bytes > max_file_size:
+        return True
+
+    if allowed_extensions is not None:
+        extension = path.suffix.lower()
+        if extension not in allowed_extensions:
+            return True
 
     return False
 
