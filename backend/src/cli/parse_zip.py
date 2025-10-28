@@ -69,6 +69,7 @@ def _serialize_result(result, languages):
                 "mime_type": meta.mime_type,
                 "created_at": meta.created_at.isoformat(),
                 "modified_at": meta.modified_at.isoformat(),
+                "media_info": meta.media_info,
             }
             for meta in result.files
         ],

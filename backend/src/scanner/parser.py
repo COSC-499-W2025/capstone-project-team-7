@@ -6,6 +6,7 @@ from pathlib import Path, PurePosixPath
 import zipfile
 
 from .errors import CorruptArchiveError, UnsupportedArchiveError
+from .media import MediaExtractionResult, extract_media_metadata, is_media_candidate
 from .models import FileMetadata, ParseIssue, ParseResult
 
 
@@ -87,6 +88,25 @@ _ALLOWED_EXTENSIONS = {
     ".ods",
     ".odt",
     ".odp",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".bmp",
+    ".tiff",
+    ".webp",
+    ".mp3",
+    ".wav",
+    ".flac",
+    ".aac",
+    ".m4a",
+    ".ogg",
+    ".mp4",
+    ".m4v",
+    ".mov",
+    ".avi",
+    ".mkv",
+    ".webm",
 }
 
 _ALLOWED_MIME_PREFIXES = ("text/",)
@@ -109,6 +129,24 @@ _ALLOWED_MIME_TYPES = {
     "application/vnd.oasis.opendocument.presentation",
     "application/vnd.oasis.opendocument.spreadsheet",
     "text/csv",
+    "image/png",
+    "image/jpeg",
+    "image/gif",
+    "image/bmp",
+    "image/tiff",
+    "image/webp",
+    "audio/mpeg",
+    "audio/wav",
+    "audio/x-wav",
+    "audio/flac",
+    "audio/aac",
+    "audio/mp4",
+    "audio/ogg",
+    "video/mp4",
+    "video/quicktime",
+    "video/x-msvideo",
+    "video/x-matroska",
+    "video/webm",
 }
 
 
@@ -126,6 +164,9 @@ def parse_zip(archive_path: Path, *, relevant_only: bool = False) -> ParseResult
     issues: list[ParseIssue] = []
     total_bytes = 0
     filtered_out = 0
+    media_with_metadata = 0
+    media_metadata_errors = 0
+    media_read_errors = 0
 
     try:
         with zipfile.ZipFile(archive) as zf:
@@ -139,6 +180,19 @@ def parse_zip(archive_path: Path, *, relevant_only: bool = False) -> ParseResult
                 if relevant_only and not _is_relevant(metadata):
                     filtered_out += 1
                     continue
+                if is_media_candidate(metadata.path):
+                    extracted, error_code = _attach_media_metadata(
+                        archive_zip=zf,
+                        info=info,
+                        metadata=metadata,
+                        issues=issues,
+                    )
+                    if extracted:
+                        media_with_metadata += 1
+                    if error_code == "MEDIA_METADATA_ERROR":
+                        media_metadata_errors += 1
+                    elif error_code == "MEDIA_READ_ERROR":
+                        media_read_errors += 1
                 files.append(metadata)
                 total_bytes += metadata.size_bytes
     except zipfile.BadZipFile as exc:
@@ -149,6 +203,12 @@ def parse_zip(archive_path: Path, *, relevant_only: bool = False) -> ParseResult
         "bytes_processed": total_bytes,
         "issues_count": len(issues),
     }
+    if media_with_metadata:
+        summary["media_files_processed"] = media_with_metadata
+    if media_metadata_errors:
+        summary["media_metadata_errors"] = media_metadata_errors
+    if media_read_errors:
+        summary["media_read_errors"] = media_read_errors
     if relevant_only:
         summary["filtered_out"] = filtered_out
     return ParseResult(files=files, issues=issues, summary=summary)
@@ -176,6 +236,51 @@ def _build_metadata(info: zipfile.ZipInfo, path: str) -> FileMetadata:
         created_at=timestamp,
         modified_at=timestamp,
     )
+
+
+def _attach_media_metadata(
+    *,
+    archive_zip: zipfile.ZipFile,
+    info: zipfile.ZipInfo,
+    metadata: FileMetadata,
+    issues: list[ParseIssue],
+) -> tuple[bool, str | None]:
+    """
+    Attempt to augment the metadata object with media-specific information.
+
+    Returns a tuple tracking whether metadata was extracted and an optional error code for summary metrics.
+    """
+    try:
+        with archive_zip.open(info) as file_obj:
+            payload = file_obj.read()
+    except Exception as exc:  # pragma: no cover - dependent on zipfile internals
+        issues.append(
+            ParseIssue(
+                path=metadata.path,
+                code="MEDIA_READ_ERROR",
+                message=f"Failed to read media file: {exc}",
+            )
+        )
+        return False, "MEDIA_READ_ERROR"
+
+    result: MediaExtractionResult = extract_media_metadata(metadata.path, metadata.mime_type, payload)
+
+    extracted = False
+    if result.metadata:
+        metadata.media_info = result.metadata
+        extracted = True
+
+    if result.error:
+        issues.append(
+            ParseIssue(
+                path=metadata.path,
+                code="MEDIA_METADATA_ERROR",
+                message=result.error,
+            )
+        )
+        return extracted, "MEDIA_METADATA_ERROR"
+
+    return extracted, None
 
 
 def _is_relevant(metadata: FileMetadata) -> bool:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Iterable
 
@@ -95,14 +96,29 @@ def render_table(
     summary = result.summary
     processed = summary.get("bytes_processed", 0)
     filtered = summary.get("filtered_out")
-    extra = f", filtered_out={filtered}" if filtered is not None else ""
-    lines.append(
-        "Summary: "
-        f"files_processed={summary.get('files_processed', len(result.files))}, "
-        f"bytes_processed={processed} ({format_bytes(processed)}), "
-        f"issues_count={summary.get('issues_count', len(result.issues))}"
-        f"{extra}"
-    )
+    parts = [
+        f"files_processed={summary.get('files_processed', len(result.files))}",
+        f"bytes_processed={processed} ({format_bytes(processed)})",
+        f"issues_count={summary.get('issues_count', len(result.issues))}",
+    ]
+    if filtered is not None:
+        parts.append(f"filtered_out={filtered}")
+    media_processed = summary.get("media_files_processed")
+    if media_processed is not None:
+        parts.append(f"media_files_processed={media_processed}")
+    media_metadata_errors = summary.get("media_metadata_errors")
+    if media_metadata_errors is not None:
+        parts.append(f"media_metadata_errors={media_metadata_errors}")
+    media_read_errors = summary.get("media_read_errors")
+    if media_read_errors is not None:
+        parts.append(f"media_read_errors={media_read_errors}")
+    lines.append("Summary: " + ", ".join(parts))
+
+    media_details = [meta for meta in result.files if meta.media_info]
+    if media_details:
+        lines.append("Media metadata:")
+        for meta in media_details:
+            lines.append(f"{meta.path}: {json.dumps(meta.media_info, sort_keys=True)}")
 
     if languages:
         table = render_language_table(languages)
