@@ -10,3 +10,4 @@ httpx==0.24.0
 tiktoken==0.5.2
 pypdf
 questionary
+rich

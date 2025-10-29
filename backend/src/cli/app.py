@@ -5,6 +5,18 @@ from dataclasses import dataclass
 from typing import Callable, List, Optional
 
 from ..auth.session import AuthError, Session, SupabaseAuth
+from ..auth.consent_validator import (
+    ConsentValidator,
+    ConsentError,
+    ExternalServiceError,
+)
+
+try:
+    from rich.console import Console
+    from rich.table import Table
+except ImportError:  # pragma: no cover
+    Console = None
+    Table = None
 
 try:
     from getpass import getpass
@@ -84,11 +96,19 @@ class MenuOption:
 class CLIApp:
     """Coordinator for the interactive CLI workflow."""
 
-    def __init__(self, io: Optional[ConsoleIO] = None, auth: Optional[SupabaseAuth] = None):
+    def __init__(
+        self,
+        io: Optional[ConsoleIO] = None,
+        auth: Optional[SupabaseAuth] = None,
+        consent_validator: Optional[ConsentValidator] = None,
+    ):
         self.io = io or ConsoleIO()
         self.running = True
         self.auth = auth or SupabaseAuth()
+        self.consent_validator = consent_validator or ConsentValidator()
         self.session: Optional[Session] = None
+        self._required_consent = False
+        self._external_consent = False
         self._options = self._build_menu()
 
     def run(self) -> None:
@@ -107,7 +127,14 @@ class CLIApp:
     def _render_header(self) -> None:
         self.io.write("")
         if self.session:
-            self.io.write(f"Logged in as: {self.session.email}")
+            status = f"Logged in as: {self.session.email}"
+            if self._required_consent:
+                status += " | Consent: granted"
+            else:
+                status += " | Consent: missing"
+            if self._required_consent:
+                status += f" | External: {'granted' if self._external_consent else 'not granted'}"
+            self.io.write(status)
         else:
             self.io.write("Not signed in")
 
@@ -146,17 +173,42 @@ class CLIApp:
         if not self.session:
             self._require_login()
             return
-        self.io.write("Consent management is not implemented yet.")
+        while True:
+            self._refresh_consent_state()
+            labels = [
+                "Review privacy notice",
+                "Grant required consent" if not self._required_consent else "Withdraw required consent",
+                "Grant external services consent"
+                if not self._external_consent
+                else "Withdraw external services consent",
+                "Back",
+            ]
+            choice = self.io.choose("Consent menu:", labels)
+            if choice is None or choice == 3:
+                return
+            if choice == 0:
+                notice = ConsentValidator.request_consent(self.session.user_id, "external_services")
+                self.io.write(notice.get("privacy_notice", "No privacy notice available."))
+            elif choice == 1:
+                self._toggle_required_consent()
+            elif choice == 2:
+                self._toggle_external_consent()
 
     def _handle_preferences(self) -> None:
         if not self.session:
             self._require_login()
+            return
+        if not self._refresh_consent_state():
+            self.io.write("Consent required before managing preferences.")
             return
         self.io.write("Preferences management is not implemented yet.")
 
     def _handle_scan(self) -> None:
         if not self.session:
             self._require_login()
+            return
+        if not self._refresh_consent_state():
+            self.io.write("Consent required before running a scan.")
             return
         self.io.write("Scanning workflow is not implemented yet.")
 
@@ -167,12 +219,33 @@ class CLIApp:
     def _require_login(self) -> None:
         self.io.write("Please log in first to access this option.")
 
+    def _refresh_consent_state(self) -> bool:
+        if not self.session:
+            self._required_consent = False
+        else:
+            try:
+                record = self.consent_validator.check_required_consent(self.session.user_id)
+                self._required_consent = True
+                self._external_consent = record.allow_external_services
+            except ConsentError:
+                self._required_consent = False
+                self._external_consent = False
+            except ExternalServiceError:
+                self._required_consent = True
+                self._external_consent = False
+            except Exception as err:  # pragma: no cover - safety net
+                self.io.write(f"Error checking consent: {err}")
+                self._required_consent = False
+                self._external_consent = False
+        return self._required_consent
+
     def _login_flow(self) -> None:
         email = self.io.prompt("Email: ").strip()
         password = self.io.prompt_hidden("Password: ")
         try:
             self.session = self.auth.login(email, password)
             self.io.write(f"Logged in as {self.session.email}.")
+            self._refresh_consent_state()
         except AuthError as err:
             self.io.write(f"Login failed: {err}")
 
@@ -182,8 +255,58 @@ class CLIApp:
         try:
             self.session = self.auth.signup(email, password)
             self.io.write(f"Account created and logged in as {self.session.email}.")
+            self._required_consent = False
+            self._external_consent = False
         except AuthError as err:
             self.io.write(f"Signup failed: {err}")
+
+    def _toggle_required_consent(self) -> None:
+        if not self.session:
+            return
+        try:
+            if self._required_consent:
+                from ..auth.consent import withdraw_consent
+
+                withdraw_consent(self.session.user_id, ConsentValidator.SERVICE_FILE_ANALYSIS)
+                self.io.write("Required consent withdrawn.")
+            else:
+                consent_data = {
+                    "analyze_uploaded_only": True,
+                    "process_store_metadata": True,
+                    "privacy_ack": True,
+                    "allow_external_services": self._external_consent,
+                }
+                self.consent_validator.validate_upload_consent(self.session.user_id, consent_data)
+                self.io.write("Required consent granted.")
+        except ConsentError as err:
+            self.io.write(f"Consent error: {err}")
+        except Exception as err:  # pragma: no cover
+            self.io.write(f"Unexpected consent error: {err}")
+        finally:
+            self._refresh_consent_state()
+
+    def _toggle_external_consent(self) -> None:
+        if not self.session:
+            return
+        try:
+            if self._external_consent:
+                from ..auth.consent import withdraw_consent
+
+                withdraw_consent(self.session.user_id, ConsentValidator.SERVICE_EXTERNAL)
+                self.io.write("External services consent withdrawn.")
+            else:
+                from ..auth import consent
+
+                consent.save_consent(
+                    user_id=self.session.user_id,
+                    service_name=ConsentValidator.SERVICE_EXTERNAL,
+                    consent_given=True,
+                )
+                self.io.write("External services consent granted.")
+        except Exception as err:
+            self.io.write(f"Unexpected consent error: {err}")
+        finally:
+            self._refresh_consent_state()
 
 
 def main() -> int:
