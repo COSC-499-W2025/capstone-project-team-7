@@ -10,6 +10,7 @@ from ..auth.consent_validator import (
     ConsentError,
     ExternalServiceError,
 )
+from ..config.config_manager import ConfigManager
 
 try:
     from rich.console import Console
@@ -201,7 +202,34 @@ class CLIApp:
         if not self._refresh_consent_state():
             self.io.write("Consent required before managing preferences.")
             return
-        self.io.write("Preferences management is not implemented yet.")
+        manager = ConfigManager(self.session.user_id)
+        while True:
+            summary = manager.get_config_summary()
+            profiles = manager.config.get("scan_profiles", {})
+            self._render_profiles(summary, profiles)
+            choice = self.io.choose(
+                "Preferences:",
+                [
+                    "Switch profile",
+                    "Create profile",
+                    "Edit profile",
+                    "Delete profile",
+                    "Update global settings",
+                    "Back",
+                ],
+            )
+            if choice is None or choice == 5:
+                return
+            if choice == 0:
+                self._switch_profile(manager, profiles)
+            elif choice == 1:
+                self._create_profile(manager)
+            elif choice == 2:
+                self._edit_profile(manager, profiles)
+            elif choice == 3:
+                self._delete_profile(manager, profiles)
+            elif choice == 4:
+                self._update_settings(manager)
 
     def _handle_scan(self) -> None:
         if not self.session:
@@ -307,6 +335,134 @@ class CLIApp:
             self.io.write(f"Unexpected consent error: {err}")
         finally:
             self._refresh_consent_state()
+
+    # Preferences helpers
+
+    def _render_profiles(self, summary: dict, profiles: dict) -> None:
+        active = summary.get("current_profile", "")
+        if Console and Table:
+            table = Table(title="Scan Profiles")
+            table.add_column("Active", justify="center")
+            table.add_column("Profile")
+            table.add_column("Extensions")
+            table.add_column("Exclude Dirs")
+            for name, details in profiles.items():
+                table.add_row(
+                    "*" if name == active else "",
+                    name,
+                    ", ".join(details.get("extensions", [])),
+                    ", ".join(details.get("exclude_dirs", [])),
+                )
+            console = Console()
+            console.print(table)
+        else:
+            self.io.write("Profiles:")
+            for name, details in profiles.items():
+                marker = "*" if name == active else "-"
+                self.io.write(f"  {marker} {name}: {details.get('extensions', [])}")
+        self.io.write(
+            f"Current profile: {active} | Max size MB: {summary.get('max_file_size_mb')}"
+            f" | Follow symlinks: {summary.get('follow_symlinks')}"
+        )
+
+    def _choose_profile(self, profiles: dict, *, allow_active: bool = True) -> Optional[str]:
+        if not profiles:
+            self.io.write("No profiles available.")
+            return None
+        names = list(profiles.keys())
+        response = self.io.choose("Select profile:", names + ["Back"])
+        if response is None or response == len(names):
+            return None
+        name = names[response]
+        if not allow_active and profiles[name] is None:
+            return None
+        return name
+
+    def _switch_profile(self, manager: ConfigManager, profiles: dict) -> None:
+        name = self._choose_profile(profiles)
+        if not name:
+            return
+        if manager.set_current_profile(name):
+            self.io.write(f"Active profile set to '{name}'.")
+        else:
+            self.io.write("Failed to switch profile.")
+
+    def _create_profile(self, manager: ConfigManager) -> None:
+        name = self.io.prompt("Profile name: ").strip()
+        if not name:
+            self.io.write("Profile name is required.")
+            return
+        extensions = self.io.prompt("Extensions (comma separated): ").strip().split(",")
+        extensions = [ext.strip() for ext in extensions if ext.strip()]
+        exclude_dirs = self.io.prompt("Exclude directories (comma separated): ").strip().split(",")
+        exclude_dirs = [d.strip() for d in exclude_dirs if d.strip()]
+        description = self.io.prompt("Description (optional): ").strip() or "Custom profile"
+        if not extensions:
+            self.io.write("At least one extension is required.")
+            return
+        if manager.create_custom_profile(name, extensions, exclude_dirs, description):
+            self.io.write(f"Profile '{name}' created.")
+        else:
+            self.io.write(f"Failed to create profile '{name}'.")
+
+    def _edit_profile(self, manager: ConfigManager, profiles: dict) -> None:
+        name = self._choose_profile(profiles)
+        if not name:
+            return
+        details = profiles.get(name, {})
+        current_ext = ", ".join(details.get("extensions", []))
+        current_excl = ", ".join(details.get("exclude_dirs", []))
+        current_desc = details.get("description", "")
+        extensions = self.io.prompt(f"Extensions [{current_ext}]: ").strip() or current_ext
+        exclude_dirs = self.io.prompt(f"Exclude dirs [{current_excl}]: ").strip() or current_excl
+        description = self.io.prompt(f"Description [{current_desc}]: ").strip() or current_desc
+
+        ext_list = [ext.strip() for ext in extensions.split(",") if ext.strip()]
+        excl_list = [d.strip() for d in exclude_dirs.split(",") if d.strip()]
+        if manager.update_profile(name, ext_list, excl_list, description):
+            self.io.write(f"Profile '{name}' updated.")
+        else:
+            self.io.write(f"Failed to update profile '{name}'.")
+
+    def _delete_profile(self, manager: ConfigManager, profiles: dict) -> None:
+        current = manager.get_current_profile()
+        name = self._choose_profile(profiles)
+        if not name or name == current:
+            self.io.write("Cannot delete the active profile.")
+            return
+        confirm = self.io.choose("Delete profile?", ["Yes", "No"])
+        if confirm != 0:
+            return
+        if manager.delete_profile(name):
+            self.io.write(f"Profile '{name}' deleted.")
+        else:
+            self.io.write(f"Failed to delete profile '{name}'.")
+
+    def _update_settings(self, manager: ConfigManager) -> None:
+        summary = manager.get_config_summary()
+        max_size = self.io.prompt(
+            f"Max file size MB [{summary.get('max_file_size_mb', 10)}]: "
+        ).strip()
+        follow_symlinks = self.io.prompt(
+            f"Follow symlinks (y/n) [{ 'y' if summary.get('follow_symlinks') else 'n' }]: "
+        ).strip().lower()
+
+        updates = {}
+        if max_size:
+            try:
+                updates["max_file_size_mb"] = int(max_size)
+            except ValueError:
+                self.io.write("Invalid max size; ignoring input.")
+        if follow_symlinks in {"y", "n"}:
+            updates["follow_symlinks"] = follow_symlinks == "y"
+
+        if not updates:
+            self.io.write("No changes provided.")
+            return
+        if manager.update_settings(**updates):
+            self.io.write("Settings updated.")
+        else:
+            self.io.write("Failed to update settings.")
 
 
 def main() -> int:
