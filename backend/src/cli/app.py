@@ -145,7 +145,13 @@ class MenuOption:
 
 
 class CLIApp:
-    """Coordinator for the interactive CLI workflow."""
+    """Coordinator for the interactive CLI workflow.
+
+    The CLI keeps the menu/input handling in one place and delegates all
+    business logic to helper classes (Supabase auth, consent validator,
+    ConfigManager, scanner utilities).  That separation is what makes the
+    interactive flow easy to test – see tests/test_cli_app.py for examples.
+    """
 
     def __init__(
         self,
@@ -510,6 +516,7 @@ class CLIApp:
 
     # Preferences helpers
     def _load_session(self) -> None:
+        """Attempt to load the cached Supabase session from disk."""
         if not self._session_path:
             return
         try:
@@ -527,6 +534,7 @@ class CLIApp:
             pass
 
     def _persist_session(self) -> None:
+        """Persist the active Supabase session so the next run auto logs-in."""
         if not self.session or not self._session_path:
             return
         try:
@@ -540,6 +548,7 @@ class CLIApp:
             pass
 
     def _clear_session(self) -> None:
+        """Delete any cached session information (used on logout)."""
         if not self._session_path:
             return
         try:
@@ -549,6 +558,7 @@ class CLIApp:
             pass
 
     def _render_profiles(self, summary: dict, profiles: dict) -> None:
+        """Display all configured profiles, highlighting the active one."""
         active = summary.get("current_profile", "")
         if Console and Table and isinstance(self.io, ConsoleIO) and self.io._console:
             table = Table(title="Scan Profiles", highlight=False)
@@ -576,6 +586,7 @@ class CLIApp:
         )
 
     def _choose_profile(self, profiles: dict, *, allow_active: bool = True) -> Optional[str]:
+        """Prompt the user to pick a profile name from the available map."""
         if not profiles:
             self.io.write("No profiles available.")
             return None
@@ -649,6 +660,7 @@ class CLIApp:
             self.io.write(f"Failed to delete profile '{name}'.")
 
     def _update_settings(self, manager: ConfigManager) -> None:
+        """Allow tweaking max file size and follow-symlink behaviour."""
         summary = manager.get_config_summary()
         max_size = self.io.prompt(
             f"Max file size MB [{summary.get('max_file_size_mb', 10)}]: "
@@ -677,6 +689,7 @@ class CLIApp:
     # Scan helpers
 
     def _preferences_from_config(self, config: dict, profile_name: Optional[str]) -> ScanPreferences:
+        """Translate stored profile data into ScanPreferences for the parser."""
         if not config:
             return ScanPreferences()
 
@@ -705,6 +718,7 @@ class CLIApp:
         )
 
     def _render_scan_summary(self, result: ParseResult, relevant_only: bool) -> None:
+        """Print a concise post-scan summary."""
         summary = result.summary or {}
         files_processed = summary.get("files_processed", len(result.files))
         issues_count = summary.get("issues_count", len(result.issues))
@@ -719,6 +733,7 @@ class CLIApp:
             self.io.write(f"  Filtered out: {filtered}")
 
     def _render_file_list(self, result: ParseResult, languages: List[dict]) -> None:
+        """Show the raw file list; language stats are an optional follow-up view."""
         lines = render_table(Path(""), result, languages=[])
         for line in lines:
             self.io.write(line)
