@@ -719,7 +719,7 @@ class CLIApp:
             self.io.write(f"  Filtered out: {filtered}")
 
     def _render_file_list(self, result: ParseResult, languages: List[dict]) -> None:
-        lines = render_table(Path(""), result, languages=languages)
+        lines = render_table(Path(""), result, languages=[])
         for line in lines:
             self.io.write(line)
 

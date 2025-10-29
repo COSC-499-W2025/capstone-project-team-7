@@ -40,6 +40,6 @@ def health_check():
 app.include_router(llm_router)
 
 if __name__ == "__main__":
-    from src.cli.app import main as cli_main
+    import uvicorn
 
-    sys.exit(cli_main())
+    uvicorn.run("src.main:app", host="0.0.0.0", port=8000, reload=True)

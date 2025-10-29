@@ -5,6 +5,12 @@ import os
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
+try:  # pragma: no cover
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover
+    def load_dotenv():  # type: ignore
+        return None
+
 try:  # pragma: no cover - handled in tests via FakeAuth
     import requests
 except ImportError:  # pragma: no cover
@@ -13,6 +19,8 @@ except ImportError:  # pragma: no cover
 
 AUTH_SIGNUP_PATH = "/auth/v1/signup"
 AUTH_TOKEN_PATH = "/auth/v1/token?grant_type=password"
+
+load_dotenv()
 
 
 class AuthError(Exception):
