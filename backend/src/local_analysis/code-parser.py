@@ -245,3 +245,229 @@ class CodeAnalyzer:
         
         walk(node)
         return functions
+    
+    
+    def _count_nodes(self, node: Node, node_types: Set[str]) -> int:
+        """Count nodes of specific types"""
+        count = 0
+        def walk(n: Node):
+            nonlocal count
+            if n.type in node_types:
+                count += 1
+            for child in n.children:
+                walk(child)
+        walk(node)
+        return count
+    
+    def _count_lines(self, code: str, root: Node) -> Tuple[int, int]:
+        """Count code and comment lines"""
+        lines = code.split('\n')
+        blank = sum(1 for line in lines if not line.strip())
+        
+        comments = 0
+        comment_types = {'comment', 'line_comment', 'block_comment', 'documentation_comment'}
+        
+        def walk(node: Node):
+            nonlocal comments
+            if node.type in comment_types:
+                comments += (node.end_point[0] - node.start_point[0] + 1)
+            for child in node.children:
+                walk(child)
+        
+        walk(root)
+        code_lines = len(lines) - blank - comments
+        return code_lines, comments
+    
+    def _find_issues(self, code: str) -> Tuple[List[str], List[str], List[str]]:
+        """Categorize issues: security, todos, warnings"""
+        lines = code.split('\n')
+        security = []
+        todos = []
+        warnings = []
+        
+        # Security patterns
+        sec_patterns = [
+            ('exec(', 'Code execution'),
+            ('eval(', 'Code execution'),
+            ('password =', 'Hardcoded password'),
+            ('api_key =', 'Hardcoded API key'),
+            ('secret =', 'Hardcoded secret'),
+            ('shell=True', 'Shell injection risk'),
+        ]
+        
+        for i, line in enumerate(lines, 1):
+            line_lower = line.lower().strip()
+            
+            # Skip comments
+            if line_lower.startswith('#') or line_lower.startswith('//'):
+                continue
+            
+            # Check security
+            for pattern, desc in sec_patterns:
+                if pattern in line_lower:
+                    security.append(f"Line {i}: {desc}")
+            
+            # Check TODOs
+            if any(marker in line.upper() for marker in ['TODO', 'FIXME', 'HACK', 'XXX']):
+                todos.append(f"Line {i}: {line.strip()[:50]}")
+        
+        return security, todos, warnings
+    
+    def analyze_file(self, path: Path) -> FileResult:
+        """Analyze a single file with actionable insights"""
+        start = time.time()
+        result = FileResult(path=str(path))
+        
+        try:
+            lang = self._detect_language(path)
+            if not lang:
+                result.error = f"Unsupported: {path.suffix}"
+                return result
+            
+            result.language = lang
+            
+            size_bytes = path.stat().st_size
+            result.size_mb = size_bytes / (1024 * 1024)
+            if result.size_mb > self.max_file_mb:
+                result.error = f"Too large: {result.size_mb:.2f}MB"
+                return result
+            
+            with open(path, 'rb') as f:
+                code_bytes = f.read()
+            
+            code = code_bytes.decode('utf-8', errors='ignore')
+            parser = self.parsers[lang]
+            tree = parser.parse(code_bytes)
+            root = tree.root_node
+            
+            # Extract metrics
+            metrics = Metrics()
+            metrics.lines = len(code.split('\n'))
+            metrics.code_lines, metrics.comments = self._count_lines(code, root)
+            
+            # Count structures
+            class_types = {'class_definition', 'class_declaration'}
+            metrics.classes = self._count_nodes(root, class_types)
+            
+            # Get function details
+            all_functions = self._find_functions(root, code_bytes)
+            metrics.functions = len(all_functions)
+            
+            # Keep top 5 most problematic functions
+            all_functions.sort(key=lambda f: (f.complexity * 2 + f.lines), reverse=True)
+            metrics.top_functions = all_functions[:5]
+            
+            # Overall complexity
+            metrics.complexity = self._count_complexity(root)
+            
+            # Categorize issues
+            metrics.security_issues, metrics.todos, metrics.warnings = self._find_issues(code)
+            
+            if root.has_error:
+                metrics.warnings.append("Syntax errors detected")
+            
+            result.metrics = metrics
+            result.success = True
+            
+        except Exception as e:
+            result.error = str(e)
+            logger.error(f"Error analyzing {path.name}: {e}")
+        
+        result.time_ms = (time.time() - start) * 1000
+        return result
+    
+    def walk_directory(self, path: Path, depth: int = 0) -> List[Path]:
+        """Recursively walk directory"""
+        if depth >= self.max_depth:
+            return []
+        
+        files = []
+        supported_exts = set()
+        for lang, config in LANGUAGES.items():
+            if lang in self.enabled_langs:
+                supported_exts.update(config['ext'])
+        
+        try:
+            for item in path.iterdir():
+                if item.is_dir():
+                    if item.name not in self.excluded_dirs and not item.name.startswith('.'):
+                        files.extend(self.walk_directory(item, depth + 1))
+                elif item.is_file() and item.suffix.lower() in supported_exts:
+                    files.append(item)
+        except PermissionError:
+            logger.warning(f"Permission denied: {path}")
+        
+        return files
+    
+    def analyze_directory(self, path: Path, recursive: bool = True) -> DirectoryResult:
+        """Analyze directory with prioritized insights"""
+        logger.info(f"Analyzing: {path}")
+        result = DirectoryResult(path=str(path))
+        
+        if recursive:
+            files = self.walk_directory(path)
+        else:
+            files = [f for f in path.iterdir() if f.is_file()]
+        
+        logger.info(f"Found {len(files)} files")
+        
+        for file_path in files:
+            file_result = self.analyze_file(file_path)
+            result.files.append(file_result)
+        
+        result.summary = self._summarize(result.files)
+        
+        logger.info(f"Complete: {result.successful} analyzed")
+        return result
+    
+    def _summarize(self, results: List[FileResult]) -> Dict:
+        """Generate actionable summary"""
+        summary = {
+            'total_files': len(results),
+            'successful': sum(1 for r in results if r.success),
+            'languages': defaultdict(int),
+            'total_lines': 0,
+            'total_code': 0,
+            'total_comments': 0,
+            'total_functions': 0,
+            'total_classes': 0,
+            'avg_complexity': 0,
+            'avg_maintainability': 0,
+            'security_issues': 0,
+            'todos': 0,
+            'high_priority_files': 0,
+            'functions_needing_refactor': 0,
+        }
+        
+        complexities = []
+        maintainability_scores = []
+        
+        for r in results:
+            if r.success and r.metrics:
+                m = r.metrics
+                summary['languages'][r.language] += 1
+                summary['total_lines'] += m.lines
+                summary['total_code'] += m.code_lines
+                summary['total_comments'] += m.comments
+                summary['total_functions'] += m.functions
+                summary['total_classes'] += m.classes
+                summary['security_issues'] += len(m.security_issues)
+                summary['todos'] += len(m.todos)
+                
+                complexities.append(m.complexity)
+                maintainability_scores.append(m.maintainability_score)
+                
+                if m.refactor_priority == "HIGH":
+                    summary['high_priority_files'] += 1
+                
+                summary['functions_needing_refactor'] += sum(
+                    1 for f in m.top_functions if f.needs_refactor
+                )
+        
+        if complexities:
+            summary['avg_complexity'] = sum(complexities) / len(complexities)
+        if maintainability_scores:
+            summary['avg_maintainability'] = sum(maintainability_scores) / len(maintainability_scores)
+        
+        summary['languages'] = dict(summary['languages'])
+        return summary
