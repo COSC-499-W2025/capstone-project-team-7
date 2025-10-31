@@ -11,6 +11,9 @@ from .language_stats import summarize_languages
 from ..scanner.errors import ParserError
 from ..scanner.parser import parse_zip
 
+from ..local_analysis.git_repo import analyze_git_repo
+import os
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Parse a project archive or directory.")
@@ -39,6 +42,16 @@ def main(argv: list[str] | None = None) -> int:
     try:
         archive_path = ensure_zip(args.archive)
         result = parse_zip(archive_path, relevant_only=args.relevant_only)
+        git_repos = []
+
+        def _scan_for_git(root):
+            if root.is_dir():
+                for dirpath, dirnames, _ in os.walk(root):
+                    if ".git" in dirnames:
+                        git_repos.append(analyze_git_repo(dirpath))
+
+        _scan_for_git(archive_path)      
+        _scan_for_git(args.archive)   
     except ParserError as exc:
         payload = {"error": exc.code, "message": str(exc)}
         print(json.dumps(payload), file=sys.stderr)
@@ -47,12 +60,16 @@ def main(argv: list[str] | None = None) -> int:
         payload = {"error": "INVALID_INPUT", "message": str(exc)}
         print(json.dumps(payload), file=sys.stderr)
         return 1
+    
+    
 
-    # Build the optional language breakdown only when requested to keep baseline runs fast.
+       # Build the optional language breakdown only when requested to keep baseline runs fast.
     languages = summarize_languages(result.files) if args.code else []
 
     if args.json:
-        print(json.dumps(_serialize_result(result, languages), indent=2))
+        payload = _serialize_result(result, languages)
+        payload["git_repositories"] = git_repos  # [2025-10-30] include git analysis
+        print(json.dumps(payload, indent=2))
     else:
         for line in render_table(archive_path, result, languages=languages):
             print(line)
