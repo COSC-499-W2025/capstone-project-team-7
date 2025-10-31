@@ -1,54 +1,169 @@
 """
-Improved Compact Code Analyzer - Sweet spot between size and insights
+Improved Compact Code Analyzer - Compatible with all tree-sitter module APIs
 ~450 lines with actionable insights for refactoring
 """
+
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple, Set
 from dataclasses import dataclass, field
 from collections import defaultdict
 import logging
 import time
+import sys
+
+# Add local lib directory to Python path
+lib_path = Path(__file__).parent / "lib"
+if lib_path.exists():
+    sys.path.insert(0, str(lib_path))
 
 try:
     from tree_sitter import Language, Parser, Node
-    import tree_sitter_python as tspython
-    import tree_sitter_javascript as tsjavascript
-    import tree_sitter_typescript as tstypescript
-    import tree_sitter_java as tsjava
-    import tree_sitter_c as tsc
-    import tree_sitter_cpp as tscpp
-    import tree_sitter_go as tsgo
-    import tree_sitter_rust as tsrust
-    import tree_sitter_ruby as tsruby
-    import tree_sitter_php as tsphp
-    import tree_sitter_c_sharp as tscsharp
-    import tree_sitter_html as tshtml
-    import tree_sitter_css as tscss
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
 
+# Try to import each language module separately
+_language_modules = {}
+if TREE_SITTER_AVAILABLE:
+    try:
+        import tree_sitter_python as tspython
+        _language_modules['python'] = tspython
+    except ImportError:
+        pass
+    
+    try:
+        import tree_sitter_javascript as tsjavascript
+        _language_modules['javascript'] = tsjavascript
+    except ImportError:
+        pass
+    
+    try:
+        import tree_sitter_typescript as tstypescript
+        _language_modules['typescript'] = tstypescript
+        _language_modules['tsx'] = tstypescript  # BOTH use same module!
+    except ImportError:
+        pass
+    
+    try:
+        import tree_sitter_java as tsjava
+        _language_modules['java'] = tsjava
+    except ImportError:
+        pass
+    
+    try:
+        import tree_sitter_c as tsc
+        _language_modules['c'] = tsc
+    except ImportError:
+        pass
+    
+    try:
+        import tree_sitter_cpp as tscpp
+        _language_modules['cpp'] = tscpp
+    except ImportError:
+        pass
+    
+    try:
+        import tree_sitter_go as tsgo
+        _language_modules['go'] = tsgo
+    except ImportError:
+        pass
+    
+    try:
+        import tree_sitter_rust as tsrust
+        _language_modules['rust'] = tsrust
+    except ImportError:
+        pass
+    
+    try:
+        import tree_sitter_ruby as tsruby
+        _language_modules['ruby'] = tsruby
+    except ImportError:
+        pass
+    
+    try:
+        import tree_sitter_php as tsphp
+        _language_modules['php'] = tsphp
+    except ImportError:
+        pass
+    
+    try:
+        import tree_sitter_c_sharp as tscsharp
+        _language_modules['csharp'] = tscsharp
+    except ImportError:
+        pass
+    
+    try:
+        import tree_sitter_html as tshtml
+        _language_modules['html'] = tshtml
+    except ImportError:
+        pass
+    
+    try:
+        import tree_sitter_css as tscss
+        _language_modules['css'] = tscss
+    except ImportError:
+        pass
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-LANGUAGES = {
-    'python': {'ext': ['.py', '.pyw'], 'mod': tspython if TREE_SITTER_AVAILABLE else None},
-    'javascript': {'ext': ['.js', '.mjs'], 'mod': tsjavascript if TREE_SITTER_AVAILABLE else None},
-    'typescript': {'ext': ['.ts'], 'mod': tstypescript if TREE_SITTER_AVAILABLE else None},
-    'tsx': {'ext': ['.tsx'], 'mod': tstypescript if TREE_SITTER_AVAILABLE else None},
-    'java': {'ext': ['.java'], 'mod': tsjava if TREE_SITTER_AVAILABLE else None},
-    'c': {'ext': ['.c', '.h'], 'mod': tsc if TREE_SITTER_AVAILABLE else None},
-    'cpp': {'ext': ['.cpp', '.cc', '.hpp'], 'mod': tscpp if TREE_SITTER_AVAILABLE else None},
-    'go': {'ext': ['.go'], 'mod': tsgo if TREE_SITTER_AVAILABLE else None},
-    'rust': {'ext': ['.rs'], 'mod': tsrust if TREE_SITTER_AVAILABLE else None},
-    'ruby': {'ext': ['.rb'], 'mod': tsruby if TREE_SITTER_AVAILABLE else None},
-    'php': {'ext': ['.php', '.phtml'], 'mod': tsphp if TREE_SITTER_AVAILABLE else None},
-    'csharp': {'ext': ['.cs'], 'mod': tscsharp if TREE_SITTER_AVAILABLE else None},
-    'html': {'ext': ['.html', '.htm'], 'mod': tshtml if TREE_SITTER_AVAILABLE else None},
-    'css': {'ext': ['.css', '.scss', '.sass'], 'mod': tscss if TREE_SITTER_AVAILABLE else None},
+# Language configuration with extensions and modules
+SUPPORTED_LANGS = {
+    'python': {'ext': ['.py', '.pyw'], 'mod': _language_modules.get('python')},
+    'javascript': {'ext': ['.js', '.mjs'], 'mod': _language_modules.get('javascript')},
+    'typescript': {'ext': ['.ts'], 'mod': _language_modules.get('typescript')},
+    'tsx': {'ext': ['.tsx'], 'mod': _language_modules.get('tsx')},
+    'java': {'ext': ['.java'], 'mod': _language_modules.get('java')},
+    'c': {'ext': ['.c', '.h'], 'mod': _language_modules.get('c')},
+    'cpp': {'ext': ['.cpp', '.cc', '.hpp'], 'mod': _language_modules.get('cpp')},
+    'go': {'ext': ['.go'], 'mod': _language_modules.get('go')},
+    'rust': {'ext': ['.rs'], 'mod': _language_modules.get('rust')},
+    'ruby': {'ext': ['.rb'], 'mod': _language_modules.get('ruby')},
+    'php': {'ext': ['.php', '.phtml'], 'mod': _language_modules.get('php')},
+    'csharp': {'ext': ['.cs'], 'mod': _language_modules.get('csharp')},
+    'html': {'ext': ['.html', '.htm'], 'mod': _language_modules.get('html')},
+    'css': {'ext': ['.css', '.scss', '.sass'], 'mod': _language_modules.get('css')},
 }
 
 EXCLUDED_DIRS = {'node_modules', '.git', '__pycache__', 'venv', '.venv', 'build', 'dist'}
+
+
+def get_language(lang_name: str):
+    """
+    Get Language object from tree-sitter module.
+    Handles different module APIs (language(), language_typescript(), language_tsx(), etc.)
+    """
+    if lang_name not in _language_modules or _language_modules[lang_name] is None:
+        raise ValueError(f"Language module not available for {lang_name}")
+    
+    module = _language_modules[lang_name]
+    
+    # Try different API patterns
+    try:
+        # Pattern 1: module.language() - Most common
+        if hasattr(module, 'language') and callable(module.language):
+            return Language(module.language())
+        
+        # Pattern 2: module.language_<name>() - Used by TypeScript, TSX
+        # TypeScript module has: language_typescript() and language_tsx()
+        func_name = f'language_{lang_name}'
+        if hasattr(module, func_name) and callable(getattr(module, func_name)):
+            lang_func = getattr(module, func_name)
+            return Language(lang_func())
+        
+        # Pattern 3: Check for PHP special case
+        if lang_name == 'php' and hasattr(module, 'language_php'):
+            return Language(module.language_php())
+        
+        # If we get here, we couldn't find the right function
+        available_funcs = [name for name in dir(module) if name.startswith('language')]
+        raise AttributeError(
+            f"Could not find language function for {lang_name}. "
+            f"Available: {available_funcs}"
+        )
+        
+    except Exception as e:
+        raise ValueError(f"Failed to load language {lang_name}: {e}")
 
 
 @dataclass
@@ -145,8 +260,8 @@ class DirectoryResult:
         candidates = [f for f in self.files if f.success and f.metrics]
         candidates.sort(key=lambda f: f.metrics.maintainability_score)
         return candidates[:limit]
-    
-    
+
+
 class CodeAnalyzer:
     """Improved compact analyzer with actionable insights"""
     
@@ -162,40 +277,55 @@ class CodeAnalyzer:
         
         self.max_file_mb = max_file_mb
         self.max_depth = max_depth
-        self.enabled_langs = languages or set(LANGUAGES.keys())
+        self.enabled_langs = languages or set(SUPPORTED_LANGS.keys())
         self.excluded_dirs = excluded or EXCLUDED_DIRS
         self.parsers = self._init_parsers()
     
-    def _init_parsers(self) -> Dict[str, Parser]:
-        """Initialize parsers"""
+    def _init_parsers(self):
+        """
+        Initialize parsers for all supported languages.
+        Uses tree-sitter 0.21.0+ API: Parser(language)
+        """
         parsers = {}
-        for lang, config in LANGUAGES.items():
-            if lang in self.enabled_langs and config['mod']:
-                try:
-                    language = Language(config['mod'].language())
-                    parsers[lang] = Parser(language)
-                except Exception as e:
-                    logger.warning(f"Failed to init {lang}: {e}")
+        for lang in SUPPORTED_LANGS:
+            if lang not in self.enabled_langs:
+                continue
+            
+            # Check if module is available
+            if SUPPORTED_LANGS[lang]['mod'] is None:
+                logger.debug(f"Skipping {lang}: module not imported")
+                continue
+            
+            try:
+                # Get language using our flexible loader
+                language = get_language(lang)
+                parser = Parser(language)
+                parsers[lang] = parser
+                logger.debug(f"Parser initialized for {lang}")
+            except Exception as e:
+                logger.warning(f"Failed parser for {lang}: {e}")
         return parsers
     
     def _detect_language(self, path: Path) -> Optional[str]:
         """Detect language from extension"""
         ext = path.suffix.lower()
-        for lang, config in LANGUAGES.items():
+        for lang, config in SUPPORTED_LANGS.items():
             if ext in config['ext'] and lang in self.parsers:
                 return lang
         return None
     
     def _get_function_info(self, node: Node, code: bytes) -> Optional[FunctionMetrics]:
         """Extract function metrics"""
-        func_types = {'function_definition', 'function_declaration', 'method_definition', 'function_item'}
+        func_types = {'function_definition', 'function_declaration', 'method_definition', 
+                      'function_item', 'function', 'method_declaration', 'arrow_function',
+                      'function_expression'}
         if node.type not in func_types:
             return None
         
         # Get name
         name = "anonymous"
         for child in node.children:
-            if child.type in {'identifier', 'property_identifier'}:
+            if child.type in {'identifier', 'property_identifier', 'field_identifier'}:
                 name = code[child.start_byte:child.end_byte].decode('utf-8', errors='ignore')
                 break
         
@@ -206,8 +336,10 @@ class CodeAnalyzer:
         # Count parameters
         params = 0
         for child in node.children:
-            if child.type in {'parameters', 'parameter_list', 'formal_parameters'}:
-                params = sum(1 for c in child.children if c.type not in {',', '(', ')'})
+            if child.type in {'parameters', 'parameter_list', 'formal_parameters', 'required_parameters'}:
+                params = sum(1 for c in child.children if c.type not in {',', '(', ')', 'required_parameter', 'optional_parameter'} and 'parameter' in c.type)
+                if params == 0:  # Fallback counting
+                    params = sum(1 for c in child.children if c.type in {'identifier', 'required_parameter', 'optional_parameter'})
                 break
         
         return FunctionMetrics(name=name, lines=lines, complexity=complexity, params=params)
@@ -217,7 +349,8 @@ class CodeAnalyzer:
         complexity = 1
         branch_nodes = {
             'if_statement', 'elif_clause', 'else_clause', 'for_statement', 'while_statement',
-            'case_statement', 'catch_clause', 'except_clause', 'conditional_expression'
+            'case_statement', 'catch_clause', 'except_clause', 'conditional_expression',
+            'switch_statement', 'ternary_expression', 'match_statement'
         }
         
         def walk(n: Node):
@@ -233,7 +366,9 @@ class CodeAnalyzer:
     def _find_functions(self, node: Node, code: bytes) -> List[FunctionMetrics]:
         """Find all functions with metrics"""
         functions = []
-        func_types = {'function_definition', 'function_declaration', 'method_definition', 'function_item'}
+        func_types = {'function_definition', 'function_declaration', 'method_definition', 
+                      'function_item', 'function', 'method_declaration', 'arrow_function',
+                      'function_expression'}
         
         def walk(n: Node):
             if n.type in func_types:
@@ -245,7 +380,6 @@ class CodeAnalyzer:
         
         walk(node)
         return functions
-    
     
     def _count_nodes(self, node: Node, node_types: Set[str]) -> int:
         """Count nodes of specific types"""
@@ -346,7 +480,7 @@ class CodeAnalyzer:
             metrics.code_lines, metrics.comments = self._count_lines(code, root)
             
             # Count structures
-            class_types = {'class_definition', 'class_declaration'}
+            class_types = {'class_definition', 'class_declaration', 'class_specifier'}
             metrics.classes = self._count_nodes(root, class_types)
             
             # Get function details
@@ -383,7 +517,7 @@ class CodeAnalyzer:
         
         files = []
         supported_exts = set()
-        for lang, config in LANGUAGES.items():
+        for lang, config in SUPPORTED_LANGS.items():
             if lang in self.enabled_langs:
                 supported_exts.update(config['ext'])
         
@@ -471,3 +605,200 @@ class CodeAnalyzer:
         
         summary['languages'] = dict(summary['languages'])
         return summary
+
+
+if __name__ == "__main__":
+    import sys
+    
+    print(f"\n{'='*70}")
+    print("CODE ANALYZER - Testing Mode")
+    print('='*70)
+    
+    # Get directory from command line or use current directory
+    if len(sys.argv) > 1:
+        target_path = Path(sys.argv[1])
+    else:
+        target_path = Path(".")
+    
+    print(f"\n🔍 Target: {target_path.absolute()}")
+    
+    # Create analyzer with default settings
+    print("\n⚙️  Initializing analyzer...")
+    try:
+        analyzer = CodeAnalyzer(
+            max_file_mb=5.0,
+            max_depth=10,
+            excluded={'node_modules', '.git', '__pycache__', 'venv', '.venv', 'build', 'dist'}
+        )
+    except ImportError as e:
+        print(f"\n❌ Error: {e}")
+        print("\n💡 Install required packages:")
+        print("   pip install --target=lib tree-sitter tree-sitter-python tree-sitter-javascript tree-sitter-typescript")
+        sys.exit(1)
+    
+    print(f"   Languages enabled: {', '.join(sorted(analyzer.enabled_langs))}")
+    print(f"   Parsers initialized: {len(analyzer.parsers)}")
+    
+    if len(analyzer.parsers) == 0:
+        print("\n⚠️  WARNING: No parsers were initialized!")
+        print("   Run: pip install --target=lib tree-sitter tree-sitter-python tree-sitter-javascript tree-sitter-typescript")
+        sys.exit(1)
+    
+    # Show which parsers loaded successfully
+    print(f"   Successfully loaded: {', '.join(sorted(analyzer.parsers.keys()))}")
+    
+    # Analyze the directory
+    print(f"\n📂 Analyzing directory...")
+    result = analyzer.analyze_directory(target_path)
+    
+    # Display results
+    print(f"\n{'='*70}")
+    print("ANALYSIS RESULTS")
+    print('='*70)
+    
+    print(f"\n📊 Files:")
+    print(f"   Total found: {len(result.files)}")
+    print(f"   Successfully analyzed: {result.successful}")
+    print(f"   Failed: {result.failed}")
+    
+    if result.summary['languages']:
+        print(f"\n🗂️  Languages Detected:")
+        for lang, count in sorted(result.summary['languages'].items(), 
+                                  key=lambda x: x[1], reverse=True):
+            print(f"   {lang:15} {count:3} files")
+    
+    print(f"\n📈 Code Metrics:")
+    print(f"   Total Lines:       {result.summary['total_lines']:,}")
+    print(f"   Code Lines:        {result.summary['total_code']:,}")
+    print(f"   Comment Lines:     {result.summary['total_comments']:,}")
+    print(f"   Functions:         {result.summary['total_functions']}")
+    print(f"   Classes:           {result.summary['total_classes']}")
+    
+    if result.successful > 0:
+        print(f"\n🎯 Quality Metrics:")
+        print(f"   Avg Maintainability: {result.summary['avg_maintainability']:.1f}/100")
+        print(f"   Avg Complexity:      {result.summary['avg_complexity']:.1f}")
+        
+        # Quality assessment
+        maintainability = result.summary['avg_maintainability']
+        if maintainability >= 80:
+            status = "✅ EXCELLENT"
+            color_desc = "Highly maintainable code"
+        elif maintainability >= 70:
+            status = "✓  GOOD"
+            color_desc = "Reasonably maintainable"
+        elif maintainability >= 60:
+            status = "⚠️  FAIR"
+            color_desc = "Some areas need improvement"
+        elif maintainability >= 50:
+            status = "⚠️  NEEDS WORK"
+            color_desc = "Consider refactoring"
+        else:
+            status = "❌ CRITICAL"
+            color_desc = "Significant refactoring needed"
+        
+        print(f"   Overall Status:      {status}")
+        print(f"   Assessment:          {color_desc}")
+        
+        print(f"\n⚠️  Issues Found:")
+        print(f"   Security Issues:        {result.summary['security_issues']}")
+        print(f"   TODOs/FIXMEs:          {result.summary['todos']}")
+        print(f"   High Priority Files:    {result.summary['high_priority_files']}")
+        print(f"   Functions Need Refactor: {result.summary['functions_needing_refactor']}")
+        
+        # Show top refactoring candidates
+        candidates = result.get_refactor_candidates(5)
+        if candidates:
+            print(f"\n{'='*70}")
+            print("TOP REFACTORING CANDIDATES")
+            print('='*70)
+            
+            for i, file in enumerate(candidates, 1):
+                file_name = Path(file.path).name
+                try:
+                    rel_path = Path(file.path).relative_to(target_path)
+                except ValueError:
+                    rel_path = Path(file.path)
+                score = file.metrics.maintainability_score
+                priority = file.metrics.refactor_priority
+                
+                print(f"\n{i}. {file_name}")
+                print(f"   Path: {rel_path}")
+                print(f"   Maintainability: {score:.0f}/100")
+                print(f"   Priority: {priority}")
+                print(f"   Lines: {file.metrics.lines} ({file.metrics.code_lines} code)")
+                print(f"   Functions: {file.metrics.functions}")
+                print(f"   Complexity: {file.metrics.complexity}")
+                
+                # Show problematic functions
+                problem_funcs = [f for f in file.metrics.top_functions if f.needs_refactor]
+                if problem_funcs:
+                    print(f"   Complex functions:")
+                    for func in problem_funcs[:3]:
+                        print(f"      • {func.name}:")
+                        print(f"        {func.lines} lines, complexity {func.complexity}, {func.params} params")
+                
+                # Show issues
+                if file.metrics.security_issues:
+                    print(f"   Security issues: {len(file.metrics.security_issues)}")
+                    for issue in file.metrics.security_issues[:2]:
+                        print(f"      • {issue}")
+                
+                if file.metrics.todos:
+                    print(f"   TODOs: {len(file.metrics.todos)}")
+        
+        # Show some successful files
+        print(f"\n{'='*70}")
+        print("SAMPLE FILES ANALYZED")
+        print('='*70)
+        
+        successful_files = [f for f in result.files if f.success][:5]
+        for file in successful_files:
+            try:
+                rel_path = Path(file.path).relative_to(target_path)
+            except ValueError:
+                rel_path = Path(file.path)
+            print(f"\n✓ {rel_path}")
+            print(f"  Language: {file.language}")
+            print(f"  Lines: {file.metrics.lines} ({file.metrics.code_lines} code)")
+            print(f"  Functions: {file.metrics.functions}, Classes: {file.metrics.classes}")
+            print(f"  Maintainability: {file.metrics.maintainability_score:.0f}/100")
+    
+    # Show failed files if any
+    failed_files = [f for f in result.files if not f.success]
+    if failed_files:
+        print(f"\n{'='*70}")
+        print("FAILED FILES")
+        print('='*70)
+        for file in failed_files[:10]:
+            print(f"\n✗ {Path(file.path).name}")
+            print(f"  Error: {file.error}")
+    
+    print(f"\n{'='*70}")
+    print("SUMMARY")
+    print('='*70)
+    
+    if result.successful > 0:
+        maintainability = result.summary['avg_maintainability']
+        if maintainability >= 70:
+            status = "GOOD"
+        elif maintainability >= 50:
+            status = "FAIR"
+        else:
+            status = "NEEDS WORK"
+            
+        print(f"""
+This analyzer found and processed {result.successful} files across 
+{len(result.summary['languages'])} programming languages.
+
+Key Takeaways:
+• Overall maintainability is {maintainability:.1f}/100 ({status})
+• {result.summary['high_priority_files']} files need immediate attention
+• {result.summary['functions_needing_refactor']} functions should be refactored
+• {result.summary['security_issues']} potential security issues found
+• {result.summary['todos']} TODO/FIXME comments to address
+""")
+    else:
+        print("\nNo files were successfully analyzed. Check the failed files list above.")
+    
+    print('='*70 + '\n')
