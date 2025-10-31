@@ -116,3 +116,13 @@ python3 scripts/auth_cli.py consent demo+1@example.com StrongPass123!
 python3 scripts/auth_cli.py check   demo+1@example.com StrongPass123!
 
 Note: The CLI will securely prompt for your password (no echo). Avoid passing --password unless in CI.
+
+## CLI Quick Start
+
+To launch the interactive CLI (arrow-key menu), use the provided helper script from a terminal:
+
+```bash
+bash scripts/run_cli.sh
+```
+
+The script makes sure the project virtual environment exists, installs any missing dependencies, loads environment variables from `.env`, and starts the menu inside a real terminal (required for the arrow-based navigation). Press `Ctrl+C` to exit at any time.
