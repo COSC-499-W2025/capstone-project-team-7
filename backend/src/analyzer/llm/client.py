@@ -290,23 +290,18 @@ class LLMClient:
             self.logger.error(f"Failed to summarize tagged file: {e}")
             raise LLMError(f"File summarization failed: {str(e)}")
     
-    def analyze_project(self, project_metadata: Dict[str, Any], 
-                       local_analysis: Dict[str, Any],
+    def analyze_project(self, local_analysis: Dict[str, Any],
                        tagged_files_summaries: List[Dict[str, str]]) -> Dict[str, str]:
         """
         Generate a comprehensive, resume-friendly project report.
         
         Args:
-            project_metadata: Dict with name, description, dates, tech_stack
             local_analysis: Dict with stats, metrics, file_counts
             tagged_files_summaries: List of summaries from summarize_tagged_file()
             
         Returns:
-            Formatted text output containing:
-                - executive_summary: 2-3 sentence overview
-                - technical_highlights: Key features and capabilities
-                - technologies_used: Tech stack summary
-                - project_quality: Quality assessment
+            Dict containing:
+                - analysis result: Formatted output text
                 
         Raises:
             LLMError: If analysis fails
@@ -321,10 +316,6 @@ class LLMClient:
             ])
             
             prompt = f"""You are analyzing a software project to create a professional, resume-worthy report.
-
-            PROJECT METADATA:
-            Name: {project_metadata.get('name', 'Unknown')}
-            Description: {project_metadata.get('description', 'N/A')}
 
             LOCAL ANALYSIS RESULTS:
             {local_analysis}
@@ -350,7 +341,6 @@ class LLMClient:
             response = self._make_llm_call(messages, max_tokens=800, temperature=0.7)
             
             return {
-                "project_name": project_metadata.get('name', 'Unknown'),
                 "analysis": response
             }
             
@@ -419,3 +409,73 @@ class LLMClient:
         except Exception as e:
             self.logger.error(f"Feedback generation failed: {e}")
             raise LLMError(f"Failed to generate feedback: {str(e)}")
+    
+    def summarize_scan_with_ai(self, scan_summary: Dict[str, Any], 
+                               relevant_files: List[Dict[str, Any]],
+                               scan_base_path: str) -> Dict[str, Any]:
+        """
+        Comprehensive AI analysis workflow for CLI integration.
+        
+        Args:
+            scan_summary: Dict with file_count, total_size, language_breakdown, etc.
+            relevant_files: List of file metadata dicts (path, size, mime_type, etc.)
+            scan_base_path: Base path where original files are located for reading content
+            
+        Returns:
+            Dict containing:
+                - project_analysis: Result from analyze_project()
+                - file_summaries: List of results from summarize_tagged_file()
+                - summary_text: Combined formatted output for display
+                
+        Raises:
+            LLMError: If analysis fails
+        """
+        if not self.is_configured():
+            raise LLMError("LLM client is not configured")
+        
+        try:
+            self.logger.info("Starting LLM analysis")
+            
+            file_summaries = []
+            for file_meta in relevant_files:
+                file_path = file_meta.get('path', '')
+                if not file_path:
+                    continue
+
+                from pathlib import Path
+                full_path = Path(scan_base_path) / file_path
+
+                mime_type = file_meta.get('mime_type', '')
+                if not (mime_type.startswith('text/') or 
+                       mime_type in ['application/json', 'application/xml', 'application/javascript']):
+                    self.logger.info(f"Skipping non-text file: {file_path}")
+                    continue
+                
+                try:
+                    if full_path.exists() and full_path.is_file():
+                        content = full_path.read_text(encoding='utf-8', errors='ignore')
+                        file_type = full_path.suffix or 'unknown'
+                        
+                        summary_result = self.summarize_tagged_file(file_path, content, file_type)
+                        file_summaries.append(summary_result)
+                        self.logger.info(f"Summarized: {file_path}")
+                    else:
+                        self.logger.warning(f"File not found: {full_path}")
+                except Exception as e:
+                    self.logger.error(f"Error reading/summarizing {file_path}: {e}")
+                    continue
+            
+            project_analysis = self.analyze_project(
+                local_analysis=scan_summary,
+                tagged_files_summaries=file_summaries
+            )
+            
+            return {
+                "project_analysis": project_analysis,
+                "file_summaries": file_summaries,
+                "files_analyzed_count": len(file_summaries)
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Scan AI analysis failed: {e}")
+            raise LLMError(f"Failed to analyze scan: {str(e)}")
