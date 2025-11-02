@@ -1,5 +1,21 @@
 # Capstone Team 7 Logs
 
+## Week 9 (October 27 - November 2)
+
+This week we focused on the local analysis for multiple file types such as code files, media files, and documents beyond PDFs. We also worked on integrating past weeks' developments into a unified CLI workflow for various features.
+
+**Joaquin:**
+
+**Jacob:**
+
+**Vlad:**
+
+**Aaron:**
+
+**Om:** Implemented a multi-format local document analyzer supporting `.txt`, `.md`, `.markdown`, `.rst`, `.log`, and `.docx` files with comprehensive metadata extraction, markdown-specific features, automatic encoding detection, batch processing, and CLI tools. Integrated the existing PDF summarizer for consistent text analysis across all document types. Resolved roadblocks related to summarizer integration, encoding challenges, and paragraph count accuracy. The code for the document analyzer was merged after review of PR and I also worked on integrating the previously developed PDF summarizer into the CLI workflow for a unified experience across document types. Furthermore, worked with the team to decide on work distribution and making sure everyone is on track with their tasks. Also kept track of the overall progress and how the team is doing with respect to the timeline. Added reviews to almost each PR created by the team this week and spend some time coming up with work and task assignments for upcoming sprints.
+
+**Samarth:**
+
 ## Week 8 (October 20 - 26)
 
 This week we continued developing the backend, moving from setup into more functional implementation. Alongside expanding the CLI to better support backend workflows.
