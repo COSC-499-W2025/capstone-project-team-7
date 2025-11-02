@@ -6,15 +6,22 @@ This week we continued developing the backend, moving from setup into more funct
 
 **Joaquin:** This week I improved the CLI’s parsing features. I added safer zip handling that skips unnecessary folders, made the table display reusable, and introduced two new flags: --relevant-only (to include only key project files) and --code (to show language breakdowns). The README now includes examples, and all new features are tested and verified to work.
 
-**Jacob:** 
+**Jacob:** This week I worked on the backend by starting the Supabase integration. I set up the environment with the project URL and anon key, created the initial database schema, and began defining storage policies. I also started on an upload test to check file and metadata handling, but ran into bugs that I’m still working through. While I didn’t get to a finished PR yet, this lays the base for connecting secure storage to the CLI in the next step.
 
 **Vlad:** Focused on integrating Supabase authentication and consent management into the backend CLI as part of issue #86. Extended auth_cli.py to support secure sign-up, log-in, and access-token retrieval directly from the terminal, allowing verified users to authenticate and submit consent records to the Supabase database. Added a new SQL migration file, 04_consent_policies.sql, to define row level security (RLS) policies ensuring that each user can only access or modify their own consent data. Tested the complete CLI workflow end to end, including token handling, database persistence, and error cases and confirmed seamless interaction between the authentication layer and the Consent Validation Module. 
 
-**Aaron:** 
+**Aaron:** This week I refactored the config manager class to work with the database. This involved ensuring crud operations work with the supabase db we setup. I also added testing for all use cases. I then began the local analysis for coding feature, but yet to make a PR for that. The branch has the beginning implementation now for analyzing files for coding metrics. I made a PR for the refactored config manager that uses the db now, this includes new methods like 'get_allowed_extensions()' and changing code so that we store to the database.
 
 **Om:** Implemented a privacy‑first local PDF analysis pipeline including a robust PDFParser that extracts text and metadata with configurable size and page limits, and a PDFSummarizer that uses an in‑house TF‑IDF extractive approach with sentence filtering, tokenization, keyword extraction, and document statistics. I added a user-friendly CLI `(pdf_cli.py)` plus quick-reference docs to parse, summarize, batch-process, and inspect PDFs. The test suite was expanded to 68 tests covering edge cases and integration paths, yielding 100% coverage for the summarizer and high coverage for the parser. I migrated from the deprecated PyPDF2 to pypdf, added a conftest import helper for cleaner tests, and exposed factory functions `(create_parser, create_summarizer)`. For Supabase consent flows I hardened `auth_cli.py` to prompt securely for passwords, added revoke/delete support, and updated SQL with an RLS DELETE policy for safe consent revocation. README and CLI references were updated for usage and CI-friendly testing, and added minor docs and examples.
 
 **Samarth:** Worked on developing the LLM-powered summarization and analysis module for the system, generating structured insights from portfolio data. Implemented the `summarize_tagged_file()` and `analyze_project()` functions to produce detailed summaries, technical highlights, and qualitative analysis for resume-ready reports. Also built helper functions including `chunk_and_summarize()` for efficient large-file handling, `_count_tokens()` for dynamic token measurement, and `_make_llm_call()` for standardized LLM communication. Finally, added `suggest_feedback()` to deliver personalized career aligned insights. 
+
+All the updates this week build on each other to make the whole system smarter and more reliable. The new CLI features make it easier to parse and display project data, while the authentication and consent setup ensures everything stays secure and user-specific. The local PDF tools keep things privacy-first but still powerful enough for deep analysis, and the LLM module ties it all together by turning that data into useful insights. Altogether, these improvements connect the technical, privacy, and intelligence sides of the system so it runs more efficiently and feels more seamless to use.
+
+
+<p align="center">
+  <img src="./charts/w8burnup.png" alt="Week 5 Burnup Chart width="400"/>
+</p>
 
 
 ## Week 7 (October 13 - 19)
