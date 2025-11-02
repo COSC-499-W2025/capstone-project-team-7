@@ -1,5 +1,34 @@
 # Om Mistry (@OM200401)
 
+## Week 9: October 27 - November 2
+
+This week, the focus was on local document analysis for file types beyond PDFs, specifically Word documents and plain text files. Key accomplishments include:
+
+**Core Implementation**:
+- Multi-format document analyzer supporting `.txt`, `.md`, `.markdown`, `.rst`, `.log`, and `.docx` files
+- Comprehensive metadata extraction: word/character/line/paragraph counts, reading time estimation
+- Markdown-specific features: heading extraction, code block/link/image detection
+- Automatic encoding detection with fallback mechanism for international characters
+- Batch processing with configurable size limits
+- CLI tools with `info`, `analyze`, `summarize`, and `batch` commands plus JSON export
+- Code for the document analyzer was merged after review of PR and I also worked on integrating the previously developed PDF summarizer into the CLI workflow for a unified experience across document types
+
+**Integration**:
+- Reused existing PDF summarizer for consistent text analysis across all document types
+- Graceful degradation for optional dependencies (python-docx)
+- Windows console UTF-8 support for proper character rendering
+
+**Roadblocks Encountered & Resolved**
+
+1. **Summarizer Integration Issue**: Summary generation failures weren't handled gracefully. Resolved by implementing fallback keyword extraction and empty summary handling when the PDF summarizer fails.
+
+2. **Encoding Challenges**: Multi-language documents caused UnicodeDecodeError. Fixed by implementing automatic encoding detection with fallback chain (`utf-8` → `latin-1` → `cp1252` → binary with error ignore).
+
+3. **Paragraph Count Accuracy**: Simple line-break splitting produced inaccurate paragraph counts. Resolved using regex to split on multiple consecutive newlines and filtering empty paragraphs.
+
+4. **PDF Analyzer Integration Not Yet Merged**: Work completed on `cli-workflow` branch but integration with main codebase pending due to some further conversations with the team regarding the design choices.
+
+
 ## Week 8: October 20 - October 26
 
 This week I implemented a privacy-first local PDF analysis pipeline, CLI tooling, and a secure consent integration with comprehensive tests. Key functionality added:
@@ -12,7 +41,7 @@ This week I implemented a privacy-first local PDF analysis pipeline, CLI tooling
 
 - Consent/auth integration: `backend/src/auth/consent.py` and `consent_validator.py` were updated to improve validation logic and integrate seamlessly with the CLI. Consent validation now includes stricter checks for user permissions and better error handling. The CLI (`auth_cli.py`) was updated to interact with these modules for consent upsert, check, and revoke flows.
 
-Roadblocks cleared
+**Roadblocks cleared**
 - Replaced deprecated `PyPDF2` with `pypdf` and adapted imports/errors to remove warnings.
 - Fixed sentence-length filtering and sentence-splitting discrepancies that broke summarizer tests by aligning tests with `SummaryConfig` or relaxing filters.
 - Removed unsafe `--password` use on command lines and added interactive prompts plus warnings for CI usage.
