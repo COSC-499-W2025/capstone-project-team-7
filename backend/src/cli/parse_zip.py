@@ -12,7 +12,8 @@ from .language_stats import summarize_languages
 from ..scanner.errors import ParserError
 from ..scanner.models import ScanPreferences
 from ..scanner.parser import parse_zip
-
+from ..local_analysis.code_parser import CodeAnalyzer
+from ..local_analysis.code_cli import display_analysis_results
 
 USER_ID_ENV = "SCAN_USER_ID"
 
@@ -43,8 +44,14 @@ def main(argv: list[str] | None = None) -> int:
         "--profile",
         help="Name of the scan profile to use (requires backend config access).",
     )
+    parser.add_argument(
+        "--analyze",
+        action="store_true",
+        help="Run static code analysis (complexity, maintainability, security).",
+    )
     args = parser.parse_args(argv)
 
+    analysis_result = None
     try:
         preferences = load_preferences(args.profile)
         archive_path = ensure_zip(args.archive, preferences=preferences)
@@ -53,6 +60,30 @@ def main(argv: list[str] | None = None) -> int:
             relevant_only=args.relevant_only,
             preferences=preferences,
         )
+        
+        if args.analyze:
+            max_file_mb = 5.0
+            if preferences and preferences.max_file_size_bytes:
+                max_file_mb = preferences.max_file_size_bytes / (1024 * 1024)
+            try:
+                analyzer = CodeAnalyzer(
+                    max_file_mb=max_file_mb,
+                    max_depth=10,
+                    excluded={'node_modules', '.git', '__pycache__', 'venv', '.venv', 'build', 'dist'}
+                    )       
+                    
+                target_path = args.archive if args.archive.is_dir() else args.archive.parent
+                analysis_result = analyzer.analyze_directory(target_path)  
+                        
+            except Exception as e:
+                    print(f"Error occurred during analysis: {e}")
+                    
+                    
+                    
+
+# FIX: Actually run analysis
+        
+        
     except ParserError as exc:
         payload = {"error": exc.code, "message": str(exc)}
         print(json.dumps(payload), file=sys.stderr)
@@ -66,14 +97,19 @@ def main(argv: list[str] | None = None) -> int:
     languages = summarize_languages(result.files) if args.code else []
 
     if args.json:
-        print(json.dumps(_serialize_result(result, languages), indent=2))
+        print(json.dumps(_serialize_result(result, languages,analysis_result), indent=2))
     else:
         for line in render_table(archive_path, result, languages=languages):
             print(line)
+            
+        if args.analyze and analysis_result:
+             target_path = args.archive if args.archive.is_dir() else args.archive.parent
+             display_analysis_results(analysis_result, target_path, show_interactive_prompts=False)
+            
     return 0
 
 
-def _serialize_result(result, languages):
+def _serialize_result(result, languages,analysis=None):
     payload = {
         "summary": dict(result.summary),
         "files": [
@@ -93,6 +129,25 @@ def _serialize_result(result, languages):
     }
     if languages:
         payload["summary"]["languages"] = languages
+    if analysis:
+        payload["analysis"] = {
+            "maintainability": analysis.summary.get('avg_maintainability', 0),
+            "complexity": analysis.summary.get('avg_complexity', 0),
+            "security_issues": analysis.summary.get('security_issues', 0),
+            "todos": analysis.summary.get('todos', 0),
+            "high_priority_files": analysis.summary.get('high_priority_files', 0),
+            "functions_needing_refactor": analysis.summary.get('functions_needing_refactor', 0),
+            "refactor_candidates": [
+                {
+                    "path": f.path,
+                    "maintainability": f.metrics.maintainability_score,
+                    "priority": f.metrics.refactor_priority,
+                    "complexity": f.metrics.complexity,
+                }
+                for f in analysis.get_refactor_candidates(5)
+            ]
+        }
+    
     return payload
 
 

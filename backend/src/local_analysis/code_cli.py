@@ -71,61 +71,25 @@ def get_path_from_user():
                 return None
 
 
-def main():
-    """Main CLI entry point"""
-    # Check if path was provided as command line argument
-    if len(sys.argv) > 1:
-        path_input = sys.argv[1].strip('"').strip("'")
-        path = Path(path_input)
-        
-        if not path.exists():
-            print(f"\n✗ Error: Path not found: {path}")
-            return 1
-    else:
-        # Interactive mode - prompt user
-        path = get_path_from_user()
-        if path is None:
-            return 1
+def display_analysis_results(result, path, show_interactive_prompts=True):
+    """
+    Display analysis results in detailed format
     
-    print(f"\n{'='*80}")
-    print(f"  STARTING ANALYSIS")
-    print(f"{'='*80}\n")
+    Args:
+        result: DirectoryResult or FileResult from analyzer
+        path: Path object of analyzed location
+        show_interactive_prompts: Whether to show "Press Enter" prompts
     
-    print(f"🔍 Target: {path.absolute()}\n")
-    
-    # Initialize analyzer
-    print("⚙️  Initializing analyzer...")
-    try:
-        analyzer = CodeAnalyzer(
-            max_file_mb=5.0,
-            max_depth=10,
-            excluded={'node_modules', '.git', '__pycache__', 'venv', '.venv', 'build', 'dist'}
-        )
-    except ImportError as e:
-        print(f"\n✗ Error: {e}")
-        print("\n💡 Install required packages:")
-        print("   pip install --target=lib tree-sitter tree-sitter-python tree-sitter-javascript tree-sitter-typescript")
-        input("\nPress Enter to exit...")
-        return 1
-    
-    if len(analyzer.parsers) == 0:
-        print("\n⚠️  WARNING: No parsers were initialized!")
-        print("   Run: pip install --target=lib tree-sitter tree-sitter-python tree-sitter-javascript tree-sitter-typescript")
-        input("\nPress Enter to exit...")
-        return 1
-    
-    print(f"   Parsers loaded: {len(analyzer.parsers)} ({', '.join(sorted(analyzer.parsers.keys()))})\n")
-    
-    # Analyze
-    print("📂 Analyzing... (this may take a moment)")
+    Returns:
+        int: Exit code (0 for success, 1 for failure)
+    """
     
     if path.is_file():
-        # Single file analysis
-        result = analyzer.analyze_file(path)
-        
+        # Single file analysis display
         if not result.success:
             print(f"\n✗ Failed to analyze: {result.error}")
-            input("\nPress Enter to exit...")
+            if show_interactive_prompts:
+                input("\nPress Enter to exit...")
             return 1
         
         # Display single file results
@@ -171,10 +135,7 @@ def main():
                 print()
     
     else:
-        # Directory analysis
-        result = analyzer.analyze_directory(path)
-        
-        # Display results
+        # Directory analysis display
         print(f"\n{'='*80}")
         print(f"  ANALYSIS RESULTS")
         print(f"{'='*80}\n")
@@ -347,10 +308,67 @@ def main():
     print(f"{'='*80}\n")
     
     # Wait for user before exiting (only in interactive mode)
-    if len(sys.argv) == 1:
+    if show_interactive_prompts:
         input("Press Enter to exit...")
     
     return 0
+
+
+def main():
+    """Main CLI entry point"""
+    # Check if path was provided as command line argument
+    if len(sys.argv) > 1:
+        path_input = sys.argv[1].strip('"').strip("'")
+        path = Path(path_input)
+        
+        if not path.exists():
+            print(f"\n✗ Error: Path not found: {path}")
+            return 1
+    else:
+        # Interactive mode - prompt user
+        path = get_path_from_user()
+        if path is None:
+            return 1
+    
+    print(f"\n{'='*80}")
+    print(f"  STARTING ANALYSIS")
+    print(f"{'='*80}\n")
+    
+    print(f"🔍 Target: {path.absolute()}\n")
+    
+    # Initialize analyzer
+    print("⚙️  Initializing analyzer...")
+    try:
+        analyzer = CodeAnalyzer(
+            max_file_mb=5.0,
+            max_depth=10,
+            excluded={'node_modules', '.git', '__pycache__', 'venv', '.venv', 'build', 'dist'}
+        )
+    except ImportError as e:
+        print(f"\n✗ Error: {e}")
+        print("\n💡 Install required packages:")
+        print("   pip install --target=lib tree-sitter tree-sitter-python tree-sitter-javascript tree-sitter-typescript")
+        input("\nPress Enter to exit...")
+        return 1
+    
+    if len(analyzer.parsers) == 0:
+        print("\n⚠️  WARNING: No parsers were initialized!")
+        print("   Run: pip install --target=lib tree-sitter tree-sitter-python tree-sitter-javascript tree-sitter-typescript")
+        input("\nPress Enter to exit...")
+        return 1
+    
+    print(f"   Parsers loaded: {len(analyzer.parsers)} ({', '.join(sorted(analyzer.parsers.keys()))})\n")
+    
+    # Analyze
+    print("📂 Analyzing... (this may take a moment)")
+    
+    if path.is_file():
+        result = analyzer.analyze_file(path)
+    else:
+        result = analyzer.analyze_directory(path)
+    
+    # Display results using the extracted function
+    return display_analysis_results(result, path, show_interactive_prompts=(len(sys.argv) == 1))
 
 
 if __name__ == "__main__":
@@ -368,4 +386,3 @@ if __name__ == "__main__":
         if len(sys.argv) == 1:
             input("Press Enter to exit...")
         sys.exit(1)
-        
