@@ -20,7 +20,13 @@ This module provides in-house PDF parsing and summarization capabilities without
 - Configurable summary length
 - Batch processing support
 
----
+### 🎨 Media Analyzer (`media_analyzer.py`)
+
+- Aggregates metadata from images, audio, and video files
+- Computes duration, resolution, bitrate, and aspect-ratio metrics
+- Highlights low-resolution images and short-form media clips
+- Produces deterministic insights usable when LLM analysis is unavailable
+- Accepts `FileMetadata` objects or persisted records with `media_info`
 
 ## Quick Start
 
@@ -210,4 +216,3 @@ This module is designed with privacy in mind:
 For detailed examples, see `example_usage.py`.  
 For CLI commands, see `CLI_REFERENCE.md`.  
 For issues, open an issue in the project repository.
-

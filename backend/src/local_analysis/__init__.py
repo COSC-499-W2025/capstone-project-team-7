@@ -18,6 +18,11 @@ from .pdf_summarizer import (
     create_summarizer
 )
 
+from .media_analyzer import (
+    MediaAnalyzer,
+    MediaAnalyzerConfig,
+)
+
 __all__ = [
     # Parser
     'PDFParser',
@@ -31,6 +36,10 @@ __all__ = [
     'SummaryConfig',
     'DocumentSummary',
     'create_summarizer',
+
+    # Media analyzer
+    'MediaAnalyzer',
+    'MediaAnalyzerConfig',
 ]
 
 __version__ = '1.0.0'
