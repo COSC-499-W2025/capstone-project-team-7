@@ -53,7 +53,6 @@ def import_from_local_analysis(module_name: str):
 
 
 # Now we can use the function to import code_parser
-code_parser = import_from_local_analysis("code_parser")
 from code_parser import CodeAnalyzer
 
 
