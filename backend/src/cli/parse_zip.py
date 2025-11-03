@@ -14,6 +14,7 @@ from ..scanner.models import ScanPreferences
 from ..scanner.parser import parse_zip
 from ..local_analysis.code_parser import CodeAnalyzer
 from ..local_analysis.code_cli import display_analysis_results
+import logging
 
 USER_ID_ENV = "SCAN_USER_ID"
 
@@ -76,7 +77,7 @@ def main(argv: list[str] | None = None) -> int:
                 analysis_result = analyzer.analyze_directory(target_path)  
                         
             except Exception as e:
-                    print(f"Error occurred during analysis: {e}")
+                logging.error("Error occurred during analysis: %s", e)
                     
                     
                     
@@ -130,24 +131,34 @@ def _serialize_result(result, languages,analysis=None):
     if languages:
         payload["summary"]["languages"] = languages
     if analysis:
+        summary = getattr(analysis, 'summary', {})
+        refactor_candidates = [] 
+        try:
+            if hasattr(analysis, 'get_refactor_candidates'):
+                candidates = analysis.get_refactor_candidates(5)
+                if candidates:
+                    refactor_candidates = [
+                        {
+                            "path": f.path,
+                            "maintainability": f.metrics.maintainability_score,
+                            "priority": f.metrics.refactor_priority,
+                            "complexity": f.metrics.complexity,
+                        }
+                        for f in candidates
+                    ]
+        except (AttributeError, TypeError) as e:
+            # Log but don't fail if refactor candidates can't be retrieved
+            logging.warning("Could not retrieve refactor candidates: %s", e)
+        
         payload["analysis"] = {
-            "maintainability": analysis.summary.get('avg_maintainability', 0),
-            "complexity": analysis.summary.get('avg_complexity', 0),
-            "security_issues": analysis.summary.get('security_issues', 0),
-            "todos": analysis.summary.get('todos', 0),
-            "high_priority_files": analysis.summary.get('high_priority_files', 0),
-            "functions_needing_refactor": analysis.summary.get('functions_needing_refactor', 0),
-            "refactor_candidates": [
-                {
-                    "path": f.path,
-                    "maintainability": f.metrics.maintainability_score,
-                    "priority": f.metrics.refactor_priority,
-                    "complexity": f.metrics.complexity,
-                }
-                for f in analysis.get_refactor_candidates(5)
-            ]
+            "maintainability": summary.get('avg_maintainability', 0),
+            "complexity": summary.get('avg_complexity', 0),
+            "security_issues": summary.get('security_issues', 0),
+            "todos": summary.get('todos', 0),
+            "high_priority_files": summary.get('high_priority_files', 0),
+            "functions_needing_refactor": summary.get('functions_needing_refactor', 0),
+            "refactor_candidates": refactor_candidates
         }
-    
     return payload
 
 

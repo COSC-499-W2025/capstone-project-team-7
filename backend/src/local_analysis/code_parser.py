@@ -200,6 +200,14 @@ class Metrics:
     
     @property
     def maintainability_score(self) -> float:
+        # Maintainability score calculation (0-100 scale):
+        # Starts at 100, then subtracts penalties:
+        # - Complexity penalty: min(40, complexity * 2) - up to 40 points
+        # - Comment penalty: max(0, 20 - comment_ratio) - up to 20 points
+        #   where comment_ratio = (comments / (code + comments)) * 100
+        # - Length penalty: min(20, avg_func_length / 5) - up to 20 points
+         # Score is clamped to 0-100 range
+        # Higher scores indicate more maintainable code
         """Simple 0-100 maintainability score"""
         if self.code_lines == 0:
             return 100.0
@@ -214,6 +222,7 @@ class Metrics:
         
         score = 100 - complexity_penalty - comment_penalty - length_penalty
         return max(0, min(100, score))
+    
     
     @property
     def refactor_priority(self) -> str:
