@@ -13,6 +13,9 @@ from .language_stats import summarize_languages
 from ..scanner.errors import ParserError
 from ..scanner.models import ScanPreferences
 from ..scanner.parser import parse_zip
+from ..local_analysis.code_parser import CodeAnalyzer
+from ..local_analysis.code_cli import display_analysis_results
+import logging
 from ..local_analysis.git_repo import analyze_git_repo
 
 
@@ -21,13 +24,79 @@ USER_ID_ENV = "SCAN_USER_ID"
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Parse a project archive or directory.")
+    parser.add_argument(
+        "archive",
+        type=Path,
+        help="Path to a .zip archive or directory to parse.",
+    )
+    parser.add_argument(
+        "--relevant-only",
+        action="store_true",
+        help="Only include files likely to demonstrate meaningful work.",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit the parse result as JSON instead of a formatted table.",
+    )
+    parser.add_argument(
+        "--code",
+        action="store_true",
+        help="Include a language breakdown for the parsed project.",
+    )
+    parser.add_argument(
+        "--profile",
+        help="Name of the scan profile to use (requires backend config access).",
+    )
+    parser.add_argument(
+        "--analyze",
+        action="store_true",
+        help="Run static code analysis (complexity, maintainability, security).",
+    )
     parser.add_argument("archive", type=Path, help="Path to a .zip archive or directory.")
     parser.add_argument("--relevant-only", action="store_true")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--code", action="store_true")
     args = parser.parse_args(argv)
 
+    analysis_result = None
     try:
+        preferences = load_preferences(args.profile)
+        archive_path = ensure_zip(args.archive, preferences=preferences)
+        result = parse_zip(
+            archive_path,
+            relevant_only=args.relevant_only,
+            preferences=preferences,
+        )
+        
+        if args.analyze:
+            max_file_mb = 5.0
+            if preferences and preferences.max_file_size_bytes:
+                max_file_mb = preferences.max_file_size_bytes / (1024 * 1024)
+            try:
+                analyzer = CodeAnalyzer(
+                    max_file_mb=max_file_mb,
+                    max_depth=10,
+                    excluded={'node_modules', '.git', '__pycache__', 'venv', '.venv', 'build', 'dist'}
+                    )       
+                    
+                target_path = args.archive if args.archive.is_dir() else args.archive.parent
+                analysis_result = analyzer.analyze_directory(target_path)  
+                        
+            except Exception as e:
+                logging.error("Error occurred during analysis: %s", e)
+                    
+                    
+                    
+
+# FIX: Actually run analysis
+        
+        
+    except ParserError as exc:
+        payload = {"error": exc.code, "message": str(exc)}
+        print(json.dumps(payload), file=sys.stderr)
+        return 1
+    except ValueError as exc:
         archive_path = ensure_zip(args.archive)
         result = parse_zip(archive_path, relevant_only=args.relevant_only)
         git_repos: list[dict] = []
@@ -54,16 +123,22 @@ def main(argv: list[str] | None = None) -> int:
     languages = summarize_languages(result.files) if args.code else []
 
     if args.json:
+        print(json.dumps(_serialize_result(result, languages,analysis_result), indent=2))
         payload = _serialize_result(result, languages)
         payload["git_repositories"] = git_repos
         print(json.dumps(payload, indent=2))
     else:
         for line in render_table(archive_path, result, languages=languages):
             print(line)
+            
+        if args.analyze and analysis_result:
+             target_path = args.archive if args.archive.is_dir() else args.archive.parent
+             display_analysis_results(analysis_result, target_path, show_interactive_prompts=False)
+            
     return 0
 
 
-def _serialize_result(result, languages):
+def _serialize_result(result, languages,analysis=None):
     payload = {
         "summary": dict(result.summary),
         "files": [
@@ -83,6 +158,35 @@ def _serialize_result(result, languages):
     }
     if languages:
         payload["summary"]["languages"] = languages
+    if analysis:
+        summary = getattr(analysis, 'summary', {})
+        refactor_candidates = [] 
+        try:
+            if hasattr(analysis, 'get_refactor_candidates'):
+                candidates = analysis.get_refactor_candidates(5)
+                if candidates:
+                    refactor_candidates = [
+                        {
+                            "path": f.path,
+                            "maintainability": f.metrics.maintainability_score,
+                            "priority": f.metrics.refactor_priority,
+                            "complexity": f.metrics.complexity,
+                        }
+                        for f in candidates
+                    ]
+        except (AttributeError, TypeError) as e:
+            # Log but don't fail if refactor candidates can't be retrieved
+            logging.warning("Could not retrieve refactor candidates: %s", e)
+        
+        payload["analysis"] = {
+            "maintainability": summary.get('avg_maintainability', 0),
+            "complexity": summary.get('avg_complexity', 0),
+            "security_issues": summary.get('security_issues', 0),
+            "todos": summary.get('todos', 0),
+            "high_priority_files": summary.get('high_priority_files', 0),
+            "functions_needing_refactor": summary.get('functions_needing_refactor', 0),
+            "refactor_candidates": refactor_candidates
+        }
     return payload
 
 
