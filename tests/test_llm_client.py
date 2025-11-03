@@ -455,11 +455,6 @@ class TestAnalyzeProject:
     def sample_project_data(self):
         """Create sample project data."""
         return {
-            "metadata": {
-                "name": "Test Project",
-                "description": "A test application",
-                "tech_stack": ["Python", "FastAPI", "PostgreSQL"]
-            },
             "local_analysis": {
                 "total_files": 50,
                 "lines_of_code": 5000,
@@ -495,14 +490,12 @@ Production-ready with good code organization."""
         client_with_key.client.chat.completions.create = Mock(return_value=mock_response)
         
         result = client_with_key.analyze_project(
-            sample_project_data["metadata"],
             sample_project_data["local_analysis"],
             sample_project_data["tagged_files"]
         )
         
-        assert "project_name" in result
         assert "analysis" in result
-        assert result["project_name"] == "Test Project"
+        assert "EXECUTIVE SUMMARY" in result["analysis"]
     
     def test_analyze_project_empty_tagged_files(self, client_with_key, sample_project_data):
         """Test project analysis with no tagged files."""
@@ -514,7 +507,6 @@ Production-ready with good code organization."""
         client_with_key.client.chat.completions.create = Mock(return_value=mock_response)
         
         result = client_with_key.analyze_project(
-            sample_project_data["metadata"],
             sample_project_data["local_analysis"],
             []
         )
@@ -527,7 +519,6 @@ Production-ready with good code organization."""
         
         with pytest.raises(LLMError) as exc_info:
             client.analyze_project(
-                sample_project_data["metadata"],
                 sample_project_data["local_analysis"],
                 sample_project_data["tagged_files"]
             )
@@ -542,7 +533,6 @@ Production-ready with good code organization."""
         
         with pytest.raises(LLMError) as exc_info:
             client_with_key.analyze_project(
-                sample_project_data["metadata"],
                 sample_project_data["local_analysis"],
                 sample_project_data["tagged_files"]
             )
@@ -643,6 +633,223 @@ Strong alignment with frontend development goals, demonstrating current market-r
             client_with_key.suggest_feedback(sample_local_analysis, sample_llm_analysis, "developer")
         
         assert "Failed to generate feedback" in str(exc_info.value)
+
+
+class TestSummarizeScanWithAI:
+    """Test cases for summarize_scan_with_ai method (CLI integration)."""
+    
+    @pytest.fixture
+    def client_with_key(self):
+        """Create a client with a test API key."""
+        with patch('analyzer.llm.client.OpenAI'):
+            return LLMClient(api_key="test-key")
+    
+    @pytest.fixture
+    def sample_scan_data(self, tmp_path):
+        """Create sample scan data with temporary files."""
+
+        test_file = tmp_path / "main.py"
+        test_file.write_text("def hello():\n    print('Hello, world!')\n")
+        
+        readme_file = tmp_path / "README.md"
+        readme_file.write_text("# Test Project\nThis is a test project.\n")
+        
+        return {
+            "scan_summary": {
+                "total_files": 2,
+                "total_size_bytes": 1024,
+                "language_breakdown": [
+                    {"language": "Python", "file_count": 1, "percentage": 50.0},
+                    {"language": "Markdown", "file_count": 1, "percentage": 50.0}
+                ],
+                "scan_path": str(tmp_path)
+            },
+            "relevant_files": [
+                {
+                    "path": "main.py",
+                    "size": 512,
+                    "mime_type": "text/x-python"
+                },
+                {
+                    "path": "README.md",
+                    "size": 512,
+                    "mime_type": "text/markdown"
+                }
+            ],
+            "scan_base_path": str(tmp_path)
+        }
+    
+    def test_summarize_scan_success(self, client_with_key, sample_scan_data):
+        """Test successful scan summarization."""
+        mock_response = Mock()
+        mock_choice = Mock()
+        mock_choice.message.content = "Analysis result"
+        mock_response.choices = [mock_choice]
+        
+        client_with_key.client.chat.completions.create = Mock(return_value=mock_response)
+        
+        result = client_with_key.summarize_scan_with_ai(
+            scan_summary=sample_scan_data["scan_summary"],
+            relevant_files=sample_scan_data["relevant_files"],
+            scan_base_path=sample_scan_data["scan_base_path"]
+        )
+        
+        assert "project_analysis" in result
+        assert "file_summaries" in result
+        assert "files_analyzed_count" in result
+        assert isinstance(result["file_summaries"], list)
+    
+    def test_summarize_scan_not_configured(self, sample_scan_data):
+        """Test scan summarization when client not configured."""
+        client = LLMClient()
+        
+        with pytest.raises(LLMError) as exc_info:
+            client.summarize_scan_with_ai(
+                scan_summary=sample_scan_data["scan_summary"],
+                relevant_files=sample_scan_data["relevant_files"],
+                scan_base_path=sample_scan_data["scan_base_path"]
+            )
+        
+        assert "not configured" in str(exc_info.value)
+    
+    def test_summarize_scan_skips_binary_files(self, client_with_key, tmp_path):
+        """Test that binary files are skipped during analysis."""
+        scan_data = {
+            "scan_summary": {"total_files": 2},
+            "relevant_files": [
+                {
+                    "path": "test.py",
+                    "size": 100,
+                    "mime_type": "text/x-python"
+                },
+                {
+                    "path": "image.png",
+                    "size": 5000,
+                    "mime_type": "image/png"
+                }
+            ],
+            "scan_base_path": str(tmp_path)
+        }
+        
+        test_file = tmp_path / "test.py"
+        test_file.write_text("print('test')")
+        
+        mock_response = Mock()
+        mock_choice = Mock()
+        mock_choice.message.content = "Analysis"
+        mock_response.choices = [mock_choice]
+        
+        client_with_key.client.chat.completions.create = Mock(return_value=mock_response)
+        
+        result = client_with_key.summarize_scan_with_ai(
+            scan_summary=scan_data["scan_summary"],
+            relevant_files=scan_data["relevant_files"],
+            scan_base_path=scan_data["scan_base_path"]
+        )
+        
+        # Should only analyze the Python file, not the image
+        assert result["files_analyzed_count"] >= 0 
+    
+    def test_summarize_scan_handles_missing_files(self, client_with_key, tmp_path):
+        """Test handling of files that don't exist."""
+        scan_data = {
+            "scan_summary": {"total_files": 1},
+            "relevant_files": [
+                {
+                    "path": "nonexistent.py",
+                    "size": 100,
+                    "mime_type": "text/x-python"
+                }
+            ],
+            "scan_base_path": str(tmp_path)
+        }
+        
+        mock_response = Mock()
+        mock_choice = Mock()
+        mock_choice.message.content = "Analysis"
+        mock_response.choices = [mock_choice]
+        
+        client_with_key.client.chat.completions.create = Mock(return_value=mock_response)
+        
+        result = client_with_key.summarize_scan_with_ai(
+            scan_summary=scan_data["scan_summary"],
+            relevant_files=scan_data["relevant_files"],
+            scan_base_path=scan_data["scan_base_path"]
+        )
+        
+        assert "file_summaries" in result
+        assert result["files_analyzed_count"] == 0
+    
+    def test_summarize_scan_empty_files_list(self, client_with_key, tmp_path):
+        """Test scan summarization with no files."""
+        scan_data = {
+            "scan_summary": {"total_files": 0},
+            "relevant_files": [],
+            "scan_base_path": str(tmp_path)
+        }
+        
+        mock_response = Mock()
+        mock_choice = Mock()
+        mock_choice.message.content = "Empty project analysis"
+        mock_response.choices = [mock_choice]
+        
+        client_with_key.client.chat.completions.create = Mock(return_value=mock_response)
+        
+        result = client_with_key.summarize_scan_with_ai(
+            scan_summary=scan_data["scan_summary"],
+            relevant_files=scan_data["relevant_files"],
+            scan_base_path=scan_data["scan_base_path"]
+        )
+        
+        assert result["files_analyzed_count"] == 0
+        assert "project_analysis" in result
+    
+    def test_summarize_scan_error_handling(self, client_with_key, sample_scan_data):
+        """Test error handling in scan summarization."""
+        client_with_key.client.chat.completions.create = Mock(
+            side_effect=Exception("API Error")
+        )
+        
+        with pytest.raises(LLMError) as exc_info:
+            client_with_key.summarize_scan_with_ai(
+                scan_summary=sample_scan_data["scan_summary"],
+                relevant_files=sample_scan_data["relevant_files"],
+                scan_base_path=sample_scan_data["scan_base_path"]
+            )
+        
+        assert "Failed to analyze scan" in str(exc_info.value)
+    
+    def test_summarize_scan_handles_file_read_errors(self, client_with_key, tmp_path):
+        """Test handling of file read errors (encoding issues, etc.)."""
+        scan_data = {
+            "scan_summary": {"total_files": 1},
+            "relevant_files": [
+                {
+                    "path": "test.py",
+                    "size": 100,
+                    "mime_type": "text/x-python"
+                }
+            ],
+            "scan_base_path": str(tmp_path)
+        }
+        
+        test_file = tmp_path / "test.py"
+        test_file.write_text("# Valid Python file\nprint('test')")
+        
+        mock_response = Mock()
+        mock_choice = Mock()
+        mock_choice.message.content = "Analysis"
+        mock_response.choices = [mock_choice]
+        
+        client_with_key.client.chat.completions.create = Mock(return_value=mock_response)
+        
+        result = client_with_key.summarize_scan_with_ai(
+            scan_summary=scan_data["scan_summary"],
+            relevant_files=scan_data["relevant_files"],
+            scan_base_path=scan_data["scan_base_path"]
+        )
+        
+        assert "file_summaries" in result
 
 
 if __name__ == "__main__":

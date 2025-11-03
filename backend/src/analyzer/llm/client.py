@@ -81,10 +81,19 @@ class LLMClient:
             
         except openai.AuthenticationError as e:
             self.logger.error(f"Authentication failed: {e}")
-            raise InvalidAPIKeyError("Invalid API key")
+            raise InvalidAPIKeyError("Invalid API key. Please verify your OpenAI API key is correct.")
+        except openai.RateLimitError as e:
+            self.logger.error(f"Rate limit during verification: {e}")
+            raise LLMError(f"Rate limit exceeded. Please check your API quota and try again: {str(e)}")
+        except openai.APIConnectionError as e:
+            self.logger.error(f"Connection error during verification: {e}")
+            raise LLMError(f"Connection error. Please check your internet connection and try again: {str(e)}")
+        except openai.Timeout as e:
+            self.logger.error(f"Timeout during verification: {e}")
+            raise LLMError(f"Request timed out. Please check your internet connection and try again: {str(e)}")
         except openai.APIError as e:
             self.logger.error(f"API error during verification: {e}")
-            raise LLMError(f"API error: {str(e)}")
+            raise LLMError(f"OpenAI API error. The service may be temporarily unavailable. Please try again later: {str(e)}")
         except Exception as e:
             self.logger.error(f"Unexpected error during verification: {e}")
             raise LLMError(f"Verification failed: {str(e)}")
@@ -150,9 +159,15 @@ class LLMClient:
             raise LLMError("Empty response from API")
             
         except openai.AuthenticationError as e:
-            raise InvalidAPIKeyError("Invalid API key")
+            raise InvalidAPIKeyError("Invalid API key. Please verify your OpenAI API key is correct.")
+        except openai.RateLimitError as e:
+            raise LLMError(f"Rate limit exceeded. Please wait a moment and try again, or check your API quota: {str(e)}")
+        except openai.APIConnectionError as e:
+            raise LLMError(f"Connection error. Please check your internet connection and try again: {str(e)}")
+        except openai.Timeout as e:
+            raise LLMError(f"Request timed out. Please check your internet connection and try again: {str(e)}")
         except openai.APIError as e:
-            raise LLMError(f"API error: {str(e)}")
+            raise LLMError(f"OpenAI API error. The service may be temporarily unavailable. Please try again later: {str(e)}")
         except Exception as e:
             raise LLMError(f"LLM call failed: {str(e)}")
     
@@ -290,23 +305,18 @@ class LLMClient:
             self.logger.error(f"Failed to summarize tagged file: {e}")
             raise LLMError(f"File summarization failed: {str(e)}")
     
-    def analyze_project(self, project_metadata: Dict[str, Any], 
-                       local_analysis: Dict[str, Any],
+    def analyze_project(self, local_analysis: Dict[str, Any],
                        tagged_files_summaries: List[Dict[str, str]]) -> Dict[str, str]:
         """
         Generate a comprehensive, resume-friendly project report.
         
         Args:
-            project_metadata: Dict with name, description, dates, tech_stack
             local_analysis: Dict with stats, metrics, file_counts
             tagged_files_summaries: List of summaries from summarize_tagged_file()
             
         Returns:
-            Formatted text output containing:
-                - executive_summary: 2-3 sentence overview
-                - technical_highlights: Key features and capabilities
-                - technologies_used: Tech stack summary
-                - project_quality: Quality assessment
+            Dict containing:
+                - analysis result: Formatted output text
                 
         Raises:
             LLMError: If analysis fails
@@ -321,10 +331,6 @@ class LLMClient:
             ])
             
             prompt = f"""You are analyzing a software project to create a professional, resume-worthy report.
-
-            PROJECT METADATA:
-            Name: {project_metadata.get('name', 'Unknown')}
-            Description: {project_metadata.get('description', 'N/A')}
 
             LOCAL ANALYSIS RESULTS:
             {local_analysis}
@@ -350,7 +356,6 @@ class LLMClient:
             response = self._make_llm_call(messages, max_tokens=800, temperature=0.7)
             
             return {
-                "project_name": project_metadata.get('name', 'Unknown'),
                 "analysis": response
             }
             
@@ -419,3 +424,96 @@ class LLMClient:
         except Exception as e:
             self.logger.error(f"Feedback generation failed: {e}")
             raise LLMError(f"Failed to generate feedback: {str(e)}")
+    
+    def summarize_scan_with_ai(self, scan_summary: Dict[str, Any], 
+                               relevant_files: List[Dict[str, Any]],
+                               scan_base_path: str,
+                               max_file_size_mb: int = 10) -> Dict[str, Any]:
+        """
+        Comprehensive AI analysis workflow for CLI integration.
+        
+        Args:
+            scan_summary: Dict with file_count, total_size, language_breakdown, etc.
+            relevant_files: List of file metadata dicts (path, size, mime_type, etc.)
+            scan_base_path: Base path where original files are located for reading content
+            max_file_size_mb: Maximum file size in MB to process (default: 10MB)
+            
+        Returns:
+            Dict containing:
+                - project_analysis: Result from analyze_project()
+                - file_summaries: List of results from summarize_tagged_file()
+                - summary_text: Combined formatted output for display
+                - skipped_files: List of files skipped due to size limits
+                
+        Raises:
+            LLMError: If analysis fails
+        """
+        if not self.is_configured():
+            raise LLMError("LLM client is not configured")
+        
+        try:
+            self.logger.info("Starting LLM analysis")
+            
+            max_file_size_bytes = max_file_size_mb * 1024 * 1024
+            file_summaries = []
+            skipped_files = []
+            
+            for file_meta in relevant_files:
+                file_path = file_meta.get('path', '')
+                if not file_path:
+                    continue
+
+                from pathlib import Path
+                full_path = Path(scan_base_path) / file_path
+
+                if full_path.exists() and full_path.is_file():
+                    file_size = full_path.stat().st_size
+                    if file_size > max_file_size_bytes:
+                        self.logger.warning(f"Skipping large file ({file_size / (1024*1024):.2f}MB): {file_path}")
+                        skipped_files.append({
+                            'path': file_path,
+                            'size_mb': file_size / (1024 * 1024),
+                            'reason': f'Exceeds maximum file size limit of {max_file_size_mb}MB'
+                        })
+                        continue
+
+                mime_type = file_meta.get('mime_type', '')
+                if not (mime_type.startswith('text/') or 
+                       mime_type in ['application/json', 'application/xml', 'application/javascript']):
+                    self.logger.info(f"Skipping non-text file: {file_path}")
+                    continue
+                
+                try:
+                    if full_path.exists() and full_path.is_file():
+                        content = full_path.read_text(encoding='utf-8', errors='ignore')
+                        file_type = full_path.suffix or 'unknown'
+                        
+                        summary_result = self.summarize_tagged_file(file_path, content, file_type)
+                        file_summaries.append(summary_result)
+                        self.logger.info(f"Summarized: {file_path}")
+                    else:
+                        self.logger.warning(f"File not found: {full_path}")
+                except Exception as e:
+                    self.logger.error(f"Error reading/summarizing {file_path}: {e}")
+                    continue
+            
+            project_analysis = self.analyze_project(
+                local_analysis=scan_summary,
+                tagged_files_summaries=file_summaries
+            )
+            
+            result = {
+                "project_analysis": project_analysis,
+                "file_summaries": file_summaries,
+                "files_analyzed_count": len(file_summaries)
+            }
+            
+            if skipped_files:
+                result["skipped_files"] = skipped_files
+                self.logger.info(f"Skipped {len(skipped_files)} files due to size limits")
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Scan AI analysis failed: {e}")
+            raise LLMError(f"Failed to analyze scan: {str(e)}")
