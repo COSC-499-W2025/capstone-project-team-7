@@ -9,8 +9,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 BACKEND_ROOT = PROJECT_ROOT / "backend"
 LOCAL_ANALYSIS_DIR = BACKEND_ROOT / "src" / "local_analysis"
 
+# Add both backend and local-analysis to sys.path
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
+
+if str(LOCAL_ANALYSIS_DIR) not in sys.path:
+    sys.path.insert(0, str(LOCAL_ANALYSIS_DIR))
 
 
 @pytest.fixture(scope="session")

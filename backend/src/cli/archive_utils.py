@@ -3,6 +3,9 @@ from __future__ import annotations
 import os
 import zipfile
 from pathlib import Path
+from typing import Set
+
+from ..scanner.models import ScanPreferences
 
 _ZIP_EXCLUDE_DIRS = {
     ".git",
@@ -23,7 +26,14 @@ _ZIP_EXCLUDE_DIRS = {
 _ZIP_EXCLUDE_FILES = {".DS_Store"}
 
 
-def ensure_zip(target: Path) -> Path:
+def _derive_excluded_dirs(preferences: ScanPreferences | None) -> Set[str]:
+    if preferences and preferences.excluded_dirs is not None:
+        # Treat user configuration as authoritative; always keep tmp archive cache out.
+        return set(preferences.excluded_dirs) | {".tmp_archives"}
+    return set(_ZIP_EXCLUDE_DIRS)
+
+
+def ensure_zip(target: Path, *, preferences: ScanPreferences | None = None) -> Path:
     """Return a zip path, archiving directories into .tmp_archives/ when needed."""
     resolved = target.expanduser().resolve()
     if resolved.suffix.lower() == ".zip" and resolved.is_file():
@@ -42,6 +52,13 @@ def ensure_zip(target: Path) -> Path:
     if archive_path.exists():
         archive_path.unlink()
 
+    exclude_dirs = _derive_excluded_dirs(preferences)
+    follow_symlinks = (
+        preferences.follow_symlinks
+        if preferences and preferences.follow_symlinks is not None
+        else False
+    )
+
     # Allow ZIP64 so large archives (e.g., screenshots/binaries) do not overflow.
     with zipfile.ZipFile(
         archive_path,
@@ -50,9 +67,9 @@ def ensure_zip(target: Path) -> Path:
         allowZip64=True,
     ) as zf:
         root_name = resolved.name
-        for current_root, dirs, files in os.walk(resolved):
+        for current_root, dirs, files in os.walk(resolved, followlinks=follow_symlinks):
             # Prune heavyweight or user-specific directories before we descend.
-            dirs[:] = [d for d in dirs if d not in _ZIP_EXCLUDE_DIRS]
+            dirs[:] = [d for d in dirs if d not in exclude_dirs]
             current_path = Path(current_root)
             rel_dir = current_path.relative_to(resolved)
             for filename in files:
