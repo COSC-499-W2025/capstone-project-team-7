@@ -5,6 +5,7 @@ import json
 import os
 import sys
 from pathlib import Path
+import os
 
 from .archive_utils import ensure_zip
 from .display import render_table
@@ -15,6 +16,8 @@ from ..scanner.parser import parse_zip
 from ..local_analysis.code_parser import CodeAnalyzer
 from ..local_analysis.code_cli import display_analysis_results
 import logging
+from ..local_analysis.git_repo import analyze_git_repo
+
 
 USER_ID_ENV = "SCAN_USER_ID"
 
@@ -50,6 +53,10 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Run static code analysis (complexity, maintainability, security).",
     )
+    parser.add_argument("archive", type=Path, help="Path to a .zip archive or directory.")
+    parser.add_argument("--relevant-only", action="store_true")
+    parser.add_argument("--json", action="store_true")
+    parser.add_argument("--code", action="store_true")
     args = parser.parse_args(argv)
 
     analysis_result = None
@@ -90,15 +97,36 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(payload), file=sys.stderr)
         return 1
     except ValueError as exc:
+        archive_path = ensure_zip(args.archive)
+        result = parse_zip(archive_path, relevant_only=args.relevant_only)
+        git_repos: list[dict] = []
+
+        def _scan_for_git(root: Path):
+            if not root.exists():
+                return
+            for dirpath, dirnames, _ in os.walk(root):
+                if ".git" in dirnames:
+                    git_repos.append(analyze_git_repo(dirpath))
+
+        # always scan the ensured path
+        _scan_for_git(archive_path)
+
+        # [2025-11-02] avoid redundant scan if ensure_zip returned same path
+        if archive_path.resolve() != args.archive.resolve():
+            _scan_for_git(args.archive)
+
+    except (ParserError, ValueError) as exc:
         payload = {"error": "INVALID_INPUT", "message": str(exc)}
         print(json.dumps(payload), file=sys.stderr)
         return 1
 
-    # Build the optional language breakdown only when requested to keep baseline runs fast.
     languages = summarize_languages(result.files) if args.code else []
 
     if args.json:
         print(json.dumps(_serialize_result(result, languages,analysis_result), indent=2))
+        payload = _serialize_result(result, languages)
+        payload["git_repositories"] = git_repos
+        print(json.dumps(payload, indent=2))
     else:
         for line in render_table(archive_path, result, languages=languages):
             print(line)
