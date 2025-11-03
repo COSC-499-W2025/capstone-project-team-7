@@ -2,33 +2,38 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List
+import sys
+from typing import Dict, List, Optional
+
+from .media_types import MediaMetadata
+_DATACLASS_KWARGS = {"slots": True} if sys.version_info >= (3, 10) else {}
 
 
-@dataclass(slots=True)
+@dataclass(**_DATACLASS_KWARGS)
 class FileMetadata:
     path: str
     size_bytes: int
     mime_type: str
     created_at: datetime
     modified_at: datetime
+    media_info: Optional[MediaMetadata] = None
 
 
-@dataclass(slots=True)
+@dataclass(**_DATACLASS_KWARGS)
 class ParseIssue:
     path: str
     code: str
     message: str
 
 
-@dataclass(slots=True)
+@dataclass(**_DATACLASS_KWARGS)
 class ParseResult:
     files: List[FileMetadata] = field(default_factory=list)
     issues: List[ParseIssue] = field(default_factory=list)
     summary: Dict[str, int] = field(default_factory=dict)
 
 
-@dataclass(slots=True)
+@dataclass(**_DATACLASS_KWARGS)
 class ScanPreferences:
     """
     User-driven scanning options that override the parser defaults.

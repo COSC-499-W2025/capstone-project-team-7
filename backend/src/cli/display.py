@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable, Mapping
 
 from ..scanner.models import ParseResult
 
@@ -95,14 +95,29 @@ def render_table(
     summary = result.summary
     processed = summary.get("bytes_processed", 0)
     filtered = summary.get("filtered_out")
-    extra = f", filtered_out={filtered}" if filtered is not None else ""
-    lines.append(
-        "Summary: "
-        f"files_processed={summary.get('files_processed', len(result.files))}, "
-        f"bytes_processed={processed} ({format_bytes(processed)}), "
-        f"issues_count={summary.get('issues_count', len(result.issues))}"
-        f"{extra}"
-    )
+    parts = [
+        f"files_processed={summary.get('files_processed', len(result.files))}",
+        f"bytes_processed={processed} ({format_bytes(processed)})",
+        f"issues_count={summary.get('issues_count', len(result.issues))}",
+    ]
+    if filtered is not None:
+        parts.append(f"filtered_out={filtered}")
+    media_processed = summary.get("media_files_processed")
+    if media_processed is not None:
+        parts.append(f"media_files_processed={media_processed}")
+    media_metadata_errors = summary.get("media_metadata_errors")
+    if media_metadata_errors is not None:
+        parts.append(f"media_metadata_errors={media_metadata_errors}")
+    media_read_errors = summary.get("media_read_errors")
+    if media_read_errors is not None:
+        parts.append(f"media_read_errors={media_read_errors}")
+    lines.append("Summary: " + ", ".join(parts))
+
+    media_details = [meta for meta in result.files if meta.media_info]
+    if media_details:
+        lines.append("Media metadata:")
+        for meta in media_details:
+            lines.append(f"{meta.path}: {format_media_summary(meta.media_info)}")
 
     if languages:
         table = render_language_table(languages)
@@ -110,3 +125,40 @@ def render_table(
             lines.append("Language breakdown:")
             lines.append(table)
     return lines
+
+
+def format_media_summary(media_info: Mapping[str, Any] | None) -> str:
+    """Provide a human-readable description of media metadata."""
+    if not media_info:
+        return "metadata unavailable"
+
+    if "width" in media_info and "height" in media_info:
+        extras: list[str] = []
+        if media_info.get("mode"):
+            extras.append(f"mode={media_info['mode']}")
+        if media_info.get("format"):
+            extras.append(f"format={media_info['format']}")
+        if media_info.get("dpi"):
+            extras.append(f"dpi={media_info['dpi']}")
+        details = ", ".join(extras) if extras else ""
+        suffix = f" ({details})" if details else ""
+        return f"image {media_info['width']}x{media_info['height']} px{suffix}"
+
+    if "duration_seconds" in media_info:
+        details: list[str] = []
+        duration = media_info.get("duration_seconds")
+        if duration is not None:
+            details.append(f"duration={duration}s")
+        if media_info.get("sample_rate"):
+            details.append(f"sample_rate={media_info['sample_rate']} Hz")
+        if media_info.get("channels"):
+            details.append(f"channels={media_info['channels']}")
+        if media_info.get("bitrate"):
+            details.append(f"bitrate={media_info['bitrate']} bps")
+        if media_info.get("sample_width"):
+            details.append(f"sample_width={media_info['sample_width']} bytes")
+        return ", ".join(details) if details else "duration unavailable"
+
+    # Fallback formatting for unexpected metadata shapes.
+    pairs = [f"{key}={value}" for key, value in sorted(media_info.items())]
+    return ", ".join(pairs) if pairs else "metadata unavailable"
