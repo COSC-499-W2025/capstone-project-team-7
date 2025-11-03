@@ -11,3 +11,6 @@ tiktoken==0.5.2
 pypdf
 Pillow
 mutagen
+questionary
+rich
+python-docx

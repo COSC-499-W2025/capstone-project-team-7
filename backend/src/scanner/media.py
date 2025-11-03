@@ -3,8 +3,11 @@ from __future__ import annotations
 import contextlib
 import io
 import wave
+import logging
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from typing import Optional, Tuple
+
+from .media_types import AudioMetadata, ImageMetadata, MediaMetadata, VideoMetadata
 
 # Optional imports – downstream code handles None gracefully when dependencies are missing.
 try:
@@ -20,9 +23,13 @@ except ImportError:  # pragma: no cover - exercised in dependency missing enviro
 
 @dataclass(frozen=True)
 class MediaExtractionResult:
-    """Container for extracted media metadata and optional warning message."""
+    """Container for extracted media metadata and optional warning message.
 
-    metadata: Optional[Dict[str, Any]]
+    The `metadata` payload conforms to the typed dictionaries defined in
+    `scanner.media_types` to describe images, audio, or video files.
+    """
+
+    metadata: Optional[MediaMetadata]
     error: Optional[str] = None
 
 
@@ -30,6 +37,8 @@ class MediaExtractionResult:
 IMAGE_EXTENSIONS: Tuple[str, ...] = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".webp")
 AUDIO_EXTENSIONS: Tuple[str, ...] = (".mp3", ".wav", ".flac", ".aac", ".m4a", ".ogg")
 VIDEO_EXTENSIONS: Tuple[str, ...] = (".mp4", ".m4v", ".mov", ".avi", ".mkv", ".webm")
+
+logger = logging.getLogger(__name__)
 
 
 def is_media_candidate(path: str) -> bool:
@@ -68,14 +77,28 @@ def _extract_image_metadata(data: bytes) -> MediaExtractionResult:
     try:
         with Image.open(io.BytesIO(data)) as image:
             image.load()  # Force actual decoding to populate size, etc.
-            metadata: Dict[str, Any] = {
-                "width": image.width,
-                "height": image.height,
+            width = int(image.width)
+            height = int(image.height)
+            if width <= 0 or height <= 0:
+                return MediaExtractionResult(
+                    metadata=None,
+                    error=f"Invalid image dimensions width={width}, height={height}",
+                )
+            metadata: ImageMetadata = {
+                "width": width,
+                "height": height,
                 "mode": image.mode,
                 "format": image.format,
             }
             if "dpi" in image.info:
                 metadata["dpi"] = image.info["dpi"]
+            logger.debug(
+                "Extracted image metadata: width=%s height=%s mode=%s format=%s",
+                metadata["width"],
+                metadata["height"],
+                metadata.get("mode"),
+                metadata.get("format"),
+            )
             return MediaExtractionResult(metadata=metadata)
     except Exception as exc:  # pragma: no cover - PIL specific failures
         return MediaExtractionResult(metadata=None, error=f"Failed to extract image metadata: {exc}")
@@ -101,7 +124,7 @@ def _extract_audio_metadata(
         return MediaExtractionResult(metadata=None, error="Unrecognized audio format")
 
     info = audio.info
-    metadata: Dict[str, Any] = {}
+    metadata: AudioMetadata = {}
 
     duration = getattr(info, "length", None)
     if duration is not None:
@@ -119,6 +142,14 @@ def _extract_audio_metadata(
     if channels:
         metadata["channels"] = int(channels)
 
+    if metadata:
+        logger.debug(
+            "Extracted audio metadata: duration=%s bitrate=%s sample_rate=%s channels=%s",
+            metadata.get("duration_seconds"),
+            metadata.get("bitrate"),
+            metadata.get("sample_rate"),
+            metadata.get("channels"),
+        )
     return MediaExtractionResult(metadata=metadata if metadata else None)
 
 
@@ -130,12 +161,18 @@ def _extract_wav_metadata(data: bytes) -> MediaExtractionResult:
             channels = wav_file.getnchannels()
             sample_width = wav_file.getsampwidth()
             duration = frame_count / framerate if framerate else 0
-            metadata: Dict[str, Any] = {
+            metadata: AudioMetadata = {
                 "duration_seconds": round(duration, 3),
                 "channels": channels,
                 "sample_rate": framerate,
                 "sample_width": sample_width,
             }
+            logger.debug(
+                "Extracted WAV metadata: duration=%s sample_rate=%s channels=%s",
+                metadata["duration_seconds"],
+                metadata["sample_rate"],
+                metadata["channels"],
+            )
             return MediaExtractionResult(metadata=metadata)
     except wave.Error as exc:
         return MediaExtractionResult(metadata=None, error=f"WAV parse error: {exc}")
@@ -158,7 +195,7 @@ def _extract_video_metadata(
         return MediaExtractionResult(metadata=None, error="Unrecognized video format")
 
     info = media.info
-    metadata: Dict[str, Any] = {}
+    metadata: VideoMetadata = {}
 
     duration = getattr(info, "length", None)
     if duration is not None:
@@ -168,4 +205,10 @@ def _extract_video_metadata(
     if bitrate:
         metadata["bitrate"] = int(bitrate)
 
+    if metadata:
+        logger.debug(
+            "Extracted video metadata: duration=%s bitrate=%s",
+            metadata.get("duration_seconds"),
+            metadata.get("bitrate"),
+        )
     return MediaExtractionResult(metadata=metadata if metadata else None)

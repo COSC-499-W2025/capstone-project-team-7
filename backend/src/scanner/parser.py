@@ -7,7 +7,7 @@ import zipfile
 
 from .errors import CorruptArchiveError, UnsupportedArchiveError
 from .media import MediaExtractionResult, extract_media_metadata, is_media_candidate
-from .models import FileMetadata, ParseIssue, ParseResult
+from .models import FileMetadata, ParseIssue, ParseResult, ScanPreferences
 
 
 _EXCLUDED_DIRS = {
@@ -149,6 +149,7 @@ _ALLOWED_MIME_TYPES = {
     "video/webm",
 }
 
+_MAX_MEDIA_BYTES = 20 * 1024 * 1024  # 20 MiB safeguard for media extraction.
 
 def parse_zip(archive_path: Path, *, relevant_only: bool = False) -> ParseResult:
     # Parse the given .zip archive into file metadata and capture parse issues.
@@ -167,6 +168,7 @@ def parse_zip(archive_path: Path, *, relevant_only: bool = False) -> ParseResult
     media_with_metadata = 0
     media_metadata_errors = 0
     media_read_errors = 0
+    media_too_large = 0
 
     try:
         with zipfile.ZipFile(archive) as zf:
@@ -193,6 +195,8 @@ def parse_zip(archive_path: Path, *, relevant_only: bool = False) -> ParseResult
                         media_metadata_errors += 1
                     elif error_code == "MEDIA_READ_ERROR":
                         media_read_errors += 1
+                    elif error_code == "MEDIA_TOO_LARGE":
+                        media_too_large += 1
                 files.append(metadata)
                 total_bytes += metadata.size_bytes
     except zipfile.BadZipFile as exc:
@@ -209,6 +213,8 @@ def parse_zip(archive_path: Path, *, relevant_only: bool = False) -> ParseResult
         summary["media_metadata_errors"] = media_metadata_errors
     if media_read_errors:
         summary["media_read_errors"] = media_read_errors
+    if media_too_large:
+        summary["media_files_too_large"] = media_too_large
     if relevant_only:
         summary["filtered_out"] = filtered_out
     return ParseResult(files=files, issues=issues, summary=summary)
@@ -250,6 +256,19 @@ def _attach_media_metadata(
 
     Returns a tuple tracking whether metadata was extracted and an optional error code for summary metrics.
     """
+    if info.file_size > _MAX_MEDIA_BYTES:
+        issues.append(
+            ParseIssue(
+                path=metadata.path,
+                code="MEDIA_TOO_LARGE",
+                message=(
+                    f"Skipped media metadata extraction; file size "
+                    f"{info.file_size} bytes exceeds {_MAX_MEDIA_BYTES} byte limit."
+                ),
+            )
+        )
+        return False, "MEDIA_TOO_LARGE"
+
     try:
         with archive_zip.open(info) as file_obj:
             payload = file_obj.read()

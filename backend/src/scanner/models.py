@@ -3,8 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
+from .media_types import MediaMetadata
 _DATACLASS_KWARGS = {"slots": True} if sys.version_info >= (3, 10) else {}
 
 
@@ -15,7 +16,7 @@ class FileMetadata:
     mime_type: str
     created_at: datetime
     modified_at: datetime
-    media_info: Optional[Dict[str, Any]] = None
+    media_info: Optional[MediaMetadata] = None
 
 
 @dataclass(**_DATACLASS_KWARGS)
