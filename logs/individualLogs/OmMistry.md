@@ -28,6 +28,8 @@ This week, the focus was on local document analysis for file types beyond PDFs, 
 
 4. **PDF Analyzer Integration Not Yet Merged**: Work completed on `cli-workflow` branch but integration with main codebase pending due to some further conversations with the team regarding the design choices.
 
+![Tasks Completed](./assets/omistry_Week9.png)
+
 
 ## Week 8: October 20 - October 26
 
