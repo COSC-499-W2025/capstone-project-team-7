@@ -1,5 +1,10 @@
 # Joaquin Almora / @joaquinalmora
 
+## Week 9 (October 27th - November 2nd)
+This week I focused on making the CLI fully interactive and connected to the main Supabase workflow. I built a new interface that walks users through login, consent, and scanning preferences, all linked to their Supabase profile so settings load automatically. The CLI now has a clear terminal layout with headers, spinners, and menus, and it keeps users logged in between runs through session persistence. I also added support for user scanning preferences, letting them choose which folders, file types, and size limits to include, and made sure these settings carry through from configuration to the parser. These updates make the CLI easier to use and better integrated with the backend. Everything was tested through automated and manual runs, and next week I plan to explain what is stored in the session file and prepare a short demo showing the full login-to-scan flow.
+
+![Peer Eval](./images/w9peer.png)
+
 ## Week 8 (October 20th - 26th)
 This week I worked on improving the CLI for parsing. I replaced my previous zip shelling with a safe esnure_zip helper that skips files like .venv or node_modules. It also write ZIP64 archives so big asses don't blow up. I refactored so that the CLI has now reusable helpers for the table output display. Added the --relevant-only flag and --code flag. The first one includes only the important files given for a directory, so that in the future the LLM doesn't have to parse through a lot of unnecessary files, and the later one gives the language breakdown for a given project, excluding things like documents and images. It reports per-language file/byte percentages. Everything’s wired through src.cli.parse_zip and scripts/parse_archive.py, and the README documents the new flags with examples. Added tests for the new coverage (language breakdown, auto-zip exclusions), and the updated command passes both manual runs and pytest.
 
