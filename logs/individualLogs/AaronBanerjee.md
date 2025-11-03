@@ -1,5 +1,11 @@
 # Aaron Banerjee (@aaronbanerjee123)
 
+## Week 9: October 27 - November 3
+
+*This week, I worked on integrating local code analysis capabilities into our project parsing system. I created a comprehensive code parser module (code_parser.py) that leverages tree-sitter to analyze code quality across 14+ programming languages including Python, JavaScript, TypeScript, Java, C++, Go, Rust, and more. The parser calculates maintainability scores (0-100 scale) based on complexity penalties, comment ratios, and function length, and identifies refactoring candidates by analyzing cyclomatic complexity, function metrics, and code patterns. I also built an interactive CLI tool (code_cli.py) that provides a user-friendly interface for running code analysis, displaying detailed metrics including security issues, TODOs, complex functions needing refactoring, and overall project health assessments. To integrate this with our existing scanning infrastructure, I refactored the parse_zip.py main CLI to support a new --analyze flag that runs static code analysis alongside normal project parsing. I implemented proper error handling throughout, replacing print statements with Python's logging module and adding comprehensive null/error checks for analysis results serialization. This included defensive programming techniques like safe attribute access with getattr(), method existence checking with hasattr(), and wrapping potentially failing operations in try-except blocks. I also added detailed documentation comments explaining the maintainability score calculation formula, including the specific penalty factors (complexity, comment ratio, and function length) that contribute to the scoring system. These enhancements enable users to get actionable insights on code quality, identify high-priority refactoring targets, and detect potential security issues across their entire codebase.*
+
+<img width="1415" height="752" alt="image" src="https://github.com/user-attachments/assets/46266cc0-8a4d-463b-ba2c-b885f8ae09b4" />
+
 
 
 ## Week 8: October 19 - October 26
