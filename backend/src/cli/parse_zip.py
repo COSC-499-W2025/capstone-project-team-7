@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 import os
@@ -10,8 +11,12 @@ from .archive_utils import ensure_zip
 from .display import render_table
 from .language_stats import summarize_languages
 from ..scanner.errors import ParserError
+from ..scanner.models import ScanPreferences
 from ..scanner.parser import parse_zip
 from ..local_analysis.git_repo import analyze_git_repo
+
+
+USER_ID_ENV = "SCAN_USER_ID"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -79,6 +84,59 @@ def _serialize_result(result, languages):
     if languages:
         payload["summary"]["languages"] = languages
     return payload
+
+
+def load_preferences(profile_name: str | None) -> ScanPreferences | None:
+    """
+    Load scanning preferences for the active user.
+
+    When the environment variable SCAN_USER_ID is unset or configuration
+    cannot be retrieved, the parser falls back to its built-in defaults.
+    """
+    user_id = os.getenv(USER_ID_ENV)
+    if not user_id:
+        return None
+
+    try:
+        manager = _get_config_manager(user_id)
+    except Exception:
+        return None
+
+    target_profile = profile_name or manager.get_current_profile()
+    return _preferences_from_config(manager.config, target_profile)
+
+
+def _preferences_from_config(config: dict, profile_name: str | None) -> ScanPreferences | None:
+    if not config:
+        return None
+
+    scan_profiles = config.get("scan_profiles", {})
+    profile_key = profile_name or config.get("current_profile")
+    profile = scan_profiles.get(profile_key, {})
+
+    extensions = profile.get("extensions") or None
+    if extensions:
+        extensions = [ext.lower() for ext in extensions]
+
+    excluded_dirs = profile.get("exclude_dirs") or None
+    max_file_size_mb = config.get("max_file_size_mb")
+    max_file_size_bytes = (
+        int(max_file_size_mb * 1024 * 1024) if isinstance(max_file_size_mb, (int, float)) else None
+    )
+    follow_symlinks = config.get("follow_symlinks")
+
+    return ScanPreferences(
+        allowed_extensions=extensions,
+        excluded_dirs=excluded_dirs,
+        max_file_size_bytes=max_file_size_bytes,
+        follow_symlinks=follow_symlinks,
+    )
+
+
+def _get_config_manager(user_id: str):
+    from ..config.config_manager import ConfigManager
+
+    return ConfigManager(user_id)
 
 
 if __name__ == "__main__":
