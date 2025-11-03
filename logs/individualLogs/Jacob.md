@@ -1,6 +1,9 @@
 
 # Jacob Damery
 
+## Week 9 October 27th - November 2nd
+This week I worked on the full media analysis flow: the scanner now extracts structured metadata for images, audio, and video; a deterministic MediaAnalyzer rolls it into insights/issues (with tests and docs); and a Rich/Questionary CLI lets teammates explore results interactively. I experimented with a CLIP/Whisper “advanced” layer but parked it because the dependency stack was heavy. Most friction came from polishing the CLI (handling non-TTY prompts, default paths, exit behavior) and keeping everything Python 3.9-compatible
+<img width="720" height="431" alt="Screenshot 2025-11-02 at 7 36 57 PM" src="https://github.com/user-attachments/assets/36d3b3b7-73c6-4bab-b7e2-53aa91b78d5e" />
 
 ## Week 8: October 19 - October 26
 
