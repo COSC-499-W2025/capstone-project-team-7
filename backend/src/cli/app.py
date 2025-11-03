@@ -508,6 +508,12 @@ class CLIApp:
                 )
             
             self.io.write_success(f"Analysis complete! Analyzed {result['files_analyzed_count']} files.")
+            
+            if 'skipped_files' in result and result['skipped_files']:
+                self.io.write_warning(f"Skipped {len(result['skipped_files'])} files due to size limits:")
+                for skipped in result['skipped_files']:
+                    self.io.write(f"  - {skipped['path']} ({skipped['size_mb']:.2f}MB): {skipped['reason']}")
+            
             self.io.write("")
             self._render_ai_analysis_results(result)
             
