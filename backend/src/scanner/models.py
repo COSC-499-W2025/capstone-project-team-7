@@ -33,7 +33,7 @@ class ParseResult:
     summary: Dict[str, int] = field(default_factory=dict)
 
 
-@dataclass(slots=True)
+@dataclass(**_DATACLASS_KWARGS)
 class ScanPreferences:
     """
     User-driven scanning options that override the parser defaults.
