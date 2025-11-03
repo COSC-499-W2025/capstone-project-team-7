@@ -6,7 +6,9 @@ This week we focused on the local analysis for multiple file types such as code 
 
 **Joaquin:**
 
-**Jacob:**
+**Jacob:** Implemented an end‑to‑end media analysis pipeline so our project now surfaces actionable insights for images, audio, and video without calling the LLM: the scanner captures typed media_info, a deterministic MediaAnalyzer rolls those stats into summaries/issues, and a Rich/Questionary CLI mirrors the code analyzer UX so reviewers can explore the data interactively. These changes bring the backend closer to parity with our document analysis stack, giving us consistent local fallbacks and richer outputs for media‑heavy uploads. Next up I plan to expand the image side with deeper analysis (e.g., resolution quality checks, semantic labeling) so the insights go beyond metadata and align with what users expect from visual analysis.
+
+
 
 **Vlad:**
 
