@@ -1,3 +1,17 @@
+# Week 9: October 27 - November 2
+
+This week, I developed and integrated the Git parsing module into our project analysis system. The module enables the CLI to extract and process repository level data, including commit history, contributor activity, and file change metadata, directly from local or remote Git repositories.
+
+To ensure seamless integration, I implemented structured parsing logic that transforms raw Git data into standardized JSON outputs compatible with our Supabase ingestion pipeline. The parser captures detailed commit attributes—such as author, timestamp, message length, and modification counts—allowing downstream modules to perform trend and ownership analysis in future releases.
+
+I focused on maintaining performance and reliability by testing the parser against repositories with varied branching structures, large histories, and detached HEAD states. I also added robust error handling to manage invalid paths, missing .git directories, and permission issues gracefully.
+
+In parallel, I contributed to the CLI workflow integration, introducing a new command flag that lets users trigger Git analysis alongside other project scans. I worked closely with teammates to align the data schema between the Git module, code analyzer, and document/media parsers, ensuring cross-module compatibility within our backend and analytics layers.
+
+Next week, I plan to extend the parser to support pull request metrics, branch-level comparisons, and commit frequency analytics to enhance repository insights and team contribution tracking.
+
+<img width="1099" height="643" alt="Screenshot 2025-11-02 at 11 30 39 PM" src="https://github.com/user-attachments/assets/341a9b5f-03d6-481e-adab-6a3e49b05167" />
+
 # Week 8: October 20 - October 26
 
 This week I focused on integrating Supabase authentication and consent management directly into our command line interface as part of issue #86. I extended the existing auth_cli.py to support secure sign up, log in, and access token generation through terminal commands, allowing developers to authenticate and interact with the Supabase backend entirely through the CLI.
