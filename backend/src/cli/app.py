@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import json
+import os
 from pathlib import Path
 from dataclasses import dataclass
 from datetime import datetime
@@ -21,6 +22,7 @@ from ..scanner.errors import ParserError
 from ..cli.language_stats import summarize_languages
 from ..cli.display import render_table
 from contextlib import contextmanager
+from ..local_analysis.git_repo import analyze_git_repo
 
 try:
     from rich.console import Console
@@ -184,6 +186,8 @@ class CLIApp:
         self._llm_api_key: Optional[str] = None  
         self._options = self._build_menu()
         self._load_session()
+        self._last_git_repos: List[Path] = []
+        self._last_git_analysis: List[dict] = []
 
     def run(self) -> None:
         """Main event loop. Renders the menu until the user exits."""
@@ -253,8 +257,7 @@ class CLIApp:
             MenuOption(lambda app: MENU_EXIT, CLIApp._handle_exit),
         ]
 
-    # Placeholder handlers. They will be replaced with real implementations
-    # during subsequent checkpoints.
+    # Placeholder handlers. They will be replaced with real implementations during subsequent checkpoints.
     def _handle_login(self) -> None:
         if self.session:
             choice = self.io.choose(
@@ -374,6 +377,8 @@ class CLIApp:
             return
         relevant_only = relevant_choice == 0
 
+        self._last_git_repos = []
+        self._last_git_analysis = []
         try:
             with self.io.status("Scanning project ..."):
                 archive = self._ensure_zip(target, preferences=preferences)
@@ -391,29 +396,34 @@ class CLIApp:
 
         self._last_scan_path = target
         self._last_parse_result = parse_result
+        self._last_git_repos = self._detect_git_repositories(target)
 
         languages = self._summarize_languages(parse_result.files)
         self._render_scan_summary(parse_result, relevant_only)
         self.io.write_success("Scan completed successfully.")
 
         while True:
-            choice = self.io.choose(
-                "Scan results:",
-                [
-                    "View file list",
-                    "View language breakdown",
-                    "Export JSON report",
-                    "Back",
-                ],
-            )
-            if choice is None or choice == 3:
+            actions = [
+                ("View file list", lambda: self._render_file_list(parse_result, languages)),
+                ("View language breakdown", lambda: self._render_language_breakdown(languages)),
+                ("Export JSON report", lambda: self._export_scan(parse_result, languages, archive)),
+            ]
+            if self._last_git_repos:
+                actions.append(("View Git Analysis", self._handle_git_analysis_option))
+            actions.append(("Back", None))
+
+            labels = [label for label, _ in actions]
+            choice = self.io.choose("Scan results:", labels)
+            if choice is None:
                 return
-            if choice == 0:
-                self._render_file_list(parse_result, languages)
-            elif choice == 1:
-                self._render_language_breakdown(languages)
-            elif choice == 2:
-                self._export_scan(parse_result, languages, archive)
+
+            label, handler = actions[choice]
+            if handler is None:
+                return
+            try:
+                handler()
+            except Exception as err:
+                self.io.write_error(f"Failed to process '{label}': {err}")
 
     def _handle_exit(self) -> None:
         self.io.write("Goodbye!")
@@ -548,6 +558,38 @@ class CLIApp:
 
         return ConfigManager(user_id)
 
+    def _detect_git_repositories(self, target: Path) -> List[Path]:
+        """Return git repository roots found under the scan target."""
+        repos: List[Path] = []
+        seen = set()
+
+        # For files (e.g. .zip) we use the parent directory as the base for detection.
+        base = target if target.is_dir() else target.parent
+        if not base.exists():
+            return repos
+
+        def _record(path: Path) -> None:
+            resolved = path.resolve()
+            if resolved not in seen:
+                seen.add(resolved)
+                repos.append(path)
+
+        if (base / ".git").is_dir():
+            _record(base)
+
+        if target.is_dir():
+            try:
+                for dirpath, dirnames, _ in os.walk(target):
+                    if ".git" in dirnames:
+                        repo_root = Path(dirpath)
+                        _record(repo_root)
+                        # Avoid descending into the .git directory itself.
+                        dirnames.remove(".git")
+            except Exception:
+                return repos
+
+        return repos
+
     def _refresh_consent_state(self) -> bool:
         if not self.session:
             self._required_consent = False
@@ -567,6 +609,67 @@ class CLIApp:
                 self._required_consent = False
                 self._external_consent = False
         return self._required_consent
+
+    def _handle_git_analysis_option(self) -> None:
+        if not self._last_git_repos:
+            self.io.write_warning("No git repositories detected in the last scan.")
+            return
+
+        analyses: List[dict]
+        if not self._last_git_analysis:
+            analyses = []
+            with self.io.status("Collecting git statistics ..."):
+                for repo in self._last_git_repos:
+                    try:
+                        result = analyze_git_repo(str(repo))
+                    except Exception as err:
+                        analyses.append({"path": str(repo), "error": str(err)})
+                        continue
+                    analyses.append(result)
+            self._last_git_analysis = analyses
+        else:
+            analyses = self._last_git_analysis
+
+        self._render_section_header("Git Analysis")
+        for entry in analyses:
+            repo_path = str(entry.get("path", "unknown"))
+            self.io.write(f"Repository: {repo_path}")
+            error = entry.get("error")
+            if error:
+                self.io.write_warning(f"  Skipped: {error}")
+                self.io.write("")
+                continue
+
+            commits = entry.get("commit_count", 0)
+            self.io.write(f"  Commits: {commits}")
+
+            date_range = entry.get("date_range") or {}
+            start = date_range.get("start") if isinstance(date_range, dict) else None
+            end = date_range.get("end") if isinstance(date_range, dict) else None
+            if start or end:
+                self.io.write(f"  Active between: {start or 'unknown'} → {end or 'unknown'}")
+
+            contributors = entry.get("contributors") or []
+            if contributors:
+                top = ", ".join(
+                    f"{c.get('name', 'Unknown')} ({c.get('commits', 0)} commits, {c.get('percent', 0)}%)"
+                    for c in contributors[:3]
+                )
+                self.io.write(f"  Top contributors: {top}")
+            else:
+                self.io.write("  Top contributors: none")
+
+            branches = entry.get("branches") or []
+            if branches:
+                self.io.write(f"  Branches tracked: {len(branches)}")
+
+            timeline = entry.get("timeline") or []
+            if timeline:
+                recent = timeline[-3:]
+                recent_summary = ", ".join(f"{row.get('month')}: {row.get('commits', 0)}" for row in recent)
+                self.io.write(f"  Recent activity: {recent_summary}")
+
+            self.io.write("")
 
     def _login_flow(self) -> None:
         email = self.io.prompt("Email: ").strip()
@@ -648,6 +751,7 @@ class CLIApp:
             data = json.loads(self._session_path.read_text(encoding="utf-8"))
             user_id = data.get("user_id")
             email = data.get("email")
+            
             access_token = data.get("access_token", "")
             if user_id and email:
                 self.session = Session(user_id=user_id, email=email, access_token=access_token)

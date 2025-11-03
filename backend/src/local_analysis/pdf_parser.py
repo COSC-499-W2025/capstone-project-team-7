@@ -15,9 +15,9 @@ try:
 except ImportError:
     PdfReadError = Exception  # type: ignore
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure module-level logger without touching global configuration
 logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
 
 
 @dataclass
