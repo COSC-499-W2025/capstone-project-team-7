@@ -19,10 +19,12 @@ from ..scanner.models import ScanPreferences, ParseResult
 from ..cli.archive_utils import ensure_zip
 from ..scanner.parser import parse_zip
 from ..scanner.errors import ParserError
+from ..scanner.media import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 from ..cli.language_stats import summarize_languages
 from ..cli.display import render_table
 from contextlib import contextmanager
 from ..local_analysis.git_repo import analyze_git_repo
+from ..local_analysis.media_analyzer import MediaAnalyzer
 
 try:
     from rich.console import Console
@@ -53,6 +55,8 @@ MENU_PREFERENCES = "Settings & User Preferences"
 MENU_SCAN = "Run Portfolio Scan"
 MENU_AI_ANALYSIS = "AI-Powered Analysis"
 MENU_EXIT = "Exit"
+
+_MEDIA_EXTENSIONS = [ext.lower() for ext in IMAGE_EXTENSIONS + AUDIO_EXTENSIONS + VIDEO_EXTENSIONS]
 
 
 class ConsoleIO:
@@ -188,6 +192,9 @@ class CLIApp:
         self._load_session()
         self._last_git_repos: List[Path] = []
         self._last_git_analysis: List[dict] = []
+        self._has_media_files: bool = False
+        self._last_media_analysis: Optional[dict] = None
+        self._media_analyzer = MediaAnalyzer()
 
     def run(self) -> None:
         """Main event loop. Renders the menu until the user exits."""
@@ -379,6 +386,8 @@ class CLIApp:
 
         self._last_git_repos = []
         self._last_git_analysis = []
+        self._has_media_files = False
+        self._last_media_analysis = None
         try:
             with self.io.status("Scanning project ..."):
                 archive = self._ensure_zip(target, preferences=preferences)
@@ -397,6 +406,7 @@ class CLIApp:
         self._last_scan_path = target
         self._last_parse_result = parse_result
         self._last_git_repos = self._detect_git_repositories(target)
+        self._has_media_files = any(getattr(meta, "media_info", None) for meta in parse_result.files)
 
         languages = self._summarize_languages(parse_result.files)
         self._render_scan_summary(parse_result, relevant_only)
@@ -410,6 +420,8 @@ class CLIApp:
             ]
             if self._last_git_repos:
                 actions.append(("View Git Analysis", self._handle_git_analysis_option))
+            if self._has_media_files:
+                actions.append(("View Media Insights", self._handle_media_analysis_option))
             actions.append(("Back", None))
 
             labels = [label for label, _ in actions]
@@ -667,9 +679,88 @@ class CLIApp:
             if timeline:
                 recent = timeline[-3:]
                 recent_summary = ", ".join(f"{row.get('month')}: {row.get('commits', 0)}" for row in recent)
-                self.io.write(f"  Recent activity: {recent_summary}")
+            self.io.write(f"  Recent activity: {recent_summary}")
 
             self.io.write("")
+
+    def _render_media_analysis(self, analysis: dict) -> None:
+        summary = analysis.get("summary", {})
+        metrics = analysis.get("metrics", {})
+        insights = analysis.get("insights") or []
+        issues = analysis.get("issues") or []
+
+        self._render_section_header("Media Insights")
+        self.io.write(f"Total media files: {summary.get('total_media_files', 0)}")
+        self.io.write(
+            f"  Images: {summary.get('image_files', 0)} | "
+            f"Audio: {summary.get('audio_files', 0)} | "
+            f"Video: {summary.get('video_files', 0)}"
+        )
+
+        image_metrics = metrics.get("images") or {}
+        audio_metrics = metrics.get("audio") or {}
+        video_metrics = metrics.get("video") or {}
+
+        if image_metrics.get("count"):
+            avg_w = image_metrics.get("average_width")
+            avg_h = image_metrics.get("average_height")
+            max_res = image_metrics.get("max_resolution")
+            bits = []
+            if avg_w and avg_h:
+                bits.append(f"avg {avg_w:.0f}x{avg_h:.0f}")
+            if max_res:
+                dims = max_res.get("dimensions") or (0, 0)
+                bits.append(f"max {dims[0]}x{dims[1]}")
+            self.io.write(f"  Image metrics: {', '.join(bits) if bits else '—'}")
+
+        if audio_metrics.get("count"):
+            parts = [f"total {audio_metrics.get('total_duration_seconds', 0):.1f}s"]
+            avg = audio_metrics.get("average_duration_seconds")
+            if avg:
+                parts.append(f"avg {avg:.1f}s")
+            self.io.write(f"  Audio metrics: {', '.join(parts)}")
+
+        if video_metrics.get("count"):
+            parts = [f"total {video_metrics.get('total_duration_seconds', 0):.1f}s"]
+            avg = video_metrics.get("average_duration_seconds")
+            if avg:
+                parts.append(f"avg {avg:.1f}s")
+            self.io.write(f"  Video metrics: {', '.join(parts)}")
+
+        if insights:
+            self.io.write("")
+            self.io.write("Insights:")
+            for item in insights:
+                self.io.write(f"  • {item}")
+
+        if issues:
+            self.io.write("")
+            self.io.write("Potential issues:")
+            for item in issues:
+                self.io.write(f"  • {item}")
+
+    def _handle_media_analysis_option(self) -> None:
+        if not self._has_media_files:
+            self.io.write_warning("No media files detected in the last scan.")
+            return
+
+        if not self._last_parse_result:
+            self.io.write_warning("Run a scan before requesting media insights.")
+            return
+
+        analysis: dict
+        if self._last_media_analysis is None:
+            with self.io.status("Aggregating media metrics ..."):
+                try:
+                    analysis = self._media_analyzer.analyze(self._last_parse_result.files)
+                except Exception as err:
+                    self.io.write_error(f"Failed to analyze media files: {err}")
+                    return
+            self._last_media_analysis = analysis
+        else:
+            analysis = self._last_media_analysis
+
+        self._render_media_analysis(analysis)
 
     def _login_flow(self) -> None:
         email = self.io.prompt("Email: ").strip()
@@ -928,7 +1019,19 @@ class CLIApp:
 
         extensions = profile.get("extensions") or None
         if extensions:
-            extensions = [ext.lower() for ext in extensions]
+            normalized: list[str] = []
+            seen: set[str] = set()
+            for ext in extensions:
+                lowered = ext.lower()
+                if lowered not in seen:
+                    seen.add(lowered)
+                    normalized.append(lowered)
+            if profile_key == "all":
+                for media_ext in _MEDIA_EXTENSIONS:
+                    if media_ext not in seen:
+                        normalized.append(media_ext)
+                        seen.add(media_ext)
+            extensions = normalized
 
         excluded_dirs = profile.get("exclude_dirs") or None
         max_file_size_mb = config.get("max_file_size_mb")
@@ -1036,6 +1139,18 @@ class CLIApp:
             payload["summary"]["filtered_out"] = filtered
         if languages:
             payload["summary"]["languages"] = languages
+        if self._last_git_analysis:
+            payload["git_analysis"] = self._last_git_analysis
+        if self._has_media_files:
+            media_payload = self._last_media_analysis
+            if media_payload is None:
+                try:
+                    media_payload = self._media_analyzer.analyze(result.files)
+                    self._last_media_analysis = media_payload
+                except Exception:
+                    media_payload = None
+            if media_payload:
+                payload["media_analysis"] = media_payload
         return payload
 
 

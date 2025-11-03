@@ -6,12 +6,16 @@ from typing import List, Dict, Optional
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
+from ..scanner.media import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
+
 load_dotenv()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+MEDIA_EXTENSIONS = tuple(sorted(set(IMAGE_EXTENSIONS + AUDIO_EXTENSIONS + VIDEO_EXTENSIONS)))
 
 
 class ConfigManager:
@@ -49,11 +53,22 @@ class ConfigManager:
     
     def _get_default_structure(self) -> dict:
         """Get default config structure without saving to DB"""
+        base_all_extensions = [
+            ".py",
+            ".js",
+            ".html",
+            ".css",
+            ".txt",
+            ".md",
+            ".json",
+        ]
+        all_extensions = sorted(set(base_all_extensions) | set(MEDIA_EXTENSIONS))
+
         return {
             "scan_profiles": {
                 "all": {
                     "description": "Scan all supported file types",
-                    "extensions": [".py", ".js", ".html", ".css", ".txt", ".md", ".json"],
+                    "extensions": all_extensions,
                     "exclude_dirs": ["__pycache__", "node_modules", ".git", "venv"]
                 },
                 "code_only": {
