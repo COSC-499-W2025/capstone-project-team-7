@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List
 
 from textual.app import App, ComposeResult, Binding
-from textual.containers import Horizontal, Vertical, ScrollableContainer, Grid
+from textual.containers import Horizontal, Vertical, ScrollableContainer
 from textual.events import Mount, Key
 from textual.message import Message
 from textual.screen import ModalScreen
@@ -22,6 +22,7 @@ from textual.widgets import (
     Input,
     Checkbox,
     Button,
+    DataTable,
 )
 
 from rich.text import Text
@@ -630,34 +631,51 @@ class ScanResultsScreen(ModalScreen[None]):
         self._actions = actions
         self._detail_context = "Scan result detail"
         self._max_line_length = 120
+        self._default_column_width = 80
         self._lines: List[str] = []
 
     def compose(self) -> ComposeResult:
         button_widgets = [
             Button(label, id=f"scan-action-{action}") for action, label in self._actions
         ]
-        actions_grid = Grid(*button_widgets, id="scan-actions-grid", classes="scan-actions-grid")
+        rows: list[Horizontal] = []
+        if button_widgets:
+            per_row = 4
+            for start in range(0, len(button_widgets), per_row):
+                row_buttons = button_widgets[start : start + per_row]
+                row = Horizontal(*row_buttons, classes="scan-actions-row")
+                rows.append(row)
+        actions_layout = Vertical(*rows, classes="scan-actions-list") if rows else Vertical(classes="scan-actions-list")
+        output_table = DataTable(id="scan-results-table", classes="scan-results-table")
+        actions_container = ScrollableContainer(
+            actions_layout,
+            id="scan-actions-container",
+            classes="scan-actions-container",
+        )
         yield Vertical(
             Static("Scan results", classes="dialog-title"),
             Static(
                 "Choose an action to review detailed output, export data, or run follow-up analyses.",
                 classes="dialog-subtitle",
             ),
-            ScrollableContainer(
-                ListView(id="scan-results-list", classes="scan-results-list"),
-                id="scan-results-output",
-                classes="scan-results-output",
-            ),
+            output_table,
             Static("", id="scan-results-message", classes="dialog-message"),
-            ScrollableContainer(
-                actions_grid,
-                id="scan-actions-container",
-                classes="scan-actions-container",
-            ),
+            actions_container,
             classes="dialog scan-results-dialog",
         )
 
     def on_mount(self, _: Mount) -> None:  # pragma: no cover - UI setup
+        table = self.query_one("#scan-results-table", DataTable)
+        table.clear(columns=True)
+        table.add_column("Output", key="output", width=self._default_column_width)
+        table.show_header = False
+        table.show_cursor = True
+        table.cursor_type = "row"
+        table.zebra_stripes = False
+        table.fixed_rows = 0
+        table.fixed_columns = 0
+        table.show_vertical_scrollbar = True
+        table.show_horizontal_scrollbar = True
         self.display_output(self._summary_text, context="Overview")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -673,19 +691,21 @@ class ScanResultsScreen(ModalScreen[None]):
     def set_detail_context(self, title: str) -> None:
         self._detail_context = title or "Scan result detail"
 
-    def display_output(self, text: str, *, context: Optional[str] = None) -> None:
+    def display_output(
+        self,
+        text: str,
+        *,
+        context: Optional[str] = None,
+        allow_horizontal: bool = False,
+    ) -> None:
         if context:
             self.set_detail_context(context)
-        list_view = self.query_one("#scan-results-list", ListView)
-        try:
-            list_view.clear()
-        except AttributeError:  # pragma: no cover - compatibility fallback
-            for child in list(list_view.children):
-                child.remove()
+        table = self.query_one("#scan-results-table", DataTable)
+        table.clear(columns=False)
         lines = text.splitlines() or [""]
         self._lines = [raw_line or "" for raw_line in lines]
         for index, full_line in enumerate(self._lines):
-            display_line = _ellipsize_middle(full_line, self._max_line_length)
+            display_line = full_line if allow_horizontal else _ellipsize_middle(full_line, self._max_line_length)
             renderable: Text
             if display_line == full_line and "[" in full_line and "]" in full_line:
                 try:
@@ -694,18 +714,21 @@ class ScanResultsScreen(ModalScreen[None]):
                     renderable = Text(display_line or " ")
             else:
                 renderable = Text(display_line or " ")
-            label = Label(renderable, classes="scan-results-line")
+            if allow_horizontal:
+                renderable.no_wrap = True
             if "  " in full_line or full_line.startswith("  "):
-                label.add_class("mono")
-            item = ListItem(label)
-            item.data = {"full": full_line, "display": display_line, "index": index}
-            try:
-                list_view.append(item)
-            except AttributeError:  # pragma: no cover - compatibility fallback
-                list_view.mount(item)
+                renderable.stylize("bold")
+            table.add_row(renderable, key=str(index))
         if self._lines:
-            list_view.index = 0
-            list_view.focus()
+            column = table.columns.get("output")
+            if column is not None:
+                if allow_horizontal:
+                    max_length = max(len(line) for line in self._lines)
+                    column.width = max(20, max_length + 2)
+                else:
+                    column.width = self._default_column_width
+            table.cursor_coordinate = (0, 0)
+            table.focus()
 
     def set_message(self, message: str, *, tone: str = "info") -> None:
         widget = self.query_one("#scan-results-message", Static)
@@ -714,23 +737,14 @@ class ScanResultsScreen(ModalScreen[None]):
             widget.remove_class(class_name)
         widget.add_class(tone)
 
-    def on_list_view_selected(self, event: ListView.Selected) -> None:
-        if event.control.id != "scan-results-list":
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        if event.data_table.id != "scan-results-table":
             return
-        item = event.item
-        data = getattr(item, "data", None)
-        full_line = ""
-        if isinstance(data, dict):
-            full_line = str(data.get("full") or "")
-        elif data is not None:
-            full_line = str(data)
-        index = 0
-        if isinstance(data, dict):
-            index = int(data.get("index", 0) or 0)
-        elif full_line in self._lines:
-            index = self._lines.index(full_line)
-        if 0 <= index < len(self._lines):
-            full_line = self._lines[index]
+        try:
+            index = int(event.row_key)
+        except (TypeError, ValueError):
+            index = 0
+        full_line = self._lines[index] if 0 <= index < len(self._lines) else ""
         detail_screen = FileDetailScreen(self._detail_context, full_line)
         self.app.push_screen(detail_screen)
 
@@ -1051,7 +1065,11 @@ class PortfolioTextualApp(App):
             except Exception as exc:  # pragma: no cover - rendering safeguard
                 screen.set_message(f"Failed to render file list: {exc}", tone="error")
                 return
-            screen.display_output("\n".join(lines), context="Files")
+            screen.display_output(
+                "\n".join(lines),
+                context="Files",
+                allow_horizontal=True,
+            )
             screen.set_message("File list ready.", tone="success")
             return
 
