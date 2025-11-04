@@ -2,7 +2,9 @@
 
 ## Week 9: October 27 - November 2
 
-This week, the focus was on local document analysis for file types beyond PDFs, specifically Word documents and plain text files. Key accomplishments include:
+This week, the focus was on local document analysis for file types beyond PDFs, specifically Word documents and plain text files. `PR #107` introduces a versatile document analyzer capable of handling multiple formats including `.txt`, `.md`, `.markdown`, `.rst`, `.log`, and `.docx`. This addition complements the existing PDF analysis capabilities, providing users with a comprehensive local analysis toolset.
+
+Key accomplishments include:
 
 **Core Implementation**:
 - Multi-format document analyzer supporting `.txt`, `.md`, `.markdown`, `.rst`, `.log`, and `.docx` files
@@ -33,7 +35,9 @@ This week, the focus was on local document analysis for file types beyond PDFs, 
 
 ## Week 8: October 20 - October 26
 
-This week I implemented a privacy-first local PDF analysis pipeline, CLI tooling, and a secure consent integration with comprehensive tests. Key functionality added:
+This week I implemented a privacy-first local PDF analysis pipeline, CLI tooling, and a secure consent integration with comprehensive tests. `PR #96` covers the PDF analysis features, while `PR #89` focuses on consent/auth integration.
+
+Key functionality added:
 
 - PDF parsing: `backend/src/local_analysis/pdf_parser.py` now includes `PDFParser` with configurable limits (file size, pages, batch), metadata extraction (`PDFMetadata`), parsing from `Path` or bytes, and batch processing. A `create_parser()` factory simplifies instantiation.
 
@@ -41,7 +45,7 @@ This week I implemented a privacy-first local PDF analysis pipeline, CLI tooling
 
 - CLI & docs: `backend/src/local_analysis/pdf_cli.py` offers `info`, `parse`, `summarize`, and `batch` commands with output-to-file options. Updated `CLI_REFERENCE.md` and `QUICK_REFERENCE.md` give quick presets and examples.
 
-- Consent/auth integration: `backend/src/auth/consent.py` and `consent_validator.py` were updated to improve validation logic and integrate seamlessly with the CLI. Consent validation now includes stricter checks for user permissions and better error handling. The CLI (`auth_cli.py`) was updated to interact with these modules for consent upsert, check, and revoke flows.
+- Consent/auth integration: `PR #89` deals with the integration of consent validation module from last week and the consent notice added for the LLM usage from the user that was added by Jake. `backend/src/auth/consent.py` and `consent_validator.py` were updated to improve validation logic and integrate seamlessly with the CLI. Consent validation now includes stricter checks for user permissions and better error handling. The CLI (`auth_cli.py`) was updated to interact with these modules for consent upsert, check, and revoke flows.
 
 **Roadblocks cleared**
 - Replaced deprecated `PyPDF2` with `pypdf` and adapted imports/errors to remove warnings.
@@ -55,7 +59,7 @@ This week I implemented a privacy-first local PDF analysis pipeline, CLI tooling
 
 ## Week 7: October 13 - October 19
 
-This week, I successfully designed and implemented the **Consent Validation Module**, a critical component for ensuring user privacy and data protection compliance in our portfolio analysis system.
+This week, I successfully designed and implemented the **Consent Validation Module**, a critical component for ensuring user privacy and data protection compliance in our portfolio analysis system. `PR #70` (Consent validation module) was created to encapsulate this functionality and clearly defines the features and responsibilities of the module.
 
 #### Module Development:
 - Created a comprehensive `ConsentValidator` class with full type annotations and dataclass structures
