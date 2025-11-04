@@ -1,0 +1,93 @@
+#root {
+    background: $surface;
+}
+
+Header, Footer {
+    background: $accent;
+    color: $text;
+}
+
+Horizontal#content {
+    height: 1fr;
+}
+
+.panel {
+    border: round $primary;
+    padding: 1 2;
+}
+
+#sidebar {
+    width: 32%;
+    min-width: 24;
+}
+
+#menu ListItem.--highlight {
+    background: $accent;
+    color: $accent-lighten-3;
+}
+
+.panel-title {
+    margin-bottom: 1;
+    text-style: bold;
+}
+
+.menu-item {
+    padding: 0 1;
+}
+
+.status {
+    margin-top: 1;
+    padding: 0 2;
+    border: round $accent;
+}
+
+.status.info {
+    background: $surface;
+}
+
+.status.warning {
+    background: $warning;
+    color: $text;
+}
+
+.status.error {
+    background: $error;
+    color: $text;
+}
+
+.status.success {
+    background: $success;
+    color: $text;
+}
+
+ScanConfigScreen {
+    align: center middle;
+}
+
+.dialog {
+    width: 60%;
+    max-width: 60;
+    border: round $primary;
+    background: $surface-lighten-1;
+    padding: 1 2;
+}
+
+.dialog-title {
+    text-style: bold;
+}
+
+.dialog-subtitle {
+    color: $text;
+}
+
+.dialog-message {
+    color: $warning;
+}
+
+.dialog-buttons {
+    padding-top: 1;
+}
+
+.dialog-buttons Button {
+    margin-left: 1;
+}
