@@ -1,17 +1,53 @@
 # Joaquin Almora / @joaquinalmora
 
 ## Week 9 (October 27th - November 2nd)
-This week I focused on making the CLI fully interactive and connected to the main Supabase workflow. I built a new interface that walks users through login, consent, and scanning preferences, all linked to their Supabase profile so settings load automatically. The CLI now has a clear terminal layout with headers, spinners, and menus, and it keeps users logged in between runs through session persistence. I also added support for user scanning preferences, letting them choose which folders, file types, and size limits to include, and made sure these settings carry through from configuration to the parser. These updates make the CLI easier to use and better integrated with the backend. Everything was tested through automated and manual runs, and next week I plan to explain what is stored in the session file and prepare a short demo showing the full login-to-scan flow.
+This week I focused on making the CLI fully interactive and connected to the main Supabase workflow through **[PR #108 — “CLI workflow”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/108)** and **[PR #106 — “scanning preferences through parser”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/106)**.
+
+I built a new interactive interface in `src/cli/app.py` that walks users through login, consent, and scanning preferences, all tied to their Supabase profiles so settings load automatically. The CLI now has a polished terminal layout with headers, spinners, and menus, and it maintains session persistence via `~/.portfolio_cli_session.json` so users stay logged in between runs.  
+
+I also implemented support for user-defined scanning preferences, letting users choose which folders, file types, and size limits to include. These preferences are wired through the CLI configuration and flow all the way into the parser (`ensure_zip` / `parse_zip`), ensuring consistent behavior across the workflow.
+
+Additional updates include the `scripts/run_cli.sh` helper, a new `CLI_GUIDE.md` with usage instructions, and automated tests to validate the flow. Altogether, these changes make the CLI easier to use, visually clearer, and better integrated with the backend. Next week, I plan to document what’s stored in the session file and prepare a short demo showing the complete login-to-scan flow.
 
 ![Peer Eval](./images/w9peer.png)
 
 ## Week 8 (October 20th - 26th)
-This week I worked on improving the CLI for parsing. I replaced my previous zip shelling with a safe esnure_zip helper that skips files like .venv or node_modules. It also write ZIP64 archives so big asses don't blow up. I refactored so that the CLI has now reusable helpers for the table output display. Added the --relevant-only flag and --code flag. The first one includes only the important files given for a directory, so that in the future the LLM doesn't have to parse through a lot of unnecessary files, and the later one gives the language breakdown for a given project, excluding things like documents and images. It reports per-language file/byte percentages. Everything’s wired through src.cli.parse_zip and scripts/parse_archive.py, and the README documents the new flags with examples. Added tests for the new coverage (language breakdown, auto-zip exclusions), and the updated command passes both manual runs and pytest.
+This week I focused on improving the CLI for parsing as part of **[PR #90 — “made it to parse”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/90)**.
+
+I replaced my previous zip shelling with a safer `ensure_zip` helper that skips unnecessary files like `.venv` and `node_modules`, and now writes ZIP64 archives so large assets don’t cause errors. The CLI was refactored to include reusable helpers for displaying table outputs, making the interface more consistent and readable.
+
+I also added two new flags:
+- `--relevant-only`: filters and includes only important files within a directory, helping future LLM parsing skip unnecessary files.
+- `--code`: generates a language breakdown for a given project, excluding non-code files such as documents or images, and reports per-language file and byte percentages.
+
+Everything is wired through `src.cli.parse_zip` and `scripts/parse_archive.py`, and the `README.md` was updated to document the new flags with examples. I also added tests to cover the new functionality (language breakdown, auto-zip exclusions), and confirmed that the updated command passes both manual runs and `pytest`.
 
 ![Peer Eval](./images/w8peer.png)
 
 ## Week 7 (October 13th - 19th)
-This week I spent most of my time building the archive ingestion pipeline for the backend. I started with the main parser in backend/src/scanner/parser.py, setting it up to validate archive paths, make sure files actually exist and end with .zip, and safely handle traversal attempts so nothing escapes its directory. Each file inside the archive now gets turned into a FileMetadata object, and the parser sums up all the bytes and issues into a clean summary at the end. After that, I added some structure to the models by defining FileMetadata, ParseIssue, and ParseResult in backend/src/scanner/models.py using @dataclass(slots=True), just to keep things light and give the parser a clear, predictable contract. I also created specific error types in backend/src/scanner/errors.py (UnsupportedArchiveError and CorruptArchiveError) so we can easily tell when something’s just missing versus actually broken. To make it easier to test things out manually, I wrote a small CLI in scripts/parse_archive.py that can zip up a directory, run it through the parser, and print out a nice readable table or JSON output. Finally, I updated the README.md with some quick usage notes so everyone can try it locally
+This week I focused on implementing the archive ingestion pipeline and tying everything together for **[PR #75 — “file parsing and tests”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/75)**.
+
+Most of my time went into building the main parser in `backend/src/scanner/parser.py`, which now:
+- Validates archive paths
+- Checks that files exist and end with `.zip`
+- Safely blocks traversal attempts so nothing escapes its directory
+
+Each file inside an archive is transformed into a `FileMetadata` object, and the parser aggregates all bytes and issues into a clean summary.
+
+I also added structure to the models by defining:
+- `FileMetadata`
+- `ParseIssue`
+- `ParseResult`
+
+All of these are in `backend/src/scanner/models.py` and use `@dataclass(slots=True)` to keep things lightweight and predictable.
+
+To improve error handling, I introduced two specific error types in `backend/src/scanner/errors.py`:
+- `UnsupportedArchiveError`
+- `CorruptArchiveError`
+
+These make it easier to tell when something’s missing versus actually broken.
+
+For local testing, I wrote a small CLI script (`scripts/parse_archive.py`) that zips a directory, runs it through the parser, and prints either a readable table or JSON output. Finally, I updated the `README.md` with usage notes so the rest of the team can try out the parser easily.
 
 ![Peer Eval](./images/w7peer.png)
 
