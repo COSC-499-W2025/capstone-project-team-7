@@ -7,6 +7,13 @@ Header, Footer {
     color: $text;
 }
 
+#session-status {
+    padding: 0 2;
+    border: round $primary;
+    background: $surface-lighten-1;
+    margin-bottom: 1;
+}
+
 Horizontal#content {
     height: 1fr;
 }
@@ -90,4 +97,144 @@ ScanConfigScreen {
 
 .dialog-buttons Button {
     margin-left: 1;
+}
+
+.consent-actions {
+    padding-top: 1;
+}
+
+.consent-actions Button {
+    margin-left: 0;
+    margin-top: 1;
+}
+
+.consent-actions Button:first-child {
+    margin-top: 0;
+}
+
+.preferences-dialog {
+    width: 80%;
+    max-width: 80;
+}
+
+.pref-column {
+    width: 1fr;
+}
+
+.pref-column-left {
+    padding-right: 1;
+}
+
+.pref-column-right {
+    padding-left: 1;
+}
+
+#pref-profile-list {
+    height: 16;
+    border: round $primary;
+    margin-bottom: 1;
+}
+
+.pref-column-left Button {
+    margin-top: 1;
+}
+
+.pref-column-left Button:first-child {
+    margin-top: 0;
+}
+
+.pref-column-right Checkbox {
+    margin-top: 1;
+}
+
+.group-title {
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+.dialog-message.info {
+    color: $text;
+}
+
+.dialog-message.warning {
+    color: $warning;
+}
+
+.dialog-message.error {
+    color: $error;
+}
+
+.dialog-message.success {
+    color: $success;
+}
+
+#notice-log {
+    height: 18;
+    border: round $primary;
+    padding: 0 1;
+    background: $surface;
+}
+
+.scan-results-dialog {
+    width: 80%;
+    max-width: 80;
+    max-height: 90%;
+    overflow: hidden;
+}
+
+#scan-results-output {
+    height: 1fr;
+    min-height: 12;
+    border: round $primary;
+    padding: 0 1;
+    background: $surface;
+    overflow-y: auto;
+}
+
+#scan-results-list {
+    width: 100%;
+}
+
+.scan-results-line {
+    text-wrap: wrap;
+}
+
+.scan-results-line.mono {
+    text-style: bold;
+}
+
+.scan-actions-container {
+    height: auto;
+    margin-top: 1;
+    border: tall $primary;
+    padding: 0 1;
+    background: $surface-lighten-1;
+    max-height: 10;
+    overflow-y: auto;
+}
+
+.scan-actions-grid {
+    layout: grid;
+    grid-size: 3;
+    grid-gutter: 1;
+    width: 100%;
+}
+
+.scan-actions-grid Button {
+    width: 100%;
+    margin: 0;
+}
+
+.file-detail-dialog {
+    width: 80%;
+    max-width: 80;
+}
+
+.file-detail-text {
+    border: round $primary;
+    padding: 1;
+    background: $surface;
+    max-height: 18;
+    overflow-y: auto;
+    text-wrap: wrap;
 }
