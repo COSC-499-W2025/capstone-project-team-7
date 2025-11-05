@@ -150,6 +150,19 @@ class LoginCancelled(Message):
     pass
 
 
+class AIKeySubmitted(Message):
+    """Raised when the user submits an API key for AI analysis."""
+
+    def __init__(self, api_key: str) -> None:
+        super().__init__()
+        self.api_key = api_key
+
+
+class AIKeyCancelled(Message):
+    """Raised when the API key dialog is dismissed without submitting."""
+
+    pass
+
 class LoginScreen(ModalScreen[None]):
     """Modal dialog for collecting Supabase credentials."""
 
@@ -211,6 +224,64 @@ class LoginScreen(ModalScreen[None]):
     def on_key(self, event: Key) -> None:  # pragma: no cover - keyboard shortcut
         if event.key == "escape":
             self.app.post_message(LoginCancelled())
+            self.dismiss(None)
+
+
+class AIKeyScreen(ModalScreen[None]):
+    """Modal dialog for collecting an AI API key."""
+
+    def __init__(self, default_key: str = "") -> None:
+        super().__init__()
+        self._default_key = default_key
+
+    def compose(self) -> ComposeResult:
+        yield Vertical(
+            Static("Provide OpenAI API Key", classes="dialog-title"),
+            Static(
+                "Your API key is used in-memory for this session to run AI analysis. It is not stored on disk.",
+                classes="dialog-subtitle",
+            ),
+            Input(
+                value=self._default_key,
+                placeholder="sk-...",
+                password=True,
+                id="ai-key-input",
+            ),
+            Static("", id="ai-key-message", classes="dialog-message"),
+            Horizontal(
+                Button("Cancel", id="ai-key-cancel"),
+                Button("Verify", id="ai-key-submit", variant="primary"),
+                classes="dialog-buttons",
+            ),
+            classes="dialog",
+        )
+
+    def on_mount(self, event: Mount) -> None:  # pragma: no cover - focus setup
+        self.query_one("#ai-key-input", Input).focus()
+
+    def _submit(self) -> None:
+        input_widget = self.query_one("#ai-key-input", Input)
+        api_key = input_widget.value.strip()
+        if not api_key:
+            self.query_one("#ai-key-message", Static).update("Enter an API key to continue.")
+            return
+        self.app.post_message(AIKeySubmitted(api_key))
+        self.dismiss(None)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "ai-key-submit":
+            self._submit()
+        elif event.button.id == "ai-key-cancel":
+            self.app.post_message(AIKeyCancelled())
+            self.dismiss(None)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "ai-key-input":
+            self._submit()
+
+    def on_key(self, event: Key) -> None:  # pragma: no cover - escape shortcut
+        if event.key == "escape":
+            self.app.post_message(AIKeyCancelled())
             self.dismiss(None)
 
 
@@ -800,6 +871,11 @@ class PortfolioTextualApp(App):
         self._scan_results_screen: Optional[ScanResultsScreen] = None
         self._media_analyzer = MediaAnalyzer()
         self._login_task: Optional[asyncio.Task] = None
+        self._llm_client = None
+        self._llm_api_key: Optional[str] = None
+        self._last_ai_analysis: Optional[dict] = None
+        self._ai_task: Optional[asyncio.Task] = None
+        self._pending_ai_analysis: bool = False
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -861,6 +937,8 @@ class PortfolioTextualApp(App):
             detail_panel.update(self._render_preferences_detail())
         elif label == "Consent Management":
             detail_panel.update(self._render_consent_detail())
+        elif label == "AI-Powered Analysis":
+            detail_panel.update(self._render_ai_detail())
         else:
             detail_panel.update(
                 f"[b]{label}[/b]\n\n{description}\n\nPress Enter to continue or select another option."
@@ -877,6 +955,9 @@ class PortfolioTextualApp(App):
                 self._logout()
             else:
                 self._show_login_dialog()
+            return
+        if label == "AI-Powered Analysis":
+            self._handle_ai_analysis_selection()
             return
 
         if label == "Run Portfolio Scan":
@@ -902,6 +983,10 @@ class PortfolioTextualApp(App):
             self._show_consent_dialog()
             return
 
+        if label == "AI-Powered Analysis":
+            self._handle_ai_analysis_selection()
+            return
+
         self._show_status(f"{label} is coming soon. Hang tight!", "info")
 
     def action_toggle_account(self) -> None:
@@ -909,6 +994,37 @@ class PortfolioTextualApp(App):
             self._logout()
         else:
             self._show_login_dialog()
+
+    def _handle_ai_analysis_selection(self) -> None:
+        detail_panel = self.query_one("#detail", Static)
+        detail_panel.update(self._render_ai_detail())
+
+        if not self._session:
+            self._show_status("Sign in to use AI-powered analysis.", "warning")
+            return
+
+        if not self._consent_record:
+            self._show_status("Grant required consent before running AI analysis.", "warning")
+            return
+
+        if not self._has_external_consent():
+            self._show_status("Enable external services consent to use AI analysis.", "warning")
+            return
+
+        if not self._last_parse_result:
+            self._show_status("Run a scan before starting AI analysis.", "warning")
+            return
+
+        if self._ai_task and not self._ai_task.done():
+            self._show_status("AI analysis already in progress…", "info")
+            return
+
+        if self._llm_client is None:
+            self._pending_ai_analysis = True
+            self._show_ai_key_dialog()
+            return
+
+        self._start_ai_analysis()
 
     def _show_status(self, message: str, tone: str) -> None:
         status_panel = self.query_one("#status", Static)
@@ -1375,6 +1491,9 @@ class PortfolioTextualApp(App):
             return
         self.push_screen(LoginScreen(default_email=self._last_email))
 
+    def _show_ai_key_dialog(self) -> None:
+        self.push_screen(AIKeyScreen(default_key=self._llm_api_key or ""))
+
     def _get_auth(self) -> SupabaseAuth:
         if self._auth is not None:
             return self._auth
@@ -1413,6 +1532,12 @@ class PortfolioTextualApp(App):
         if self._login_task and not self._login_task.done():
             self._login_task.cancel()
             self._login_task = None
+        if self._ai_task and not self._ai_task.done():
+            self._ai_task.cancel()
+        self._ai_task = None
+        self._llm_client = None
+        self._llm_api_key = None
+        self._last_ai_analysis = None
         self._last_email = self._session.email
         self._session = None
         self._clear_session()
@@ -1448,6 +1573,7 @@ class PortfolioTextualApp(App):
         self._last_media_analysis = None
         self._last_relevant_only = True
         self._close_scan_results_screen()
+        self._last_ai_analysis = None
 
     def _close_scan_results_screen(self) -> None:
         if self._scan_results_screen is None:
@@ -1671,6 +1797,50 @@ class PortfolioTextualApp(App):
         finally:
             self._login_task = None
 
+    async def _verify_ai_key(self, api_key: str) -> None:
+        if not api_key:
+            self._pending_ai_analysis = False
+            self._show_status("API key required for AI analysis.", "error")
+            return
+        try:
+            from ..analyzer.llm.client import LLMClient, InvalidAPIKeyError, LLMError
+        except Exception as exc:  # pragma: no cover - optional dependency missing
+            self._pending_ai_analysis = False
+            self._show_status(f"AI analysis unavailable: {exc}", "error")
+            return
+
+        self._show_status("Verifying AI API key…", "info")
+
+        def _create_client() -> LLMClient:
+            client = LLMClient(api_key=api_key)
+            client.verify_api_key()
+            return client
+
+        try:
+            client = await asyncio.to_thread(_create_client)
+        except InvalidAPIKeyError as exc:
+            self._llm_client = None
+            self._llm_api_key = None
+            self._pending_ai_analysis = False
+            self._show_status(f"Invalid API key: {exc}", "error")
+            return
+        except LLMError as exc:
+            self._pending_ai_analysis = False
+            self._show_status(f"AI service error: {exc}", "error")
+            return
+        except Exception as exc:
+            self._pending_ai_analysis = False
+            self._show_status(f"Failed to verify API key: {exc}", "error")
+            return
+
+        self._llm_client = client
+        self._llm_api_key = api_key
+        self._show_status("API key verified successfully.", "success")
+
+        if self._pending_ai_analysis:
+            self._pending_ai_analysis = False
+            self._start_ai_analysis()
+
     def _persist_session(self) -> None:
         if not self._session:
             return
@@ -1751,6 +1921,17 @@ class PortfolioTextualApp(App):
             self._show_status("Sign in already in progress…", "warning")
             return
         self._login_task = asyncio.create_task(self._handle_login(event.email, event.password))
+
+    def on_ai_key_submitted(self, event: AIKeySubmitted) -> None:
+        event.stop()
+        asyncio.create_task(self._verify_ai_key(event.api_key))
+
+    def on_ai_key_cancelled(self, event: AIKeyCancelled) -> None:
+        event.stop()
+        self._pending_ai_analysis = False
+        if self._ai_task and not self._ai_task.done():
+            return
+        self._show_status("AI key entry cancelled.", "info")
 
     def on_consent_action(self, event: ConsentAction) -> None:
         event.stop()
@@ -1980,6 +2161,32 @@ class PortfolioTextualApp(App):
         )
         return "\n".join(lines)
 
+    def _render_ai_detail(self) -> str:
+        lines = ["[b]AI-Powered Analysis[/b]"]
+        if not self._session:
+            lines.append("\nSign in to provide an OpenAI API key and generate AI insights.")
+            return "\n".join(lines)
+
+        if not self._consent_record:
+            lines.append("\nGrant required consent before running AI analysis.")
+        if not self._has_external_consent():
+            lines.append("External services consent is required to use AI analysis.")
+        if not self._last_parse_result:
+            lines.append("\nRun a portfolio scan to prepare data for AI analysis.")
+
+        if self._llm_client is None:
+            lines.append("\nPress Enter to provide your OpenAI API key and verify it.")
+        else:
+            lines.append("\nAPI key verified. Press Enter to generate or refresh AI insights.")
+
+        if self._last_ai_analysis:
+            summary = self._summarize_ai_analysis(self._last_ai_analysis)
+            if summary:
+                lines.append("\n[b]Latest analysis[/b]")
+                lines.append(summary)
+
+        return "\n".join(lines)
+
     def _render_consent_detail(self) -> str:
         lines = ["[b]Consent Management[/b]"]
         if not self._session:
@@ -2027,6 +2234,135 @@ class PortfolioTextualApp(App):
             "\nUse the CLI consent workflow to review notices, grant, or withdraw permissions."
         )
         return "\n".join(lines)
+
+    def _start_ai_analysis(self) -> None:
+        if self._ai_task and not self._ai_task.done():
+            return
+        self._pending_ai_analysis = False
+        detail_panel = self.query_one("#detail", Static)
+        detail_panel.update("[b]AI-Powered Analysis[/b]\n\nPreparing AI insights…")
+        self._show_status("Preparing AI analysis…", "info")
+        self._ai_task = asyncio.create_task(self._run_ai_analysis())
+
+    async def _run_ai_analysis(self) -> None:
+        try:
+            from ..analyzer.llm.client import InvalidAPIKeyError, LLMError
+        except Exception as exc:  # pragma: no cover - optional dependency missing
+            self._show_status(f"AI analysis unavailable: {exc}", "error")
+            self._ai_task = None
+            return
+
+        detail_panel = self.query_one("#detail", Static)
+
+        if not self._llm_client or not self._last_parse_result:
+            self._show_status("AI analysis requires a recent scan and verified API key.", "error")
+            detail_panel.update(self._render_ai_detail())
+            self._ai_task = None
+            return
+
+        try:
+            result = await asyncio.to_thread(self._execute_ai_analysis)
+        except asyncio.CancelledError:
+            self._show_status("AI analysis cancelled.", "info")
+            detail_panel.update(self._render_ai_detail())
+            raise
+        except InvalidAPIKeyError as exc:
+            self._llm_client = None
+            self._llm_api_key = None
+            self._show_status(f"Invalid API key: {exc}", "error")
+            detail_panel.update(self._render_ai_detail())
+        except LLMError as exc:
+            self._show_status(f"AI analysis failed: {exc}", "error")
+            detail_panel.update(self._render_ai_detail())
+        except Exception as exc:
+            self._show_status(f"Unexpected AI analysis error: {exc}", "error")
+            detail_panel.update(self._render_ai_detail())
+        else:
+            self._last_ai_analysis = result
+            detail_panel.update(self._format_ai_analysis(result))
+            files_count = result.get("files_analyzed_count")
+            message = "AI analysis complete."
+            if files_count:
+                message = f"AI analysis complete — {files_count} files reviewed."
+            self._show_status(message, "success")
+        finally:
+            self._ai_task = None
+
+    def _execute_ai_analysis(self) -> dict:
+        if not self._llm_client or not self._last_parse_result:
+            raise RuntimeError("AI analysis prerequisites missing.")
+
+        scan_path = (
+            str(self._last_scan_target)
+            if self._last_scan_target
+            else str(self._last_scan_archive or "")
+        )
+        relevant_files = [
+            {
+                "path": meta.path,
+                "size": meta.size_bytes,
+                "mime_type": meta.mime_type,
+            }
+            for meta in self._last_parse_result.files
+        ]
+        languages = self._last_languages or summarize_languages(self._last_parse_result.files)
+        scan_summary = {
+            "total_files": len(self._last_parse_result.files),
+            "total_size_bytes": sum(meta.size_bytes for meta in self._last_parse_result.files),
+            "language_breakdown": languages,
+            "scan_path": scan_path,
+        }
+        return self._llm_client.summarize_scan_with_ai(
+            scan_summary=scan_summary,
+            relevant_files=relevant_files,
+            scan_base_path=scan_path,
+        )
+
+    def _format_ai_analysis(self, result: dict) -> str:
+        lines: List[str] = ["[b]AI-Powered Analysis[/b]"]
+
+        project_analysis = (result or {}).get("project_analysis") or {}
+        analysis_text = project_analysis.get("analysis")
+        if analysis_text:
+            lines.append("\n[b]Project Insights[/b]")
+            lines.append(analysis_text)
+
+        file_summaries = (result or {}).get("file_summaries") or []
+        if file_summaries:
+            lines.append("\n[b]Key Files[/b]")
+            for idx, summary in enumerate(file_summaries, 1):
+                file_path = summary.get("file_path", "Unknown file")
+                lines.append(f"[b]{idx}. {file_path}[/b]")
+                lines.append(summary.get("analysis", "No analysis available."))
+                lines.append("")
+
+        skipped = (result or {}).get("skipped_files") or []
+        if skipped:
+            lines.append("[b]Skipped Files[/b]")
+            for item in skipped:
+                path = item.get("path", "unknown")
+                reason = item.get("reason", "No reason provided.")
+                size_mb = item.get("size_mb")
+                size_txt = f" ({size_mb:.2f} MB)" if isinstance(size_mb, (int, float)) else ""
+                lines.append(f"- {path}{size_txt}: {reason}")
+
+        return "\n".join(lines).strip()
+
+    def _summarize_ai_analysis(self, result: dict) -> str:
+        parts: List[str] = []
+        files_count = result.get("files_analyzed_count")
+        if files_count:
+            parts.append(f"Files analyzed: {files_count}")
+        file_summaries = result.get("file_summaries") or []
+        if file_summaries:
+            parts.append(f"Key file insights: {len(file_summaries)}")
+        analysis_text = (result.get("project_analysis") or {}).get("analysis") or ""
+        if analysis_text:
+            snippet = analysis_text.strip().splitlines()[0]
+            if len(snippet) > 120:
+                snippet = snippet[:117] + "..."
+            parts.append(f"Preview: {snippet}")
+        return "\n".join(f"- {text}" for text in parts) if parts else ""
 
 
 def main() -> None:
