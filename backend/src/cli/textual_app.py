@@ -799,6 +799,7 @@ class PortfolioTextualApp(App):
         self._last_relevant_only: bool = True
         self._scan_results_screen: Optional[ScanResultsScreen] = None
         self._media_analyzer = MediaAnalyzer()
+        self._login_task: Optional[asyncio.Task] = None
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -1409,6 +1410,9 @@ class PortfolioTextualApp(App):
     def _logout(self) -> None:
         if not self._session:
             return
+        if self._login_task and not self._login_task.done():
+            self._login_task.cancel()
+            self._login_task = None
         self._last_email = self._session.email
         self._session = None
         self._clear_session()
@@ -1633,37 +1637,39 @@ class PortfolioTextualApp(App):
         return False, "Unknown preferences action."
 
     async def _handle_login(self, email: str, password: str) -> None:
-        if not email or not password:
-            self._show_status("Enter both email and password.", "error")
-            return
         try:
-            auth = self._get_auth()
-        except AuthError as exc:
-            self._auth_error = str(exc)
-            self._show_status(f"Sign in unavailable: {exc}", "error")
-            return
+            if not email or not password:
+                self._show_status("Enter both email and password.", "error")
+                return
+            try:
+                auth = self._get_auth()
+            except AuthError as exc:
+                self._auth_error = str(exc)
+                self._show_status(f"Sign in unavailable: {exc}", "error")
+                return
 
-        self._show_status("Signing in…", "info")
-        try:
-            session = await asyncio.to_thread(auth.login, email, password)
-        except AuthError as exc:
-            self._auth_error = str(exc)
-            self._show_status(f"Sign in failed: {exc}", "error")
-            return
-        except Exception as exc:  # pragma: no cover - network/IO failures
-            self._show_status(f"Unexpected sign in error: {exc}", "error")
-            return
-
-        self._session = session
-        self._last_email = session.email
-        self._auth_error = None
-        self._persist_session()
-        self._invalidate_cached_state()
-        self._refresh_consent_state()
-        self._load_preferences()
-        self._update_session_status()
-        self._show_status(f"Signed in as {session.email}", "success")
-        self._refresh_current_detail()
+            self._show_status("Signing in…", "info")
+            try:
+                session = await asyncio.to_thread(auth.login, email, password)
+            except AuthError as exc:
+                self._auth_error = str(exc)
+                self._show_status(f"Sign in failed: {exc}", "error")
+                return
+            except Exception as exc:  # pragma: no cover - network/IO failures
+                self._show_status(f"Unexpected sign in error: {exc}", "error")
+                return
+            self._session = session
+            self._last_email = session.email
+            self._auth_error = None
+            self._persist_session()
+            self._invalidate_cached_state()
+            self._refresh_consent_state()
+            self._load_preferences()
+            self._update_session_status()
+            self._show_status(f"Signed in as {session.email}", "success")
+            self._refresh_current_detail()
+        finally:
+            self._login_task = None
 
     def _persist_session(self) -> None:
         if not self._session:
@@ -1741,7 +1747,10 @@ class PortfolioTextualApp(App):
 
     def on_login_submitted(self, event: LoginSubmitted) -> None:
         event.stop()
-        asyncio.create_task(self._handle_login(event.email, event.password))
+        if self._login_task and not self._login_task.done():
+            self._show_status("Sign in already in progress…", "warning")
+            return
+        self._login_task = asyncio.create_task(self._handle_login(event.email, event.password))
 
     def on_consent_action(self, event: ConsentAction) -> None:
         event.stop()
