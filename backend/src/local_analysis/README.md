@@ -4,6 +4,7 @@ This module provides privacy-first, in-house analysis capabilities for PDFs and 
 
 ## 📋 Table of Contents
 - [Features](#features)
+- [CLI Integration](#cli-integration)
 - [Quick Start](#quick-start)
 - [Supported File Types](#supported-file-types)
 - [Configuration](#configuration)
@@ -12,6 +13,56 @@ This module provides privacy-first, in-house analysis capabilities for PDFs and 
 - [CLI Usage](#cli-usage)
 - [Privacy & Security](#privacy--security)
 - [Testing](#testing)
+
+---
+
+## CLI Integration
+
+### Automatic PDF Analysis During Portfolio Scans
+
+The PDF analysis module is fully integrated into the CLI workflow (`src/cli/app.py`). When you run a portfolio scan that contains PDF files:
+
+1. **Automatic Detection**: The scanner identifies all PDF files in the scanned directory or archive.
+2. **Optional Analysis**: After the scan completes, you're prompted whether to analyze the PDFs.
+3. **In-Memory Processing**: PDFs are extracted from the archive (if scanning a .zip) or read directly from the filesystem.
+4. **Local Summarization**: Each PDF is parsed and summarized using the in-house TF-IDF based summarizer.
+5. **CLI Display**: View PDF summaries, statistics, keywords, and key points directly in the terminal.
+6. **JSON Export**: All PDF analysis results are included in scan exports for further review.
+
+**Privacy Note**: All PDF processing happens locally on your machine. No data is sent to external services.
+
+### Example CLI Workflow
+
+```bash
+# Start the CLI
+python -m src.cli.app
+
+# Select "Run Portfolio Scan"
+# Choose a directory containing PDF files
+# After scan completes, select "Yes" to analyze PDFs
+# View results in the "View PDF summaries" option
+# Export with "Export JSON report" to save all data
+```
+
+### Programmatic Usage
+
+```python
+from src.local_analysis.pdf_parser import create_parser
+from src.local_analysis.pdf_summarizer import create_summarizer
+
+# Parse PDF
+parser = create_parser()
+result = parser.extract_text_from_pdf(Path("document.pdf"))
+
+# Summarize
+summarizer = create_summarizer()
+summary = summarizer.generate_summary(result.text_content, result.file_name)
+
+print(f"Summary: {summary.summary_text}")
+print(f"Keywords: {summary.keywords[:5]}")
+```
+
+For complete CLI documentation, see `src/cli/CLI_GUIDE.md`.
 
 ---
 
