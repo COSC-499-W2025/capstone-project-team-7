@@ -28,9 +28,17 @@ This document explains how the interactive CLI (`src/cli/app.py`) is structured,
 - The CLI renders profiles (using rich tables when available) and offers actions to create/edit/delete/switch profiles and tweak global settings.
 
 ### 5. Scanning (src/scanner/*, src/cli/archive_utils.py)
-- `ensure_zip` zips directories while respecting the active profile’s exclusions.
+- `ensure_zip` zips directories while respecting the active profile's exclusions.
 - `parse_zip` produces `ParseResult` objects.
 - `CLIApp` injects `ScanPreferences` from the profile, runs the scan, shows summaries, and exports JSON reports.
+
+### 6. PDF Analysis (src/local_analysis/pdf_parser.py, src/local_analysis/pdf_summarizer.py)
+- When PDFs are detected during a scan, the CLI automatically offers to analyze them.
+- `PDFParser` extracts text content from PDF files.
+- `PDFSummarizer` generates extractive summaries, key points, and keywords using in-house TF-IDF algorithms.
+- Results are displayed in the CLI via `_render_pdf_summaries()` and included in JSON exports.
+- **Privacy-first**: All processing is done locally; no external LLM services are used.
+- See `src/local_analysis/README.md` for detailed API documentation.
 
 ## Adding a New Feature
 
@@ -54,13 +62,16 @@ This document explains how the interactive CLI (`src/cli/app.py`) is structured,
 
 ## File & Module Map
 
-- `src/cli/app.py`: CLI orchestrator, state management, menus.
+- `src/cli/app.py`: CLI orchestrator, state management, menus, PDF analysis integration.
 - `src/auth/session.py`: Supabase authentication wrapper.
 - `src/auth/consent_validator.py`: Consent logic (with Supabase fallback).
 - `src/config/config_manager.py`: Profile/settings storage.
 - `src/scanner/*`: Archive scanning, parsing, error models.
+- `src/local_analysis/pdf_parser.py`: PDF text extraction.
+- `src/local_analysis/pdf_summarizer.py`: In-house text summarization (TF-IDF based).
 - `src/cli/archive_utils.py`, `src/cli/language_stats.py`, `src/cli/display.py`: Helpers shared with the legacy parse script.
 - `tests/test_cli_app.py`: CLI unit tests using dependency injection.
+- `tests/test_cli_pdf_analysis.py`: PDF integration tests for CLI workflow.
 
 With this map, adding features (e.g., new reports, history view, CLI automation) is simply a matter of:
 1. Wiring the menu → handler → dependency pipeline.
