@@ -26,6 +26,16 @@ from contextlib import contextmanager
 from ..local_analysis.git_repo import analyze_git_repo
 from ..local_analysis.media_analyzer import MediaAnalyzer
 
+# PDF analysis imports
+try:
+    from ..local_analysis.pdf_parser import create_parser, PDFParseResult
+    from ..local_analysis.pdf_summarizer import create_summarizer, DocumentSummary
+    PDF_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    PDF_AVAILABLE = False
+    PDFParseResult = None
+    DocumentSummary = None
+
 try:
     from rich.console import Console
     from rich.table import Table
@@ -186,6 +196,8 @@ class CLIApp:
         self._external_consent = False
         self._last_scan_path: Optional[Path] = None
         self._last_parse_result: Optional[ParseResult] = None
+        self._pdf_results: List[PDFParseResult] = []
+        self._pdf_summaries: List[DocumentSummary] = []
         self._llm_client: Optional[object] = None  
         self._llm_api_key: Optional[str] = None  
         self._options = self._build_menu()
@@ -410,6 +422,19 @@ class CLIApp:
 
         languages = self._summarize_languages(parse_result.files)
         self._render_scan_summary(parse_result, relevant_only)
+        
+        # Check for PDFs and offer analysis
+        pdf_files = [f for f in parse_result.files if f.mime_type == 'application/pdf']
+        if pdf_files and PDF_AVAILABLE:
+            self.io.write(f"\n📄 Found {len(pdf_files)} PDF file(s) in scan.")
+            analyze_choice = self.io.choose(
+                "Would you like to analyze the PDFs?",
+                ["Yes", "No"]
+            )
+            if analyze_choice == 0:
+                with self.io.status("Analyzing PDFs..."):
+                    self._analyze_pdfs_from_scan(target, pdf_files)
+        
         self.io.write_success("Scan completed successfully.")
 
         while True:
@@ -436,6 +461,27 @@ class CLIApp:
                 handler()
             except Exception as err:
                 self.io.write_error(f"Failed to process '{label}': {err}")
+            options = [
+                "View file list",
+                "View language breakdown",
+                "Export JSON report",
+            ]
+            if self._pdf_summaries:
+                options.insert(2, "View PDF summaries")
+            options.append("Back")
+            
+            choice = self.io.choose("Scan results:", options)
+            
+            if choice is None or choice == len(options) - 1:
+                return
+            if choice == 0:
+                self._render_file_list(parse_result, languages)
+            elif choice == 1:
+                self._render_language_breakdown(languages)
+            elif self._pdf_summaries and choice == 2:
+                self._render_pdf_summaries()
+            elif choice == len(options) - 2:  # Export (second to last before Back)
+                self._export_scan(parse_result, languages, archive)
 
     def _handle_exit(self) -> None:
         self.io.write("Goodbye!")
@@ -1151,7 +1197,210 @@ class CLIApp:
                     media_payload = None
             if media_payload:
                 payload["media_analysis"] = media_payload
+        
+        # Add PDF analysis results if available
+        if self._pdf_summaries:
+            payload["pdf_analysis"] = {
+                "total_pdfs": len(self._pdf_summaries),
+                "successful": len([s for s in self._pdf_summaries if s.success]),
+                "summaries": [
+                    {
+                        "file_name": s.file_name,
+                        "success": s.success,
+                        "summary": s.summary_text if s.success else None,
+                        "keywords": [{"word": w, "count": c} for w, c in s.keywords] if s.success else [],
+                        "statistics": s.statistics if s.success else {},
+                        "key_points": s.key_points if s.success else [],
+                        "error": s.error_message if not s.success else None
+                    }
+                    for s in self._pdf_summaries
+                ]
+            }
+        
         return payload
+
+    # PDF Analysis Methods
+
+    def _analyze_pdfs_from_scan(self, base_path: Path, pdf_files: List) -> None:
+        """Analyze PDFs found during scan."""
+        if not PDF_AVAILABLE:
+            self.io.write_error("PDF analysis is not available. Install pypdf: pip install pypdf")
+            return
+        
+        try:
+            import zipfile
+            
+            parser = create_parser(
+                max_file_size_mb=25.0,
+                max_pages_per_pdf=200
+            )
+            summarizer = create_summarizer(
+                max_summary_sentences=7,
+                keyword_count=15
+            )
+            
+            self._pdf_results = []
+            self._pdf_summaries = []
+            
+            # Debug: Show base path
+            self.io.write(f"\n🔍 Debug: base_path = {base_path}")
+            self.io.write(f"🔍 Debug: base_path.is_dir() = {base_path.is_dir()}")
+            self.io.write(f"🔍 Debug: Number of PDF files to process = {len(pdf_files)}")
+            
+            # Determine if we're working with the original directory or need to extract from ZIP
+            # When scanning a directory, CLI creates a .tmp_archives ZIP
+            archive_path = None
+            if not base_path.is_dir():
+                archive_path = base_path
+                self.io.write(f"🔍 Debug: Using base_path as archive: {archive_path}")
+            else:
+                # Check if there's a corresponding ZIP in .tmp_archives
+                tmp_archives_dir = base_path.parent / ".tmp_archives"
+                self.io.write(f"🔍 Debug: Looking for ZIP in: {tmp_archives_dir}")
+                if tmp_archives_dir.exists():
+                    zip_name = f"{base_path.name}.zip"
+                    potential_zip = tmp_archives_dir / zip_name
+                    self.io.write(f"🔍 Debug: Checking for ZIP: {potential_zip}")
+                    if potential_zip.exists():
+                        archive_path = potential_zip
+                        self.io.write(f"🔍 Debug: Found archive: {archive_path}")
+                    else:
+                        self.io.write(f"🔍 Debug: ZIP not found, will try direct file access")
+                else:
+                    self.io.write(f"🔍 Debug: .tmp_archives directory doesn't exist")
+            
+            for pdf_file in pdf_files:
+                try:
+                    self.io.write(f"\n📄 Processing: {pdf_file.path}")
+                    pdf_bytes = None
+                    
+                    # Try to read PDF from archive first
+                    if archive_path and archive_path.exists():
+                        self.io.write(f"  🔍 Trying to read from archive: {archive_path}")
+                        try:
+                            with zipfile.ZipFile(archive_path, 'r') as zf:
+                                # List files in archive for debugging
+                                archive_files = zf.namelist()
+                                self.io.write(f"  🔍 Files in archive: {len(archive_files)} total")
+                                # Show first few files
+                                self.io.write(f"  🔍 Sample files: {archive_files[:3]}")
+                                
+                                # The path in the ZIP is relative
+                                self.io.write(f"  🔍 Looking for: '{pdf_file.path}'")
+                                pdf_bytes = zf.read(pdf_file.path)
+                                self.io.write(f"  ✓ Read {len(pdf_bytes)} bytes from archive")
+                        except KeyError:
+                            self.io.write_warning(f"  ✗ Could not find '{pdf_file.path}' in archive")
+                            self.io.write(f"  🔍 Trying alternate path without leading slash...")
+                            # Try without leading slash
+                            try:
+                                with zipfile.ZipFile(archive_path, 'r') as zf:
+                                    alt_path = pdf_file.path.lstrip('/')
+                                    pdf_bytes = zf.read(alt_path)
+                                    self.io.write(f"  ✓ Found with alternate path: '{alt_path}'")
+                            except:
+                                pass
+                        except Exception as e:
+                            self.io.write_warning(f"  ✗ Error reading from archive: {e}")
+                    
+                    # If no archive or failed to read from archive, try direct file access
+                    if pdf_bytes is None and base_path.is_dir():
+                        # The pdf_file.path includes the folder name, so we need to strip it
+                        # e.g., "TRV Application/file.pdf" -> "file.pdf"
+                        relative_path = pdf_file.path
+                        if '/' in relative_path:
+                            # Remove the first directory component (which is the folder name)
+                            relative_path = '/'.join(relative_path.split('/')[1:])
+                        
+                        pdf_path = base_path / relative_path
+                        self.io.write(f"  🔍 Trying direct file access: {pdf_path}")
+                        if pdf_path.exists():
+                            pdf_bytes = pdf_path.read_bytes()
+                            self.io.write(f"  ✓ Read {len(pdf_bytes)} bytes from file")
+                        else:
+                            self.io.write_warning(f"  ✗ File does not exist: {pdf_path}")
+                    
+                    if pdf_bytes is None:
+                        self.io.write_warning(f"  ✗ {pdf_file.path}: Could not read file")
+                        continue
+                    
+                    # Parse PDF from bytes
+                    self.io.write(f"  🔍 Parsing PDF with {len(pdf_bytes)} bytes...")
+                    parse_result = parser.parse_from_bytes(pdf_bytes, pdf_file.path)
+                    self._pdf_results.append(parse_result)
+                    
+                    self.io.write(f"  🔍 Parse result: success={parse_result.success}, pages={parse_result.num_pages}, text_length={len(parse_result.text_content) if parse_result.text_content else 0}")
+                    
+                    if parse_result.success and parse_result.text_content:
+                        # Generate summary
+                        self.io.write(f"  🔍 Generating summary...")
+                        summary = summarizer.generate_summary(
+                            parse_result.text_content,
+                            parse_result.file_name
+                        )
+                        self._pdf_summaries.append(summary)
+                        
+                        if summary.success:
+                            self.io.write(f"  ✓ {parse_result.file_name}: {parse_result.num_pages} pages analyzed")
+                        else:
+                            self.io.write_warning(f"  ⚠ {parse_result.file_name}: Parsing succeeded but summarization failed - {summary.error_message}")
+                    else:
+                        self.io.write_warning(f"  ✗ {parse_result.file_name}: {parse_result.error_message}")
+                
+                except Exception as e:
+                    self.io.write_error(f"  ✗ {pdf_file.path}: Error - {e}")
+                    import traceback
+                    self.io.write_error(traceback.format_exc())
+            
+            successful = len([s for s in self._pdf_summaries if s.success])
+            self.io.write_success(f"\nPDF Analysis complete: {successful}/{len(pdf_files)} PDFs summarized")
+            
+        except Exception as e:
+            self.io.write_error(f"PDF analysis failed: {e}")
+            import traceback
+            self.io.write_error(traceback.format_exc())
+
+    def _render_pdf_summaries(self) -> None:
+        """Display PDF summaries using rich formatting or plain text."""
+        if not self._pdf_summaries:
+            self.io.write("No PDF summaries available.")
+            return
+        
+        for summary in self._pdf_summaries:
+            if not summary.success:
+                self.io.write_error(f"\n❌ {summary.file_name}: {summary.error_message}")
+                continue
+            
+            self.io.write(f"\n{'='*60}")
+            self.io.write(f"📄 {summary.file_name}")
+            self.io.write(f"{'='*60}")
+            
+            # Summary
+            self.io.write("\n📝 SUMMARY:")
+            self.io.write(f"  {summary.summary_text}\n")
+            
+            # Statistics
+            if summary.statistics:
+                stats = summary.statistics
+                self.io.write("📊 STATISTICS:")
+                self.io.write(f"  Words: {stats.get('total_words', 0):,}")
+                self.io.write(f"  Sentences: {stats.get('total_sentences', 0)}")
+                self.io.write(f"  Unique words: {stats.get('unique_words', 0):,}")
+                self.io.write(f"  Avg sentence length: {stats.get('avg_sentence_length', 0):.1f} words\n")
+            
+            # Keywords
+            if summary.keywords:
+                self.io.write("🔑 TOP KEYWORDS:")
+                keyword_str = ", ".join([f"{word} ({count})" for word, count in summary.keywords[:10]])
+                self.io.write(f"  {keyword_str}\n")
+            
+            # Key Points (if different from summary)
+            if summary.key_points and len(summary.key_points) > 1:
+                self.io.write("💡 KEY POINTS:")
+                for i, point in enumerate(summary.key_points[:5], 1):
+                    # Truncate long points
+                    display_point = point if len(point) < 100 else point[:97] + "..."
+                    self.io.write(f"  {i}. {display_point}")
 
 
     def _render_ai_analysis_results(self, result: dict) -> None:
