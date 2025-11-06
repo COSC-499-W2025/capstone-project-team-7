@@ -4,10 +4,12 @@ import json
 import os
 import subprocess
 import sys
+import wave
 import zipfile
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 from src.cli.archive_utils import ensure_zip
 from src.cli.language_stats import summarize_languages
@@ -50,6 +52,31 @@ def nested_zip(tmp_path: Path) -> tuple[Path, dict[str, Path]]:
     return archive, files
 
 
+@pytest.fixture
+def media_zip(tmp_path: Path) -> Path:
+    root = tmp_path / "media_project"
+    image_path = root / "assets" / "banner.png"
+    audio_path = root / "audio" / "intro.wav"
+    image_path.parent.mkdir(parents=True, exist_ok=True)
+    audio_path.parent.mkdir(parents=True, exist_ok=True)
+
+    image = Image.new("RGB", (64, 32), color=(123, 45, 67))
+    image.save(image_path, format="PNG")
+
+    with wave.open(str(audio_path), "w") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(44100)
+        wav_file.writeframes(b"\x00\x00" * 44100)
+
+    archive = tmp_path / "media_project.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.write(image_path, "assets/banner.png")
+        zf.write(audio_path, "audio/intro.wav")
+
+    return archive
+
+
 def test_parse_zip_collects_metadata(nested_zip: tuple[Path, dict[str, Path]]):
     archive, files = nested_zip
 
@@ -68,6 +95,24 @@ def test_parse_zip_collects_metadata(nested_zip: tuple[Path, dict[str, Path]]):
     assert sample_meta.modified_at.tzinfo is not None
     assert sample_meta.created_at.tzinfo is not None
     assert result.summary["files_processed"] == len(files)
+
+
+def test_parse_zip_extracts_media_metadata(media_zip: Path):
+    result = parse_zip(media_zip)
+
+    assert result.summary.get("media_files_processed") == 2
+    assert result.summary.get("media_metadata_errors", 0) == 0
+    assert result.summary.get("media_read_errors", 0) == 0
+
+    image_meta = next(meta for meta in result.files if meta.path == "assets/banner.png")
+    assert image_meta.media_info
+    assert image_meta.media_info["width"] == 64
+    assert image_meta.media_info["height"] == 32
+
+    audio_meta = next(meta for meta in result.files if meta.path == "audio/intro.wav")
+    assert audio_meta.media_info
+    assert audio_meta.media_info["channels"] == 1
+    assert pytest.approx(audio_meta.media_info["duration_seconds"], rel=1e-3) == 1.0
 
 
 def test_parse_zip_rejects_non_zip(tmp_path: Path):
@@ -177,12 +222,12 @@ def zip_with_dummy_files(tmp_path: Path) -> tuple[Path, dict[str, Path], dict[st
         "docs/README.md": root / "docs" / "README.md",
         "reports/project_overview.pdf": root / "reports" / "project_overview.pdf",
         "presentations/demo_pitch.pptx": root / "presentations" / "demo_pitch.pptx",
+        "assets/logo.png": root / "assets" / "logo.png",
     }
     irrelevant = {
         "__pycache__/app.cpython-311.pyc": root / "__pycache__" / "app.cpython-311.pyc",
         "dist/bundle.js": root / "dist" / "bundle.js",
         "node_modules/pkg/index.js": root / "node_modules" / "pkg" / "index.js",
-        "assets/logo.png": root / "assets" / "logo.png",
         "tmp/archive.bin": root / "tmp" / "archive.bin",
     }
 

@@ -84,6 +84,13 @@ For complete CLI documentation, see `src/cli/CLI_GUIDE.md`.
 - Configurable summary length
 - Batch processing support
 
+### 🎨 Media Analyzer (`media_analyzer.py`)
+
+- Aggregates metadata from images, audio, and video files
+- Computes duration, resolution, bitrate, and aspect-ratio metrics
+- Highlights low-resolution images and short-form media clips
+- Produces deterministic insights usable when LLM analysis is unavailable
+- Accepts `FileMetadata` objects or persisted records with `media_info`
 ### 📄 Document Analyzer (`document_analyzer.py`)
 
 - **Multiple Format Support**: `.txt`, `.md`, `.markdown`, `.rst`, `.log`, `.docx`
@@ -547,6 +554,9 @@ Contributions welcome! Please ensure:
 
 ## Support
 
+For detailed examples, see `example_usage.py`.  
+For CLI commands, see `CLI_REFERENCE.md`.  
+For issues, open an issue in the project repository.
 - **Demos**: See `demo_document_analysis.py` for interactive examples
 - **CLI Reference**: See `CLI_REFERENCE.md` for complete CLI documentation
 - **Issues**: Open an issue in the project repository

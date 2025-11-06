@@ -4,6 +4,7 @@ import sys
 import json
 from pathlib import Path
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Callable, Iterator, List, Optional
 
 from ..auth.session import AuthError, Session, SupabaseAuth
@@ -58,6 +59,7 @@ MENU_LOGIN = "Log in / Sign up"
 MENU_CONSENT = "Data Access & External Services Consent"
 MENU_PREFERENCES = "Settings & User Preferences"
 MENU_SCAN = "Run Portfolio Scan"
+MENU_AI_ANALYSIS = "AI-Powered Analysis"
 MENU_EXIT = "Exit"
 
 
@@ -190,6 +192,8 @@ class CLIApp:
         self._last_parse_result: Optional[ParseResult] = None
         self._pdf_results: List[PDFParseResult] = []
         self._pdf_summaries: List[DocumentSummary] = []
+        self._llm_client: Optional[object] = None  
+        self._llm_api_key: Optional[str] = None  
         self._options = self._build_menu()
         self._load_session()
 
@@ -257,6 +261,7 @@ class CLIApp:
             MenuOption(lambda app: MENU_CONSENT, CLIApp._handle_consent),
             MenuOption(lambda app: MENU_PREFERENCES, CLIApp._handle_preferences),
             MenuOption(lambda app: MENU_SCAN, CLIApp._handle_scan),
+            MenuOption(lambda app: MENU_AI_ANALYSIS, CLIApp._handle_ai_analysis),
             MenuOption(lambda app: MENU_EXIT, CLIApp._handle_exit),
         ]
 
@@ -442,6 +447,126 @@ class CLIApp:
     def _handle_exit(self) -> None:
         self.io.write("Goodbye!")
         self.running = False
+
+    def _handle_ai_analysis(self) -> None:
+        """Handle AI-Powered Analysis workflow."""
+        if not self.session:
+            self._require_login()
+            return
+        
+        self._refresh_consent_state()
+        if not self._external_consent:
+            self.io.write_error("External services consent required for AI analysis.")
+            self.io.write("Please grant external services consent from the Consent menu.")
+            return
+        
+        if not self._last_parse_result or not self._last_scan_path:
+            self.io.write_warning("No scan results found.")
+            choice = self.io.choose(
+                "We recommend running a scan first for better AI analysis results.",
+                ["Go back to menu", "Continue anyway"]
+            )
+            if choice is None or choice == 0:
+                return
+            self.io.write_error("Cannot proceed without scan results. Please run a scan first.")
+            return
+        
+        self._render_section_header("AI-Powered Analysis")
+        
+        if not self._llm_api_key:
+            self.io.write("OpenAI API key required for AI analysis.")
+            self.io.write("Your API key will be stored in memory for this session only (not saved to disk).")
+            api_key = self.io.prompt_hidden("Enter your OpenAI API key: ").strip()
+            if not api_key:
+                self.io.write_warning("API key required. Analysis cancelled.")
+                return
+            
+            with self.io.status("Verifying API key..."):
+                try:
+                    from ..analyzer.llm.client import LLMClient, InvalidAPIKeyError, LLMError
+                    
+                    client = LLMClient(api_key=api_key)
+                    client.verify_api_key()
+                    self._llm_client = client
+                    self._llm_api_key = api_key
+                    self.io.write_success("API key verified successfully!")
+                except InvalidAPIKeyError as e:
+                    self.io.write_error(f"Invalid API key: {e}")
+                    retry = self.io.choose("Would you like to try again?", ["Yes", "No"])
+                    if retry == 0:
+                        return self._handle_ai_analysis() 
+                    return
+                except LLMError as e:
+                    self.io.write_error(f"API error: {e}")
+                    return
+                except Exception as e:
+                    self.io.write_error(f"Failed to initialize AI client: {e}")
+                    return
+        
+        self.io.write("")
+        self.io.write("Preparing scan data for AI analysis...")
+        
+        relevant_files = [
+            {
+                "path": f.path,
+                "size": f.size_bytes,
+                "mime_type": f.mime_type
+            }
+            for f in self._last_parse_result.files
+        ]
+        
+        languages = self._summarize_languages(self._last_parse_result.files)
+        scan_summary = {
+            "total_files": len(self._last_parse_result.files),
+            "total_size_bytes": sum(f.size_bytes for f in self._last_parse_result.files),
+            "language_breakdown": languages,
+            "scan_path": str(self._last_scan_path)
+        }
+        
+        self.io.write(f"Analyzing {len(relevant_files)} files with AI...")
+        self.io.write("")
+        
+        try:
+            with self.io.status("Running AI analysis..."):
+                from ..analyzer.llm.client import LLMError
+                
+                result = self._llm_client.summarize_scan_with_ai(
+                    scan_summary=scan_summary,
+                    relevant_files=relevant_files,
+                    scan_base_path=str(self._last_scan_path)
+                )
+            
+            self.io.write_success(f"Analysis complete! Analyzed {result['files_analyzed_count']} files.")
+            
+            if 'skipped_files' in result and result['skipped_files']:
+                self.io.write_warning(f"Skipped {len(result['skipped_files'])} files due to size limits:")
+                for skipped in result['skipped_files']:
+                    self.io.write(f"  - {skipped['path']} ({skipped['size_mb']:.2f}MB): {skipped['reason']}")
+            
+            self.io.write("")
+            self._render_ai_analysis_results(result)
+            
+            while True:
+                choice = self.io.choose(
+                    "Analysis results:",
+                    ["Export as Markdown", "Back to menu"]
+                )
+                if choice is None or choice == 1:
+                    return
+                if choice == 0:
+                    self._export_ai_analysis(result)
+                    return
+        
+        except LLMError as e:
+            self.io.write_error(f"AI analysis failed: {e}")
+            retry = self.io.choose("Would you like to try again with a different API key?", ["Yes", "No"])
+            if retry == 0:
+                self._llm_api_key = None
+                self._llm_client = None
+                return self._handle_ai_analysis()
+        except Exception as e:
+            self.io.write_error(f"Unexpected error during AI analysis: {e}")
+            self.io.write("Please try again.")
 
     def _require_login(self) -> None:
         self.io.write("Please log in first to access this option.")
@@ -1040,6 +1165,105 @@ class CLIApp:
                     # Truncate long points
                     display_point = point if len(point) < 100 else point[:97] + "..."
                     self.io.write(f"  {i}. {display_point}")
+
+
+    def _render_ai_analysis_results(self, result: dict) -> None:
+        """Display AI analysis results with rich formatting."""
+        self._render_section_header("AI Analysis Results")
+        
+        project_analysis = result.get("project_analysis", {})
+        analysis_text = project_analysis.get("analysis", "No analysis available")
+        
+        if Panel and isinstance(self.io, ConsoleIO) and self.io._console:
+            self.io._console.print(Panel(analysis_text, title="📊 Project Analysis", border_style="cyan"))
+        else:
+            self.io.write("=== Project Analysis ===")
+            self.io.write(analysis_text)
+        
+        self.io.write("")
+        
+        file_summaries = result.get("file_summaries", [])
+        if file_summaries:
+            self.io.write(f"📄 Analyzed {len(file_summaries)} important files:")
+            self.io.write("")
+            
+            for idx, summary in enumerate(file_summaries, 1):
+                file_path = summary.get("file_path", "Unknown")
+                analysis = summary.get("analysis", "No analysis available")
+                
+                if Panel and isinstance(self.io, ConsoleIO) and self.io._console:
+                    self.io._console.print(
+                        Panel(analysis, title=f"File {idx}: {file_path}", border_style="green")
+                    )
+                else:
+                    self.io.write(f"--- File {idx}: {file_path} ---")
+                    self.io.write(analysis)
+                    self.io.write("")
+    
+    def _export_ai_analysis(self, result: dict) -> None:
+        """Export AI analysis results as a markdown file."""
+        default_filename = "ai_analysis_report.md"
+        filename = self.io.prompt(f"Export filename [{default_filename}]: ").strip() or default_filename
+        
+        if not filename.endswith(".md"):
+            filename += ".md"
+        
+        try:
+            output_path = Path(filename).expanduser()
+            
+            markdown_lines = [
+                "# AI-Powered Project Analysis Report",
+                "",
+                f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                f"**Scan Path:** {self._last_scan_path}",
+                "",
+                "---",
+                "",
+            ]
+            
+            project_analysis = result.get("project_analysis", {})
+            analysis_text = project_analysis.get("analysis", "No analysis available")
+            
+            markdown_lines.extend([
+                "## 📊 Project Analysis",
+                "",
+                analysis_text,
+                "",
+                "---",
+                "",
+            ])
+            
+            file_summaries = result.get("file_summaries", [])
+            if file_summaries:
+                markdown_lines.extend([
+                    "## 📄 File-Level Analysis",
+                    "",
+                    f"Analyzed {len(file_summaries)} important files:",
+                    "",
+                ])
+                
+                for idx, summary in enumerate(file_summaries, 1):
+                    file_path = summary.get("file_path", "Unknown")
+                    analysis = summary.get("analysis", "No analysis available")
+                    
+                    markdown_lines.extend([
+                        f"### {idx}. `{file_path}`",
+                        "",
+                        analysis,
+                        "",
+                    ])
+            
+            markdown_lines.extend([
+                "---",
+                "",
+                "*Report generated by AI Analysis*"
+            ])
+            
+            output_path.write_text("\n".join(markdown_lines), encoding="utf-8")
+            self.io.write_success(f"Analysis exported to: {output_path}")
+            
+        except Exception as e:
+            self.io.write_error(f"Failed to export analysis: {e}")
 
 
 def main() -> int:
