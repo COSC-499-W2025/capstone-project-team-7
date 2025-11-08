@@ -4,19 +4,28 @@ Improved Compact Code Analyzer - Compatible with all tree-sitter module APIs
 """
 
 from pathlib import Path
-from typing import Any, List, Dict, Optional, Tuple, Set
+from typing import List, Dict, Optional, Tuple, Set, TYPE_CHECKING
 from dataclasses import dataclass, field
 from collections import defaultdict
 import logging
 import time
 import sys
 
+# Add local lib directory to Python path
+lib_path = Path(__file__).parent / "lib"
+if lib_path.exists():
+    sys.path.insert(0, str(lib_path))
+
 try:
     from tree_sitter import Language, Parser, Node
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
-    Node = Any  # type: ignore[assignment]
+    # Define placeholder for type hints when tree_sitter is not available
+    if TYPE_CHECKING:
+        from typing import Any as Node
+    else:
+        Node = None
 
 # Try to import each language module separately
 _language_modules = {}

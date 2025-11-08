@@ -108,14 +108,23 @@ export SCAN_USER_ID="<supabase-user-uuid>"
 Make sure the chosen account has a config row (sign in via the app or insert a profile manually). You can tweak profiles through the dashboard or the backend `ConfigManager`.
 
 ### Terminal Auth + Consent (Supabase)
+
+```bash
 export SUPABASE_URL="https://<your>.supabase.co"
 export SUPABASE_ANON_KEY="ey..."
 pip install -r backend/requirements.txt
 python3 scripts/auth_cli.py signup demo+1@example.com StrongPass123!
 python3 scripts/auth_cli.py consent demo+1@example.com StrongPass123!
 python3 scripts/auth_cli.py check   demo+1@example.com StrongPass123!
+```
 
-Note: The CLI will securely prompt for your password (no echo). Avoid passing --password unless in CI.
+**Note**: The CLI will securely prompt for your password (no echo). Avoid passing --password unless in CI.
+
+**Consent Persistence**: User consent decisions are automatically saved to the Supabase database and persist across sessions. When you log in again, your consent choices are restored, so you don't need to re-consent every time. The system uses:
+- **Database Storage**: Consents stored in `consents_v1` table with Row-Level Security
+- **Automatic Loading**: Consents loaded on login and session restoration
+- **Secure Access**: Authenticated requests using user access tokens
+- **Cross-Session Support**: Consents survive logout and app restarts
 
 ## CLI Quick Start
 

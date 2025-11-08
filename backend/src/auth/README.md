@@ -69,29 +69,71 @@ can_metadata = validator.is_metadata_processing_allowed(user_id)
 The **storage and privacy notice layer** that manages consent persistence and user communication.
 
 **Key Features:**
+- **Database Persistence**: Consents stored in Supabase `consents_v1` table
+- **Session Management**: Authenticated requests using user access tokens
+- **In-Memory Caching**: Fast access with database fallback
 - **Privacy Notice Management**: Single source of truth for privacy policy
-- **In-Memory Storage**: Dictionary-based storage (easily replaceable with database)
 - **Service-Based Tracking**: Track consent per service (LLM, file analysis, metadata, etc.)
 - **Audit Trail**: Stores timestamps and privacy notice versions
 - **Lifecycle Management**: Request → Save → Retrieve → Withdraw
 
+**Consent Persistence:**
+Consents are now automatically persisted to the database and restored across sessions:
+- Login: Consents loaded from database into memory
+- Logout: Memory cache cleared (database retains records)
+- Session Restoration: Consents automatically reloaded
+
 **Core Functions:**
 ```python
+# Session token management (for authenticated database requests)
+consent.set_session_token(access_token)  # Set after login
+consent.clear_session_token()            # Clear on logout
+
 # Show privacy notice to user
 notice = consent.request_consent(user_id, "LLM")
 
-# Save user's consent decision
-consent.save_consent(user_id, service_name, consent_given=True)
+# Save user's consent decision (persists to database)
+consent.save_consent(user_id, service_name, consent_given=True, access_token=token)
 
-# Check if consent exists
+# Check if consent exists (reads from database)
 has_it = consent.has_consent(user_id, service_name)
 
-# Retrieve full consent record
-record = consent.get_consent(user_id, service_name)
+# Retrieve full consent record (from database or cache)
+record = consent.get_consent(user_id, service_name, access_token=token)
 
-# Withdraw consent
-consent.withdraw_consent(user_id, service_name)
+# Load all consents on login (called automatically by CLI)
+consent.load_user_consents(user_id, access_token=token)
+
+# Clear cache on logout (called automatically by CLI)
+consent.clear_user_consents_cache(user_id)
+
+# Withdraw consent (removes from database and cache)
+consent.withdraw_consent(user_id, service_name, access_token=token)
 ```
+
+**Database Schema:**
+```sql
+create table public.consents_v1(
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  accepted boolean not null default false,
+  accepted_at timestamptz,
+  version text not null default 'v1',
+  metadata jsonb not null default '{}'
+);
+```
+
+The `metadata` field stores service-specific consents:
+```json
+{
+  "file_analysis": {"consent_given": true, "timestamp": "2025-11-07T..."},
+  "external_services": {"consent_given": false, "timestamp": "2025-11-07T..."}
+}
+```
+
+**Row-Level Security:**
+- Users can only read/write their own consent records
+- Enforced by RLS policies using `auth.uid()`
+- Requires authenticated requests (access token)
 
 ## Integration Points
 
@@ -108,6 +150,7 @@ consent.withdraw_consent(user_id, service_name)
 2. **User provides consent, application validates and stores:**
    ```python
    from auth.consent_validator import create_consent_validator
+   from auth.session import Session  # Has access_token
    
    validator = create_consent_validator(use_consent_storage=True)
    
@@ -118,11 +161,26 @@ consent.withdraw_consent(user_id, service_name)
        "allow_external_services": True
    }
    
-   # Validates structure, then stores in consent.py
+   # Validates structure, then persists to database via consent.py
    consent_record = validator.validate_upload_consent(user_id, consent_data)
    ```
 
-3. **Application checks permissions before operations:**
+3. **Session management (automatic in CLI):**
+   ```python
+   import consent
+   
+   # After login - set token for authenticated requests
+   consent.set_session_token(session.access_token)
+   
+   # Load user's consents from database
+   consent.load_user_consents(user_id, session.access_token)
+   
+   # On logout - clear cache and token
+   consent.clear_user_consents_cache(user_id)
+   consent.clear_session_token()
+   ```
+
+4. **Application checks permissions before operations:**
    ```python
    # Before file upload
    if validator.is_file_processing_allowed(user_id):
@@ -135,11 +193,11 @@ consent.withdraw_consent(user_id, service_name)
        pass
    ```
 
-4. **User withdraws consent:**
+5. **User withdraws consent:**
    ```python
    from auth.consent_validator import withdraw_user_consent
    
-   # Withdraw specific service
+   # Withdraw specific service (removes from database)
    withdraw_user_consent(user_id, "external_services")
    
    # Withdraw all consents
@@ -250,32 +308,33 @@ The system includes comprehensive test coverage:
 - **test_consent_validator.py** - 22 tests for validation layer
 - **test_consent.py** - 5 tests for storage layer
 - **test_consent_integration.py** - 11 tests for integration
+- **test_consent_persistence.py** - 10 tests for database persistence
 
 Run all tests:
 ```bash
 pytest tests/test_consent*.py -v
 ```
 
-## Future Enhancements
-
-### Planned Database Integration
-
-Replace in-memory storage with Supabase:
-
-```python
-# Future implementation in consent_validator.py
-validator = ConsentValidator(supabase_client=supabase, use_consent_storage=False)
-
-# Will query from Supabase instead of consent.py storage
-consent_record = validator.check_required_consent(user_id)
+Test persistence demo:
+```bash
+python backend/test_consent_demo.py
 ```
 
-### Consent Versioning
+## Future Enhancements
 
-Track changes to privacy notices:
-- Store consent history
-- Handle consent version updates
-- Notify users of policy changes
+### Enhanced Database Features
+
+- **Consent History**: Track all consent changes over time
+- **Consent Versioning**: Handle privacy notice updates
+- **Bulk Operations**: Efficient multi-user consent management
+- **Analytics Dashboard**: Consent grant/withdrawal metrics
+
+### Additional Features
+
+- **Consent Expiration**: Time-limited consents with auto-renewal prompts
+- **Fine-Grained Permissions**: Sub-service level consent tracking
+- **Multi-Language Support**: Localized privacy notices
+- **Export Functionality**: Download user's consent history
 
 ## Privacy & Compliance
 
@@ -287,4 +346,57 @@ The consent system is designed with privacy in mind:
 - ✅ **Audit Trail**: Timestamps and version tracking
 - ✅ **Explicit Consent**: All required fields must be explicitly granted
 - ✅ **No Assumptions**: External services default to disabled
+- ✅ **Data Persistence**: Consents saved securely in database
+- ✅ **Cross-Session Support**: Consents persist across logins/logouts
+- ✅ **Row-Level Security**: Database enforces user isolation
+- ✅ **Automatic Cleanup**: Consents deleted when user account removed
+
+## How Consent Persistence Works
+
+### Database Connection
+
+Consents are stored in the `consents_v1` table in Supabase:
+- **Primary Key**: `user_id` (UUID from `auth.users`)
+- **Foreign Key**: References `auth.users(id)` with cascade delete
+- **RLS Enabled**: Users can only access their own records
+- **JSONB Metadata**: Stores service-specific consent details
+
+### Authentication Flow
+
+```
+1. User logs in
+   ↓
+2. CLI receives Session with access_token
+   ↓
+3. consent.set_session_token(access_token)
+   ↓
+4. consent.load_user_consents(user_id, access_token)
+   ↓
+5. Database query (authenticated with token)
+   ↓
+6. Consents loaded into memory cache
+   ↓
+7. User activities (read from cache)
+   ↓
+8. Grant/Withdraw (updates database + cache)
+   ↓
+9. User logs out
+   ↓
+10. consent.clear_user_consents_cache(user_id)
+11. consent.clear_session_token()
+```
+
+### Why Access Tokens Matter
+
+Row-Level Security (RLS) policies check `auth.uid()` to ensure users can only access their own data. Without the access token in the request:
+- Database returns `401 Unauthorized`
+- RLS policy violations occur
+- Consent operations fail
+
+The system automatically manages tokens:
+- **Login**: Token set and consents loaded
+- **Session Resume**: Token restored from saved session
+- **Logout**: Token cleared from memory
+
+This ensures secure, isolated access to consent records while maintaining persistence across sessions.
 
