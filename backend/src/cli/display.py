@@ -142,7 +142,9 @@ def format_media_summary(media_info: Mapping[str, Any] | None) -> str:
             extras.append(f"dpi={media_info['dpi']}")
         details = ", ".join(extras) if extras else ""
         suffix = f" ({details})" if details else ""
-        return f"image {media_info['width']}x{media_info['height']} px{suffix}"
+        summary = media_info.get("content_summary")
+        summary_suffix = f" • {summary}" if summary else ""
+        return f"image {media_info['width']}x{media_info['height']} px{suffix}{summary_suffix}"
 
     if "duration_seconds" in media_info:
         details: list[str] = []
@@ -157,6 +159,18 @@ def format_media_summary(media_info: Mapping[str, Any] | None) -> str:
             details.append(f"bitrate={media_info['bitrate']} bps")
         if media_info.get("sample_width"):
             details.append(f"sample_width={media_info['sample_width']} bytes")
+        if media_info.get("tempo_bpm"):
+            details.append(f"tempo={media_info['tempo_bpm']:.0f} BPM")
+        if media_info.get("genre_tags"):
+            genres = ", ".join(media_info["genre_tags"][:2])
+            details.append(f"genres={genres}")
+        if media_info.get("content_summary"):
+            details.append(media_info["content_summary"])
+        if media_info.get("transcript_excerpt"):
+            excerpt = media_info["transcript_excerpt"]
+            if len(excerpt) > 80:
+                excerpt = excerpt[:77] + "..."
+            details.append(f'text="{excerpt}"')
         return ", ".join(details) if details else "duration unavailable"
 
     # Fallback formatting for unexpected metadata shapes.

@@ -90,6 +90,8 @@ For complete CLI documentation, see `src/cli/CLI_GUIDE.md`.
 - Computes duration, resolution, bitrate, and aspect-ratio metrics
 - Highlights low-resolution images and short-form media clips
 - Produces deterministic insights usable when LLM analysis is unavailable
+- (New) Generates offline image/video/audio content labels with PyTorch (TorchVision + Torchaudio) so you can see what appears or is mentioned in each asset without external APIs
+- (New) Extracts approximate audio tempo (BPM) and genre heuristics using Torchaudio + Librosa so you can tag songs/podcasts quickly
 - Accepts `FileMetadata` objects or persisted records with `media_info`
 ### 📄 Document Analyzer (`document_analyzer.py`)
 
@@ -115,6 +117,19 @@ pip install -r requirements.txt
 **Required dependencies:**
 - `pypdf` - PDF parsing
 - `python-docx` - Optional, for `.docx` support
+
+#### Image/Video Content Insights (optional)
+
+To enable the new computer-vision + audio summaries, install the extra dependencies:
+
+```bash
+# From backend/
+pip install -r requirements.txt
+# or use the extras target
+pip install ".[vision]"
+```
+
+This pulls in `torch`, `torchvision`, `torchaudio`, and `numpy` so image/video/audio descriptions run entirely on your machine.
 
 ### Python API - PDF
 

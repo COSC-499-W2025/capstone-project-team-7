@@ -16,11 +16,8 @@ lib_path = Path(__file__).parent / "lib"
 if lib_path.exists():
     sys.path.insert(0, str(lib_path))
 
-try:
-    from tree_sitter import Language, Parser, Node
-    TREE_SITTER_AVAILABLE = True
-except ImportError:
-    TREE_SITTER_AVAILABLE = False
+from tree_sitter import Language, Parser, Node
+TREE_SITTER_AVAILABLE = True
 
 # Try to import each language module separately
 _language_modules = {}
