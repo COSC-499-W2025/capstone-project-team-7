@@ -62,7 +62,23 @@ class ConfigManager:
             ".md",
             ".json",
         ]
-        all_extensions = sorted(set(base_all_extensions) | set(MEDIA_EXTENSIONS))
+        extra_extensions = [
+            ".pdf",
+            ".doc",
+            ".docx",
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".gif",
+            ".svg",
+            ".xml",
+            ".yaml",
+            ".yml",
+            ".csv",
+            ".xlsx",
+            ".xls",
+        ]
+        all_extensions = sorted(set(base_all_extensions + extra_extensions) | set(MEDIA_EXTENSIONS))
 
         return {
             "scan_profiles": {

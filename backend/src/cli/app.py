@@ -443,6 +443,9 @@ class CLIApp:
                 ("View language breakdown", lambda: self._render_language_breakdown(languages)),
                 ("Export JSON report", lambda: self._export_scan(parse_result, languages, archive)),
             ]
+            if self._pdf_summaries:
+                actions.append(("View PDF summaries", self._render_pdf_summaries))
+            actions.append(("Export JSON report", lambda: self._export_scan(parse_result, languages, archive)))
             if self._last_git_repos:
                 actions.append(("View Git Analysis", self._handle_git_analysis_option))
             if self._has_media_files:
@@ -461,11 +464,6 @@ class CLIApp:
                 handler()
             except Exception as err:
                 self.io.write_error(f"Failed to process '{label}': {err}")
-            options = [
-                "View file list",
-                "View language breakdown",
-                "Export JSON report",
-            ]
             if self._pdf_summaries:
                 options.insert(2, "View PDF summaries")
             options.append("Back")
