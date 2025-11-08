@@ -22,6 +22,10 @@ This document explains how the interactive CLI (`src/cli/app.py`) is structured,
 ### 3. Consent Management (src/auth/consent_validator.py, src/auth/consent.py)
 - `ConsentValidator` (with Supabase or in-memory fallback) checks whether the user granted required consent.
 - The CLI refreshes consent state before any protected action and forces a consent flow if it is missing.
+- **Consent Persistence**: User consent decisions are automatically saved to the Supabase `consents_v1` database and persist across sessions.
+- **Automatic Loading**: On login or session restore, consents are loaded from the database into memory.
+- **Secure Access**: Uses authenticated requests with user access tokens to enforce Row-Level Security policies.
+- **Session Management**: Token is set on login and cleared on logout to maintain secure database access.
 
 ### 4. Preferences / Profiles (src/config/config_manager.py)
 - `ConfigManager` reads and writes the user’s scan profiles and settings.
