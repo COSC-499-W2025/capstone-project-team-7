@@ -210,8 +210,8 @@ def save_consent(user_id: str, service_name: str, consent_given: bool, access_to
                     "metadata": {service_name: {"consent_given": consent_given, "timestamp": timestamp}}
                 }).execute()
         except Exception as e:
-            # Log error but don't fail - memory store acts as fallback
-            print(f"Warning: Failed to persist consent to database: {e}")
+            # Silently fall back to memory store on database error
+            pass
     
     return {"status": "success", "data": data}
 
@@ -250,7 +250,8 @@ def get_consent(user_id: str, service_name: str, access_token: Optional[str] = N
                         "privacy_notice": PRIVACY_NOTICE.strip()
                     }
         except Exception as e:
-            print(f"Warning: Failed to fetch consent from database: {e}")
+            # Silently fall back to memory store on database error
+            pass
     
     # Fallback to memory store
     return _consent_store.get((user_id, service_name))
@@ -311,7 +312,8 @@ def withdraw_consent(user_id: str, service_name: str, access_token: Optional[str
                     "accepted_at": None
                 }).eq("user_id", user_id).execute()
         except Exception as e:
-            print(f"Warning: Failed to persist consent withdrawal to database: {e}")
+            # Silently fall back to memory store on database error
+            pass
 
 
 def get_all_consents(user_id: str, access_token: Optional[str] = None) -> Dict[str, Any]:
@@ -340,7 +342,8 @@ def get_all_consents(user_id: str, access_token: Optional[str] = None) -> Dict[s
                     "metadata": record.get("metadata", {})
                 }
         except Exception as e:
-            print(f"Warning: Failed to fetch consents from database: {e}")
+            # Silently fall back to memory store on database error
+            pass
     
     # Fallback: gather from memory store
     user_consents = {}
