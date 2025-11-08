@@ -266,6 +266,12 @@ class CLIApp:
         else:
             self.io.write(f"=== {title} ===")
 
+    def _report_action_error(self, action: str, detail: str, hint: Optional[str] = None) -> None:
+        """Surface actionable errors so users know how to recover."""
+        self.io.write_error(f"{action}: {detail}")
+        if hint:
+            self.io.write_warning(f"Next steps: {hint}")
+
     def _build_menu(self) -> List[MenuOption]:
         return [
             MenuOption(lambda app: "Log out" if app.session else MENU_LOGIN, CLIApp._handle_login),
@@ -387,7 +393,11 @@ class CLIApp:
 
         target = Path(path_input).expanduser()
         if not target.exists():
-            self.io.write_error(f"Path not found: {target}")
+            self._report_action_error(
+                "Scan",
+                f"Path not found: {target}",
+                "Verify the directory exists or provide an absolute path to a .zip file.",
+            )
             return
 
         relevant_choice = self.io.choose("Filter to relevant files only?", ["Yes", "No", "Cancel"])
@@ -409,10 +419,18 @@ class CLIApp:
                     preferences=preferences,
                 )
         except (ParserError, ValueError) as err:
-            self.io.write_error(f"Scan failed: {err}")
+            self._report_action_error(
+                "Scan",
+                str(err),
+                "Review scan preferences (extensions, file-size limits) or retry with 'Relevant files only'.",
+            )
             return
         except Exception as err:
-            self.io.write_error(f"Unexpected scan error: {err}")
+            self._report_action_error(
+                "Scan",
+                f"Unexpected error ({err.__class__.__name__}): {err}",
+                "Re-run the scan with a smaller target or inspect application logs for more detail.",
+            )
             return
 
         self._last_scan_path = target
@@ -476,19 +494,30 @@ class CLIApp:
         
         self._refresh_consent_state()
         if not self._external_consent:
-            self.io.write_error("External services consent required for AI analysis.")
-            self.io.write("Please grant external services consent from the Consent menu.")
+            self._report_action_error(
+                "AI analysis",
+                "External services consent is disabled.",
+                "Open the Consent menu and enable external services before requesting AI insights.",
+            )
             return
         
         if not self._last_parse_result or not self._last_scan_path:
-            self.io.write_warning("No scan results found.")
+            self._report_action_error(
+                "AI analysis",
+                "No scan results available.",
+                "Run a portfolio scan first so there is data for the AI workflow.",
+            )
             choice = self.io.choose(
                 "We recommend running a scan first for better AI analysis results.",
                 ["Go back to menu", "Continue anyway"]
             )
             if choice is None or choice == 0:
                 return
-            self.io.write_error("Cannot proceed without scan results. Please run a scan first.")
+            self._report_action_error(
+                "AI analysis",
+                "Cannot proceed without scan results.",
+                "Run a scan and re-launch AI analysis.",
+            )
             return
         
         self._render_section_header("AI-Powered Analysis")
@@ -511,16 +540,28 @@ class CLIApp:
                     self._llm_api_key = api_key
                     self.io.write_success("API key verified successfully!")
                 except InvalidAPIKeyError as e:
-                    self.io.write_error(f"Invalid API key: {e}")
+                    self._report_action_error(
+                        "AI analysis",
+                        f"Invalid API key: {e}",
+                        "Double-check the copied key in your OpenAI dashboard and try again.",
+                    )
                     retry = self.io.choose("Would you like to try again?", ["Yes", "No"])
                     if retry == 0:
                         return self._handle_ai_analysis() 
                     return
                 except LLMError as e:
-                    self.io.write_error(f"API error: {e}")
+                    self._report_action_error(
+                        "AI analysis",
+                        f"OpenAI API error: {e}",
+                        "Wait a moment and try again or confirm the OpenAI service status.",
+                    )
                     return
                 except Exception as e:
-                    self.io.write_error(f"Failed to initialize AI client: {e}")
+                    self._report_action_error(
+                        "AI analysis",
+                        f"Failed to initialize AI client: {e}",
+                        "Verify network connectivity and that the OpenAI SDK is installed.",
+                    )
                     return
         
         self.io.write("")
@@ -578,14 +619,22 @@ class CLIApp:
                     return
         
         except LLMError as e:
-            self.io.write_error(f"AI analysis failed: {e}")
+            self._report_action_error(
+                "AI analysis",
+                f"AI service error: {e}",
+                "Retry in a few minutes or reduce the number of files included in the scan.",
+            )
             retry = self.io.choose("Would you like to try again with a different API key?", ["Yes", "No"])
             if retry == 0:
                 self._llm_api_key = None
                 self._llm_client = None
                 return self._handle_ai_analysis()
         except Exception as e:
-            self.io.write_error(f"Unexpected error during AI analysis: {e}")
+            self._report_action_error(
+                "AI analysis",
+                f"Unexpected error: {e}",
+                "Check your network connection and rerun the analysis.",
+            )
             self.io.write("Please try again.")
 
     def _require_login(self) -> None:
@@ -772,7 +821,11 @@ class CLIApp:
             return
 
         if not self._last_parse_result:
-            self.io.write_warning("Run a scan before requesting media insights.")
+            self._report_action_error(
+                "Media insights",
+                "No scan data available.",
+                "Run a portfolio scan and then reopen Media Insights.",
+            )
             return
 
         analysis: dict
@@ -781,7 +834,11 @@ class CLIApp:
                 try:
                     analysis = self._media_analyzer.analyze(self._last_parse_result.files)
                 except Exception as err:
-                    self.io.write_error(f"Failed to analyze media files: {err}")
+                    self._report_action_error(
+                        "Media insights",
+                        f"Failed to analyze media files: {err}",
+                        "Ensure the media files are accessible and supported, then try again.",
+                    )
                     return
             self._last_media_analysis = analysis
         else:
@@ -1134,7 +1191,11 @@ class CLIApp:
             path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
             self.io.write(f"Exported scan report to {path}.")
         except Exception as err:
-            self.io.write(f"Failed to export report: {err}")
+            self._report_action_error(
+                "Export",
+                f"Failed to write to {path}: {err}",
+                "Check that the destination is writable or choose a different output path.",
+            )
 
     def _build_export_payload(self, result: ParseResult, languages: List[dict], archive: Path) -> dict:
         summary = dict(result.summary)

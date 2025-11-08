@@ -1033,6 +1033,27 @@ class PortfolioTextualApp(App):
             status_panel.remove_class(tone_name)
         status_panel.add_class(tone)
 
+    def _surface_error(
+        self,
+        heading: str,
+        detail: str,
+        hint: Optional[str] = None,
+        *,
+        update_detail: bool = True,
+    ) -> None:
+        """Display an error banner plus an optional next-step hint."""
+        if update_detail:
+            detail_panel = self.query_one("#detail", Static)
+            lines = [f"[b]{heading}[/b]", "", detail]
+            if hint:
+                lines.extend(["", f"[i]Next steps:[/i] {hint}"])
+            detail_panel.update("\n".join(lines))
+
+        status_message = f"{heading}: {detail}"
+        if hint:
+            status_message += f" — {hint}"
+        self._show_status(status_message, "error")
+
     async def on_run_scan_requested(self, _: RunScanRequested) -> None:
         default_path = str(self._last_scan_target) if self._last_scan_target else ""
         self.push_screen(ScanConfigScreen(default_path=default_path))
@@ -1049,16 +1070,25 @@ class PortfolioTextualApp(App):
                 self._perform_scan, target, relevant_only, preferences
             )
         except ParserError as exc:
-            self._show_status(f"Scan failed: {exc}", "error")
-            detail_panel.update(f"[b]Run Portfolio Scan[/b]\n\nScan failed: {exc}")
+            self._surface_error(
+                "Run Portfolio Scan",
+                f"Parser error: {exc}",
+                "Adjust scan preferences (extensions, file-size limits) or retry with 'Relevant files only'.",
+            )
             return
         except FileNotFoundError:
-            self._show_status(f"Path not found: {target}", "error")
-            detail_panel.update(f"[b]Run Portfolio Scan[/b]\n\nPath not found: {target}")
+            self._surface_error(
+                "Run Portfolio Scan",
+                f"Path not found: {target}",
+                "Verify the target exists or provide an absolute path.",
+            )
             return
         except Exception as exc:  # pragma: no cover - defensive fallback
-            self._show_status(f"Unexpected error: {exc}", "error")
-            detail_panel.update(f"[b]Run Portfolio Scan[/b]\n\nUnexpected error: {exc}")
+            self._surface_error(
+                "Run Portfolio Scan",
+                f"Unexpected error ({exc.__class__.__name__}): {exc}",
+                "Re-run the scan with a smaller directory or inspect application logs for more detail.",
+            )
             return
 
         self._last_scan_target = target
@@ -2248,15 +2278,22 @@ class PortfolioTextualApp(App):
         try:
             from ..analyzer.llm.client import InvalidAPIKeyError, LLMError
         except Exception as exc:  # pragma: no cover - optional dependency missing
-            self._show_status(f"AI analysis unavailable: {exc}", "error")
+            self._surface_error(
+                "AI-Powered Analysis",
+                f"Unavailable: {exc}",
+                "Ensure the optional AI dependencies are installed (see backend/requirements.txt).",
+            )
             self._ai_task = None
             return
 
         detail_panel = self.query_one("#detail", Static)
 
         if not self._llm_client or not self._last_parse_result:
-            self._show_status("AI analysis requires a recent scan and verified API key.", "error")
-            detail_panel.update(self._render_ai_detail())
+            self._surface_error(
+                "AI-Powered Analysis",
+                "A recent scan and a verified API key are required.",
+                "Run a portfolio scan, grant external consent, then provide your OpenAI API key.",
+            )
             self._ai_task = None
             return
 
@@ -2269,14 +2306,23 @@ class PortfolioTextualApp(App):
         except InvalidAPIKeyError as exc:
             self._llm_client = None
             self._llm_api_key = None
-            self._show_status(f"Invalid API key: {exc}", "error")
-            detail_panel.update(self._render_ai_detail())
+            self._surface_error(
+                "AI-Powered Analysis",
+                f"Invalid API key: {exc}",
+                "Copy a fresh key from OpenAI and try again.",
+            )
         except LLMError as exc:
-            self._show_status(f"AI analysis failed: {exc}", "error")
-            detail_panel.update(self._render_ai_detail())
+            self._surface_error(
+                "AI-Powered Analysis",
+                f"AI service error: {exc}",
+                "Retry in a few minutes or reduce the input size.",
+            )
         except Exception as exc:
-            self._show_status(f"Unexpected AI analysis error: {exc}", "error")
-            detail_panel.update(self._render_ai_detail())
+            self._surface_error(
+                "AI-Powered Analysis",
+                f"Unexpected error ({exc.__class__.__name__}): {exc}",
+                "Check your network connection and rerun the analysis.",
+            )
         else:
             self._last_ai_analysis = result
             detail_panel.update(self._format_ai_analysis(result))
