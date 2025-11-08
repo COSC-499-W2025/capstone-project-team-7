@@ -441,7 +441,6 @@ class CLIApp:
             actions = [
                 ("View file list", lambda: self._render_file_list(parse_result, languages)),
                 ("View language breakdown", lambda: self._render_language_breakdown(languages)),
-                ("Export JSON report", lambda: self._export_scan(parse_result, languages, archive)),
             ]
             if self._pdf_summaries:
                 actions.append(("View PDF summaries", self._render_pdf_summaries))
@@ -464,22 +463,6 @@ class CLIApp:
                 handler()
             except Exception as err:
                 self.io.write_error(f"Failed to process '{label}': {err}")
-            if self._pdf_summaries:
-                options.insert(2, "View PDF summaries")
-            options.append("Back")
-            
-            choice = self.io.choose("Scan results:", options)
-            
-            if choice is None or choice == len(options) - 1:
-                return
-            if choice == 0:
-                self._render_file_list(parse_result, languages)
-            elif choice == 1:
-                self._render_language_breakdown(languages)
-            elif self._pdf_summaries and choice == 2:
-                self._render_pdf_summaries()
-            elif choice == len(options) - 2:  # Export (second to last before Back)
-                self._export_scan(parse_result, languages, archive)
 
     def _handle_exit(self) -> None:
         self.io.write("Goodbye!")
