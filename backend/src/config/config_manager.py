@@ -84,7 +84,7 @@ class ConfigManager:
             "scan_profiles": {
                 "all": {
                     "description": "Scan all supported file types",
-                    "extensions": [".py", ".js", ".html", ".css", ".txt", ".md", ".json", ".pdf", ".doc", ".docx", ".jpg", ".jpeg", ".png", ".gif", ".svg", ".xml", ".yaml", ".yml", ".csv", ".xlsx", ".xls"],
+                    "extensions": all_extensions,
                     "exclude_dirs": ["__pycache__", "node_modules", ".git", "venv"]
                 },
                 "code_only": {

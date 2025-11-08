@@ -1164,7 +1164,7 @@ class CLIApp:
         filtered = summary.get("filtered_out")
         if filtered is not None:
             payload["summary"]["filtered_out"] = filtered
-        if languages:
+       if languages:
             payload["summary"]["languages"] = languages
         if self._last_git_analysis:
             payload["git_analysis"] = self._last_git_analysis
@@ -1192,12 +1192,11 @@ class CLIApp:
                         "keywords": [{"word": w, "count": c} for w, c in s.keywords] if s.success else [],
                         "statistics": s.statistics if s.success else {},
                         "key_points": s.key_points if s.success else [],
-                        "error": s.error_message if not s.success else None
+                        "error": s.error_message if not s.success else None,
                     }
                     for s in self._pdf_summaries
-                ]
+                ],
             }
-        
         return payload
 
     # PDF Analysis Methods
