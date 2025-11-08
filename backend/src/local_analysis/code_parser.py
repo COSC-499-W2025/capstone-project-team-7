@@ -16,8 +16,11 @@ lib_path = Path(__file__).parent / "lib"
 if lib_path.exists():
     sys.path.insert(0, str(lib_path))
 
-from tree_sitter import Language, Parser, Node
-TREE_SITTER_AVAILABLE = True
+try:
+    from tree_sitter import Language, Parser, Node
+    TREE_SITTER_AVAILABLE = True
+except ImportError:
+    TREE_SITTER_AVAILABLE = False
 
 # Try to import each language module separately
 _language_modules = {}
@@ -101,8 +104,8 @@ if TREE_SITTER_AVAILABLE:
     except ImportError:
         pass
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
 
 # Language configuration with extensions and modules
 SUPPORTED_LANGS = {

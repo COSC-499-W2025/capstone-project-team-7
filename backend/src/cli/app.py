@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import json
+import os
 from pathlib import Path
 from dataclasses import dataclass
 from datetime import datetime
@@ -18,9 +19,12 @@ from ..scanner.models import ScanPreferences, ParseResult
 from ..cli.archive_utils import ensure_zip
 from ..scanner.parser import parse_zip
 from ..scanner.errors import ParserError
+from ..scanner.media import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 from ..cli.language_stats import summarize_languages
 from ..cli.display import render_table
 from contextlib import contextmanager
+from ..local_analysis.git_repo import analyze_git_repo
+from ..local_analysis.media_analyzer import MediaAnalyzer
 
 # PDF analysis imports
 try:
@@ -61,6 +65,8 @@ MENU_PREFERENCES = "Settings & User Preferences"
 MENU_SCAN = "Run Portfolio Scan"
 MENU_AI_ANALYSIS = "AI-Powered Analysis"
 MENU_EXIT = "Exit"
+
+_MEDIA_EXTENSIONS = [ext.lower() for ext in IMAGE_EXTENSIONS + AUDIO_EXTENSIONS + VIDEO_EXTENSIONS]
 
 
 class ConsoleIO:
@@ -196,6 +202,11 @@ class CLIApp:
         self._llm_api_key: Optional[str] = None  
         self._options = self._build_menu()
         self._load_session()
+        self._last_git_repos: List[Path] = []
+        self._last_git_analysis: List[dict] = []
+        self._has_media_files: bool = False
+        self._last_media_analysis: Optional[dict] = None
+        self._media_analyzer = MediaAnalyzer()
 
     def run(self) -> None:
         """Main event loop. Renders the menu until the user exits."""
@@ -265,8 +276,7 @@ class CLIApp:
             MenuOption(lambda app: MENU_EXIT, CLIApp._handle_exit),
         ]
 
-    # Placeholder handlers. They will be replaced with real implementations
-    # during subsequent checkpoints.
+    # Placeholder handlers. They will be replaced with real implementations during subsequent checkpoints.
     def _handle_login(self) -> None:
         if self.session:
             choice = self.io.choose(
@@ -386,6 +396,10 @@ class CLIApp:
             return
         relevant_only = relevant_choice == 0
 
+        self._last_git_repos = []
+        self._last_git_analysis = []
+        self._has_media_files = False
+        self._last_media_analysis = None
         try:
             with self.io.status("Scanning project ..."):
                 archive = self._ensure_zip(target, preferences=preferences)
@@ -403,6 +417,8 @@ class CLIApp:
 
         self._last_scan_path = target
         self._last_parse_result = parse_result
+        self._last_git_repos = self._detect_git_repositories(target)
+        self._has_media_files = any(getattr(meta, "media_info", None) for meta in parse_result.files)
 
         languages = self._summarize_languages(parse_result.files)
         self._render_scan_summary(parse_result, relevant_only)
@@ -422,27 +438,31 @@ class CLIApp:
         self.io.write_success("Scan completed successfully.")
 
         while True:
-            options = [
-                "View file list",
-                "View language breakdown",
-                "Export JSON report",
+            actions = [
+                ("View file list", lambda: self._render_file_list(parse_result, languages)),
+                ("View language breakdown", lambda: self._render_language_breakdown(languages)),
             ]
             if self._pdf_summaries:
-                options.insert(2, "View PDF summaries")
-            options.append("Back")
-            
-            choice = self.io.choose("Scan results:", options)
-            
-            if choice is None or choice == len(options) - 1:
+                actions.append(("View PDF summaries", self._render_pdf_summaries))
+            actions.append(("Export JSON report", lambda: self._export_scan(parse_result, languages, archive)))
+            if self._last_git_repos:
+                actions.append(("View Git Analysis", self._handle_git_analysis_option))
+            if self._has_media_files:
+                actions.append(("View Media Insights", self._handle_media_analysis_option))
+            actions.append(("Back", None))
+
+            labels = [label for label, _ in actions]
+            choice = self.io.choose("Scan results:", labels)
+            if choice is None:
                 return
-            if choice == 0:
-                self._render_file_list(parse_result, languages)
-            elif choice == 1:
-                self._render_language_breakdown(languages)
-            elif self._pdf_summaries and choice == 2:
-                self._render_pdf_summaries()
-            elif choice == len(options) - 2:  # Export (second to last before Back)
-                self._export_scan(parse_result, languages, archive)
+
+            label, handler = actions[choice]
+            if handler is None:
+                return
+            try:
+                handler()
+            except Exception as err:
+                self.io.write_error(f"Failed to process '{label}': {err}")
 
     def _handle_exit(self) -> None:
         self.io.write("Goodbye!")
@@ -577,6 +597,38 @@ class CLIApp:
 
         return ConfigManager(user_id)
 
+    def _detect_git_repositories(self, target: Path) -> List[Path]:
+        """Return git repository roots found under the scan target."""
+        repos: List[Path] = []
+        seen = set()
+
+        # For files (e.g. .zip) we use the parent directory as the base for detection.
+        base = target if target.is_dir() else target.parent
+        if not base.exists():
+            return repos
+
+        def _record(path: Path) -> None:
+            resolved = path.resolve()
+            if resolved not in seen:
+                seen.add(resolved)
+                repos.append(path)
+
+        if (base / ".git").is_dir():
+            _record(base)
+
+        if target.is_dir():
+            try:
+                for dirpath, dirnames, _ in os.walk(target):
+                    if ".git" in dirnames:
+                        repo_root = Path(dirpath)
+                        _record(repo_root)
+                        # Avoid descending into the .git directory itself.
+                        dirnames.remove(".git")
+            except Exception:
+                return repos
+
+        return repos
+
     def _refresh_consent_state(self) -> bool:
         if not self.session:
             self._required_consent = False
@@ -596,6 +648,146 @@ class CLIApp:
                 self._required_consent = False
                 self._external_consent = False
         return self._required_consent
+
+    def _handle_git_analysis_option(self) -> None:
+        if not self._last_git_repos:
+            self.io.write_warning("No git repositories detected in the last scan.")
+            return
+
+        analyses: List[dict]
+        if not self._last_git_analysis:
+            analyses = []
+            with self.io.status("Collecting git statistics ..."):
+                for repo in self._last_git_repos:
+                    try:
+                        result = analyze_git_repo(str(repo))
+                    except Exception as err:
+                        analyses.append({"path": str(repo), "error": str(err)})
+                        continue
+                    analyses.append(result)
+            self._last_git_analysis = analyses
+        else:
+            analyses = self._last_git_analysis
+
+        self._render_section_header("Git Analysis")
+        for entry in analyses:
+            repo_path = str(entry.get("path", "unknown"))
+            self.io.write(f"Repository: {repo_path}")
+            error = entry.get("error")
+            if error:
+                self.io.write_warning(f"  Skipped: {error}")
+                self.io.write("")
+                continue
+
+            commits = entry.get("commit_count", 0)
+            self.io.write(f"  Commits: {commits}")
+
+            date_range = entry.get("date_range") or {}
+            start = date_range.get("start") if isinstance(date_range, dict) else None
+            end = date_range.get("end") if isinstance(date_range, dict) else None
+            if start or end:
+                self.io.write(f"  Active between: {start or 'unknown'} → {end or 'unknown'}")
+
+            contributors = entry.get("contributors") or []
+            if contributors:
+                top = ", ".join(
+                    f"{c.get('name', 'Unknown')} ({c.get('commits', 0)} commits, {c.get('percent', 0)}%)"
+                    for c in contributors[:3]
+                )
+                self.io.write(f"  Top contributors: {top}")
+            else:
+                self.io.write("  Top contributors: none")
+
+            branches = entry.get("branches") or []
+            if branches:
+                self.io.write(f"  Branches tracked: {len(branches)}")
+
+            timeline = entry.get("timeline") or []
+            if timeline:
+                recent = timeline[-3:]
+                recent_summary = ", ".join(f"{row.get('month')}: {row.get('commits', 0)}" for row in recent)
+            self.io.write(f"  Recent activity: {recent_summary}")
+
+            self.io.write("")
+
+    def _render_media_analysis(self, analysis: dict) -> None:
+        summary = analysis.get("summary", {})
+        metrics = analysis.get("metrics", {})
+        insights = analysis.get("insights") or []
+        issues = analysis.get("issues") or []
+
+        self._render_section_header("Media Insights")
+        self.io.write(f"Total media files: {summary.get('total_media_files', 0)}")
+        self.io.write(
+            f"  Images: {summary.get('image_files', 0)} | "
+            f"Audio: {summary.get('audio_files', 0)} | "
+            f"Video: {summary.get('video_files', 0)}"
+        )
+
+        image_metrics = metrics.get("images") or {}
+        audio_metrics = metrics.get("audio") or {}
+        video_metrics = metrics.get("video") or {}
+
+        if image_metrics.get("count"):
+            avg_w = image_metrics.get("average_width")
+            avg_h = image_metrics.get("average_height")
+            max_res = image_metrics.get("max_resolution")
+            bits = []
+            if avg_w and avg_h:
+                bits.append(f"avg {avg_w:.0f}x{avg_h:.0f}")
+            if max_res:
+                dims = max_res.get("dimensions") or (0, 0)
+                bits.append(f"max {dims[0]}x{dims[1]}")
+            self.io.write(f"  Image metrics: {', '.join(bits) if bits else '—'}")
+
+        if audio_metrics.get("count"):
+            parts = [f"total {audio_metrics.get('total_duration_seconds', 0):.1f}s"]
+            avg = audio_metrics.get("average_duration_seconds")
+            if avg:
+                parts.append(f"avg {avg:.1f}s")
+            self.io.write(f"  Audio metrics: {', '.join(parts)}")
+
+        if video_metrics.get("count"):
+            parts = [f"total {video_metrics.get('total_duration_seconds', 0):.1f}s"]
+            avg = video_metrics.get("average_duration_seconds")
+            if avg:
+                parts.append(f"avg {avg:.1f}s")
+            self.io.write(f"  Video metrics: {', '.join(parts)}")
+
+        if insights:
+            self.io.write("")
+            self.io.write("Insights:")
+            for item in insights:
+                self.io.write(f"  • {item}")
+
+        if issues:
+            self.io.write("")
+            self.io.write("Potential issues:")
+            for item in issues:
+                self.io.write(f"  • {item}")
+
+    def _handle_media_analysis_option(self) -> None:
+        if not self._has_media_files:
+            self.io.write_warning("No media files detected in the last scan.")
+            return
+
+        if not self._last_parse_result:
+            self.io.write_warning("Run a scan before requesting media insights.")
+            return
+
+        analysis: dict
+        if self._last_media_analysis is None:
+            with self.io.status("Aggregating media metrics ..."):
+                try:
+                    analysis = self._media_analyzer.analyze(self._last_parse_result.files)
+                except Exception as err:
+                    self.io.write_error(f"Failed to analyze media files: {err}")
+                    return
+            self._last_media_analysis = analysis
+        else:
+            analysis = self._last_media_analysis
+
+        self._render_media_analysis(analysis)
 
     def _login_flow(self) -> None:
         email = self.io.prompt("Email: ").strip()
@@ -677,6 +869,7 @@ class CLIApp:
             data = json.loads(self._session_path.read_text(encoding="utf-8"))
             user_id = data.get("user_id")
             email = data.get("email")
+            
             access_token = data.get("access_token", "")
             if user_id and email:
                 self.session = Session(user_id=user_id, email=email, access_token=access_token)
@@ -853,7 +1046,19 @@ class CLIApp:
 
         extensions = profile.get("extensions") or None
         if extensions:
-            extensions = [ext.lower() for ext in extensions]
+            normalized: list[str] = []
+            seen: set[str] = set()
+            for ext in extensions:
+                lowered = ext.lower()
+                if lowered not in seen:
+                    seen.add(lowered)
+                    normalized.append(lowered)
+            if profile_key == "all":
+                for media_ext in _MEDIA_EXTENSIONS:
+                    if media_ext not in seen:
+                        normalized.append(media_ext)
+                        seen.add(media_ext)
+            extensions = normalized
 
         excluded_dirs = profile.get("exclude_dirs") or None
         max_file_size_mb = config.get("max_file_size_mb")
@@ -959,10 +1164,22 @@ class CLIApp:
         filtered = summary.get("filtered_out")
         if filtered is not None:
             payload["summary"]["filtered_out"] = filtered
-        if languages:
+       if languages:
             payload["summary"]["languages"] = languages
-        
-        # Add PDF analysis results if available
+
+        if self._last_git_analysis:
+            payload["git_analysis"] = self._last_git_analysis
+        if self._has_media_files:
+            media_payload = self._last_media_analysis
+            if media_payload is None:
+                try:
+                    media_payload = self._media_analyzer.analyze(result.files)
+                    self._last_media_analysis = media_payload
+                except Exception:
+                    media_payload = None
+            if media_payload:
+                payload["media_analysis"] = media_payload
+
         if self._pdf_summaries:
             payload["pdf_analysis"] = {
                 "total_pdfs": len(self._pdf_summaries),
@@ -975,12 +1192,11 @@ class CLIApp:
                         "keywords": [{"word": w, "count": c} for w, c in s.keywords] if s.success else [],
                         "statistics": s.statistics if s.success else {},
                         "key_points": s.key_points if s.success else [],
-                        "error": s.error_message if not s.success else None
+                        "error": s.error_message if not s.success else None,
                     }
                     for s in self._pdf_summaries
-                ]
+                ],
             }
-        
         return payload
 
     # PDF Analysis Methods
