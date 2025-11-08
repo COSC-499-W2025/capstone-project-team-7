@@ -603,6 +603,10 @@ class CLIApp:
         try:
             self.session = self.auth.login(email, password)
             self.io.write(f"Logged in as {self.session.email}.")
+            # Set the session token for authenticated database requests
+            consent_storage.set_session_token(self.session.access_token)
+            # Load user's consents from database into memory
+            consent_storage.load_user_consents(self.session.user_id, self.session.access_token)
             self._refresh_consent_state()
             self._persist_session()
         except AuthError as err:
@@ -616,6 +620,7 @@ class CLIApp:
             self.io.write(f"Account created and logged in as {self.session.email}.")
             self._required_consent = False
             self._external_consent = False
+            # No need to load consents for new users (none exist yet)
             self._persist_session()
         except AuthError as err:
             self.io.write(f"Signup failed: {err}")
@@ -680,6 +685,10 @@ class CLIApp:
             access_token = data.get("access_token", "")
             if user_id and email:
                 self.session = Session(user_id=user_id, email=email, access_token=access_token)
+                # Set the session token for authenticated database requests
+                consent_storage.set_session_token(access_token)
+                # Load user's consents from database into memory
+                consent_storage.load_user_consents(user_id, access_token)
                 self._refresh_consent_state()
         except FileNotFoundError:
             pass
@@ -703,6 +712,13 @@ class CLIApp:
 
     def _clear_session(self) -> None:
         """Delete any cached session information (used on logout)."""
+        # Clear user's consents from memory
+        if self.session:
+            consent_storage.clear_user_consents_cache(self.session.user_id)
+        
+        # Clear the session token
+        consent_storage.clear_session_token()
+        
         if not self._session_path:
             return
         try:
