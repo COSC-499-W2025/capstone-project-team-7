@@ -104,8 +104,8 @@ if TREE_SITTER_AVAILABLE:
     except ImportError:
         pass
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
 
 # Language configuration with extensions and modules
 SUPPORTED_LANGS = {

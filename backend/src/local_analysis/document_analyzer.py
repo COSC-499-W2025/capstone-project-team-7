@@ -13,8 +13,8 @@ import logging
 # Import the existing PDF summarizer
 from pdf_summarizer import create_summarizer, SummaryConfig
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
 
 
 @dataclass

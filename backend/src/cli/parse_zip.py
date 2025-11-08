@@ -12,6 +12,7 @@ from .display import render_table
 from .language_stats import summarize_languages
 from ..scanner.errors import ParserError
 from ..scanner.models import ScanPreferences
+from ..scanner.media import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 from ..scanner.parser import parse_zip
 from ..local_analysis.code_parser import CodeAnalyzer
 from ..local_analysis.code_cli import display_analysis_results
@@ -211,6 +212,9 @@ def load_preferences(profile_name: str | None) -> ScanPreferences | None:
     return _preferences_from_config(manager.config, target_profile)
 
 
+_MEDIA_EXTENSIONS = [ext.lower() for ext in IMAGE_EXTENSIONS + AUDIO_EXTENSIONS + VIDEO_EXTENSIONS]
+
+
 def _preferences_from_config(config: dict, profile_name: str | None) -> ScanPreferences | None:
     if not config:
         return None
@@ -221,7 +225,19 @@ def _preferences_from_config(config: dict, profile_name: str | None) -> ScanPref
 
     extensions = profile.get("extensions") or None
     if extensions:
-        extensions = [ext.lower() for ext in extensions]
+        normalized = []
+        seen = set()
+        for ext in extensions:
+            lowered = ext.lower()
+            if lowered not in seen:
+                seen.add(lowered)
+                normalized.append(lowered)
+        if profile_key == "all":
+            for media_ext in _MEDIA_EXTENSIONS:
+                if media_ext not in seen:
+                    normalized.append(media_ext)
+                    seen.add(media_ext)
+        extensions = normalized
 
     excluded_dirs = profile.get("exclude_dirs") or None
     max_file_size_mb = config.get("max_file_size_mb")
