@@ -96,6 +96,12 @@ class MediaAnalyzer:
                 insights.append(
                     f"Most common image aspect ratio: {common_ratio} ({count} files)"
                 )
+            top_labels = image_stats.top_labels(limit=3)
+            if top_labels:
+                label_summary = ", ".join(
+                    f"{entry['label']} ({entry['share']:.0%})" for entry in top_labels
+                )
+                insights.append(f"Image content highlights: {label_summary}")
             low_res = [
                 entry["path"]
                 for entry in image_stats.low_resolution_files(
@@ -116,6 +122,23 @@ class MediaAnalyzer:
                     f"Total audio duration: {audio_stats.total_duration:.1f}s "
                     f"(avg {audio_stats.average_duration:.1f}s)"
                 )
+            if audio_stats.tempos:
+                insights.append(
+                    f"Average tempo: {audio_stats.average_tempo:.0f} BPM "
+                    f"(range {int(min(audio_stats.tempos))}-{int(max(audio_stats.tempos))} BPM)"
+                )
+            audio_labels = audio_stats.top_labels(limit=3)
+            if audio_labels:
+                label_summary = ", ".join(
+                    f"{entry['label']} ({entry['share']:.0%})" for entry in audio_labels
+                )
+                insights.append(f"Audio content highlights: {label_summary}")
+            audio_genres = audio_stats.top_genres(limit=3)
+            if audio_genres:
+                genre_summary = ", ".join(
+                    f"{entry['genre']} ({entry['share']:.0%})" for entry in audio_genres
+                )
+                insights.append(f"Audio genre highlights: {genre_summary}")
             short_audio = audio_stats.short_clips(self.config.audio_short_clip_threshold)
             if short_audio:
                 issues.append(
@@ -130,6 +153,12 @@ class MediaAnalyzer:
                     f"Total video duration: {video_stats.total_duration:.1f}s "
                     f"(avg {video_stats.average_duration:.1f}s)"
                 )
+            video_labels = video_stats.top_labels(limit=3)
+            if video_labels:
+                label_summary = ", ".join(
+                    f"{entry['label']} ({entry['share']:.0%})" for entry in video_labels
+                )
+                insights.append(f"Video content highlights: {label_summary}")
             short_videos = video_stats.short_clips(self.config.video_short_clip_threshold)
             if short_videos:
                 issues.append(
@@ -189,6 +218,7 @@ class _ImageStats:
         self.max_resolution: Optional[Dict[str, Any]] = None
         self.min_resolution: Optional[Dict[str, Any]] = None
         self._records: list[Dict[str, Any]] = []
+        self.label_counts: Counter[str] = Counter()
 
     def add(self, path: str, info: Mapping[str, Any]) -> None:
         width = int(info.get("width") or 0)
@@ -210,6 +240,14 @@ class _ImageStats:
             "mode": mode,
         }
         self._records.append(record)
+        labels = info.get("content_labels") or []
+        for entry in labels:
+            if not isinstance(entry, Mapping):
+                continue
+            label = entry.get("label")
+            confidence = entry.get("confidence")
+            if label and isinstance(confidence, (int, float)):
+                self.label_counts[label] += float(confidence)
 
         if (
             self.max_resolution is None
@@ -245,7 +283,17 @@ class _ImageStats:
             "max_resolution": self.max_resolution,
             "min_resolution": self.min_resolution,
             "common_aspect_ratios": dict(self.common_aspect_ratios.most_common(5)),
+            "top_labels": self.top_labels(),
         }
+
+    def top_labels(self, limit: int = 5) -> Sequence[Dict[str, Any]]:
+        if not self.label_counts:
+            return []
+        total = sum(self.label_counts.values()) or 1.0
+        return [
+            {"label": label, "share": round(weight / total, 4)}
+            for label, weight in self.label_counts.most_common(limit)
+        ]
 
 
 class _TimedMediaStats:
@@ -259,6 +307,9 @@ class _TimedMediaStats:
         self.longest: Optional[Dict[str, Any]] = None
         self.shortest: Optional[Dict[str, Any]] = None
         self.paths: list[str] = []
+        self.label_counts: Counter[str] = Counter()
+        self.tempos: list[float] = []
+        self.genre_counts: Counter[str] = Counter()
 
     def add(self, path: str, info: Mapping[str, Any]) -> None:
         duration = float(info.get("duration_seconds") or 0.0)
@@ -285,6 +336,21 @@ class _TimedMediaStats:
             self.longest = record
         if self.shortest is None or duration < self.shortest["duration_seconds"]:
             self.shortest = record
+        labels = info.get("content_labels") or []
+        for entry in labels:
+            if not isinstance(entry, Mapping):
+                continue
+            label = entry.get("label")
+            confidence = entry.get("confidence")
+            if label and isinstance(confidence, (int, float)):
+                self.label_counts[label] += float(confidence)
+        tempo = info.get("tempo_bpm")
+        if isinstance(tempo, (int, float)):
+            self.tempos.append(float(tempo))
+        genres = info.get("genre_tags") or []
+        for genre in genres:
+            if isinstance(genre, str):
+                self.genre_counts[genre] += 1
 
     @property
     def average_duration(self) -> float:
@@ -305,7 +371,34 @@ class _TimedMediaStats:
             "bitrate_stats": _coerce_stats(self.bitrates),
             "sample_rate_stats": _coerce_stats(self.sample_rates),
             "channel_distribution": dict(self.channels),
+            "top_labels": self.top_labels(),
+            "tempo_stats": _coerce_float_stats(self.tempos),
+            "top_genres": self.top_genres(),
         }
+
+    def top_labels(self, limit: int = 5) -> Sequence[Dict[str, Any]]:
+        if not self.label_counts:
+            return []
+        total = sum(self.label_counts.values()) or 1.0
+        return [
+            {"label": label, "share": round(weight / total, 4)}
+            for label, weight in self.label_counts.most_common(limit)
+        ]
+
+    def top_genres(self, limit: int = 5) -> Sequence[Dict[str, Any]]:
+        if not self.genre_counts:
+            return []
+        total = sum(self.genre_counts.values()) or 1
+        return [
+            {"genre": genre, "share": round(count / total, 4)}
+            for genre, count in self.genre_counts.most_common(limit)
+        ]
+
+    @property
+    def average_tempo(self) -> float:
+        if not self.tempos:
+            return 0.0
+        return sum(self.tempos) / len(self.tempos)
 
 
 def _format_ratio(width: int, height: int) -> str:
@@ -323,5 +416,15 @@ def _coerce_stats(values: Sequence[int]) -> Optional[Dict[str, Any]]:
     return {
         "min": int(min(values)),
         "max": int(max(values)),
+        "average": round(mean(values), 2),
+    }
+
+
+def _coerce_float_stats(values: Sequence[float]) -> Optional[Dict[str, Any]]:
+    if not values:
+        return None
+    return {
+        "min": round(min(values), 2),
+        "max": round(max(values), 2),
         "average": round(mean(values), 2),
     }
