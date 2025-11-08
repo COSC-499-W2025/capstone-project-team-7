@@ -90,3 +90,61 @@ def test_media_analyzer_flags_low_resolution_and_short_clips():
     assert any("image(s) below" in issue for issue in result["issues"])
     assert any("audio clip(s) shorter" in issue for issue in result["issues"])
     assert any("video clip(s) shorter" in issue for issue in result["issues"])
+
+
+def test_media_analyzer_reports_content_labels():
+    analyzer = MediaAnalyzer()
+    files = [
+        _file_meta(
+            "assets/cat.png",
+            "image/png",
+            {
+                "width": 1024,
+                "height": 768,
+                "mode": "RGB",
+                "content_labels": [
+                    {"label": "tabby cat", "confidence": 0.9},
+                    {"label": "sofa", "confidence": 0.2},
+                ],
+            },
+        ),
+        _file_meta(
+            "audio/interview.wav",
+            "audio/x-wav",
+            {
+                "duration_seconds": 12.0,
+                "content_labels": [
+                    {"label": "team", "confidence": 0.7},
+                    {"label": "project", "confidence": 0.4},
+                ],
+                "tempo_bpm": 128.0,
+                "genre_tags": ["electronic/dance", "pop"],
+            },
+        ),
+        _file_meta(
+            "video/park.mp4",
+            "video/mp4",
+            {
+                "duration_seconds": 42.0,
+                "content_labels": [
+                    {"label": "park", "confidence": 0.6},
+                    {"label": "dog", "confidence": 0.5},
+                ],
+            },
+        ),
+    ]
+
+    result = analyzer.analyze(files)
+
+    image_labels = result["metrics"]["images"]["top_labels"]
+    audio_labels = result["metrics"]["audio"]["top_labels"]
+    video_labels = result["metrics"]["video"]["top_labels"]
+    audio_tempo = result["metrics"]["audio"]["tempo_stats"]
+    assert image_labels and image_labels[0]["label"] == "tabby cat"
+    assert audio_labels and audio_labels[0]["label"] == "team"
+    assert video_labels and video_labels[0]["label"] == "park"
+    assert audio_tempo and audio_tempo["average"] == pytest.approx(128.0, rel=1e-3)
+    assert any("Image content highlights" in insight for insight in result["insights"])
+    assert any("Audio content highlights" in insight for insight in result["insights"])
+    assert any("Audio genre highlights" in insight for insight in result["insights"])
+    assert any("Video content highlights" in insight for insight in result["insights"])
