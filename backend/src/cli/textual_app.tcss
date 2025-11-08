@@ -1,70 +1,96 @@
 #root {
-    background: $surface;
+    background: #0f1115;
+    color: #e5e7eb;
 }
 
 Header, Footer {
-    background: $accent;
-    color: $text;
+    background: #181b21;
+    color: #e5e7eb;
+    text-style: bold;
 }
 
 #session-status {
     padding: 0 2;
-    border: round $primary;
-    background: $surface-lighten-1;
+    background: #111318;
+    border: tall #242832;
     margin-bottom: 1;
 }
 
-Horizontal#content {
-    height: 1fr;
+#menu {
+    background: transparent;
+    border: tall #242832;
+    padding: 0 1;
 }
 
-.panel {
-    border: round $primary;
-    padding: 1 2;
-}
-
-#sidebar {
-    width: 32%;
-    min-width: 24;
+#menu ListItem {
+    padding: 0 1;
+    border: none;
 }
 
 #menu ListItem.--highlight {
-    background: $accent;
-    color: $accent-lighten-3;
-}
-
-.panel-title {
-    margin-bottom: 1;
-    text-style: bold;
+    background: #242832;
+    color: #f8fafc;
 }
 
 .menu-item {
-    padding: 0 1;
+    text-style: bold;
+}
+
+#main {
+    height: 1fr;
+    padding: 1 2;
+}
+
+.section-heading {
+    text-style: bold;
+    margin: 1 0 0 0;
+    color: #9ca3af;
+}
+
+.section-heading:first-child {
+    margin-top: 0;
+}
+
+.detail-block {
+    padding: 1 0 0 0;
+    min-height: 6;
 }
 
 .status {
     margin-top: 1;
     padding: 0 2;
-    border: round $accent;
+    border: none;
+    background: #181b21;
 }
 
 .status.info {
-    background: $surface;
+    color: #94a3b8;
 }
 
 .status.warning {
-    background: $warning;
-    color: $text;
+    background: #2f2415;
+    color: #facc15;
 }
 
 .status.error {
-    background: $error;
-    color: $text;
+    background: #321717;
+    color: #fda4af;
 }
 
 .status.success {
-    background: $success;
-    color: $text;
+    background: #1f2a1f;
+    color: #4ade80;
+}
+
+CommandPalette {
+    background: #181b21;
+    border: tall #242832;
+    color: #e5e7eb;
+}
+
+CommandPalette Option.--highlight {
+    background: #242832;
+    color: #f8fafc;
 }
 
 ScanConfigScreen {
@@ -74,8 +100,8 @@ ScanConfigScreen {
 .dialog {
     width: 60%;
     max-width: 60;
-    border: round $primary;
-    background: $surface-lighten-1;
+    border: tall #242832;
+    background: #181b21;
     padding: 1 2;
 }
 
@@ -88,7 +114,7 @@ ScanConfigScreen {
 }
 
 .dialog-message {
-    color: $warning;
+    color: #e5e7eb;
 }
 
 .dialog-buttons {
@@ -157,15 +183,15 @@ ScanConfigScreen {
 }
 
 .dialog-message.warning {
-    color: $warning;
+    color: #facc15;
 }
 
 .dialog-message.error {
-    color: $error;
+    color: #fda4af;
 }
 
 .dialog-message.success {
-    color: $success;
+    color: #4ade80;
 }
 
 #notice-log {
@@ -185,20 +211,20 @@ ScanConfigScreen {
     overflow: hidden;
 }
 
-#scan-results-table {
+#scan-results-log {
     height: 1fr;
     min-height: 12;
-    border: round $primary;
+    border: tall #242832;
     padding: 0 1;
-    background: $surface;
+    background: #0f1115;
 }
 
 .scan-actions-container {
     height: auto;
     margin-top: 0;
     border: none;
-    padding: 0 1;
-    background: $surface-lighten-1;
+    padding: 0;
+    background: transparent;
     max-height: 6;
     overflow-y: auto;
 }
@@ -208,30 +234,7 @@ ScanConfigScreen {
     padding: 0;
 }
 
-.scan-actions-row {
-    width: 100%;
-    align-horizontal: center;
-    padding-top: 0;
+.scan-actions-list Button {
+    margin-top: 0;
     margin-bottom: 0;
-}
-
-.scan-actions-row Button {
-    margin: 0 1 0 0;
-    min-width: 10;
-    padding: 0 1;
-    height: auto;
-}
-
-.file-detail-dialog {
-    width: 80%;
-    max-width: 80;
-}
-
-.file-detail-text {
-    border: round $primary;
-    padding: 1;
-    background: $surface;
-    max-height: 18;
-    overflow-y: auto;
-    text-wrap: wrap;
 }

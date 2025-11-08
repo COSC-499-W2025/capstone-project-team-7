@@ -22,7 +22,7 @@ from textual.widgets import (
     Input,
     Checkbox,
     Button,
-    DataTable,
+    Log,
 )
 
 from rich.text import Text
@@ -43,18 +43,6 @@ from ..local_analysis.media_analyzer import MediaAnalyzer
 MEDIA_EXTENSIONS = tuple(
     sorted(set(IMAGE_EXTENSIONS + AUDIO_EXTENSIONS + VIDEO_EXTENSIONS))
 )
-
-
-def _ellipsize_middle(value: str, max_len: int = 120) -> str:
-    """Truncate strings with a centered ellipsis when they exceed max_len."""
-    if len(value) <= max_len:
-        return value
-    if max_len <= 3:
-        return value[:max_len]
-    keep = max_len - 3
-    prefix = keep // 2
-    suffix = keep - prefix
-    return f"{value[:prefix]}...{value[-suffix:]}"
 
 
 class ScanParametersChosen(Message):
@@ -645,46 +633,6 @@ class PreferencesScreen(ModalScreen[None]):
         if callable(callback):
             callback()
 
-class FileDetailScreen(ModalScreen[None]):
-    """Modal dialog to display full scan result content."""
-
-    def __init__(self, title: str, content: str) -> None:
-        super().__init__()
-        self._title = title or "Detail"
-        self._content = content
-
-    def compose(self) -> ComposeResult:
-        yield Vertical(
-            Static(self._title, classes="dialog-title"),
-            Static("", id="file-detail-text", classes="file-detail-text"),
-            Horizontal(
-                Button("Close", id="file-detail-close", variant="primary"),
-                classes="dialog-buttons",
-            ),
-            classes="dialog file-detail-dialog",
-        )
-
-    def on_mount(self, _: Mount) -> None:  # pragma: no cover - UI hook
-        content_widget = self.query_one("#file-detail-text", Static)
-        text = self._content or ""
-        if "[" in text and "]" in text:
-            try:
-                renderable = Text.from_markup(text)
-            except Exception:
-                renderable = Text(text)
-        else:
-            renderable = Text(text)
-        content_widget.update(renderable)
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "file-detail-close":
-            self.dismiss(None)
-
-    def on_key(self, event: Key) -> None:  # pragma: no cover - keyboard shortcut
-        if event.key == "escape":
-            self.dismiss(None)
-
-
 class ScanResultAction(Message):
     """Raised when the user selects an action from the scan results dialog."""
 
@@ -701,52 +649,23 @@ class ScanResultsScreen(ModalScreen[None]):
         self._summary_text = summary_text
         self._actions = actions
         self._detail_context = "Scan result detail"
-        self._max_line_length = 120
-        self._default_column_width = 80
         self._lines: List[str] = []
 
     def compose(self) -> ComposeResult:
         button_widgets = [
             Button(label, id=f"scan-action-{action}") for action, label in self._actions
         ]
-        rows: list[Horizontal] = []
-        if button_widgets:
-            per_row = 4
-            for start in range(0, len(button_widgets), per_row):
-                row_buttons = button_widgets[start : start + per_row]
-                row = Horizontal(*row_buttons, classes="scan-actions-row")
-                rows.append(row)
-        actions_layout = Vertical(*rows, classes="scan-actions-list") if rows else Vertical(classes="scan-actions-list")
-        output_table = DataTable(id="scan-results-table", classes="scan-results-table")
-        actions_container = ScrollableContainer(
-            actions_layout,
-            id="scan-actions-container",
-            classes="scan-actions-container",
-        )
+        actions_layout = Vertical(*button_widgets, classes="scan-actions-list") if button_widgets else Vertical(classes="scan-actions-list")
+        log_widget = Log(highlight=False, id="scan-results-log")
         yield Vertical(
             Static("Scan results", classes="dialog-title"),
-            Static(
-                "Choose an action to review detailed output, export data, or run follow-up analyses.",
-                classes="dialog-subtitle",
-            ),
-            output_table,
+            log_widget,
             Static("", id="scan-results-message", classes="dialog-message"),
-            actions_container,
+            ScrollableContainer(actions_layout, id="scan-actions-container", classes="scan-actions-container"),
             classes="dialog scan-results-dialog",
         )
 
     def on_mount(self, _: Mount) -> None:  # pragma: no cover - UI setup
-        table = self.query_one("#scan-results-table", DataTable)
-        table.clear(columns=True)
-        table.add_column("Output", key="output", width=self._default_column_width)
-        table.show_header = False
-        table.show_cursor = True
-        table.cursor_type = "row"
-        table.zebra_stripes = False
-        table.fixed_rows = 0
-        table.fixed_columns = 0
-        table.show_vertical_scrollbar = True
-        table.show_horizontal_scrollbar = True
         self.display_output(self._summary_text, context="Overview")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -771,35 +690,21 @@ class ScanResultsScreen(ModalScreen[None]):
     ) -> None:
         if context:
             self.set_detail_context(context)
-        table = self.query_one("#scan-results-table", DataTable)
-        table.clear(columns=False)
+        log = self.query_one("#scan-results-log", Log)
+        log.clear()
         lines = text.splitlines() or [""]
         self._lines = [raw_line or "" for raw_line in lines]
-        for index, full_line in enumerate(self._lines):
-            display_line = full_line if allow_horizontal else _ellipsize_middle(full_line, self._max_line_length)
-            renderable: Text
-            if display_line == full_line and "[" in full_line and "]" in full_line:
+        if self._detail_context:
+            log.write(f"[bold]{self._detail_context}[/bold]")
+            log.write("")
+        for line in self._lines:
+            if "[" in line and "]" in line:
                 try:
-                    renderable = Text.from_markup(display_line)
+                    log.write(line)
+                    continue
                 except Exception:
-                    renderable = Text(display_line or " ")
-            else:
-                renderable = Text(display_line or " ")
-            if allow_horizontal:
-                renderable.no_wrap = True
-            if "  " in full_line or full_line.startswith("  "):
-                renderable.stylize("bold")
-            table.add_row(renderable, key=str(index))
-        if self._lines:
-            column = table.columns.get("output")
-            if column is not None:
-                if allow_horizontal:
-                    max_length = max(len(line) for line in self._lines)
-                    column.width = max(20, max_length + 2)
-                else:
-                    column.width = self._default_column_width
-            table.cursor_coordinate = (0, 0)
-            table.focus()
+                    pass
+            log.write(line or " ")
 
     def set_message(self, message: str, *, tone: str = "info") -> None:
         widget = self.query_one("#scan-results-message", Static)
@@ -807,17 +712,6 @@ class ScanResultsScreen(ModalScreen[None]):
         for class_name in ("info", "warning", "error", "success"):
             widget.remove_class(class_name)
         widget.add_class(tone)
-
-    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-        if event.data_table.id != "scan-results-table":
-            return
-        try:
-            index = int(event.row_key)
-        except (TypeError, ValueError):
-            index = 0
-        full_line = self._lines[index] if 0 <= index < len(self._lines) else ""
-        detail_screen = FileDetailScreen(self._detail_context, full_line)
-        self.app.push_screen(detail_screen)
 
     def dismiss(self, result: Optional[object] = None) -> None:  # pragma: no cover - cleanup hook
         super().dismiss(result)
@@ -878,24 +772,20 @@ class PortfolioTextualApp(App):
         self._pending_ai_analysis: bool = False
 
     def compose(self) -> ComposeResult:
-        yield Header(show_clock=True)
+        yield Header()
         yield Static("", id="session-status", classes="session-status")
         menu_items = [ListItem(Label(label, classes="menu-item")) for label, _ in self.MENU_ITEMS]
         menu_list = ListView(*menu_items, id="menu")
 
-        yield Horizontal(
-            Vertical(
-                Static("Menu", classes="panel-title"),
-                menu_list,
-                id="sidebar",
-                classes="panel",
-            ),
+        yield Vertical(
+            Static("Navigation", classes="section-heading"),
+            menu_list,
             Static(
                 "Select an option from the menu to view details.",
                 id="detail",
-                classes="panel",
+                classes="detail-block",
             ),
-            id="content",
+            id="main",
         )
         yield Static(
             "Select a menu option and press Enter to continue.",
@@ -1899,16 +1789,16 @@ class PortfolioTextualApp(App):
             return
 
         if self._session:
-            consent_badge = "[yellow]Consent pending[/yellow]"
+            consent_badge = "[#9ca3af]Consent pending[/#9ca3af]"
             if self._consent_record:
                 consent_badge = "[green]Consent granted[/green]"
             elif self._consent_error:
-                consent_badge = "[yellow]Consent required[/yellow]"
+                consent_badge = "[#9ca3af]Consent required[/#9ca3af]"
 
             external = consent_storage.get_consent(
                 self._session.user_id, ConsentValidator.SERVICE_EXTERNAL
             )
-            external_badge = "[yellow]External off[/yellow]"
+            external_badge = "[#9ca3af]External off[/#9ca3af]"
             if external and external.get("consent_given"):
                 external_badge = "[green]External on[/green]"
 
@@ -2123,96 +2013,99 @@ class PortfolioTextualApp(App):
     def _render_account_detail(self) -> str:
         lines = ["[b]Account[/b]"]
         if self._session:
-            lines.append(f"\nSigned in as [b]{self._session.email}[/b].")
-            lines.append("Press Enter or Ctrl+L to sign out.")
-            if self._consent_record:
-                lines.append("Required consent: granted")
-            elif self._consent_error:
-                lines.append("Required consent: pending")
-            else:
-                lines.append("Required consent: unknown")
+            consent_status = "[green]granted[/green]" if self._consent_record else "[#9ca3af]pending[/#9ca3af]"
+            if self._consent_error:
+                consent_status = f"[#9ca3af]pending[/#9ca3af] — {self._consent_error}"
             external = consent_storage.get_consent(
                 self._session.user_id, ConsentValidator.SERVICE_EXTERNAL
             )
-            if external and external.get("consent_given"):
-                lines.append("External services: enabled")
-            else:
-                lines.append("External services: disabled")
+            external_status = "[green]enabled[/green]" if external and external.get("consent_given") else "[#9ca3af]disabled[/#9ca3af]"
+            lines.extend(
+                [
+                    "",
+                    f"• User: [b]{self._session.email}[/b]",
+                    f"• Required consent: {consent_status}",
+                    f"• External services: {external_status}",
+                    "",
+                    "Press Enter or Ctrl+L to manage the current session.",
+                ]
+            )
         else:
-            lines.append("\nNot signed in to Supabase.")
-            lines.append("Press Enter or Ctrl+L to open the sign-in dialog.")
+            lines.extend(
+                [
+                    "",
+                    "• Status: [red]signed out[/red]",
+                    "• Press Enter or Ctrl+L to sign in.",
+                ]
+            )
             if self._auth_error:
-                lines.append(f"[bold red]Sign-in unavailable:[/bold red] {self._auth_error}")
-
-        lines.append(
-            "\nCredentials are stored locally in ~/.portfolio_cli_session.json to keep the session active."
-        )
+                lines.append(f"• [#9ca3af]Auth issue:[/#9ca3af] {self._auth_error}")
         return "\n".join(lines)
 
     def _render_preferences_detail(self) -> str:
-        lines = ["[b]Settings & User Preferences[/b]"]
+        lines = ["[b]Settings & Preferences[/b]"]
         if not self._session:
-            lines.append(
-                "\nSign in via the Account menu (Ctrl+L) to load Supabase-backed preferences."
+            lines.extend(
+                [
+                    "",
+                    "• Sign in (Ctrl+L) to load your Supabase-backed preferences.",
+                ]
             )
             return "\n".join(lines)
 
         self._load_preferences()
         if self._preferences_error:
-            lines.append(f"\n[bold yellow]Warning:[/bold yellow] {self._preferences_error}")
-            lines.append("Using local fallback preferences for display only.")
+            lines.append(f"\n[#94a3b8]Warning:[/#94a3b8] {self._preferences_error}")
 
         summary = self._preferences_summary or {}
-        lines.append("\n[b]Active Profile[/b]")
-        lines.append(f"- Name: {summary.get('current_profile', 'unknown')}")
-        lines.append(f"- Description: {summary.get('description', 'Not available')}")
-        lines.append(
-            f"- Extensions: {', '.join(summary.get('extensions', [])) or 'Not specified'}"
-        )
-        lines.append(
-            f"- Excluded directories: {', '.join(summary.get('exclude_dirs', [])) or 'None'}"
-        )
-        lines.append(f"- Max file size: {summary.get('max_file_size_mb', '—')} MB")
-        lines.append(
-            f"- Follow symlinks: {'Yes' if summary.get('follow_symlinks') else 'No'}"
+        lines.extend(
+            [
+                "",
+                f"• Active profile: [b]{summary.get('current_profile', 'unknown')}[/b]",
+                f"• Extensions: {', '.join(summary.get('extensions', [])) or 'not limited'}",
+                f"• Excluded dirs: {', '.join(summary.get('exclude_dirs', [])) or 'none'}",
+                f"• Max size: {summary.get('max_file_size_mb', '—')} MB",
+                f"• Follow symlinks: {'Yes' if summary.get('follow_symlinks') else 'No'}",
+            ]
         )
 
         if self._preferences_profiles:
-            lines.append("\n[b]Profiles Available[/b]")
-            for name, details in list(self._preferences_profiles.items())[:5]:
+            preview = []
+            for name, details in list(self._preferences_profiles.items())[:3]:
                 desc = details.get("description", "")
-                exts = ", ".join(details.get("extensions", []))
-                lines.append(f"• {name}: {desc} [{exts}]")
-            if len(self._preferences_profiles) > 5:
-                lines.append("… and more")
+                preview.append(f"{name} — {desc}")
+            lines.append("")
+            lines.append("Available profiles:")
+            lines.extend(f"  • {item}" for item in preview)
+            if len(self._preferences_profiles) > 3:
+                lines.append(f"  • … {len(self._preferences_profiles) - 3} more")
 
-        lines.append(
-            "\nPress Enter to manage profiles and settings without leaving the Textual app."
-        )
+        lines.append("")
+        lines.append("Press Enter to open the preferences dialog.")
         return "\n".join(lines)
 
     def _render_ai_detail(self) -> str:
         lines = ["[b]AI-Powered Analysis[/b]"]
         if not self._session:
-            lines.append("\nSign in to provide an OpenAI API key and generate AI insights.")
+            lines.extend(["", "• Sign in to unlock AI-powered summaries."])
             return "\n".join(lines)
 
         if not self._consent_record:
-            lines.append("\nGrant required consent before running AI analysis.")
+            lines.append("\n• Grant required consent to enable AI analysis.")
         if not self._has_external_consent():
-            lines.append("External services consent is required to use AI analysis.")
+            lines.append("• External services consent must be enabled.")
         if not self._last_parse_result:
-            lines.append("\nRun a portfolio scan to prepare data for AI analysis.")
+            lines.append("• Run a scan to provide data for the analysis.")
 
         if self._llm_client is None:
-            lines.append("\nPress Enter to provide your OpenAI API key and verify it.")
+            lines.append("\nPress Enter to add or verify your OpenAI API key.")
         else:
-            lines.append("\nAPI key verified. Press Enter to generate or refresh AI insights.")
+            lines.append("\nAPI key verified — press Enter to refresh insights.")
 
         if self._last_ai_analysis:
             summary = self._summarize_ai_analysis(self._last_ai_analysis)
             if summary:
-                lines.append("\n[b]Latest analysis[/b]")
+                lines.append("")
                 lines.append(summary)
 
         return "\n".join(lines)
@@ -2220,49 +2113,30 @@ class PortfolioTextualApp(App):
     def _render_consent_detail(self) -> str:
         lines = ["[b]Consent Management[/b]"]
         if not self._session:
-            lines.append(
-                "\nNo Supabase session detected. Use the Account menu (Ctrl+L) to sign in and manage consent."
-            )
+            lines.extend(["", "• Sign in (Ctrl+L) to review consent state."])
             return "\n".join(lines)
 
         self._refresh_consent_state()
-        if self._consent_record:
-            record = self._consent_record
-            created = getattr(record, "created_at", None)
-            timestamp = created.isoformat(timespec="minutes") if hasattr(created, "isoformat") else str(created)
-            lines.append("\n[b]Required Consent[/b]")
-            lines.append("- Status: [green]granted[/green]")
-            if timestamp:
-                lines.append(f"- Granted on: {timestamp}")
-            lines.append(f"- Analyze uploaded only: {'Yes' if record.analyze_uploaded_only else 'No'}")
-            lines.append(f"- Process & store metadata: {'Yes' if record.process_store_metadata else 'No'}")
-            lines.append(f"- Privacy acknowledged: {'Yes' if record.privacy_ack else 'No'}")
-            lines.append(
-                f"- External services allowed: {'Yes' if record.allow_external_services else 'No'}"
-            )
-        else:
-            lines.append("\n[b]Required Consent[/b]")
-            lines.append("- Status: [red]missing[/red]")
-
-        external = None
-        if self._session:
-            external = consent_storage.get_consent(
-                self._session.user_id, ConsentValidator.SERVICE_EXTERNAL
-            )
-        lines.append("\n[b]External Services[/b]")
-        if external and external.get("consent_given"):
-            lines.append("- Status: [green]granted[/green]")
-            lines.append(f"- Last updated: {external.get('consent_timestamp', 'unknown')}")
-        else:
-            lines.append("- Status: [yellow]not granted[/yellow]")
-            lines.append("- Enable via CLI consent menu when ready to use AI features.")
-
-        if self._consent_error:
-            lines.append(f"\n[bold yellow]Note:[/bold yellow] {self._consent_error}")
-
-        lines.append(
-            "\nUse the CLI consent workflow to review notices, grant, or withdraw permissions."
+        record = self._consent_record
+        required = "[green]granted[/green]" if record else "[#9ca3af]missing[/#9ca3af]"
+        external = consent_storage.get_consent(
+            self._session.user_id, ConsentValidator.SERVICE_EXTERNAL
         )
+        external_status = "[green]enabled[/green]" if external and external.get("consent_given") else "[#9ca3af]disabled[/#9ca3af]"
+        lines.extend(
+            [
+                "",
+                f"• Required consent: {required}",
+                f"• External services: {external_status}",
+            ]
+        )
+        if record and getattr(record, "created_at", None):
+            timestamp = record.created_at.isoformat(timespec="minutes")
+            lines.append(f"• Granted on: {timestamp}")
+        if self._consent_error:
+            lines.append(f"• [#9ca3af]Note:[/#9ca3af] {self._consent_error}")
+        lines.append("")
+        lines.append("Press Enter to review privacy notices or toggle consent settings.")
         return "\n".join(lines)
 
     def _start_ai_analysis(self) -> None:
