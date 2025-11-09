@@ -1,5 +1,32 @@
 # Om Mistry (@OM200401)
 
+## Week 10: November 3 - November 9
+
+The focus for this week (PR #123) was to integrate the PDF analyser (in house) created last week. I was able to change the inputs and outputs to automatically idenitfy PDF files in the zip folder (Or directory) the user decides to use. Once this is done, the PDF analyser engine extracts metadata for each file including information on word count for the most often used words and then generates summaries for each document. Currently this output is shown in JSON format and this will further be connected to our Supabase that allows the storage of this data - my peer Aaron is working on the design regarding the table usage for this matter. The consent management module introduced earlier in the project now has user persistence which was added in PR #125 now keeps track of the consent from a user using supabase.
+
+**Core Implementation**:
+
+- Automatic PDF detection in scan results
+- Batch PDF processing with feedback
+- Summary display with metadata (page count, word count and complexity)
+- Storage of results for cross-session access
+- Export capability for PDF analysis results
+- Modified code for the addition of database operations, added implementation for automatic consent loading on login
+- Added code for memory cleanup on logout
+- Debugged RLS policy violations
+- Implemented token management
+- Added comprehensive test suite to test all of the above added enhancements and features
+
+**Roadblocks Resolved**:
+
+- RLS Security violations due to missing user access tokens: access token was added to all consent functions
+- Ensuring smooth integration with existing consent system: Wrapped PDF analysis in consent checks to ensure users have granted external service consent before LLM based summarization
+- Managing multiple PDF results across CLI sessions: To avoid this from happening results were stored in application state for access throughout session
+
+Reflecting upon this past week and the work done for the same I think everything went really well alongside a few detours from the original plan I had in mind. The systematic approach of breaking down the user consent persistence helped a lot (persistence -> authentication -> testing -> documentation) and so did the PR review for my work from my peers. Reading detailed documentation for supabase API methods beforehand would have saved some rework so will keep that in mind for the future. For the upcoming sprint, I will be spending sometime looking into how my existing analysis for the documents and PDF analyser can be used to extrapolate more information on the user's work style, contribution and other information regarding a project instead of just generating summaries of PDF files.
+
+![Tasks Completed](./assets/omistry_Week10.png)
+
 ## Week 9: October 27 - November 2
 
 This week, the focus was on local document analysis for file types beyond PDFs, specifically Word documents and plain text files. `PR #107` introduces a versatile document analyzer capable of handling multiple formats including `.txt`, `.md`, `.markdown`, `.rst`, `.log`, and `.docx`. This addition complements the existing PDF analysis capabilities, providing users with a comprehensive local analysis toolset.
