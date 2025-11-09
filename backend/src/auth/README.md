@@ -372,18 +372,22 @@ Consents are stored in the `consents_v1` table in Supabase:
    ↓
 4. consent.load_user_consents(user_id, access_token)
    ↓
-5. Database query (authenticated with token)
+5. _get_authenticated_client(access_token) creates authenticated client
    ↓
-6. Consents loaded into memory cache
+6. client.auth.set_session(token, token) sets Authorization header
    ↓
-7. User activities (read from cache)
+7. Database query (authenticated with token via Authorization header)
    ↓
-8. Grant/Withdraw (updates database + cache)
+8. Consents loaded into memory cache
    ↓
-9. User logs out
+9. User activities (read from cache)
    ↓
-10. consent.clear_user_consents_cache(user_id)
-11. consent.clear_session_token()
+10. Grant/Withdraw (updates database + cache with authenticated requests)
+   ↓
+11. User logs out
+   ↓
+12. consent.clear_user_consents_cache(user_id)
+13. consent.clear_session_token()
 ```
 
 ### Why Access Tokens Matter
@@ -392,6 +396,14 @@ Row-Level Security (RLS) policies check `auth.uid()` to ensure users can only ac
 - Database returns `401 Unauthorized`
 - RLS policy violations occur
 - Consent operations fail
+
+The `_get_authenticated_client()` helper uses the documented supabase-py API:
+```python
+authenticated_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+authenticated_client.auth.set_session(access_token, access_token)
+```
+
+This ensures the Authorization header is properly set for PostgREST requests, allowing RLS policies to identify the authenticated user.
 
 The system automatically manages tokens:
 - **Login**: Token set and consents loaded

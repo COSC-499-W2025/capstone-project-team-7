@@ -69,6 +69,9 @@ def _get_authenticated_client(access_token: Optional[str] = None):
     """
     Get a Supabase client with optional authentication.
     
+    Uses the documented supabase-py pattern for setting user authentication:
+    client.auth.set_session(access_token, refresh_token)
+    
     Args:
         access_token: User's JWT access token for authenticated requests.
                      If None, uses the globally set _active_access_token.
@@ -81,12 +84,13 @@ def _get_authenticated_client(access_token: Optional[str] = None):
     
     token = access_token or _active_access_token
     if token:
-        # Create a new client instance with the user's token
+        # Create a new client instance and set the auth token
         try:
             from supabase.client import create_client as _create_client
             authenticated_client = _create_client(SUPABASE_URL, SUPABASE_KEY)
-            # Set the auth token for this client
-            authenticated_client.postgrest.auth(token)
+            # Set the user's access token using the documented API
+            # This ensures the Authorization header is properly set for PostgREST requests
+            authenticated_client.auth.set_session(token, token)
             return authenticated_client
         except Exception:
             pass
