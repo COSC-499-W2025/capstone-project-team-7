@@ -852,6 +852,389 @@ class TestSummarizeScanWithAI:
         assert "file_summaries" in result
 
 
+class TestMultiProjectAnalysis:
+    """Test cases for multi-project analysis with unassigned files."""
+    
+    @pytest.fixture
+    def client_with_key(self):
+        """Create a client with a test API key."""
+        with patch('analyzer.llm.client.OpenAI'):
+            return LLMClient(api_key="test-key")
+    
+    @pytest.fixture
+    def multi_project_scan_data(self, tmp_path):
+        """Create sample multi-project scan data."""
+        # Create project 1 directory
+        project1 = tmp_path / "project1"
+        project1.mkdir()
+        (project1 / ".git").mkdir()
+        (project1 / "main.py").write_text("print('Project 1')")
+        
+        # Create project 2 directory
+        project2 = tmp_path / "project2"
+        project2.mkdir()
+        (project2 / ".git").mkdir()
+        (project2 / "app.py").write_text("print('Project 2')")
+        
+        # Create unassigned files
+        (tmp_path / "README.md").write_text("# Portfolio README")
+        (tmp_path / "docs").mkdir()
+        (tmp_path / "docs" / "architecture.md").write_text("# Architecture")
+        
+        return {
+            "scan_summary": {"total_files": 5},
+            "relevant_files": [
+                {"path": "project1/main.py", "size": 100, "mime_type": "text/x-python"},
+                {"path": "project2/app.py", "size": 100, "mime_type": "text/x-python"},
+                {"path": "README.md", "size": 50, "mime_type": "text/markdown"},
+                {"path": "docs/architecture.md", "size": 50, "mime_type": "text/markdown"},
+            ],
+            "scan_base_path": str(tmp_path),
+            "project_dirs": [str(project1), str(project2)]
+        }
+    
+    def test_multi_project_analysis_success(self, client_with_key, multi_project_scan_data):
+        """Test successful multi-project analysis."""
+        mock_response = Mock()
+        mock_choice = Mock()
+        mock_choice.message.content = "Analysis result"
+        mock_response.choices = [mock_choice]
+        
+        client_with_key.client.chat.completions.create = Mock(return_value=mock_response)
+        
+        result = client_with_key.summarize_scan_with_ai(
+            scan_summary=multi_project_scan_data["scan_summary"],
+            relevant_files=multi_project_scan_data["relevant_files"],
+            scan_base_path=multi_project_scan_data["scan_base_path"],
+            project_dirs=multi_project_scan_data["project_dirs"]
+        )
+        
+        # Verify multi-project mode
+        assert result["mode"] == "multi_project"
+        assert "projects" in result
+        assert "project_count" in result
+        
+        # Should have 2 projects (not 3, unassigned files are separate)
+        assert result["project_count"] == 2
+        assert len(result["projects"]) == 2
+        
+        # Verify project names
+        project_names = [p["project_name"] for p in result["projects"]]
+        assert "project1" in project_names
+        assert "project2" in project_names
+        assert "Unassigned Files" not in project_names  # Should NOT be in projects list
+        
+        # Verify unassigned files are tracked separately
+        assert "unassigned_files" in result
+        assert result["unassigned_files"]["project_name"] == "Unassigned Files"
+        assert result["unassigned_files"]["files_analyzed"] >= 0
+    
+    def test_multi_project_portfolio_summary_includes_unassigned(self, client_with_key, multi_project_scan_data):
+        """Test that portfolio summary includes unassigned files context."""
+        mock_response = Mock()
+        mock_choice = Mock()
+        mock_choice.message.content = "Portfolio summary with supporting files"
+        mock_response.choices = [mock_choice]
+        
+        client_with_key.client.chat.completions.create = Mock(return_value=mock_response)
+        
+        result = client_with_key.summarize_scan_with_ai(
+            scan_summary=multi_project_scan_data["scan_summary"],
+            relevant_files=multi_project_scan_data["relevant_files"],
+            scan_base_path=multi_project_scan_data["scan_base_path"],
+            project_dirs=multi_project_scan_data["project_dirs"]
+        )
+        
+        # Should have portfolio summary (more than 1 project)
+        assert "portfolio_summary" in result
+        assert result["portfolio_summary"]["project_count"] == 2
+        
+        # Verify unassigned files exist
+        assert "unassigned_files" in result
+    
+    def test_multi_project_no_unassigned_files(self, client_with_key, tmp_path):
+        """Test multi-project analysis when all files belong to projects."""
+        # Create projects with no loose files
+        project1 = tmp_path / "project1"
+        project1.mkdir()
+        (project1 / ".git").mkdir()
+        (project1 / "main.py").write_text("print('Project 1')")
+        
+        project2 = tmp_path / "project2"
+        project2.mkdir()
+        (project2 / ".git").mkdir()
+        (project2 / "app.py").write_text("print('Project 2')")
+        
+        scan_data = {
+            "scan_summary": {"total_files": 2},
+            "relevant_files": [
+                {"path": "project1/main.py", "size": 100, "mime_type": "text/x-python"},
+                {"path": "project2/app.py", "size": 100, "mime_type": "text/x-python"},
+            ],
+            "scan_base_path": str(tmp_path),
+            "project_dirs": [str(project1), str(project2)]
+        }
+        
+        mock_response = Mock()
+        mock_choice = Mock()
+        mock_choice.message.content = "Analysis"
+        mock_response.choices = [mock_choice]
+        
+        client_with_key.client.chat.completions.create = Mock(return_value=mock_response)
+        
+        result = client_with_key.summarize_scan_with_ai(
+            scan_summary=scan_data["scan_summary"],
+            relevant_files=scan_data["relevant_files"],
+            scan_base_path=scan_data["scan_base_path"],
+            project_dirs=scan_data["project_dirs"]
+        )
+        
+        assert result["mode"] == "multi_project"
+        assert result["project_count"] == 2
+        
+        # Should NOT have unassigned files
+        assert "unassigned_files" not in result
+    
+    def test_single_project_with_unassigned_files(self, client_with_key, tmp_path):
+        """Test that single project with unassigned files doesn't trigger multi-project mode."""
+        # Create only one project
+        project1 = tmp_path / "project1"
+        project1.mkdir()
+        (project1 / ".git").mkdir()
+        (project1 / "main.py").write_text("print('Project 1')")
+        
+        # Create unassigned files
+        (tmp_path / "README.md").write_text("# README")
+        
+        scan_data = {
+            "scan_summary": {"total_files": 2},
+            "relevant_files": [
+                {"path": "project1/main.py", "size": 100, "mime_type": "text/x-python"},
+                {"path": "README.md", "size": 50, "mime_type": "text/markdown"},
+            ],
+            "scan_base_path": str(tmp_path),
+            "project_dirs": [str(project1)]
+        }
+        
+        mock_response = Mock()
+        mock_choice = Mock()
+        mock_choice.message.content = "Analysis"
+        mock_response.choices = [mock_choice]
+        
+        client_with_key.client.chat.completions.create = Mock(return_value=mock_response)
+        
+        result = client_with_key.summarize_scan_with_ai(
+            scan_summary=scan_data["scan_summary"],
+            relevant_files=scan_data["relevant_files"],
+            scan_base_path=scan_data["scan_base_path"],
+            project_dirs=scan_data["project_dirs"]
+        )
+        
+        # With only 1 project, should still be multi-project mode but no portfolio summary
+        assert result["mode"] == "multi_project"
+        assert result["project_count"] == 1
+        assert "portfolio_summary" not in result  # Only generated when > 1 project
+        
+        # But unassigned files should still be tracked separately
+        assert "unassigned_files" in result
+    
+    def test_generate_portfolio_summary_with_unassigned(self, client_with_key):
+        """Test _generate_portfolio_summary with unassigned files context."""
+        project_analyses = [
+            {
+                "project_name": "project1",
+                "project_path": "project1",
+                "files_analyzed": 10,
+                "analysis": "Project 1 analysis"
+            },
+            {
+                "project_name": "project2",
+                "project_path": "project2",
+                "files_analyzed": 15,
+                "analysis": "Project 2 analysis"
+            }
+        ]
+        
+        unassigned_analysis = {
+            "project_name": "Unassigned Files",
+            "files_analyzed": 5,
+            "analysis": "Supporting documentation and configuration files"
+        }
+        
+        mock_response = Mock()
+        mock_choice = Mock()
+        mock_choice.message.content = "Portfolio summary including supporting files context"
+        mock_response.choices = [mock_choice]
+        
+        client_with_key.client.chat.completions.create = Mock(return_value=mock_response)
+        
+        result = client_with_key._generate_portfolio_summary(
+            project_analyses,
+            unassigned_analysis=unassigned_analysis
+        )
+        
+        assert "summary" in result
+        assert "project_count" in result
+        assert result["project_count"] == 2  # Only actual projects counted
+        
+        # Verify the LLM was called with unassigned context in prompt
+        call_args = client_with_key.client.chat.completions.create.call_args
+        prompt = call_args[1]["messages"][0]["content"]
+        assert "SUPPORTING FILES" in prompt
+        assert "not counted as a project" in prompt
+    
+    def test_generate_portfolio_summary_without_unassigned(self, client_with_key):
+        """Test _generate_portfolio_summary without unassigned files."""
+        project_analyses = [
+            {
+                "project_name": "project1",
+                "project_path": "project1",
+                "files_analyzed": 10,
+                "analysis": "Project 1 analysis"
+            },
+            {
+                "project_name": "project2",
+                "project_path": "project2",
+                "files_analyzed": 15,
+                "analysis": "Project 2 analysis"
+            }
+        ]
+        
+        mock_response = Mock()
+        mock_choice = Mock()
+        mock_choice.message.content = "Portfolio summary"
+        mock_response.choices = [mock_choice]
+        
+        client_with_key.client.chat.completions.create = Mock(return_value=mock_response)
+        
+        result = client_with_key._generate_portfolio_summary(
+            project_analyses,
+            unassigned_analysis=None
+        )
+        
+        assert "summary" in result
+        assert result["project_count"] == 2
+        
+        # Verify the LLM was NOT called with unassigned context
+        call_args = client_with_key.client.chat.completions.create.call_args
+        prompt = call_args[1]["messages"][0]["content"]
+        assert "SUPPORTING FILES" not in prompt
+    
+    def test_unassigned_files_analysis_structure(self, client_with_key, multi_project_scan_data):
+        """Test that unassigned files analysis has correct structure."""
+        mock_response = Mock()
+        mock_choice = Mock()
+        mock_choice.message.content = "Analysis"
+        mock_response.choices = [mock_choice]
+        
+        client_with_key.client.chat.completions.create = Mock(return_value=mock_response)
+        
+        result = client_with_key.summarize_scan_with_ai(
+            scan_summary=multi_project_scan_data["scan_summary"],
+            relevant_files=multi_project_scan_data["relevant_files"],
+            scan_base_path=multi_project_scan_data["scan_base_path"],
+            project_dirs=multi_project_scan_data["project_dirs"]
+        )
+        
+        if "unassigned_files" in result:
+            unassigned = result["unassigned_files"]
+            
+            # Verify structure
+            assert "project_name" in unassigned
+            assert "project_path" in unassigned
+            assert "file_count" in unassigned
+            assert "files_analyzed" in unassigned
+            assert "analysis" in unassigned
+            assert "file_summaries" in unassigned
+            
+            # Verify values
+            assert unassigned["project_name"] == "Unassigned Files"
+            assert unassigned["project_path"] == "_unassigned"
+            assert isinstance(unassigned["file_summaries"], list)
+
+
+class TestAnalyzeMultipleProjects:
+    """Test cases for _analyze_multiple_projects method."""
+    
+    @pytest.fixture
+    def client_with_key(self):
+        """Create a client with a test API key."""
+        with patch('analyzer.llm.client.OpenAI'):
+            return LLMClient(api_key="test-key")
+    
+    def test_file_grouping_by_project(self, client_with_key, tmp_path):
+        """Test that files are correctly grouped by project directory."""
+        # Create project structure
+        proj1 = tmp_path / "backend"
+        proj1.mkdir()
+        (proj1 / "main.py").write_text("print('backend')")
+        
+        proj2 = tmp_path / "frontend"
+        proj2.mkdir()
+        (proj2 / "app.js").write_text("console.log('frontend')")
+        
+        (tmp_path / "LICENSE").write_text("MIT")
+        
+        relevant_files = [
+            {"path": "backend/main.py", "size": 100, "mime_type": "text/x-python"},
+            {"path": "frontend/app.js", "size": 100, "mime_type": "text/javascript"},
+            {"path": "LICENSE", "size": 50, "mime_type": "text/plain"},
+        ]
+        
+        mock_response = Mock()
+        mock_choice = Mock()
+        mock_choice.message.content = "Analysis"
+        mock_response.choices = [mock_choice]
+        
+        client_with_key.client.chat.completions.create = Mock(return_value=mock_response)
+        
+        result = client_with_key._analyze_multiple_projects(
+            scan_summary={},
+            relevant_files=relevant_files,
+            scan_base_path=str(tmp_path),
+            project_dirs=[str(proj1), str(proj2)],
+            max_file_size_mb=10
+        )
+        
+        # Should have 2 projects
+        assert len(result["projects"]) == 2
+        project_names = [p["project_name"] for p in result["projects"]]
+        assert "backend" in project_names
+        assert "frontend" in project_names
+        
+        # Should have unassigned files (LICENSE)
+        assert "unassigned_files" in result
+    
+    def test_empty_unassigned_files_not_included(self, client_with_key, tmp_path):
+        """Test that empty unassigned files group is not included."""
+        # Create projects with all files assigned
+        proj1 = tmp_path / "project1"
+        proj1.mkdir()
+        (proj1 / "main.py").write_text("print('test')")
+        
+        relevant_files = [
+            {"path": "project1/main.py", "size": 100, "mime_type": "text/x-python"},
+        ]
+        
+        mock_response = Mock()
+        mock_choice = Mock()
+        mock_choice.message.content = "Analysis"
+        mock_response.choices = [mock_choice]
+        
+        client_with_key.client.chat.completions.create = Mock(return_value=mock_response)
+        
+        result = client_with_key._analyze_multiple_projects(
+            scan_summary={},
+            relevant_files=relevant_files,
+            scan_base_path=str(tmp_path),
+            project_dirs=[str(proj1)],
+            max_file_size_mb=10
+        )
+        
+        # Should NOT have unassigned_files key
+        assert "unassigned_files" not in result
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
 
