@@ -17,7 +17,7 @@ What didn’t go well: before trying textual, my initial attempt with pytermgui 
 
 ### Next Steps
 
-Next week I’ll focus on keyboard shortcuts, better focus states, and small color accents. I also want to explore toast-like notifications for long-running tasks and look into simple snapshot testing so UI updates are easier to verify.
+Next week I’ll focus on keyboard shortcuts, better focus states, and small color accents. I also want to explore toast-like notifications for long-running tasks and look into simple snapshot testing so UI updates are easier to verify. Also, going to try and implement all features my teammates worked on into the TUI, so that we can get rid of the old CLI.
 
 ![Peer Eval](./images/w10peer.png)
 
