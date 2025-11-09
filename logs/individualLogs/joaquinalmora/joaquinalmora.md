@@ -1,5 +1,25 @@
 # Joaquin Almora / @joaquinalmora
 
+## Week 10 (November 3rd - 9th)
+
+This week I wrapped up the integration of our Git and Media analyzers into the interactive workflow and completed the transition from the legacy CLI to a fully functional **Textual TUI**, all shipped through **[PR #120](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/120)** and **[PR #122](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/122)**.
+
+On the analysis side, both Git and Media modules are now fully exposed through the post-scan menus, and their outputs flow into the JSON export alongside the rest of the scan data. I also expanded the “all” scanning profile so media types are included by default, and cleaned up noisy INFO logs from local analyzers.
+
+Most of the week went toward the Textual UI. I replaced our old prompt-based CLI with modal-driven screens for configuration, consent, results, and follow-up actions. I rebuilt the results view using full-screen modals, independent scroll regions, and a restored `DataTable` for horizontal scrolling and selection. Action handlers now run in the background to keep the interface responsive, and I tightened the action bar layout so it fits cleanly on smaller terminals. I also removed a committed venv and updated `.gitignore` so the repo stays clean and consistent.
+
+### Reflection
+
+What went well: integrating the analyzers into the new UI was straightforward, and the shift to Textual gave me a lot more control over layout, responsiveness, and modularity. The JSON export also adapted smoothly to the additional insights.
+
+What didn’t go well: my initial attempt with pytermgui wasn’t compatible with our synchronous workflow and produced unstable terminal states. Some Textual quirks around scrolling, padding, and CSS grammar added extra iteration, and the macOS “externally managed” Python environment created friction around venv setup. All of these were addressed by fully switching to Textual, reverting to `DataTable`, cleaning up layout rules, and standardizing the environment.
+
+### Next Steps
+
+Next week I’ll focus on keyboard shortcuts, better focus states, and small color accents. I also want to explore toast-like notifications for long-running tasks and look into simple snapshot testing so UI updates are easier to verify.
+
+![Peer Eval](./images/w10peer.png)
+
 ## Week 9 (October 27th - November 2nd)
 This week I focused on making the CLI fully interactive and connected to the main Supabase workflow through **[PR #108 — “CLI workflow”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/108)** and **[PR #106 — “scanning preferences through parser”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/106)**.
 
