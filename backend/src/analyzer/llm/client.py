@@ -28,26 +28,95 @@ class LLMClient:
     This class provides a foundation for LLM-based analysis operations.
     """
     
-    def __init__(self, api_key: Optional[str] = None):
+    DEFAULT_MODEL = "gpt-4o-mini"
+    
+    DEFAULT_TEMPERATURE = 0.7
+    DEFAULT_MAX_TOKENS = 1000
+    
+    def __init__(
+        self, 
+        api_key: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None
+    ):
         """
         Initialize the LLM client.
         
         Args:
             api_key: OpenAI API key. If None, client operates in mock mode.
+            temperature: Sampling temperature (0.0-2.0). Default 0.7 (recommended).
+                        Lower = more focused/deterministic, higher = more creative/random.
+            max_tokens: Maximum tokens in response. Default 1000 (recommended).
+                       Higher values allow longer responses but cost more.
         """
         self.api_key = api_key
         self.client = None
         self.logger = logging.getLogger(__name__)
         
+        self.temperature = temperature if temperature is not None else self.DEFAULT_TEMPERATURE
+        self.max_tokens = max_tokens if max_tokens is not None else self.DEFAULT_MAX_TOKENS
+
+        if not 0.0 <= self.temperature <= 2.0:
+            raise ValueError("Temperature must be between 0.0 and 2.0")
+        if self.max_tokens <= 0:
+            raise ValueError("Max tokens must be positive")
+        
         if api_key:
             try:
                 self.client = OpenAI(api_key=api_key)
-                self.logger.info("LLM client initialized with API key")
+                self.logger.info(
+                    f"LLM client initialized (model: {self.DEFAULT_MODEL}, "
+                    f"temperature: {self.temperature}, max_tokens: {self.max_tokens})"
+                )
             except Exception as e:
                 self.logger.error(f"Failed to initialize OpenAI client: {e}")
                 raise LLMError(f"Failed to initialize LLM client: {str(e)}")
         else:
             self.logger.warning("LLM client initialized without API key (mock mode)")
+    
+    def set_temperature(self, temperature: float) -> None:
+        """
+        Update the temperature parameter for future API calls.
+        
+        Args:
+            temperature: New temperature value (0.0-2.0)
+                        0.0 = deterministic, 1.0 = balanced, 2.0 = very creative
+        
+        Raises:
+            ValueError: If temperature is out of range
+        """
+        if not 0.0 <= temperature <= 2.0:
+            raise ValueError("Temperature must be between 0.0 and 2.0")
+        self.temperature = temperature
+        self.logger.info(f"Temperature updated to: {temperature}")
+    
+    def set_max_tokens(self, max_tokens: int) -> None:
+        """
+        Update the max tokens parameter for future API calls.
+        
+        Args:
+            max_tokens: New max tokens value (must be positive)
+        
+        Raises:
+            ValueError: If max_tokens is not positive
+        """
+        if max_tokens <= 0:
+            raise ValueError("Max tokens must be positive")
+        self.max_tokens = max_tokens
+        self.logger.info(f"Max tokens updated to: {max_tokens}")
+    
+    def get_config(self) -> Dict[str, Any]:
+        """
+        Get current client configuration.
+        
+        Returns:
+            Dict with current model, temperature, and max_tokens settings
+        """
+        return {
+            "model": self.DEFAULT_MODEL,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens
+        }
     
     def verify_api_key(self) -> bool:
         """
@@ -68,7 +137,7 @@ class LLMClient:
         
         try:
             response = self.client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model=self.DEFAULT_MODEL,
                 messages=[{"role": "user", "content": "test"}],
                 max_tokens=5
             )
@@ -107,17 +176,19 @@ class LLMClient:
         """
         return self.api_key is not None and self.client is not None
     
-    def _count_tokens(self, text: str, model: str = "gpt-3.5-turbo") -> int:
+    def _count_tokens(self, text: str, model: Optional[str] = None) -> int:
         """
         Count the number of tokens in a text string, default to character estimate.
         
         Args:
             text: Text to count tokens for
-            model: Model name for tokenizer
+            model: Model name for tokenizer (defaults to DEFAULT_MODEL)
             
         Returns:
             int: Number of tokens
         """
+        if model is None:
+            model = self.DEFAULT_MODEL
         try:
             encoding = tiktoken.encoding_for_model(model)
             return len(encoding.encode(text))
@@ -125,16 +196,21 @@ class LLMClient:
             self.logger.warning(f"Failed to count tokens: {e}. Using character estimate.")
             return len(text) // 4
     
-    def _make_llm_call(self, messages: List[Dict[str, str]], model: str = "gpt-3.5-turbo", 
-                       max_tokens: int = 1000, temperature: float = 0.7) -> str:
+    def _make_llm_call(
+        self, 
+        messages: List[Dict[str, str]], 
+        model: Optional[str] = None,
+        max_tokens: Optional[int] = None, 
+        temperature: Optional[float] = None
+    ) -> str:
         """
-        Make a call to the LLM API.
+        Make a call to the LLM API using configured defaults.
         
         Args:
             messages: List of message dicts with 'role' and 'content'
             model: Model to use
-            max_tokens: Maximum tokens in response
-            temperature: Temperature for response generation
+            max_tokens: Maximum tokens in response (defaults to self.max_tokens)
+            temperature: Temperature for response generation (defaults to self.temperature)
             
         Returns:
             str: LLM response content
@@ -144,6 +220,10 @@ class LLMClient:
         """
         if not self.is_configured():
             raise LLMError("LLM client is not configured with an API key")
+        
+        model = model or self.DEFAULT_MODEL
+        max_tokens = max_tokens if max_tokens is not None else self.max_tokens
+        temperature = temperature if temperature is not None else self.temperature
         
         try:
             response = self.client.chat.completions.create(
@@ -195,7 +275,7 @@ class LLMClient:
             raise LLMError("LLM client is not configured")
         
         try:
-            encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
+            encoding = tiktoken.encoding_for_model(self.DEFAULT_MODEL)
             tokens = encoding.encode(text)
             chunks = []
             
@@ -428,7 +508,8 @@ class LLMClient:
     def summarize_scan_with_ai(self, scan_summary: Dict[str, Any], 
                                relevant_files: List[Dict[str, Any]],
                                scan_base_path: str,
-                               max_file_size_mb: int = 10) -> Dict[str, Any]:
+                               max_file_size_mb: int = 10,
+                               project_dirs: Optional[List[str]] = None) -> Dict[str, Any]:
         """
         Comprehensive AI analysis workflow for CLI integration.
         
@@ -437,10 +518,13 @@ class LLMClient:
             relevant_files: List of file metadata dicts (path, size, mime_type, etc.)
             scan_base_path: Base path where original files are located for reading content
             max_file_size_mb: Maximum file size in MB to process (default: 10MB)
+            project_dirs: Optional list of project directory paths (e.g., Git repo roots).
+                         If provided, files are grouped by project and analyzed separately.
             
         Returns:
             Dict containing:
-                - project_analysis: Result from analyze_project()
+                - project_analysis: Result from analyze_project() (single project mode)
+                - projects: List of per-project analyses (multi-project mode)
                 - file_summaries: List of results from summarize_tagged_file()
                 - summary_text: Combined formatted output for display
                 - skipped_files: List of files skipped due to size limits
@@ -452,7 +536,18 @@ class LLMClient:
             raise LLMError("LLM client is not configured")
         
         try:
+            from pathlib import Path
+            
             self.logger.info("Starting LLM analysis")
+            
+            if project_dirs:
+                return self._analyze_multiple_projects(
+                    scan_summary=scan_summary,
+                    relevant_files=relevant_files,
+                    scan_base_path=scan_base_path,
+                    project_dirs=project_dirs,
+                    max_file_size_mb=max_file_size_mb
+                )
             
             max_file_size_bytes = max_file_size_mb * 1024 * 1024
             file_summaries = []
@@ -463,7 +558,6 @@ class LLMClient:
                 if not file_path:
                     continue
 
-                from pathlib import Path
                 full_path = Path(scan_base_path) / file_path
 
                 if full_path.exists() and full_path.is_file():
@@ -517,3 +611,243 @@ class LLMClient:
         except Exception as e:
             self.logger.error(f"Scan AI analysis failed: {e}")
             raise LLMError(f"Failed to analyze scan: {str(e)}")
+    
+    def _analyze_multiple_projects(self, scan_summary: Dict[str, Any],
+                                   relevant_files: List[Dict[str, Any]],
+                                   scan_base_path: str,
+                                   project_dirs: List[str],
+                                   max_file_size_mb: int = 10) -> Dict[str, Any]:
+        """
+        Analyze multiple projects separately (e.g., multiple Git repos in one scan).
+        
+        Args:
+            scan_summary: Global scan summary
+            relevant_files: All files from scan
+            scan_base_path: Base path for file reading
+            project_dirs: List of project root directories (e.g., Git repo paths)
+            max_file_size_mb: Max file size to process
+            
+        Returns:
+            Dict with per-project analyses and overall summary
+        """
+        from pathlib import Path
+        
+        self.logger.info(f"Analyzing {len(project_dirs)} separate projects")
+        
+        max_file_size_bytes = max_file_size_mb * 1024 * 1024
+        base_path = Path(scan_base_path)
+        
+        # Normalize project dirs to relative paths
+        project_dirs_normalized = []
+        for proj_dir in project_dirs:
+            proj_path = Path(proj_dir)
+            try:
+                if proj_path.is_absolute():
+                    rel_path = proj_path.relative_to(base_path)
+                else:
+                    rel_path = proj_path
+                project_dirs_normalized.append(str(rel_path))
+            except ValueError:
+                project_dirs_normalized.append(str(proj_path))
+        
+        files_by_project = {proj: [] for proj in project_dirs_normalized}
+        files_by_project['_unassigned'] = [] 
+        
+        for file_meta in relevant_files:
+            file_path = file_meta.get('path', '')
+            if not file_path:
+                continue
+            
+            assigned = False
+            for proj_dir in project_dirs_normalized:
+                if file_path.startswith(proj_dir + '/') or file_path.startswith(proj_dir + '\\'):
+                    files_by_project[proj_dir].append(file_meta)
+                    assigned = True
+                    break
+            
+            if not assigned:
+                files_by_project['_unassigned'].append(file_meta)
+        
+        project_analyses = []
+        all_file_summaries = []
+        all_skipped_files = []
+        unassigned_analysis = None  # Track unassigned files separately
+        
+        for proj_dir, proj_files in files_by_project.items():
+            if proj_dir == '_unassigned':
+                if not proj_files:
+                    continue
+                proj_name = "Unassigned Files"
+            else:
+                proj_name = Path(proj_dir).name or proj_dir
+            
+            if not proj_files:
+                self.logger.info(f"Skipping empty project: {proj_name}")
+                continue
+            
+            self.logger.info(f"Analyzing project '{proj_name}' ({len(proj_files)} files)")
+            
+            # Analyze files for this project
+            file_summaries = []
+            skipped_files = []
+            
+            for file_meta in proj_files:
+                file_path = file_meta.get('path', '')
+                full_path = base_path / file_path
+                
+                if not full_path.exists() or not full_path.is_file():
+                    continue
+                
+                file_size = full_path.stat().st_size
+                if file_size > max_file_size_bytes:
+                    skipped_files.append({
+                        'path': file_path,
+                        'size_mb': file_size / (1024 * 1024),
+                        'reason': f'Exceeds {max_file_size_mb}MB limit'
+                    })
+                    continue
+                
+                mime_type = file_meta.get('mime_type', '')
+                if not (mime_type.startswith('text/') or 
+                       mime_type in ['application/json', 'application/xml', 'application/javascript']):
+                    continue
+                
+                try:
+                    content = full_path.read_text(encoding='utf-8', errors='ignore')
+                    file_type = full_path.suffix or 'unknown'
+                    
+                    summary_result = self.summarize_tagged_file(file_path, content, file_type)
+                    file_summaries.append(summary_result)
+                    self.logger.info(f"[{proj_name}] Summarized: {file_path}")
+                except Exception as e:
+                    self.logger.error(f"[{proj_name}] Error analyzing {file_path}: {e}")
+                    continue
+            
+            project_summary = {
+                "project_name": proj_name,
+                "project_path": proj_dir,
+                "total_files": len(proj_files),
+                "files_analyzed": len(file_summaries),
+                "total_size_bytes": sum(f.get('size', 0) for f in proj_files)
+            }
+            
+            if file_summaries:
+                project_analysis = self.analyze_project(
+                    local_analysis=project_summary,
+                    tagged_files_summaries=file_summaries
+                )
+                
+                analysis_result = {
+                    "project_name": proj_name,
+                    "project_path": proj_dir,
+                    "file_count": len(proj_files),
+                    "files_analyzed": len(file_summaries),
+                    "analysis": project_analysis.get("analysis", ""),
+                    "file_summaries": file_summaries
+                }
+                
+                if proj_dir == '_unassigned':
+                    unassigned_analysis = analysis_result
+                    self.logger.info(f"Stored unassigned files analysis separately (not counted as project)")
+                else:
+                    project_analyses.append(analysis_result)
+            
+            all_file_summaries.extend(file_summaries)
+            all_skipped_files.extend(skipped_files)
+        
+        portfolio_summary = None
+        if len(project_analyses) > 1:
+            portfolio_summary = self._generate_portfolio_summary(
+                project_analyses, 
+                unassigned_analysis=unassigned_analysis
+            )
+        
+        result = {
+            "mode": "multi_project",
+            "projects": project_analyses,
+            "project_count": len(project_analyses),
+            "total_files_analyzed": len(all_file_summaries),
+            "file_summaries": all_file_summaries,
+            "files_analyzed_count": len(all_file_summaries)
+        }
+        
+        if portfolio_summary:
+            result["portfolio_summary"] = portfolio_summary
+        
+        # Include unassigned files as additional context (not a project)
+        if unassigned_analysis:
+            result["unassigned_files"] = unassigned_analysis
+        
+        if all_skipped_files:
+            result["skipped_files"] = all_skipped_files
+            self.logger.info(f"Skipped {len(all_skipped_files)} files across all projects")
+        
+        return result
+    
+    def _generate_portfolio_summary(self, project_analyses: List[Dict[str, Any]], 
+                                    unassigned_analysis: Optional[Dict[str, Any]] = None) -> Dict[str, str]:
+        """
+        Generate a high-level portfolio summary from multiple project analyses.
+        
+        Args:
+            project_analyses: List of individual project analysis results
+            unassigned_analysis: Optional analysis of unassigned files (supporting docs, etc.)
+            
+        Returns:
+            Dict with portfolio-level summary
+        """
+        if not self.is_configured():
+            raise LLMError("LLM client is not configured")
+        
+        try:
+            projects_overview = "\n\n".join([
+                f"PROJECT: {p['project_name']}\n"
+                f"Path: {p.get('project_path', 'N/A')}\n"
+                f"Files analyzed: {p['files_analyzed']}\n"
+                f"Analysis:\n{p['analysis']}"
+                for p in project_analyses
+            ])
+            
+            unassigned_context = ""
+            if unassigned_analysis:
+                unassigned_context = f"""
+
+SUPPORTING FILES (not counted as a project):
+Files analyzed: {unassigned_analysis['files_analyzed']}
+These are documentation, configuration, and other supporting files found outside the main project directories.
+Analysis:
+{unassigned_analysis['analysis']}"""
+            
+            prompt = f"""You are reviewing a developer's portfolio containing {len(project_analyses)} separate projects.
+
+INDIVIDUAL PROJECT ANALYSES:
+{projects_overview}{unassigned_context}
+
+Create a comprehensive PORTFOLIO-LEVEL summary in the following format:
+
+PORTFOLIO OVERVIEW:
+[2-3 sentences capturing the overall breadth and depth of the portfolio, highlighting the variety of projects and technologies]
+
+KEY STRENGTHS:
+[Main strengths demonstrated across projects - technical diversity, depth in certain areas, etc.]
+
+TECHNICAL BREADTH:
+[Summary of the range of technologies, frameworks, and domains covered across all projects]
+
+STANDOUT PROJECTS:
+[Identify 2-3 most impressive or notable projects and why they stand out]
+
+PORTFOLIO COHERENCE:
+[How well the projects work together to tell a cohesive story about the developer's skills and interests]"""
+
+            messages = [{"role": "user", "content": prompt}]
+            response = self._make_llm_call(messages, max_tokens=800, temperature=0.7)
+            
+            return {
+                "summary": response,
+                "project_count": len(project_analyses)
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Portfolio summary generation failed: {e}")
+            raise LLMError(f"Failed to generate portfolio summary: {str(e)}")
