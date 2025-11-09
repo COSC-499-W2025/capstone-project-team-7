@@ -1,10 +1,42 @@
 # Capstone Team 7 Logs
 
+## Week 10 (November 3rd - 9th)
+This week we focused on the implementing the local analyses into the CLI and moving to transfer into a textual based TUI. We also improved our external analysis, and added to our git analysis.
+
+**Joaquin:** This week I kept pushing the TUI integration forward and refined some of the internal workflows so modules plug in more cleanly. I improved how the UI handles background tasks, cleaned up layout issues from last week, and synced the new analysis features with the updated scan pipeline. With that in place, I shifted most of my time toward reviewing teammates’ PRs to keep everything aligned as we merge toward a unified workflow.
+
+For **[PR #123](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/123)** (OM — PDF Analysis Integration), I confirmed the PDF workflow was solidly integrated into the CLI. The separation between parsing, analysis, and display was clean, the optional dependency handling was correct, and the tests and docs made the feature easy to understand and extend.
+
+For **[PR #124](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/124)** (Vlad — Project Type Classification), the implementation was simple and well-scoped, which will make integrating it into the TUI straightforward. Test coverage was good, and the logic for distinguishing individual vs collaborative projects was clear and reliable.
+
+For **[PR #125](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/125)** (OM — Authentication + Local Analysis Fallback), I really liked the completeness of the feature: code, CLI integration, tests, and docs were all aligned. The in-memory fallback was a nice touch for environments without Supabase. I suggested two changes: adding a note in the README that the CLI should only use the anon key, and double-checking `_get_authenticated_client` against the current supabase-py auth pattern to ensure the token is actually being attached to PostgREST requests.
+
+For **[PR #119](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/119)** (Jacob — Vision + Media Analysis), the media analysis pipeline was well scoped with strong test coverage and clear README updates. I requested two fixes: remove heavy ML/audio dependencies from `requirements.txt` if the feature is optional, and guard the `.vision` import with a try/except so the scanner doesn’t break when dependencies aren’t installed.
+
+For **[PR #127](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/127)** (Samarth — LLM Analysis + Config Improvements), the multi-project analysis and config flow were cleanly integrated, and the tests covered the new behavior thoroughly. No issues from my side.
+Next week, I plan to continue merging these modules into the unified workflow and make sure the TUI presents them consistently. I also want to help refine any remaining UX friction as we move toward a smoother, end-to-end experience.
+
+
+**Jacob:** 
+
+**Vlad:** 
+
+**Aaron:** 
+
+**Om:** 
+
+**Samarth:**
+
+
+<p align="center">
+  <img src="./charts/w10burnup.png" alt="Week 5 Burnup Chart width="400"/>
+</p>
+
 ## Week 9 (October 27 - November 2)
 
 This week we focused on the local analysis for multiple file types such as code files, media files, and documents beyond PDFs. We also worked on integrating past weeks' developments into a unified CLI workflow for various features.
 
-**Joaquin:** **Joaquin:**  
+**Joaquin:**
 This week I focused on integrating all the separate modules into a single interactive CLI workflow. I coordinated with teammates to ensure every feature, including login, consent, scanning preferences, and analysis, worked smoothly together. The workflow is now fully connected to Supabase and supports session persistence for returning users. I tested everything through automated and manual runs.  I also reviewed multiple pull requests to support the new analysis modules. For **PR #107 (Local Document Analysis)**, I confirmed the implementation was clean, well-documented, and consistent with our existing architecture, noting that the expanded CLI and README updates were thorough and user-friendly. For **PR #113 (Enhanced Media Metadata Extraction and Reporting)**, I highlighted strong structure and testing, praised the clear separation between extraction, analysis, and display logic, and suggested pinning dependencies, clarifying the meaning of the `media_files_processed` count, confirming Python compatibility, and adding extra tests for missing or corrupt files. Next week I plan to implement the local analyses into the cli-workflow and work on improving user experience/interface
 
 **Jacob:** Implemented an end‑to‑end media analysis pipeline so our project now surfaces actionable insights for images, audio, and video without calling the LLM: the scanner captures typed media_info, a deterministic MediaAnalyzer rolls those stats into summaries/issues, and a Rich/Questionary CLI mirrors the code analyzer UX so reviewers can explore the data interactively. These changes bring the backend closer to parity with our document analysis stack, giving us consistent local fallbacks and richer outputs for media‑heavy uploads. Next up I plan to expand the image side with deeper analysis (e.g., resolution quality checks, semantic labeling) so the insights go beyond metadata and align with what users expect from visual analysis.
@@ -21,7 +53,7 @@ All the progress this week came together to make our project feel complete and c
 
 
 <p align="center">
-  <img src="./charts/w8burnup.png" alt="Week 5 Burnup Chart width="400"/>
+  <img src="./charts/w9burnup.png" alt="Week 5 Burnup Chart width="400"/>
 </p>
 
 ## Week 8 (October 20 - 26)
