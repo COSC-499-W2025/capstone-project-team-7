@@ -4,7 +4,7 @@ Improved Compact Code Analyzer - Compatible with all tree-sitter module APIs
 """
 
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple, Set
+from typing import Any, List, Dict, Optional, Tuple, Set
 from dataclasses import dataclass, field
 from collections import defaultdict
 import logging
@@ -16,6 +16,7 @@ try:
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
+    Node = Any  # type: ignore[assignment]
 
 # Try to import each language module separately
 _language_modules = {}

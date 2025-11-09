@@ -1,0 +1,240 @@
+#root {
+    background: #0f1115;
+    color: #e5e7eb;
+}
+
+Header, Footer {
+    background: #181b21;
+    color: #e5e7eb;
+    text-style: bold;
+}
+
+#session-status {
+    padding: 0 2;
+    background: #111318;
+    border: tall #242832;
+    margin-bottom: 1;
+}
+
+#menu {
+    background: transparent;
+    border: tall #242832;
+    padding: 0 1;
+}
+
+#menu ListItem {
+    padding: 0 1;
+    border: none;
+}
+
+#menu ListItem.--highlight {
+    background: #242832;
+    color: #f8fafc;
+}
+
+.menu-item {
+    text-style: bold;
+}
+
+#main {
+    height: 1fr;
+    padding: 1 2;
+}
+
+.section-heading {
+    text-style: bold;
+    margin: 1 0 0 0;
+    color: #9ca3af;
+}
+
+.section-heading:first-child {
+    margin-top: 0;
+}
+
+.detail-block {
+    padding: 1 0 0 0;
+    min-height: 6;
+}
+
+.status {
+    margin-top: 1;
+    padding: 0 2;
+    border: none;
+    background: #181b21;
+}
+
+.status.info {
+    color: #94a3b8;
+}
+
+.status.warning {
+    background: #2f2415;
+    color: #facc15;
+}
+
+.status.error {
+    background: #321717;
+    color: #fda4af;
+}
+
+.status.success {
+    background: #1f2a1f;
+    color: #4ade80;
+}
+
+CommandPalette {
+    background: #181b21;
+    border: tall #242832;
+    color: #e5e7eb;
+}
+
+CommandPalette Option.--highlight {
+    background: #242832;
+    color: #f8fafc;
+}
+
+ScanConfigScreen {
+    align: center middle;
+}
+
+.dialog {
+    width: 60%;
+    max-width: 60;
+    border: tall #242832;
+    background: #181b21;
+    padding: 1 2;
+}
+
+.dialog-title {
+    text-style: bold;
+}
+
+.dialog-subtitle {
+    color: $text;
+}
+
+.dialog-message {
+    color: #e5e7eb;
+}
+
+.dialog-buttons {
+    padding-top: 1;
+}
+
+.dialog-buttons Button {
+    margin-left: 1;
+}
+
+.consent-actions {
+    padding-top: 1;
+}
+
+.consent-actions Button {
+    margin-left: 0;
+    margin-top: 1;
+}
+
+.consent-actions Button:first-child {
+    margin-top: 0;
+}
+
+.preferences-dialog {
+    width: 80%;
+    max-width: 80;
+}
+
+.pref-column {
+    width: 1fr;
+}
+
+.pref-column-left {
+    padding-right: 1;
+}
+
+.pref-column-right {
+    padding-left: 1;
+}
+
+#pref-profile-list {
+    height: 16;
+    border: round $primary;
+    margin-bottom: 1;
+}
+
+.pref-column-left Button {
+    margin-top: 1;
+}
+
+.pref-column-left Button:first-child {
+    margin-top: 0;
+}
+
+.pref-column-right Checkbox {
+    margin-top: 1;
+}
+
+.group-title {
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+.dialog-message.info {
+    color: $text;
+}
+
+.dialog-message.warning {
+    color: #facc15;
+}
+
+.dialog-message.error {
+    color: #fda4af;
+}
+
+.dialog-message.success {
+    color: #4ade80;
+}
+
+#notice-log {
+    height: 18;
+    border: round $primary;
+    padding: 0 1;
+    background: $surface;
+}
+
+.scan-results-dialog {
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
+    border: none;
+    padding: 0;
+    overflow: hidden;
+}
+
+#scan-results-log {
+    height: 1fr;
+    min-height: 12;
+    border: tall #242832;
+    padding: 0 1;
+    background: #0f1115;
+}
+
+.scan-actions-container {
+    height: auto;
+    margin-top: 0;
+    border: none;
+    padding: 0;
+    background: transparent;
+    max-height: 6;
+    overflow-y: auto;
+}
+
+.scan-actions-list {
+    width: 100%;
+    padding: 0;
+}
+
+.scan-actions-list Button {
+    margin-top: 0;
+    margin-bottom: 0;
+}

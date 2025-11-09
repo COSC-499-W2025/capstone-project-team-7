@@ -125,4 +125,20 @@ To launch the interactive CLI (arrow-key menu), use the provided helper script f
 bash scripts/run_cli.sh
 ```
 
+On Windows (PowerShell 5+), run the companion script instead:
+
+```powershell
+pwsh -File scripts/run_cli.ps1
+```
+
 The script makes sure the project virtual environment exists, installs any missing dependencies, loads environment variables from `.env`, and starts the menu inside a real terminal (required for the arrow-based navigation). Press `Ctrl+C` to exit at any time.
+
+For the Textual UI preview, use the matching helpers:
+
+```bash
+bash scripts/run_textual_cli.sh
+```
+
+```powershell
+pwsh -File scripts/run_textual_cli.ps1
+```

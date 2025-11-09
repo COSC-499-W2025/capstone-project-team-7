@@ -6,7 +6,10 @@ from typing import List, Dict, Optional
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
-from ..scanner.media import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
+try:
+    from ..scanner.media import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
+except ImportError:  # pragma: no cover - allows standalone execution
+    from scanner.media import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS  # type: ignore
 
 load_dotenv()
 
