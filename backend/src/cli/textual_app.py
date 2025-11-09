@@ -815,6 +815,10 @@ class PortfolioTextualApp(App):
             index = event.control.index or 0
             self._handle_selection(index)
 
+    def exit(self, result: int | None = None) -> None:  # pragma: no cover - Textual shutdown hook
+        self._cleanup_async_tasks()
+        super().exit(result)
+
     def action_quit(self) -> None:
         self.exit()
 
@@ -922,6 +926,17 @@ class PortfolioTextualApp(App):
         for tone_name in ("info", "success", "warning", "error"):
             status_panel.remove_class(tone_name)
         status_panel.add_class(tone)
+        return
+
+    def _report_filesystem_issue(self, message: str, tone: str = "error") -> None:
+        """Show filesystem-related warnings when the UI is ready; otherwise log them."""
+        if getattr(self, "is_mounted", False):
+            try:
+                self._show_status(message, tone)
+                return
+            except Exception as exc:  # pragma: no cover - status panel unavailable
+                self.log(f"Unable to render status update: {exc}")
+        self.log(message)
 
     def _surface_error(
         self,
@@ -966,6 +981,20 @@ class PortfolioTextualApp(App):
                 "Adjust scan preferences (extensions, file-size limits) or retry with 'Relevant files only'.",
             )
             return
+        except PermissionError as exc:
+            self._surface_error(
+                "Run Portfolio Scan",
+                f"Permission denied while reading files: {exc}",
+                "Verify filesystem permissions or run the scan from a writable location.",
+            )
+            return
+        except OSError as exc:
+            self._surface_error(
+                "Run Portfolio Scan",
+                f"Filesystem error: {exc}",
+                "Ensure the target directory is accessible and retry.",
+            )
+            return
         except FileNotFoundError:
             self._surface_error(
                 "Run Portfolio Scan",
@@ -1000,7 +1029,12 @@ class PortfolioTextualApp(App):
         relevant_only: bool,
         preferences: ScanPreferences,
     ) -> tuple[Path, ParseResult]:
-        archive_path = ensure_zip(target, preferences=preferences)
+        try:
+            archive_path = ensure_zip(target, preferences=preferences)
+        except PermissionError as exc:
+            raise PermissionError(f"Permission denied while preparing archive: {exc}") from exc
+        except OSError as exc:
+            raise OSError(f"Unable to prepare archive for scan: {exc}") from exc
         parse_result = parse_zip(
             archive_path,
             relevant_only=relevant_only,
@@ -1339,7 +1373,14 @@ class PortfolioTextualApp(App):
             self._last_languages,
             self._last_scan_archive,
         )
-        destination.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        try:
+            destination.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        except PermissionError as exc:
+            raise PermissionError(
+                f"Permission denied while writing export to {destination}: {exc}"
+            ) from exc
+        except OSError as exc:
+            raise OSError(f"Unable to write export to {destination}: {exc}") from exc
         return destination
 
     def _build_export_payload(
@@ -1446,15 +1487,39 @@ class PortfolioTextualApp(App):
     def on_scan_results_screen_closed(self) -> None:
         self._scan_results_screen = None
 
+    def _cancel_task(self, task: Optional[asyncio.Task], label: str) -> None:
+        """Cancel a pending asyncio task and surface any unexpected errors."""
+        if not task:
+            return
+
+        def _drain_result(completed: asyncio.Task) -> None:
+            try:
+                completed.result()
+            except asyncio.CancelledError:
+                return
+            except Exception as exc:  # pragma: no cover - defensive logging
+                self.log(f"{label} task raised during cleanup: {exc}")
+
+        if task.done():
+            _drain_result(task)
+            return
+
+        task.add_done_callback(_drain_result)
+        task.cancel()
+
+    def _cleanup_async_tasks(self) -> None:
+        """Ensure background tasks are cancelled before logout or shutdown."""
+        if self._login_task:
+            self._cancel_task(self._login_task, "Login")
+            self._login_task = None
+        if self._ai_task:
+            self._cancel_task(self._ai_task, "AI analysis")
+            self._ai_task = None
+
     def _logout(self) -> None:
         if not self._session:
             return
-        if self._login_task and not self._login_task.done():
-            self._login_task.cancel()
-            self._login_task = None
-        if self._ai_task and not self._ai_task.done():
-            self._ai_task.cancel()
-        self._ai_task = None
+        self._cleanup_async_tasks()
         self._llm_client = None
         self._llm_api_key = None
         self._last_ai_analysis = None
@@ -1772,15 +1837,31 @@ class PortfolioTextualApp(App):
                 "access_token": getattr(self._session, "access_token", ""),
             }
             self._session_path.write_text(json.dumps(payload), encoding="utf-8")
-        except Exception:  # pragma: no cover - filesystem issues
-            pass
+        except PermissionError as exc:  # pragma: no cover - filesystem issues
+            self._report_filesystem_issue(
+                f"Unable to save session data to {self._session_path}: {exc}",
+                tone="error",
+            )
+        except OSError as exc:  # pragma: no cover - filesystem issues
+            self._report_filesystem_issue(
+                f"Unable to persist session data ({self._session_path}): {exc}",
+                tone="error",
+            )
 
     def _clear_session(self) -> None:
         try:
             if self._session_path.exists():
                 self._session_path.unlink()
-        except Exception:  # pragma: no cover - filesystem issues
-            pass
+        except PermissionError as exc:  # pragma: no cover - filesystem issues
+            self._report_filesystem_issue(
+                f"Permission denied while removing stored session data: {exc}",
+                tone="warning",
+            )
+        except OSError as exc:  # pragma: no cover - filesystem issues
+            self._report_filesystem_issue(
+                f"Unable to remove stored session data ({self._session_path}): {exc}",
+                tone="warning",
+            )
 
     def _update_session_status(self) -> None:
         try:
@@ -1883,8 +1964,24 @@ class PortfolioTextualApp(App):
                 self._last_email = email
         except FileNotFoundError:
             self._session = None
-        except Exception:
+        except PermissionError as exc:
             self._session = None
+            self._report_filesystem_issue(
+                f"Permission denied while reading saved session data: {exc}",
+                tone="warning",
+            )
+        except OSError as exc:
+            self._session = None
+            self._report_filesystem_issue(
+                f"Unable to read saved session data ({self._session_path}): {exc}",
+                tone="warning",
+            )
+        except json.JSONDecodeError as exc:
+            self._session = None
+            self._report_filesystem_issue(
+                f"Saved session data is corrupted ({exc}). Sign in again to refresh it.",
+                tone="warning",
+            )
 
     def _refresh_consent_state(self) -> None:
         self._consent_record = None

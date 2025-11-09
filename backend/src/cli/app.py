@@ -1225,7 +1225,7 @@ class CLIApp:
         filtered = summary.get("filtered_out")
         if filtered is not None:
             payload["summary"]["filtered_out"] = filtered
-       if languages:
+        if languages:
             payload["summary"]["languages"] = languages
         if self._last_git_analysis:
             payload["git_analysis"] = self._last_git_analysis
