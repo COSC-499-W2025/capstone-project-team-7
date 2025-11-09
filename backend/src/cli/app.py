@@ -530,15 +530,50 @@ class CLIApp:
                 self.io.write_warning("API key required. Analysis cancelled.")
                 return
             
+            self.io.write("")
+            self.io.write("Configuration (press Enter to use recommended defaults):")
+            
+            temp_input = self.io.prompt("Temperature (0.0-2.0) [0.7 recommended]: ").strip()
+            temperature = None
+            if temp_input:
+                try:
+                    temperature = float(temp_input)
+                    if not 0.0 <= temperature <= 2.0:
+                        self.io.write_warning("Temperature must be 0.0-2.0. Using default 0.7.")
+                        temperature = None
+                except ValueError:
+                    self.io.write_warning("Invalid temperature. Using default 0.7.")
+                    temperature = None
+            
+            tokens_input = self.io.prompt("Max tokens per response [1000 recommended]: ").strip()
+            max_tokens = None
+            if tokens_input:
+                try:
+                    max_tokens = int(tokens_input)
+                    if max_tokens <= 0:
+                        self.io.write_warning("Max tokens must be positive. Using default 1000.")
+                        max_tokens = None
+                except ValueError:
+                    self.io.write_warning("Invalid max tokens. Using default 1000.")
+                    max_tokens = None
+            
             with self.io.status("Verifying API key..."):
                 try:
                     from ..analyzer.llm.client import LLMClient, InvalidAPIKeyError, LLMError
                     
-                    client = LLMClient(api_key=api_key)
+                    client = LLMClient(
+                        api_key=api_key,
+                        temperature=temperature,
+                        max_tokens=max_tokens
+                    )
                     client.verify_api_key()
                     self._llm_client = client
                     self._llm_api_key = api_key
+                    
+                    config = client.get_config()
                     self.io.write_success("API key verified successfully!")
+                    self.io.write(f"Using model: {config['model']}")
+                    self.io.write(f"Temperature: {config['temperature']} | Max tokens: {config['max_tokens']}")
                 except InvalidAPIKeyError as e:
                     self._report_action_error(
                         "AI analysis",
@@ -584,6 +619,20 @@ class CLIApp:
             "scan_path": str(self._last_scan_path)
         }
         
+        # Check if we have multiple Git repos (projects for llm analysis)
+        project_dirs = None
+        if self._last_git_repos and len(self._last_git_repos) > 0:
+            project_dirs = [str(repo) for repo in self._last_git_repos]
+            if len(project_dirs) == 1:
+                self.io.write(f"Detected 1 Git repository - analyzing as a single project")
+            else:
+                self.io.write(f"Detected {len(project_dirs)} Git repositories - analyzing each separately")
+                self.io.write("Projects:")
+                for idx, repo in enumerate(self._last_git_repos, 1):
+                    self.io.write(f"  {idx}. {repo.name}")
+        else:
+            self.io.write("No Git repositories detected - analyzing entire scan as one project")
+        
         self.io.write(f"Analyzing {len(relevant_files)} files with AI...")
         self.io.write("")
         
@@ -594,7 +643,8 @@ class CLIApp:
                 result = self._llm_client.summarize_scan_with_ai(
                     scan_summary=scan_summary,
                     relevant_files=relevant_files,
-                    scan_base_path=str(self._last_scan_path)
+                    scan_base_path=str(self._last_scan_path),
+                    project_dirs=project_dirs
                 )
             
             self.io.write_success(f"Analysis complete! Analyzed {result['files_analyzed_count']} files.")
@@ -1448,6 +1498,13 @@ class CLIApp:
         """Display AI analysis results with rich formatting."""
         self._render_section_header("AI Analysis Results")
         
+        if result.get("mode") == "multi_project":
+            self._render_multi_project_analysis(result)
+        else:
+            self._render_single_project_analysis(result)
+    
+    def _render_single_project_analysis(self, result: dict) -> None:
+        """Render analysis for a single project."""
         project_analysis = result.get("project_analysis", {})
         analysis_text = project_analysis.get("analysis", "No analysis available")
         
@@ -1477,6 +1534,99 @@ class CLIApp:
                     self.io.write(analysis)
                     self.io.write("")
     
+    def _render_multi_project_analysis(self, result: dict) -> None:
+        """Render analysis for multiple projects."""
+        projects = result.get("projects", [])
+        project_count = result.get("project_count", len(projects))
+        unassigned_files = result.get("unassigned_files")
+        
+        if Panel and isinstance(self.io, ConsoleIO) and self.io._console:
+            header = f"Analyzed {project_count} separate projects"
+            if unassigned_files:
+                header += f" + supporting files"
+            self.io._console.print(Panel(header, title="🎯 Multi-Project Portfolio", border_style="magenta"))
+        else:
+            self.io.write(f"=== Analyzed {project_count} Projects ===")
+            if unassigned_files:
+                self.io.write("(Plus supporting files)")
+        
+        self.io.write("")
+        
+        # Portfolio-level summary
+        portfolio_summary = result.get("portfolio_summary")
+        if portfolio_summary:
+            summary_text = portfolio_summary.get("summary", "")
+            if Panel and isinstance(self.io, ConsoleIO) and self.io._console:
+                self.io._console.print(
+                    Panel(summary_text, title="📋 Portfolio Overview", border_style="cyan")
+                )
+            else:
+                self.io.write("=== Portfolio Overview ===")
+                self.io.write(summary_text)
+            self.io.write("")
+            self.io.write("─" * 80)
+            self.io.write("")
+        
+        # Individual project analyses
+        for idx, project in enumerate(projects, 1):
+            project_name = project.get("project_name", f"Project {idx}")
+            project_path = project.get("project_path", "")
+            files_analyzed = project.get("files_analyzed", 0)
+            analysis = project.get("analysis", "No analysis available")
+            
+            if Panel and isinstance(self.io, ConsoleIO) and self.io._console:
+                title = f"Project {idx}: {project_name}"
+                if project_path:
+                    subtitle = f"Path: {project_path} | Files: {files_analyzed}"
+                    self.io._console.print(f"[dim]{subtitle}[/dim]")
+                self.io._console.print(
+                    Panel(analysis, title=title, border_style="green")
+                )
+            else:
+                self.io.write(f"=== Project {idx}: {project_name} ===")
+                if project_path:
+                    self.io.write(f"Path: {project_path}")
+                self.io.write(f"Files analyzed: {files_analyzed}")
+                self.io.write("")
+                self.io.write(analysis)
+            
+            self.io.write("")
+            
+            file_summaries = project.get("file_summaries", [])
+            if file_summaries and len(file_summaries) <= 5:
+                self.io.write(f"  Key files in {project_name}:")
+                for file_summary in file_summaries[:5]:
+                    file_path = file_summary.get("file_path", "Unknown")
+                    self.io.write(f"    • {file_path}")
+                self.io.write("")
+        
+        if unassigned_files:
+            self.io.write("─" * 80)
+            self.io.write("")
+            
+            files_analyzed = unassigned_files.get("files_analyzed", 0)
+            analysis = unassigned_files.get("analysis", "")
+            
+            if Panel and isinstance(self.io, ConsoleIO) and self.io._console:
+                self.io._console.print(
+                    Panel(analysis, title=f"📄 Supporting Files ({files_analyzed} files)", border_style="yellow")
+                )
+            else:
+                self.io.write(f"=== Supporting Files ({files_analyzed} analyzed) ===")
+                self.io.write(analysis)
+            
+            self.io.write("")
+            
+            file_summaries = unassigned_files.get("file_summaries", [])
+            if file_summaries:
+                self.io.write(f"  Files included:")
+                for file_summary in file_summaries[:8]:  # Limit to 8
+                    file_path = file_summary.get("file_path", "Unknown")
+                    self.io.write(f"    • {file_path}")
+                if len(file_summaries) > 8:
+                    self.io.write(f"    ... and {len(file_summaries) - 8} more")
+                self.io.write("")
+    
     def _export_ai_analysis(self, result: dict) -> None:
         """Export AI analysis results as a markdown file."""
         default_filename = "ai_analysis_report.md"
@@ -1498,37 +1648,116 @@ class CLIApp:
                 "",
             ]
             
-            project_analysis = result.get("project_analysis", {})
-            analysis_text = project_analysis.get("analysis", "No analysis available")
-            
-            markdown_lines.extend([
-                "## 📊 Project Analysis",
-                "",
-                analysis_text,
-                "",
-                "---",
-                "",
-            ])
-            
-            file_summaries = result.get("file_summaries", [])
-            if file_summaries:
+            # Check if multi-project mode
+            if result.get("mode") == "multi_project":
+                projects = result.get("projects", [])
+                project_count = result.get("project_count", len(projects))
+                unassigned_files = result.get("unassigned_files")
+                
+                header = f"## 🎯 Multi-Project Portfolio ({project_count} Projects"
+                if unassigned_files:
+                    header += f" + Supporting Files"
+                header += ")"
+                
                 markdown_lines.extend([
-                    "## 📄 File-Level Analysis",
-                    "",
-                    f"Analyzed {len(file_summaries)} important files:",
+                    header,
                     "",
                 ])
                 
-                for idx, summary in enumerate(file_summaries, 1):
-                    file_path = summary.get("file_path", "Unknown")
-                    analysis = summary.get("analysis", "No analysis available")
+                # Portfolio summary
+                portfolio_summary = result.get("portfolio_summary")
+                if portfolio_summary:
+                    summary_text = portfolio_summary.get("summary", "")
+                    markdown_lines.extend([
+                        "### 📋 Portfolio Overview",
+                        "",
+                        summary_text,
+                        "",
+                        "---",
+                        "",
+                    ])
+                
+                # Individual project analyses
+                markdown_lines.extend([
+                    "## 📂 Individual Project Analyses",
+                    "",
+                ])
+                
+                for idx, project in enumerate(projects, 1):
+                    project_name = project.get("project_name", f"Project {idx}")
+                    project_path = project.get("project_path", "")
+                    files_analyzed = project.get("files_analyzed", 0)
+                    analysis = project.get("analysis", "No analysis available")
                     
                     markdown_lines.extend([
-                        f"### {idx}. `{file_path}`",
+                        f"### {idx}. {project_name}",
+                        "",
+                        f"**Path:** `{project_path}`",
+                        f"**Files Analyzed:** {files_analyzed}",
+                        "",
+                        analysis,
+                        "",
+                        "---",
+                        "",
+                    ])
+                
+                # Add unassigned files section
+                if unassigned_files:
+                    files_analyzed = unassigned_files.get("files_analyzed", 0)
+                    analysis = unassigned_files.get("analysis", "")
+                    file_summaries = unassigned_files.get("file_summaries", [])
+                    
+                    markdown_lines.extend([
+                        f"## 📄 Supporting Files ({files_analyzed} files)",
+                        "",
+                        "*These are documentation, configuration, and other files found outside the main project directories.*",
                         "",
                         analysis,
                         "",
                     ])
+                    
+                    if file_summaries:
+                        markdown_lines.extend([
+                            "**Files included:**",
+                            "",
+                        ])
+                        for file_summary in file_summaries:
+                            file_path = file_summary.get("file_path", "Unknown")
+                            markdown_lines.append(f"- `{file_path}`")
+                        markdown_lines.extend(["", "---", ""])
+            else:
+                # Single project mode
+                project_analysis = result.get("project_analysis", {})
+                analysis_text = project_analysis.get("analysis", "No analysis available")
+                
+                markdown_lines.extend([
+                    "## 📊 Project Analysis",
+                    "",
+                    analysis_text,
+                    "",
+                    "---",
+                    "",
+                ])
+                
+                file_summaries = result.get("file_summaries", [])
+                if file_summaries:
+                    markdown_lines.extend([
+                        "## 📄 File-Level Analysis",
+                        "",
+                        f"Analyzed {len(file_summaries)} important files:",
+                        "",
+                    ])
+                    
+                    for idx, summary in enumerate(file_summaries, 1):
+                        file_path = summary.get("file_path", "Unknown")
+                        analysis = summary.get("analysis", "No analysis available")
+                        
+                        markdown_lines.extend([
+                            f"### {idx}. `{file_path}`",
+                            "",
+                            analysis,
+                            "",
+                        ])
             
             markdown_lines.extend([
                 "---",
