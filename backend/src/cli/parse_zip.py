@@ -12,6 +12,7 @@ from .display import render_table
 from .language_stats import summarize_languages
 from ..scanner.errors import ParserError
 from ..scanner.models import ScanPreferences
+from ..scanner.preferences import normalize_extensions
 from ..scanner.parser import parse_zip
 from ..local_analysis.code_parser import CodeAnalyzer
 from ..local_analysis.code_cli import display_analysis_results
@@ -217,7 +218,8 @@ def _preferences_from_config(config: dict, profile_name: str | None) -> ScanPref
 
     extensions = profile.get("extensions") or None
     if extensions:
-        extensions = [ext.lower() for ext in extensions]
+        normalized = normalize_extensions(extensions)
+        extensions = normalized or None
 
     excluded_dirs = profile.get("exclude_dirs") or None
     max_file_size_mb = config.get("max_file_size_mb")

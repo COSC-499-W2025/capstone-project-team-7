@@ -19,7 +19,13 @@ from ..scanner.models import ScanPreferences, ParseResult
 from ..cli.archive_utils import ensure_zip
 from ..scanner.parser import parse_zip
 from ..scanner.errors import ParserError
-from ..scanner.media import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
+from ..scanner.media import (
+    AUDIO_EXTENSIONS,
+    IMAGE_EXTENSIONS,
+    VIDEO_EXTENSIONS,
+    media_vision_capabilities_enabled,
+)
+from ..scanner.preferences import normalize_extensions
 from ..cli.language_stats import summarize_languages
 from ..cli.display import render_table
 from contextlib import contextmanager
@@ -207,6 +213,7 @@ class CLIApp:
         self._has_media_files: bool = False
         self._last_media_analysis: Optional[dict] = None
         self._media_analyzer = MediaAnalyzer()
+        self._media_vision_ready = media_vision_capabilities_enabled()
 
     def run(self) -> None:
         """Main event loop. Renders the menu until the user exits."""
@@ -816,6 +823,11 @@ class CLIApp:
         issues = analysis.get("issues") or []
 
         self._render_section_header("Media Insights")
+        if not self._media_vision_ready:
+            self.io.write_warning(
+                "Advanced classifiers disabled. Install torch/torchvision/torchaudio + librosa/soundfile "
+                "to enable content labels and transcripts."
+            )
         self.io.write(f"Total media files: {summary.get('total_media_files', 0)}")
         self.io.write(
             f"  Images: {summary.get('image_files', 0)} | "
@@ -838,6 +850,27 @@ class CLIApp:
                 dims = max_res.get("dimensions") or (0, 0)
                 bits.append(f"max {dims[0]}x{dims[1]}")
             self.io.write(f"  Image metrics: {', '.join(bits) if bits else '—'}")
+            aspect = image_metrics.get("common_aspect_ratios") or {}
+            if aspect:
+                preview = ", ".join(f"{ratio} ({count})" for ratio, count in list(aspect.items())[:3])
+                self.io.write(f"    Common ratios: {preview}")
+            top_labels = image_metrics.get("top_labels") or []
+            if top_labels:
+                label_summary = ", ".join(
+                    f"{entry.get('label')} ({entry.get('share', 0) * 100:.0f}%)"
+                    for entry in top_labels[:3]
+                    if entry.get("label")
+                )
+                if label_summary:
+                    self.io.write(f"    Content highlights: {label_summary}")
+            summaries = image_metrics.get("content_summaries") or []
+            if summaries:
+                self.io.write("    Sample image descriptions:")
+                for entry in summaries[:3]:
+                    summary = entry.get("summary")
+                    path = entry.get("path", "unknown")
+                    if summary:
+                        self.io.write(f"      • {summary} ({path})")
 
         if audio_metrics.get("count"):
             parts = [f"total {audio_metrics.get('total_duration_seconds', 0):.1f}s"]
@@ -845,6 +878,47 @@ class CLIApp:
             if avg:
                 parts.append(f"avg {avg:.1f}s")
             self.io.write(f"  Audio metrics: {', '.join(parts)}")
+            top_labels = audio_metrics.get("top_labels") or []
+            if top_labels:
+                label_summary = ", ".join(
+                    f"{entry.get('label')} ({entry.get('share', 0) * 100:.0f}%)"
+                    for entry in top_labels[:3]
+                    if entry.get("label")
+                )
+                if label_summary:
+                    self.io.write(f"    Content highlights: {label_summary}")
+            tempo = audio_metrics.get("tempo_stats")
+            if tempo:
+                self.io.write(
+                    "    Tempo: "
+                    f"avg {tempo.get('average', 0):.0f} BPM "
+                    f"(range {tempo.get('min', 0):.0f}-{tempo.get('max', 0):.0f})"
+                )
+            top_genres = audio_metrics.get("top_genres") or []
+            if top_genres:
+                genre_summary = ", ".join(
+                    f"{entry.get('genre')} ({entry.get('share', 0) * 100:.0f}%)"
+                    for entry in top_genres[:3]
+                    if entry.get("genre")
+                )
+                if genre_summary:
+                    self.io.write(f"    Genre mix: {genre_summary}")
+            summaries = audio_metrics.get("content_summaries") or []
+            if summaries:
+                self.io.write("    Sample descriptions:")
+                for entry in summaries[:2]:
+                    summary = entry.get("summary")
+                    path = entry.get("path", "unknown")
+                    if summary:
+                        self.io.write(f"      • {summary} ({path})")
+            transcripts = audio_metrics.get("transcript_excerpts") or []
+            if transcripts:
+                self.io.write("    Transcript excerpts:")
+                for entry in transcripts[:2]:
+                    excerpt = entry.get("excerpt")
+                    path = entry.get("path", "unknown")
+                    if excerpt:
+                        self.io.write(f"      • {excerpt} [{path}]")
 
         if video_metrics.get("count"):
             parts = [f"total {video_metrics.get('total_duration_seconds', 0):.1f}s"]
@@ -852,6 +926,23 @@ class CLIApp:
             if avg:
                 parts.append(f"avg {avg:.1f}s")
             self.io.write(f"  Video metrics: {', '.join(parts)}")
+            top_labels = video_metrics.get("top_labels") or []
+            if top_labels:
+                label_summary = ", ".join(
+                    f"{entry.get('label')} ({entry.get('share', 0) * 100:.0f}%)"
+                    for entry in top_labels[:3]
+                    if entry.get("label")
+                )
+                if label_summary:
+                    self.io.write(f"    Content highlights: {label_summary}")
+            summaries = video_metrics.get("content_summaries") or []
+            if summaries:
+                self.io.write("    Sample descriptions:")
+                for entry in summaries[:2]:
+                    summary = entry.get("summary")
+                    path = entry.get("path", "unknown")
+                    if summary:
+                        self.io.write(f"      • {summary} ({path})")
 
         if insights:
             self.io.write("")
@@ -1169,19 +1260,17 @@ class CLIApp:
 
         extensions = profile.get("extensions") or None
         if extensions:
-            normalized: list[str] = []
-            seen: set[str] = set()
-            for ext in extensions:
-                lowered = ext.lower()
-                if lowered not in seen:
-                    seen.add(lowered)
-                    normalized.append(lowered)
-            if profile_key == "all":
-                for media_ext in _MEDIA_EXTENSIONS:
-                    if media_ext not in seen:
-                        normalized.append(media_ext)
-                        seen.add(media_ext)
-            extensions = normalized
+            normalized = normalize_extensions(extensions)
+            if normalized:
+                seen = set(normalized)
+                if profile_key == "all":
+                    for media_ext in _MEDIA_EXTENSIONS:
+                        if media_ext not in seen:
+                            seen.add(media_ext)
+                            normalized.append(media_ext)
+                extensions = normalized
+            else:
+                extensions = None
 
         excluded_dirs = profile.get("exclude_dirs") or None
         max_file_size_mb = config.get("max_file_size_mb")

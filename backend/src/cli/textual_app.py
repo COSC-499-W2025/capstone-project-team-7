@@ -3,9 +3,12 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any, List
+import re
+import textwrap
 
 from textual.app import App, ComposeResult, Binding
 from textual.containers import Horizontal, Vertical, ScrollableContainer
@@ -25,20 +28,41 @@ from textual.widgets import (
     Log,
 )
 
+try:  # TextLog was introduced in newer Textual versions
+    from textual.widgets import TextLog  # type: ignore
+except ImportError:  # pragma: no cover - compatibility with older releases
+    TextLog = None  # type: ignore[assignment]
+
 from rich.text import Text
 
 from .archive_utils import ensure_zip
 from .language_stats import summarize_languages
-from ..cli.display import render_table, render_language_table
+from ..cli.display import render_language_table
 from ..scanner.errors import ParserError
-from ..scanner.models import ScanPreferences, ParseResult
+from ..scanner.models import ScanPreferences, ParseResult, FileMetadata
 from ..scanner.parser import parse_zip
-from ..scanner.media import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
+from ..scanner.media import (
+    AUDIO_EXTENSIONS,
+    IMAGE_EXTENSIONS,
+    VIDEO_EXTENSIONS,
+    media_vision_capabilities_enabled,
+)
+from ..scanner.preferences import normalize_extensions
 from ..auth.consent_validator import ConsentValidator, ConsentError, ExternalServiceError, ConsentRecord
 from ..auth.session import Session, SupabaseAuth, AuthError
 from ..auth import consent as consent_storage
 from ..local_analysis.git_repo import analyze_git_repo
 from ..local_analysis.media_analyzer import MediaAnalyzer
+
+# Optional PDF analysis dependencies
+try:
+    from ..local_analysis.pdf_parser import create_parser, PDFParseResult
+    from ..local_analysis.pdf_summarizer import create_summarizer, DocumentSummary
+    PDF_AVAILABLE = True
+except Exception:  # pragma: no cover - PDF extras missing
+    PDF_AVAILABLE = False
+    PDFParseResult = None  # type: ignore[assignment]
+    DocumentSummary = None  # type: ignore[assignment]
 
 MEDIA_EXTENSIONS = tuple(
     sorted(set(IMAGE_EXTENSIONS + AUDIO_EXTENSIONS + VIDEO_EXTENSIONS))
@@ -141,9 +165,11 @@ class LoginCancelled(Message):
 class AIKeySubmitted(Message):
     """Raised when the user submits an API key for AI analysis."""
 
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: str, temperature: Optional[float], max_tokens: Optional[int]) -> None:
         super().__init__()
         self.api_key = api_key
+        self.temperature = temperature
+        self.max_tokens = max_tokens
 
 
 class AIKeyCancelled(Message):
@@ -216,7 +242,7 @@ class LoginScreen(ModalScreen[None]):
 
 
 class AIKeyScreen(ModalScreen[None]):
-    """Modal dialog for collecting an AI API key."""
+    """Modal dialog for collecting AI configuration."""
 
     def __init__(self, default_key: str = "") -> None:
         super().__init__()
@@ -224,9 +250,9 @@ class AIKeyScreen(ModalScreen[None]):
 
     def compose(self) -> ComposeResult:
         yield Vertical(
-            Static("Provide OpenAI API Key", classes="dialog-title"),
+            Static("Configure AI Analysis", classes="dialog-title"),
             Static(
-                "Your API key is used in-memory for this session to run AI analysis. It is not stored on disk.",
+                "Your OpenAI key and settings stay in-memory for this session only.",
                 classes="dialog-subtitle",
             ),
             Input(
@@ -234,6 +260,11 @@ class AIKeyScreen(ModalScreen[None]):
                 placeholder="sk-...",
                 password=True,
                 id="ai-key-input",
+            ),
+            Horizontal(
+                Input(placeholder="Temperature (0.0-2.0, default 0.7)", id="ai-temp-input"),
+                Input(placeholder="Max tokens (default 1000)", id="ai-tokens-input"),
+                classes="ai-config-row",
             ),
             Static("", id="ai-key-message", classes="dialog-message"),
             Horizontal(
@@ -248,12 +279,38 @@ class AIKeyScreen(ModalScreen[None]):
         self.query_one("#ai-key-input", Input).focus()
 
     def _submit(self) -> None:
-        input_widget = self.query_one("#ai-key-input", Input)
-        api_key = input_widget.value.strip()
+        key_input = self.query_one("#ai-key-input", Input)
+        temp_input = self.query_one("#ai-temp-input", Input)
+        tokens_input = self.query_one("#ai-tokens-input", Input)
+        api_key = key_input.value.strip()
         if not api_key:
             self.query_one("#ai-key-message", Static).update("Enter an API key to continue.")
             return
-        self.app.post_message(AIKeySubmitted(api_key))
+        temperature: Optional[float] = None
+        tokens: Optional[int] = None
+        temp_value = temp_input.value.strip()
+        if temp_value:
+            try:
+                parsed = float(temp_value)
+                if 0.0 <= parsed <= 2.0:
+                    temperature = parsed
+                else:
+                    raise ValueError
+            except ValueError:
+                self.query_one("#ai-key-message", Static).update("Temperature must be between 0.0 and 2.0.")
+                return
+        tokens_value = tokens_input.value.strip()
+        if tokens_value:
+            try:
+                parsed_tokens = int(tokens_value)
+                if parsed_tokens > 0:
+                    tokens = parsed_tokens
+                else:
+                    raise ValueError
+            except ValueError:
+                self.query_one("#ai-key-message", Static).update("Max tokens must be a positive integer.")
+                return
+        self.app.post_message(AIKeySubmitted(api_key, temperature, tokens))
         self.dismiss(None)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -419,7 +476,7 @@ class PreferencesScreen(ModalScreen[None]):
             ),
             Static("", id="pref-message", classes="dialog-message"),
             Horizontal(
-                Button("Cancel", id="pref-cancel"),
+                Button("Back", id="pref-cancel"),
                 Button("Save profile", id="pref-save-profile", variant="primary"),
                 Button("Save settings", id="pref-save-settings"),
                 classes="dialog-buttons",
@@ -650,18 +707,54 @@ class ScanResultsScreen(ModalScreen[None]):
         self._actions = actions
         self._detail_context = "Scan result detail"
         self._lines: List[str] = []
+        self._supports_rich_markup = TextLog is not None
 
     def compose(self) -> ComposeResult:
         button_widgets = [
             Button(label, id=f"scan-action-{action}") for action, label in self._actions
         ]
-        actions_layout = Vertical(*button_widgets, classes="scan-actions-list") if button_widgets else Vertical(classes="scan-actions-list")
-        log_widget = Log(highlight=False, id="scan-results-log")
+        actions_layout = (
+            Vertical(*button_widgets, classes="scan-actions-list")
+            if button_widgets
+            else Vertical(classes="scan-actions-list")
+        )
+        if TextLog:
+            log_widget = TextLog(
+                highlight=False,
+                markup=True,
+                wrap=True,
+                id="scan-results-log",
+            )
+        else:
+            log_widget = Log(highlight=False, id="scan-results-log")
+        file_list = ListView(id="scan-results-files", classes="scan-results-files")
+        file_list.display = False
+        context_label = Static("", id="scan-results-context", classes="scan-results-context")
+
+        actions_panel = Vertical(
+            Static("Explore results", classes="scan-actions-title"),
+            ScrollableContainer(actions_layout, id="scan-actions-container", classes="scan-actions-container"),
+            classes="scan-actions-panel",
+        )
+        log_panel = Vertical(
+            context_label,
+            Vertical(
+                log_widget,
+                file_list,
+                id="scan-results-output",
+                classes="scan-results-output",
+            ),
+            Static("", id="scan-results-message", classes="dialog-message"),
+            classes="scan-results-log-panel",
+        )
+
         yield Vertical(
             Static("Scan results", classes="dialog-title"),
-            log_widget,
-            Static("", id="scan-results-message", classes="dialog-message"),
-            ScrollableContainer(actions_layout, id="scan-actions-container", classes="scan-actions-container"),
+            Horizontal(
+                log_panel,
+                actions_panel,
+                classes="scan-results-body",
+            ),
             classes="dialog scan-results-dialog",
         )
 
@@ -680,6 +773,60 @@ class ScanResultsScreen(ModalScreen[None]):
 
     def set_detail_context(self, title: str) -> None:
         self._detail_context = title or "Scan result detail"
+        self._update_context_label()
+
+    def _update_context_label(self) -> None:
+        try:
+            label = self.query_one("#scan-results-context", Static)
+        except Exception:
+            return
+        label.update(self._detail_context or "Scan result detail")
+
+    def _show_log_view(self) -> Log:
+        log = self.query_one("#scan-results-log", Log)
+        try:
+            file_list = self.query_one("#scan-results-files", ListView)
+        except Exception:
+            file_list = None
+        log.display = True
+        if file_list is not None:
+            file_list.display = False
+        return log
+
+    def _write_line(self, log: Log, text: str) -> None:
+        for chunk in self._prepare_line(text):
+            writer = getattr(log, "write_line", None)
+            if callable(writer):
+                writer(chunk)
+            else:
+                log.write(chunk)
+                log.write("\n")
+
+    def _prepare_line(self, text: str) -> List[str]:
+        if self._supports_rich_markup:
+            return [text]
+        plain = self._strip_markup(text)
+        return self._wrap_plain(plain)
+
+    @staticmethod
+    def _strip_markup(text: str) -> str:
+        if not text:
+            return ""
+        return re.sub(r"\[/?[^\]]+\]", "", text)
+
+    @staticmethod
+    def _wrap_plain(text: str, width: int = 92) -> List[str]:
+        if not text:
+            return [""]
+        indent = "  " if text.startswith("• ") else ""
+        wrapped = textwrap.wrap(
+            text,
+            width=width,
+            subsequent_indent=indent,
+            break_long_words=False,
+            break_on_hyphens=False,
+        )
+        return wrapped or [text]
 
     def display_output(
         self,
@@ -690,21 +837,34 @@ class ScanResultsScreen(ModalScreen[None]):
     ) -> None:
         if context:
             self.set_detail_context(context)
-        log = self.query_one("#scan-results-log", Log)
+        self._update_context_label()
+        log = self._show_log_view()
         log.clear()
         lines = text.splitlines() or [""]
         self._lines = [raw_line or "" for raw_line in lines]
         if self._detail_context:
-            log.write(f"[bold]{self._detail_context}[/bold]")
-            log.write("")
+            self._write_line(log, f"[b]{self._detail_context}[/b]")
+            self._write_line(log, "")
         for line in self._lines:
-            if "[" in line and "]" in line:
-                try:
-                    log.write(line)
-                    continue
-                except Exception:
-                    pass
-            log.write(line or " ")
+            self._write_line(log, line or " ")
+
+    def display_file_list(self, rows: List[str], *, context: Optional[str] = None) -> None:
+        if context:
+            self.set_detail_context(context)
+        self._update_context_label()
+        log = self.query_one("#scan-results-log", Log)
+        log.display = False
+        file_list = self.query_one("#scan-results-files", ListView)
+        file_list.display = True
+        try:
+            file_list.clear()
+        except AttributeError:  # pragma: no cover - fallback for older Textual
+            for child in list(file_list.children):
+                child.remove()
+        entries = rows or ["No files were included in the last scan."]
+        for row in entries:
+            item = ListItem(Label(row, classes="scan-results-file-label"))
+            file_list.append(item)
 
     def set_message(self, message: str, *, tone: str = "info") -> None:
         widget = self.query_one("#scan-results-message", Static)
@@ -727,6 +887,7 @@ class PortfolioTextualApp(App):
     MENU_ITEMS = [
         ("Account", "Sign in to Supabase or sign out of the current session."),
         ("Run Portfolio Scan", "Prepare an archive or directory and run the portfolio scan workflow."),
+        ("View Last Analysis", "Reopen the results from the most recent scan without rescanning."),
         ("Settings & User Preferences", "Manage scan profiles, file filters, and other preferences."),
         ("Consent Management", "Review and update required and external consent settings."),
         ("AI-Powered Analysis", "Trigger AI-based analysis for recent scan results (requires consent)."),
@@ -761,9 +922,13 @@ class PortfolioTextualApp(App):
         self._last_git_repos: List[Path] = []
         self._last_git_analysis: List[dict] = []
         self._last_media_analysis: Optional[dict] = None
+        self._pdf_candidates: List[FileMetadata] = []
+        self._pdf_results: List[PDFParseResult] = []
+        self._pdf_summaries: List[DocumentSummary] = []
         self._last_relevant_only: bool = True
         self._scan_results_screen: Optional[ScanResultsScreen] = None
         self._media_analyzer = MediaAnalyzer()
+        self._media_vision_ready = media_vision_capabilities_enabled()
         self._login_task: Optional[asyncio.Task] = None
         self._llm_client = None
         self._llm_api_key: Optional[str] = None
@@ -827,6 +992,8 @@ class PortfolioTextualApp(App):
         detail_panel = self.query_one("#detail", Static)
         if label == "Account":
             detail_panel.update(self._render_account_detail())
+        elif label == "View Last Analysis":
+            detail_panel.update(self._render_last_scan_detail())
         elif label == "Settings & User Preferences":
             detail_panel.update(self._render_preferences_detail())
         elif label == "Consent Management":
@@ -856,6 +1023,15 @@ class PortfolioTextualApp(App):
 
         if label == "Run Portfolio Scan":
             self.post_message(RunScanRequested())
+            return
+
+        if label == "View Last Analysis":
+            if not self._last_parse_result:
+                self._show_status("Run a portfolio scan to populate this view.", "warning")
+                self._refresh_current_detail()
+                return
+            self._show_status("Opening the most recent scan results…", "info")
+            self._show_scan_results_dialog()
             return
 
         if label == "Settings & User Preferences":
@@ -1019,6 +1195,11 @@ class PortfolioTextualApp(App):
         self._last_git_analysis = []
         self._has_media_files = any(getattr(meta, "media_info", None) for meta in parse_result.files)
         self._last_media_analysis = None
+        self._pdf_candidates = [
+            meta for meta in parse_result.files if (meta.mime_type or "").lower() == "application/pdf"
+        ]
+        self._pdf_results = []
+        self._pdf_summaries = []
         self._show_status("Scan completed successfully.", "success")
         detail_panel.update(self._format_scan_overview())
         self._show_scan_results_dialog()
@@ -1079,8 +1260,48 @@ class PortfolioTextualApp(App):
             lines.append(f"Detected git repositories: {len(self._last_git_repos)}")
         if self._has_media_files:
             lines.append("Media files detected: yes")
+        if self._pdf_candidates:
+            lines.append(f"PDF files detected: {len(self._pdf_candidates)}")
+            if not PDF_AVAILABLE:
+                lines.append("[#9ca3af]Install the optional 'pypdf' dependency to enable PDF summaries.[/#9ca3af]")
 
         return "\n".join(lines)
+
+    def _build_file_listing_rows(self, *, limit: int = 500) -> List[str]:
+        if not self._last_parse_result or not self._last_parse_result.files:
+            return []
+
+        files = self._last_parse_result.files
+        rows: List[str] = []
+        total = len(files)
+        rows.append(f"Files processed ({total})")
+        for index, meta in enumerate(files):
+            if limit and index >= limit:
+                remaining = len(files) - limit
+                suffix = "files" if remaining != 1 else "file"
+                rows.append(f"…and {remaining} more {suffix}.")
+                rows.append("Export the scan report to view the full list.")
+                break
+            info_bits: list[str] = []
+            info_bits.append(self._format_size(meta.size_bytes))
+            if meta.mime_type:
+                info_bits.append(meta.mime_type)
+            if meta.media_info:
+                info_bits.append("media metadata available")
+            detail = f" — {', '.join(info_bits)}" if info_bits else ""
+            rows.append(f"• {meta.path}{detail}")
+        return rows
+
+    @staticmethod
+    def _format_size(size: int | None) -> str:
+        if size is None or size < 0:
+            return "unknown size"
+        units = ["B", "KB", "MB", "GB", "TB"]
+        value = float(size)
+        for unit in units:
+            if value < 1024 or unit == units[-1]:
+                return f"{value:.1f} {unit}" if unit != "B" else f"{int(value)} {unit}"
+            value /= 1024
 
     def _show_scan_results_dialog(self) -> None:
         if not self._last_parse_result:
@@ -1091,6 +1312,9 @@ class PortfolioTextualApp(App):
             ("languages", "Language breakdown"),
             ("export", "Export JSON report"),
         ]
+        if self._pdf_candidates:
+            label = "View PDF summaries" if self._pdf_summaries else "Analyze PDF files"
+            actions.append(("pdf", label))
         if self._last_git_repos:
             actions.append(("git", "Run Git analysis"))
         if self._has_media_files:
@@ -1128,19 +1352,11 @@ class PortfolioTextualApp(App):
         if action == "files":
             screen.set_message("Rendering file list…", tone="info")
             try:
-                lines = await asyncio.to_thread(
-                    render_table,
-                    self._last_scan_archive or Path(""),
-                    self._last_parse_result,
-                )
+                rows = self._build_file_listing_rows()
             except Exception as exc:  # pragma: no cover - rendering safeguard
                 screen.set_message(f"Failed to render file list: {exc}", tone="error")
                 return
-            screen.display_output(
-                "\n".join(lines),
-                context="Files",
-                allow_horizontal=True,
-            )
+            screen.display_file_list(rows, context="Files")
             screen.set_message("File list ready.", tone="success")
             return
 
@@ -1167,6 +1383,34 @@ class PortfolioTextualApp(App):
                 return
             screen.display_output(f"Exported scan report to {destination}", context="Export")
             screen.set_message(f"Report saved to {destination}", tone="success")
+            return
+
+        if action == "pdf":
+            if not self._pdf_candidates:
+                screen.display_output("No PDF files were detected in the last scan.", context="PDF analysis")
+                screen.set_message("No PDF files available for analysis.", tone="warning")
+                return
+            if not PDF_AVAILABLE:
+                screen.display_output(
+                    "PDF analysis requires the optional 'pypdf' dependency.\n"
+                    "Install it with `pip install pypdf` and rerun the scan.",
+                    context="PDF analysis",
+                )
+                screen.set_message("PDF analysis dependencies missing.", tone="error")
+                return
+            if not self._pdf_summaries:
+                screen.set_message("Analyzing PDF files…", tone="info")
+                try:
+                    await asyncio.to_thread(self._analyze_pdfs_sync)
+                except Exception as exc:  # pragma: no cover - parsing safeguard
+                    screen.set_message(f"Failed to analyze PDFs: {exc}", tone="error")
+                    return
+            if not self._pdf_summaries:
+                screen.display_output("Unable to generate PDF summaries.", context="PDF analysis")
+                screen.set_message("PDF analysis did not produce any summaries.", tone="warning")
+                return
+            screen.display_output(self._format_pdf_summaries(), context="PDF summaries")
+            screen.set_message("PDF summaries ready.", tone="success")
             return
 
         if action == "git":
@@ -1313,51 +1557,336 @@ class PortfolioTextualApp(App):
         insights = analysis.get("insights") or []
         issues = analysis.get("issues") or []
 
-        lines: List[str] = ["Media Summary:"]
+        lines: List[str] = []
+        if not self._media_vision_ready:
+            lines.append(
+                "[#facc15]Advanced classifiers unavailable. "
+                "Install torch/torchvision/torchaudio + librosa/soundfile to enable content labels and transcripts.[/#facc15]"
+            )
+            lines.append("")
         lines.append(
-            f"  Total: {summary.get('total_media_files', 0)} | Images: {summary.get('image_files', 0)} | "
-            f"Audio: {summary.get('audio_files', 0)} | Video: {summary.get('video_files', 0)}"
+            "Summary:"
+            f"\n  • Total media files: {summary.get('total_media_files', 0)}"
+            f"\n  • Images: {summary.get('image_files', 0)}"
+            f"\n  • Audio: {summary.get('audio_files', 0)}"
+            f"\n  • Video: {summary.get('video_files', 0)}"
         )
 
         image_metrics = metrics.get("images") or {}
-        if image_metrics:
-            lines.append("  Image metrics:")
-            avg = image_metrics.get("average_resolution")
-            if isinstance(avg, dict):
-                dims = avg.get("dimensions") or [0, 0]
-                lines.append(f"    Average resolution: {dims[0]}x{dims[1]}")
+        if image_metrics.get("count"):
+            lines.append("")
+            lines.append("[i]Image metrics[/i]")
+            avg_w = image_metrics.get("average_width")
+            avg_h = image_metrics.get("average_height")
+            if avg_w and avg_h:
+                lines.append(f"  • Average resolution: {avg_w:.0f}×{avg_h:.0f}")
             max_res = image_metrics.get("max_resolution")
             if isinstance(max_res, dict):
-                dims = max_res.get("dimensions") or [0, 0]
-                lines.append(f"    Largest: {dims[0]}x{dims[1]} ({max_res.get('path', 'unknown')})")
+                dims = max_res.get("dimensions") or (0, 0)
+                lines.append(
+                    f"  • Largest asset: {dims[0]}×{dims[1]} ({max_res.get('path', 'unknown')})"
+                )
+            min_res = image_metrics.get("min_resolution")
+            if isinstance(min_res, dict):
+                dims = min_res.get("dimensions") or (0, 0)
+                lines.append(
+                    f"  • Smallest asset: {dims[0]}×{dims[1]} ({min_res.get('path', 'unknown')})"
+                )
+            aspect = image_metrics.get("common_aspect_ratios") or {}
+            if aspect:
+                preview = ", ".join(f"{ratio} ({count})" for ratio, count in list(aspect.items())[:3])
+                lines.append(f"  • Common aspect ratios: {preview}")
+            top_labels = image_metrics.get("top_labels") or []
+            if top_labels:
+                label_summary = ", ".join(
+                    f"{entry.get('label')} ({entry.get('share', 0) * 100:.0f}%)"
+                    for entry in top_labels[:3]
+                    if entry.get("label")
+                )
+                if label_summary:
+                    lines.append(f"  • Content highlights: {label_summary}")
+            sample_summaries = image_metrics.get("content_summaries") or []
+            if sample_summaries:
+                lines.append("  • Sample descriptions:")
+                for entry in sample_summaries[:3]:
+                    summary = entry.get("summary")
+                    path = entry.get("path", "unknown")
+                    if summary:
+                        lines.append(f"    - {summary} ({path})")
 
-        audio_metrics = metrics.get("audio") or {}
-        if audio_metrics:
-            lines.append("  Audio metrics:")
-            lines.append(
-                f"    Total duration: {audio_metrics.get('total_duration', 0):.1f}s | "
-                f"Average: {audio_metrics.get('average_duration', 0):.1f}s"
-            )
+        def _format_timed_metrics(label: str, payload: dict[str, Any]) -> None:
+            if not payload.get("count"):
+                return
+            lines.append("")
+            lines.append(f"[i]{label} metrics[/i]")
+            total = payload.get("total_duration_seconds", 0.0)
+            avg = payload.get("average_duration_seconds", 0.0)
+            lines.append(f"  • Total duration: {total:.1f}s (avg {avg:.1f}s)")
+            longest = payload.get("longest_clip")
+            if isinstance(longest, dict):
+                lines.append(
+                    f"  • Longest clip: {longest.get('path', 'unknown')} "
+                    f"({longest.get('duration_seconds', 0):.1f}s)"
+                )
+            shortest = payload.get("shortest_clip")
+            if isinstance(shortest, dict):
+                lines.append(
+                    f"  • Shortest clip: {shortest.get('path', 'unknown')} "
+                    f"({shortest.get('duration_seconds', 0):.1f}s)"
+                )
+            bitrate_stats = payload.get("bitrate_stats")
+            if bitrate_stats:
+                lines.append(
+                    "  • Bitrate: "
+                    f"{bitrate_stats.get('average', 0)} kbps avg "
+                    f"(min {bitrate_stats.get('min', 0)}, max {bitrate_stats.get('max', 0)})"
+                )
+            sample_stats = payload.get("sample_rate_stats")
+            if sample_stats:
+                lines.append(
+                    "  • Sample rate: "
+                    f"{sample_stats.get('average', 0)} Hz avg "
+                    f"(min {sample_stats.get('min', 0)}, max {sample_stats.get('max', 0)})"
+                )
+            channels = payload.get("channel_distribution") or {}
+            if channels:
+                channel_summary = ", ".join(f"{ch}ch × {count}" for ch, count in channels.items())
+                lines.append(f"  • Channel layout: {channel_summary}")
+            top_labels = payload.get("top_labels") or []
+            if top_labels:
+                label_summary = ", ".join(
+                    f"{entry.get('label')} ({entry.get('share', 0) * 100:.0f}%)"
+                    for entry in top_labels[:3]
+                    if entry.get("label")
+                )
+                if label_summary:
+                    lines.append(f"  • Content highlights: {label_summary}")
+            sample_summaries = payload.get("content_summaries") or []
+            if sample_summaries:
+                lines.append("  • Sample descriptions:")
+                for entry in sample_summaries[:3]:
+                    summary = entry.get("summary")
+                    path = entry.get("path", "unknown")
+                    if summary:
+                        lines.append(f"    - {summary} ({path})")
+            transcripts = payload.get("transcript_excerpts") or []
+            if transcripts:
+                lines.append("  • Transcript excerpts:")
+                for entry in transcripts[:2]:
+                    excerpt = entry.get("excerpt")
+                    path = entry.get("path", "unknown")
+                    if excerpt:
+                        lines.append(f"    - {excerpt} [{path}]")
+            if label == "Audio":
+                tempo = payload.get("tempo_stats")
+                if tempo:
+                    lines.append(
+                        "  • Tempo: "
+                        f"avg {tempo.get('average', 0):.0f} BPM "
+                        f"(range {tempo.get('min', 0):.0f}-{tempo.get('max', 0):.0f})"
+                    )
+                top_genres = payload.get("top_genres") or []
+                if top_genres:
+                    genre_summary = ", ".join(
+                        f"{entry.get('genre')} ({entry.get('share', 0) * 100:.0f}%)"
+                        for entry in top_genres[:3]
+                        if entry.get("genre")
+                    )
+                    if genre_summary:
+                        lines.append(f"  • Genre mix: {genre_summary}")
 
-        video_metrics = metrics.get("video") or {}
-        if video_metrics:
-            lines.append("  Video metrics:")
-            lines.append(
-                f"    Total duration: {video_metrics.get('total_duration', 0):.1f}s | "
-                f"Average: {video_metrics.get('average_duration', 0):.1f}s"
-            )
+        _format_timed_metrics("Audio", metrics.get("audio") or {})
+        _format_timed_metrics("Video", metrics.get("video") or {})
 
         if insights:
-            lines.append("  Insights:")
+            lines.append("")
+            lines.append("Insights:")
             for item in insights:
-                lines.append(f"    - {item}")
+                lines.append(f"  • {item}")
 
         if issues:
-            lines.append("  Potential issues:")
+            lines.append("")
+            lines.append("Potential issues:")
             for item in issues:
-                lines.append(f"    - {item}")
+                lines.append(f"  • {item}")
 
         return "\n".join(lines)
+
+    def _analyze_pdfs_sync(self) -> None:
+        """Run local PDF parsing and summarization."""
+        if not PDF_AVAILABLE:
+            raise RuntimeError("PDF analysis is not available. Install the 'pypdf' extra.")
+        if not self._pdf_candidates:
+            raise RuntimeError("No PDF files detected in the last scan.")
+        archive_path = self._last_scan_archive
+        base_path = self._last_scan_target if self._last_scan_target and self._last_scan_target.is_dir() else None
+        if archive_path is None and base_path is None:
+            raise RuntimeError("Scan artifacts missing; rerun the scan before analyzing PDFs.")
+
+        parser = create_parser(max_file_size_mb=25.0, max_pages_per_pdf=200)
+        summarizer = create_summarizer(max_summary_sentences=7, keyword_count=15)
+
+        self._pdf_results = []
+        summaries: List[DocumentSummary] = []
+        archive_reader: Optional[zipfile.ZipFile] = None
+        try:
+            if archive_path and archive_path.exists():
+                archive_reader = zipfile.ZipFile(archive_path, "r")
+            for meta in self._pdf_candidates:
+                pdf_bytes = self._read_pdf_from_archive(meta, archive_reader)
+                if pdf_bytes is None and base_path:
+                    pdf_bytes = self._read_pdf_from_directory(meta, base_path)
+                if pdf_bytes is None:
+                    summaries.append(
+                        DocumentSummary(
+                            file_name=Path(meta.path).name,
+                            summary_text="",
+                            key_points=[],
+                            keywords=[],
+                            statistics={},
+                            success=False,
+                            error_message="Unable to read PDF bytes from archive or filesystem.",
+                        )
+                    )
+                    continue
+                try:
+                    parse_result = parser.parse_from_bytes(pdf_bytes, meta.path)
+                except Exception as exc:
+                    summaries.append(
+                        DocumentSummary(
+                            file_name=Path(meta.path).name,
+                            summary_text="",
+                            key_points=[],
+                            keywords=[],
+                            statistics={},
+                            success=False,
+                            error_message=f"Failed to parse PDF: {exc}",
+                        )
+                    )
+                    continue
+                self._pdf_results.append(parse_result)
+                if parse_result.success and parse_result.text_content:
+                    try:
+                        summary = summarizer.generate_summary(
+                            parse_result.text_content,
+                            parse_result.file_name,
+                        )
+                    except Exception as exc:
+                        summaries.append(
+                            DocumentSummary(
+                                file_name=parse_result.file_name,
+                                summary_text="",
+                                key_points=[],
+                                keywords=[],
+                                statistics={},
+                                success=False,
+                                error_message=f"Failed to summarize PDF: {exc}",
+                            )
+                        )
+                        continue
+                    summaries.append(summary)
+                else:
+                    summaries.append(
+                        DocumentSummary(
+                            file_name=parse_result.file_name,
+                            summary_text="",
+                            key_points=[],
+                            keywords=[],
+                            statistics={},
+                            success=False,
+                            error_message=parse_result.error_message or "Unable to parse PDF content.",
+                        )
+                    )
+        finally:
+            if archive_reader is not None:
+                archive_reader.close()
+        self._pdf_summaries = summaries
+
+    def _read_pdf_from_archive(
+        self,
+        meta: FileMetadata,
+        archive: Optional[zipfile.ZipFile],
+    ) -> Optional[bytes]:
+        if archive is None:
+            return None
+        for candidate in self._pdf_archive_candidates(meta.path):
+            try:
+                return archive.read(candidate)
+            except KeyError:
+                continue
+        return None
+
+    def _read_pdf_from_directory(self, meta: FileMetadata, base_path: Path) -> Optional[bytes]:
+        candidate = self._resolve_pdf_filesystem_path(meta.path, base_path)
+        if candidate and candidate.exists():
+            try:
+                return candidate.read_bytes()
+            except OSError:
+                return None
+        return None
+
+    def _pdf_archive_candidates(self, stored_path: str) -> List[str]:
+        normalized = stored_path.replace("\\", "/")
+        candidates = [normalized]
+        stripped = normalized.lstrip("./")
+        if stripped and stripped not in candidates:
+            candidates.append(stripped)
+        if "/" in stripped:
+            _, tail = stripped.split("/", 1)
+            if tail and tail not in candidates:
+                candidates.append(tail)
+        return candidates
+
+    def _resolve_pdf_filesystem_path(self, stored_path: str, base_path: Path) -> Optional[Path]:
+        normalized = stored_path.replace("\\", "/").lstrip("./")
+        relative = Path(normalized)
+        if not relative.parts:
+            return None
+        if relative.parts[0] == base_path.name and len(relative.parts) > 1:
+            relative = Path(*relative.parts[1:])
+        return base_path / relative
+
+    def _format_pdf_summaries(self) -> str:
+        if not self._pdf_summaries:
+            return "No PDF summaries available."
+        sections: List[str] = []
+        for summary in self._pdf_summaries:
+            lines: List[str] = []
+            lines.append("=" * 60)
+            lines.append(f"📄 {summary.file_name}")
+            lines.append("=" * 60)
+            if not summary.success:
+                lines.append(f"❌ Unable to summarize file: {summary.error_message or 'Unknown error.'}")
+                sections.append("\n".join(lines))
+                continue
+            lines.append("")
+            lines.append("📝 SUMMARY")
+            lines.append(f"  {summary.summary_text}")
+            if summary.statistics:
+                stats = summary.statistics
+                lines.append("")
+                lines.append("📊 STATISTICS")
+                lines.append(f"  Words: {stats.get('total_words', 0):,}")
+                lines.append(f"  Sentences: {stats.get('total_sentences', 0)}")
+                lines.append(f"  Unique words: {stats.get('unique_words', 0):,}")
+                avg_len = stats.get("avg_sentence_length")
+                if isinstance(avg_len, (int, float)):
+                    lines.append(f"  Avg sentence length: {avg_len:.1f} words")
+            if summary.keywords:
+                keywords_preview = ", ".join(
+                    f"{word} ({count})" for word, count in summary.keywords[:10]
+                )
+                lines.append("")
+                lines.append("🔑 TOP KEYWORDS")
+                lines.append(f"  {keywords_preview}")
+            if summary.key_points:
+                lines.append("")
+                lines.append("💡 KEY POINTS")
+                for idx, point in enumerate(summary.key_points[:5], start=1):
+                    snippet = point if len(point) <= 120 else point[:117] + "..."
+                    lines.append(f"  {idx}. {snippet}")
+            sections.append("\n".join(lines))
+        return "\n\n".join(sections).strip()
 
     def _export_scan_report(self) -> Path:
         if self._last_parse_result is None or self._last_scan_archive is None:
@@ -1441,6 +1970,27 @@ class PortfolioTextualApp(App):
                     media_payload = None
             if media_payload:
                 payload["media_analysis"] = media_payload
+        if self._pdf_summaries:
+            payload["pdf_analysis"] = {
+                "total_pdfs": len(self._pdf_summaries),
+                "successful": len([summary for summary in self._pdf_summaries if summary.success]),
+                "summaries": [
+                    {
+                        "file_name": summary.file_name,
+                        "success": summary.success,
+                        "summary": summary.summary_text if summary.success else None,
+                        "keywords": [
+                            {"word": word, "count": count} for word, count in summary.keywords
+                        ]
+                        if summary.success
+                        else [],
+                        "statistics": summary.statistics if summary.success else {},
+                        "key_points": summary.key_points if summary.success else [],
+                        "error": summary.error_message if not summary.success else None,
+                    }
+                    for summary in self._pdf_summaries
+                ],
+            }
         return payload
 
     def _show_login_dialog(self) -> None:
@@ -1556,6 +2106,9 @@ class PortfolioTextualApp(App):
         self._last_git_repos = []
         self._last_git_analysis = []
         self._last_media_analysis = None
+        self._pdf_candidates = []
+        self._pdf_results = []
+        self._pdf_summaries = []
         self._last_relevant_only = True
         self._close_scan_results_screen()
         self._last_ai_analysis = None
@@ -1782,7 +2335,12 @@ class PortfolioTextualApp(App):
         finally:
             self._login_task = None
 
-    async def _verify_ai_key(self, api_key: str) -> None:
+    async def _verify_ai_key(
+        self,
+        api_key: str,
+        temperature: Optional[float],
+        max_tokens: Optional[int],
+    ) -> None:
         if not api_key:
             self._pending_ai_analysis = False
             self._show_status("API key required for AI analysis.", "error")
@@ -1797,7 +2355,11 @@ class PortfolioTextualApp(App):
         self._show_status("Verifying AI API key…", "info")
 
         def _create_client() -> LLMClient:
-            client = LLMClient(api_key=api_key)
+            client = LLMClient(
+                api_key=api_key,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
             client.verify_api_key()
             return client
 
@@ -1820,7 +2382,11 @@ class PortfolioTextualApp(App):
 
         self._llm_client = client
         self._llm_api_key = api_key
-        self._show_status("API key verified successfully.", "success")
+        config = client.get_config()
+        self._show_status(
+            f"API key verified • temp {config['temperature']} • max tokens {config['max_tokens']}",
+            "success",
+        )
 
         if self._pending_ai_analysis:
             self._pending_ai_analysis = False
@@ -1925,7 +2491,9 @@ class PortfolioTextualApp(App):
 
     def on_ai_key_submitted(self, event: AIKeySubmitted) -> None:
         event.stop()
-        asyncio.create_task(self._verify_ai_key(event.api_key))
+        asyncio.create_task(
+            self._verify_ai_key(event.api_key, event.temperature, event.max_tokens)
+        )
 
     def on_ai_key_cancelled(self, event: AIKeyCancelled) -> None:
         event.stop()
@@ -2068,19 +2636,17 @@ class PortfolioTextualApp(App):
 
         extensions = profile.get("extensions") or None
         if extensions:
-            normalized: List[str] = []
-            seen: set[str] = set()
-            for ext in extensions:
-                lowered = ext.lower()
-                if lowered not in seen:
-                    seen.add(lowered)
-                    normalized.append(lowered)
-            if profile_key == "all":
-                for media_ext in MEDIA_EXTENSIONS:
-                    if media_ext not in seen:
-                        seen.add(media_ext)
-                        normalized.append(media_ext)
-            extensions = normalized
+            normalized = normalize_extensions(extensions)
+            if normalized:
+                seen = set(normalized)
+                if profile_key == "all":
+                    for media_ext in MEDIA_EXTENSIONS:
+                        if media_ext not in seen:
+                            seen.add(media_ext)
+                            normalized.append(media_ext)
+                extensions = normalized
+            else:
+                extensions = None
 
         excluded_dirs = profile.get("exclude_dirs") or None
         max_file_size_mb = config.get("max_file_size_mb")
@@ -2137,6 +2703,43 @@ class PortfolioTextualApp(App):
             )
             if self._auth_error:
                 lines.append(f"• [#9ca3af]Auth issue:[/#9ca3af] {self._auth_error}")
+        return "\n".join(lines)
+
+    def _render_last_scan_detail(self) -> str:
+        lines = ["[b]View Last Analysis[/b]"]
+        if not self._last_parse_result:
+            lines.extend(
+                [
+                    "",
+                    "• No scans have been completed yet.",
+                    "• Run 'Run Portfolio Scan' to populate this view.",
+                ]
+            )
+            return "\n".join(lines)
+
+        summary = self._last_parse_result.summary or {}
+        files_processed = summary.get("files_processed", len(self._last_parse_result.files))
+        issues_count = summary.get("issues_count", len(self._last_parse_result.issues))
+        filtered = summary.get("filtered_out")
+        target = str(self._last_scan_target) if self._last_scan_target else "Unknown target"
+
+        lines.extend(
+            [
+                "",
+                f"• Target: {target}",
+                f"• Relevant files only: {'Yes' if self._last_relevant_only else 'No'}",
+                f"• Files processed: {files_processed}",
+                f"• Issues: {issues_count}",
+            ]
+        )
+        if filtered is not None and self._last_relevant_only:
+            lines.append(f"• Filtered out: {filtered}")
+        lines.extend(
+            [
+                "",
+                "Press Enter to reopen the most recent results without rescanning.",
+            ]
+        )
         return "\n".join(lines)
 
     def _render_preferences_detail(self) -> str:
@@ -2329,25 +2932,59 @@ class PortfolioTextualApp(App):
             "language_breakdown": languages,
             "scan_path": scan_path,
         }
+        project_dirs = (
+            [str(path) for path in self._last_git_repos] if self._last_git_repos else None
+        )
         return self._llm_client.summarize_scan_with_ai(
             scan_summary=scan_summary,
             relevant_files=relevant_files,
             scan_base_path=scan_path,
+            project_dirs=project_dirs,
         )
 
     def _format_ai_analysis(self, result: dict) -> str:
         lines: List[str] = ["[b]AI-Powered Analysis[/b]"]
 
-        project_analysis = (result or {}).get("project_analysis") or {}
-        analysis_text = project_analysis.get("analysis")
-        if analysis_text:
+        portfolio = (result or {}).get("portfolio_summary") or {}
+        if portfolio.get("summary"):
+            lines.append("\n[b]Portfolio Overview[/b]")
+            lines.append(portfolio["summary"])
+
+        projects = (result or {}).get("projects") or []
+        if projects:
             lines.append("\n[b]Project Insights[/b]")
-            lines.append(analysis_text)
+            for idx, project in enumerate(projects, 1):
+                name = project.get("project_name", f"Project {idx}")
+                path = project.get("project_path") or ""
+                header = f"[b]{idx}. {name}[/b]"
+                if path:
+                    header += f" ({path})"
+                lines.append(header)
+                lines.append(project.get("analysis", "No analysis available."))
+                file_summaries = project.get("file_summaries") or []
+                if file_summaries:
+                    lines.append("  [i]Key files[/i]")
+                    for summary in file_summaries[:3]:
+                        file_path = summary.get("file_path", "Unknown file")
+                        lines.append(f"    • {file_path}")
+                lines.append("")
+
+        unassigned = (result or {}).get("unassigned_files")
+        if unassigned:
+            lines.append("[b]Supporting Files[/b]")
+            lines.append(unassigned.get("analysis", ""))
+
+        project_analysis = (result or {}).get("project_analysis") or {}
+        if project_analysis and not projects:
+            analysis_text = project_analysis.get("analysis")
+            if analysis_text:
+                lines.append("\n[b]Project Insights[/b]")
+                lines.append(analysis_text)
 
         file_summaries = (result or {}).get("file_summaries") or []
         if file_summaries:
             lines.append("\n[b]Key Files[/b]")
-            for idx, summary in enumerate(file_summaries, 1):
+            for idx, summary in enumerate(file_summaries[:5], 1):
                 file_path = summary.get("file_path", "Unknown file")
                 lines.append(f"[b]{idx}. {file_path}[/b]")
                 lines.append(summary.get("analysis", "No analysis available."))
@@ -2363,17 +3000,25 @@ class PortfolioTextualApp(App):
                 size_txt = f" ({size_mb:.2f} MB)" if isinstance(size_mb, (int, float)) else ""
                 lines.append(f"- {path}{size_txt}: {reason}")
 
-        return "\n".join(lines).strip()
+        return "\n".join(line for line in lines if line).strip()
 
     def _summarize_ai_analysis(self, result: dict) -> str:
         parts: List[str] = []
         files_count = result.get("files_analyzed_count")
         if files_count:
             parts.append(f"Files analyzed: {files_count}")
+        project_count = result.get("project_count")
+        if project_count:
+            parts.append(f"Projects analyzed: {project_count}")
         file_summaries = result.get("file_summaries") or []
         if file_summaries:
             parts.append(f"Key file insights: {len(file_summaries)}")
         analysis_text = (result.get("project_analysis") or {}).get("analysis") or ""
+        if not analysis_text and result.get("projects"):
+            first_project = result["projects"][0]
+            analysis_text = first_project.get("analysis", "")
+        if not analysis_text and result.get("portfolio_summary"):
+            analysis_text = result["portfolio_summary"].get("summary", "")
         if analysis_text:
             snippet = analysis_text.strip().splitlines()[0]
             if len(snippet) > 120:

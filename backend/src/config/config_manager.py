@@ -8,8 +8,10 @@ from dotenv import load_dotenv
 
 try:
     from ..scanner.media import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
+    from ..scanner.preferences import normalize_extensions
 except ImportError:  # pragma: no cover - allows standalone execution
     from scanner.media import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS  # type: ignore
+    from scanner.preferences import normalize_extensions  # type: ignore
 
 load_dotenv()
 
@@ -238,10 +240,15 @@ class ConfigManager:
         if name in scan_profiles:
             print(f"Profile '{name}' already exists. Use update_profile() to modify.")
             return False
-        
+
+        normalized_extensions = normalize_extensions(extensions)
+        if extensions and not normalized_extensions:
+            print("Provide at least one valid file extension (use formats like .py).")
+            return False
+
         scan_profiles[name] = {
             "description": description,
-            "extensions": extensions,
+            "extensions": normalized_extensions if normalized_extensions else [],
             "exclude_dirs": exclude_dirs or [".git", "__pycache__"]
         }
         
@@ -283,7 +290,11 @@ class ConfigManager:
             return False
         
         if extensions is not None:
-            scan_profiles[name]["extensions"] = extensions
+            normalized_extensions = normalize_extensions(extensions)
+            if extensions and not normalized_extensions:
+                print("Provide at least one valid file extension (use formats like .py).")
+                return False
+            scan_profiles[name]["extensions"] = normalized_extensions if normalized_extensions else []
         if exclude_dirs is not None:
             scan_profiles[name]["exclude_dirs"] = exclude_dirs
         if description is not None:
