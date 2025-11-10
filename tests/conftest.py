@@ -11,6 +11,15 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 BACKEND_ROOT = PROJECT_ROOT / "backend"
 LOCAL_ANALYSIS_DIR = BACKEND_ROOT / "src" / "local_analysis"
+BACKEND_SRC = BACKEND_ROOT / "src"
+
+# Ensure the project root is importable so `backend` resolves cleanly.
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+# Make backend/src importable for modules that expect top-level packages.
+if str(BACKEND_SRC) not in sys.path:
+    sys.path.insert(0, str(BACKEND_SRC))
 
 # Add paths to sys.path
 backend_local_analysis = Path(__file__).parent.parent / "backend" / "src" / "local_analysis"

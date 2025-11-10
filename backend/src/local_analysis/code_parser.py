@@ -11,11 +11,6 @@ import logging
 import time
 import sys
 
-# Add local lib directory to Python path
-lib_path = Path(__file__).parent / "lib"
-if lib_path.exists():
-    sys.path.insert(0, str(lib_path))
-
 try:
     from tree_sitter import Language, Parser, Node
     TREE_SITTER_AVAILABLE = True
@@ -109,8 +104,8 @@ if TREE_SITTER_AVAILABLE:
     except ImportError:
         pass
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
 
 # Language configuration with extensions and modules
 SUPPORTED_LANGS = {

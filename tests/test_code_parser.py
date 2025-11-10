@@ -8,11 +8,7 @@ from conftest import import_from_local_analysis
 
 code_parser = import_from_local_analysis("code_parser")
 
-from code_parser import (
-    CodeAnalyzer,
-    FunctionMetrics,
-    Metrics,
-)
+CodeAnalyzer = code_parser.CodeAnalyzer
 
 
 class TestAnalyzerSetup:

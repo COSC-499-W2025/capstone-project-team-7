@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import json
+import os
 from pathlib import Path
 from dataclasses import dataclass
 from datetime import datetime
@@ -18,9 +19,12 @@ from ..scanner.models import ScanPreferences, ParseResult
 from ..cli.archive_utils import ensure_zip
 from ..scanner.parser import parse_zip
 from ..scanner.errors import ParserError
+from ..scanner.media import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 from ..cli.language_stats import summarize_languages
 from ..cli.display import render_table
 from contextlib import contextmanager
+from ..local_analysis.git_repo import analyze_git_repo
+from ..local_analysis.media_analyzer import MediaAnalyzer
 
 # PDF analysis imports
 try:
@@ -61,6 +65,8 @@ MENU_PREFERENCES = "Settings & User Preferences"
 MENU_SCAN = "Run Portfolio Scan"
 MENU_AI_ANALYSIS = "AI-Powered Analysis"
 MENU_EXIT = "Exit"
+
+_MEDIA_EXTENSIONS = [ext.lower() for ext in IMAGE_EXTENSIONS + AUDIO_EXTENSIONS + VIDEO_EXTENSIONS]
 
 
 class ConsoleIO:
@@ -196,6 +202,11 @@ class CLIApp:
         self._llm_api_key: Optional[str] = None  
         self._options = self._build_menu()
         self._load_session()
+        self._last_git_repos: List[Path] = []
+        self._last_git_analysis: List[dict] = []
+        self._has_media_files: bool = False
+        self._last_media_analysis: Optional[dict] = None
+        self._media_analyzer = MediaAnalyzer()
 
     def run(self) -> None:
         """Main event loop. Renders the menu until the user exits."""
@@ -255,6 +266,12 @@ class CLIApp:
         else:
             self.io.write(f"=== {title} ===")
 
+    def _report_action_error(self, action: str, detail: str, hint: Optional[str] = None) -> None:
+        """Surface actionable errors so users know how to recover."""
+        self.io.write_error(f"{action}: {detail}")
+        if hint:
+            self.io.write_warning(f"Next steps: {hint}")
+
     def _build_menu(self) -> List[MenuOption]:
         return [
             MenuOption(lambda app: "Log out" if app.session else MENU_LOGIN, CLIApp._handle_login),
@@ -265,8 +282,7 @@ class CLIApp:
             MenuOption(lambda app: MENU_EXIT, CLIApp._handle_exit),
         ]
 
-    # Placeholder handlers. They will be replaced with real implementations
-    # during subsequent checkpoints.
+    # Placeholder handlers. They will be replaced with real implementations during subsequent checkpoints.
     def _handle_login(self) -> None:
         if self.session:
             choice = self.io.choose(
@@ -377,7 +393,11 @@ class CLIApp:
 
         target = Path(path_input).expanduser()
         if not target.exists():
-            self.io.write_error(f"Path not found: {target}")
+            self._report_action_error(
+                "Scan",
+                f"Path not found: {target}",
+                "Verify the directory exists or provide an absolute path to a .zip file.",
+            )
             return
 
         relevant_choice = self.io.choose("Filter to relevant files only?", ["Yes", "No", "Cancel"])
@@ -386,6 +406,10 @@ class CLIApp:
             return
         relevant_only = relevant_choice == 0
 
+        self._last_git_repos = []
+        self._last_git_analysis = []
+        self._has_media_files = False
+        self._last_media_analysis = None
         try:
             with self.io.status("Scanning project ..."):
                 archive = self._ensure_zip(target, preferences=preferences)
@@ -395,14 +419,24 @@ class CLIApp:
                     preferences=preferences,
                 )
         except (ParserError, ValueError) as err:
-            self.io.write_error(f"Scan failed: {err}")
+            self._report_action_error(
+                "Scan",
+                str(err),
+                "Review scan preferences (extensions, file-size limits) or retry with 'Relevant files only'.",
+            )
             return
         except Exception as err:
-            self.io.write_error(f"Unexpected scan error: {err}")
+            self._report_action_error(
+                "Scan",
+                f"Unexpected error ({err.__class__.__name__}): {err}",
+                "Re-run the scan with a smaller target or inspect application logs for more detail.",
+            )
             return
 
         self._last_scan_path = target
         self._last_parse_result = parse_result
+        self._last_git_repos = self._detect_git_repositories(target)
+        self._has_media_files = any(getattr(meta, "media_info", None) for meta in parse_result.files)
 
         languages = self._summarize_languages(parse_result.files)
         self._render_scan_summary(parse_result, relevant_only)
@@ -422,27 +456,31 @@ class CLIApp:
         self.io.write_success("Scan completed successfully.")
 
         while True:
-            options = [
-                "View file list",
-                "View language breakdown",
-                "Export JSON report",
+            actions = [
+                ("View file list", lambda: self._render_file_list(parse_result, languages)),
+                ("View language breakdown", lambda: self._render_language_breakdown(languages)),
             ]
             if self._pdf_summaries:
-                options.insert(2, "View PDF summaries")
-            options.append("Back")
-            
-            choice = self.io.choose("Scan results:", options)
-            
-            if choice is None or choice == len(options) - 1:
+                actions.append(("View PDF summaries", self._render_pdf_summaries))
+            actions.append(("Export JSON report", lambda: self._export_scan(parse_result, languages, archive)))
+            if self._last_git_repos:
+                actions.append(("View Git Analysis", self._handle_git_analysis_option))
+            if self._has_media_files:
+                actions.append(("View Media Insights", self._handle_media_analysis_option))
+            actions.append(("Back", None))
+
+            labels = [label for label, _ in actions]
+            choice = self.io.choose("Scan results:", labels)
+            if choice is None:
                 return
-            if choice == 0:
-                self._render_file_list(parse_result, languages)
-            elif choice == 1:
-                self._render_language_breakdown(languages)
-            elif self._pdf_summaries and choice == 2:
-                self._render_pdf_summaries()
-            elif choice == len(options) - 2:  # Export (second to last before Back)
-                self._export_scan(parse_result, languages, archive)
+
+            label, handler = actions[choice]
+            if handler is None:
+                return
+            try:
+                handler()
+            except Exception as err:
+                self.io.write_error(f"Failed to process '{label}': {err}")
 
     def _handle_exit(self) -> None:
         self.io.write("Goodbye!")
@@ -456,19 +494,30 @@ class CLIApp:
         
         self._refresh_consent_state()
         if not self._external_consent:
-            self.io.write_error("External services consent required for AI analysis.")
-            self.io.write("Please grant external services consent from the Consent menu.")
+            self._report_action_error(
+                "AI analysis",
+                "External services consent is disabled.",
+                "Open the Consent menu and enable external services before requesting AI insights.",
+            )
             return
         
         if not self._last_parse_result or not self._last_scan_path:
-            self.io.write_warning("No scan results found.")
+            self._report_action_error(
+                "AI analysis",
+                "No scan results available.",
+                "Run a portfolio scan first so there is data for the AI workflow.",
+            )
             choice = self.io.choose(
                 "We recommend running a scan first for better AI analysis results.",
                 ["Go back to menu", "Continue anyway"]
             )
             if choice is None or choice == 0:
                 return
-            self.io.write_error("Cannot proceed without scan results. Please run a scan first.")
+            self._report_action_error(
+                "AI analysis",
+                "Cannot proceed without scan results.",
+                "Run a scan and re-launch AI analysis.",
+            )
             return
         
         self._render_section_header("AI-Powered Analysis")
@@ -481,26 +530,73 @@ class CLIApp:
                 self.io.write_warning("API key required. Analysis cancelled.")
                 return
             
+            self.io.write("")
+            self.io.write("Configuration (press Enter to use recommended defaults):")
+            
+            temp_input = self.io.prompt("Temperature (0.0-2.0) [0.7 recommended]: ").strip()
+            temperature = None
+            if temp_input:
+                try:
+                    temperature = float(temp_input)
+                    if not 0.0 <= temperature <= 2.0:
+                        self.io.write_warning("Temperature must be 0.0-2.0. Using default 0.7.")
+                        temperature = None
+                except ValueError:
+                    self.io.write_warning("Invalid temperature. Using default 0.7.")
+                    temperature = None
+            
+            tokens_input = self.io.prompt("Max tokens per response [1000 recommended]: ").strip()
+            max_tokens = None
+            if tokens_input:
+                try:
+                    max_tokens = int(tokens_input)
+                    if max_tokens <= 0:
+                        self.io.write_warning("Max tokens must be positive. Using default 1000.")
+                        max_tokens = None
+                except ValueError:
+                    self.io.write_warning("Invalid max tokens. Using default 1000.")
+                    max_tokens = None
+            
             with self.io.status("Verifying API key..."):
                 try:
                     from ..analyzer.llm.client import LLMClient, InvalidAPIKeyError, LLMError
                     
-                    client = LLMClient(api_key=api_key)
+                    client = LLMClient(
+                        api_key=api_key,
+                        temperature=temperature,
+                        max_tokens=max_tokens
+                    )
                     client.verify_api_key()
                     self._llm_client = client
                     self._llm_api_key = api_key
+                    
+                    config = client.get_config()
                     self.io.write_success("API key verified successfully!")
+                    self.io.write(f"Using model: {config['model']}")
+                    self.io.write(f"Temperature: {config['temperature']} | Max tokens: {config['max_tokens']}")
                 except InvalidAPIKeyError as e:
-                    self.io.write_error(f"Invalid API key: {e}")
+                    self._report_action_error(
+                        "AI analysis",
+                        f"Invalid API key: {e}",
+                        "Double-check the copied key in your OpenAI dashboard and try again.",
+                    )
                     retry = self.io.choose("Would you like to try again?", ["Yes", "No"])
                     if retry == 0:
                         return self._handle_ai_analysis() 
                     return
                 except LLMError as e:
-                    self.io.write_error(f"API error: {e}")
+                    self._report_action_error(
+                        "AI analysis",
+                        f"OpenAI API error: {e}",
+                        "Wait a moment and try again or confirm the OpenAI service status.",
+                    )
                     return
                 except Exception as e:
-                    self.io.write_error(f"Failed to initialize AI client: {e}")
+                    self._report_action_error(
+                        "AI analysis",
+                        f"Failed to initialize AI client: {e}",
+                        "Verify network connectivity and that the OpenAI SDK is installed.",
+                    )
                     return
         
         self.io.write("")
@@ -523,6 +619,20 @@ class CLIApp:
             "scan_path": str(self._last_scan_path)
         }
         
+        # Check if we have multiple Git repos (projects for llm analysis)
+        project_dirs = None
+        if self._last_git_repos and len(self._last_git_repos) > 0:
+            project_dirs = [str(repo) for repo in self._last_git_repos]
+            if len(project_dirs) == 1:
+                self.io.write(f"Detected 1 Git repository - analyzing as a single project")
+            else:
+                self.io.write(f"Detected {len(project_dirs)} Git repositories - analyzing each separately")
+                self.io.write("Projects:")
+                for idx, repo in enumerate(self._last_git_repos, 1):
+                    self.io.write(f"  {idx}. {repo.name}")
+        else:
+            self.io.write("No Git repositories detected - analyzing entire scan as one project")
+        
         self.io.write(f"Analyzing {len(relevant_files)} files with AI...")
         self.io.write("")
         
@@ -533,7 +643,8 @@ class CLIApp:
                 result = self._llm_client.summarize_scan_with_ai(
                     scan_summary=scan_summary,
                     relevant_files=relevant_files,
-                    scan_base_path=str(self._last_scan_path)
+                    scan_base_path=str(self._last_scan_path),
+                    project_dirs=project_dirs
                 )
             
             self.io.write_success(f"Analysis complete! Analyzed {result['files_analyzed_count']} files.")
@@ -558,14 +669,22 @@ class CLIApp:
                     return
         
         except LLMError as e:
-            self.io.write_error(f"AI analysis failed: {e}")
+            self._report_action_error(
+                "AI analysis",
+                f"AI service error: {e}",
+                "Retry in a few minutes or reduce the number of files included in the scan.",
+            )
             retry = self.io.choose("Would you like to try again with a different API key?", ["Yes", "No"])
             if retry == 0:
                 self._llm_api_key = None
                 self._llm_client = None
                 return self._handle_ai_analysis()
         except Exception as e:
-            self.io.write_error(f"Unexpected error during AI analysis: {e}")
+            self._report_action_error(
+                "AI analysis",
+                f"Unexpected error: {e}",
+                "Check your network connection and rerun the analysis.",
+            )
             self.io.write("Please try again.")
 
     def _require_login(self) -> None:
@@ -576,6 +695,38 @@ class CLIApp:
         from ..config.config_manager import ConfigManager
 
         return ConfigManager(user_id)
+
+    def _detect_git_repositories(self, target: Path) -> List[Path]:
+        """Return git repository roots found under the scan target."""
+        repos: List[Path] = []
+        seen = set()
+
+        # For files (e.g. .zip) we use the parent directory as the base for detection.
+        base = target if target.is_dir() else target.parent
+        if not base.exists():
+            return repos
+
+        def _record(path: Path) -> None:
+            resolved = path.resolve()
+            if resolved not in seen:
+                seen.add(resolved)
+                repos.append(path)
+
+        if (base / ".git").is_dir():
+            _record(base)
+
+        if target.is_dir():
+            try:
+                for dirpath, dirnames, _ in os.walk(target):
+                    if ".git" in dirnames:
+                        repo_root = Path(dirpath)
+                        _record(repo_root)
+                        # Avoid descending into the .git directory itself.
+                        dirnames.remove(".git")
+            except Exception:
+                return repos
+
+        return repos
 
     def _refresh_consent_state(self) -> bool:
         if not self.session:
@@ -596,6 +747,154 @@ class CLIApp:
                 self._required_consent = False
                 self._external_consent = False
         return self._required_consent
+
+    def _handle_git_analysis_option(self) -> None:
+        if not self._last_git_repos:
+            self.io.write_warning("No git repositories detected in the last scan.")
+            return
+
+        analyses: List[dict]
+        if not self._last_git_analysis:
+            analyses = []
+            with self.io.status("Collecting git statistics ..."):
+                for repo in self._last_git_repos:
+                    try:
+                        result = analyze_git_repo(str(repo))
+                    except Exception as err:
+                        analyses.append({"path": str(repo), "error": str(err)})
+                        continue
+                    analyses.append(result)
+            self._last_git_analysis = analyses
+        else:
+            analyses = self._last_git_analysis
+
+        self._render_section_header("Git Analysis")
+        for entry in analyses:
+            repo_path = str(entry.get("path", "unknown"))
+            self.io.write(f"Repository: {repo_path}")
+            error = entry.get("error")
+            if error:
+                self.io.write_warning(f"  Skipped: {error}")
+                self.io.write("")
+                continue
+
+            commits = entry.get("commit_count", 0)
+            self.io.write(f"  Commits: {commits}")
+
+            date_range = entry.get("date_range") or {}
+            start = date_range.get("start") if isinstance(date_range, dict) else None
+            end = date_range.get("end") if isinstance(date_range, dict) else None
+            if start or end:
+                self.io.write(f"  Active between: {start or 'unknown'} → {end or 'unknown'}")
+
+            contributors = entry.get("contributors") or []
+            if contributors:
+                top = ", ".join(
+                    f"{c.get('name', 'Unknown')} ({c.get('commits', 0)} commits, {c.get('percent', 0)}%)"
+                    for c in contributors[:3]
+                )
+                self.io.write(f"  Top contributors: {top}")
+            else:
+                self.io.write("  Top contributors: none")
+
+            branches = entry.get("branches") or []
+            if branches:
+                self.io.write(f"  Branches tracked: {len(branches)}")
+
+            timeline = entry.get("timeline") or []
+            if timeline:
+                recent = timeline[-3:]
+                recent_summary = ", ".join(f"{row.get('month')}: {row.get('commits', 0)}" for row in recent)
+            self.io.write(f"  Recent activity: {recent_summary}")
+
+            self.io.write("")
+
+    def _render_media_analysis(self, analysis: dict) -> None:
+        summary = analysis.get("summary", {})
+        metrics = analysis.get("metrics", {})
+        insights = analysis.get("insights") or []
+        issues = analysis.get("issues") or []
+
+        self._render_section_header("Media Insights")
+        self.io.write(f"Total media files: {summary.get('total_media_files', 0)}")
+        self.io.write(
+            f"  Images: {summary.get('image_files', 0)} | "
+            f"Audio: {summary.get('audio_files', 0)} | "
+            f"Video: {summary.get('video_files', 0)}"
+        )
+
+        image_metrics = metrics.get("images") or {}
+        audio_metrics = metrics.get("audio") or {}
+        video_metrics = metrics.get("video") or {}
+
+        if image_metrics.get("count"):
+            avg_w = image_metrics.get("average_width")
+            avg_h = image_metrics.get("average_height")
+            max_res = image_metrics.get("max_resolution")
+            bits = []
+            if avg_w and avg_h:
+                bits.append(f"avg {avg_w:.0f}x{avg_h:.0f}")
+            if max_res:
+                dims = max_res.get("dimensions") or (0, 0)
+                bits.append(f"max {dims[0]}x{dims[1]}")
+            self.io.write(f"  Image metrics: {', '.join(bits) if bits else '—'}")
+
+        if audio_metrics.get("count"):
+            parts = [f"total {audio_metrics.get('total_duration_seconds', 0):.1f}s"]
+            avg = audio_metrics.get("average_duration_seconds")
+            if avg:
+                parts.append(f"avg {avg:.1f}s")
+            self.io.write(f"  Audio metrics: {', '.join(parts)}")
+
+        if video_metrics.get("count"):
+            parts = [f"total {video_metrics.get('total_duration_seconds', 0):.1f}s"]
+            avg = video_metrics.get("average_duration_seconds")
+            if avg:
+                parts.append(f"avg {avg:.1f}s")
+            self.io.write(f"  Video metrics: {', '.join(parts)}")
+
+        if insights:
+            self.io.write("")
+            self.io.write("Insights:")
+            for item in insights:
+                self.io.write(f"  • {item}")
+
+        if issues:
+            self.io.write("")
+            self.io.write("Potential issues:")
+            for item in issues:
+                self.io.write(f"  • {item}")
+
+    def _handle_media_analysis_option(self) -> None:
+        if not self._has_media_files:
+            self.io.write_warning("No media files detected in the last scan.")
+            return
+
+        if not self._last_parse_result:
+            self._report_action_error(
+                "Media insights",
+                "No scan data available.",
+                "Run a portfolio scan and then reopen Media Insights.",
+            )
+            return
+
+        analysis: dict
+        if self._last_media_analysis is None:
+            with self.io.status("Aggregating media metrics ..."):
+                try:
+                    analysis = self._media_analyzer.analyze(self._last_parse_result.files)
+                except Exception as err:
+                    self._report_action_error(
+                        "Media insights",
+                        f"Failed to analyze media files: {err}",
+                        "Ensure the media files are accessible and supported, then try again.",
+                    )
+                    return
+            self._last_media_analysis = analysis
+        else:
+            analysis = self._last_media_analysis
+
+        self._render_media_analysis(analysis)
 
     def _login_flow(self) -> None:
         email = self.io.prompt("Email: ").strip()
@@ -682,6 +981,7 @@ class CLIApp:
             data = json.loads(self._session_path.read_text(encoding="utf-8"))
             user_id = data.get("user_id")
             email = data.get("email")
+            
             access_token = data.get("access_token", "")
             if user_id and email:
                 self.session = Session(user_id=user_id, email=email, access_token=access_token)
@@ -869,7 +1169,19 @@ class CLIApp:
 
         extensions = profile.get("extensions") or None
         if extensions:
-            extensions = [ext.lower() for ext in extensions]
+            normalized: list[str] = []
+            seen: set[str] = set()
+            for ext in extensions:
+                lowered = ext.lower()
+                if lowered not in seen:
+                    seen.add(lowered)
+                    normalized.append(lowered)
+            if profile_key == "all":
+                for media_ext in _MEDIA_EXTENSIONS:
+                    if media_ext not in seen:
+                        normalized.append(media_ext)
+                        seen.add(media_ext)
+            extensions = normalized
 
         excluded_dirs = profile.get("exclude_dirs") or None
         max_file_size_mb = config.get("max_file_size_mb")
@@ -945,7 +1257,11 @@ class CLIApp:
             path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
             self.io.write(f"Exported scan report to {path}.")
         except Exception as err:
-            self.io.write(f"Failed to export report: {err}")
+            self._report_action_error(
+                "Export",
+                f"Failed to write to {path}: {err}",
+                "Check that the destination is writable or choose a different output path.",
+            )
 
     def _build_export_payload(self, result: ParseResult, languages: List[dict], archive: Path) -> dict:
         summary = dict(result.summary)
@@ -977,6 +1293,18 @@ class CLIApp:
             payload["summary"]["filtered_out"] = filtered
         if languages:
             payload["summary"]["languages"] = languages
+        if self._last_git_analysis:
+            payload["git_analysis"] = self._last_git_analysis
+        if self._has_media_files:
+            media_payload = self._last_media_analysis
+            if media_payload is None:
+                try:
+                    media_payload = self._media_analyzer.analyze(result.files)
+                    self._last_media_analysis = media_payload
+                except Exception:
+                    media_payload = None
+            if media_payload:
+                payload["media_analysis"] = media_payload
         
         # Add PDF analysis results if available
         if self._pdf_summaries:
@@ -991,12 +1319,11 @@ class CLIApp:
                         "keywords": [{"word": w, "count": c} for w, c in s.keywords] if s.success else [],
                         "statistics": s.statistics if s.success else {},
                         "key_points": s.key_points if s.success else [],
-                        "error": s.error_message if not s.success else None
+                        "error": s.error_message if not s.success else None,
                     }
                     for s in self._pdf_summaries
-                ]
+                ],
             }
-        
         return payload
 
     # PDF Analysis Methods
@@ -1187,6 +1514,13 @@ class CLIApp:
         """Display AI analysis results with rich formatting."""
         self._render_section_header("AI Analysis Results")
         
+        if result.get("mode") == "multi_project":
+            self._render_multi_project_analysis(result)
+        else:
+            self._render_single_project_analysis(result)
+    
+    def _render_single_project_analysis(self, result: dict) -> None:
+        """Render analysis for a single project."""
         project_analysis = result.get("project_analysis", {})
         analysis_text = project_analysis.get("analysis", "No analysis available")
         
@@ -1216,6 +1550,99 @@ class CLIApp:
                     self.io.write(analysis)
                     self.io.write("")
     
+    def _render_multi_project_analysis(self, result: dict) -> None:
+        """Render analysis for multiple projects."""
+        projects = result.get("projects", [])
+        project_count = result.get("project_count", len(projects))
+        unassigned_files = result.get("unassigned_files")
+        
+        if Panel and isinstance(self.io, ConsoleIO) and self.io._console:
+            header = f"Analyzed {project_count} separate projects"
+            if unassigned_files:
+                header += f" + supporting files"
+            self.io._console.print(Panel(header, title="🎯 Multi-Project Portfolio", border_style="magenta"))
+        else:
+            self.io.write(f"=== Analyzed {project_count} Projects ===")
+            if unassigned_files:
+                self.io.write("(Plus supporting files)")
+        
+        self.io.write("")
+        
+        # Portfolio-level summary
+        portfolio_summary = result.get("portfolio_summary")
+        if portfolio_summary:
+            summary_text = portfolio_summary.get("summary", "")
+            if Panel and isinstance(self.io, ConsoleIO) and self.io._console:
+                self.io._console.print(
+                    Panel(summary_text, title="📋 Portfolio Overview", border_style="cyan")
+                )
+            else:
+                self.io.write("=== Portfolio Overview ===")
+                self.io.write(summary_text)
+            self.io.write("")
+            self.io.write("─" * 80)
+            self.io.write("")
+        
+        # Individual project analyses
+        for idx, project in enumerate(projects, 1):
+            project_name = project.get("project_name", f"Project {idx}")
+            project_path = project.get("project_path", "")
+            files_analyzed = project.get("files_analyzed", 0)
+            analysis = project.get("analysis", "No analysis available")
+            
+            if Panel and isinstance(self.io, ConsoleIO) and self.io._console:
+                title = f"Project {idx}: {project_name}"
+                if project_path:
+                    subtitle = f"Path: {project_path} | Files: {files_analyzed}"
+                    self.io._console.print(f"[dim]{subtitle}[/dim]")
+                self.io._console.print(
+                    Panel(analysis, title=title, border_style="green")
+                )
+            else:
+                self.io.write(f"=== Project {idx}: {project_name} ===")
+                if project_path:
+                    self.io.write(f"Path: {project_path}")
+                self.io.write(f"Files analyzed: {files_analyzed}")
+                self.io.write("")
+                self.io.write(analysis)
+            
+            self.io.write("")
+            
+            file_summaries = project.get("file_summaries", [])
+            if file_summaries and len(file_summaries) <= 5:
+                self.io.write(f"  Key files in {project_name}:")
+                for file_summary in file_summaries[:5]:
+                    file_path = file_summary.get("file_path", "Unknown")
+                    self.io.write(f"    • {file_path}")
+                self.io.write("")
+        
+        if unassigned_files:
+            self.io.write("─" * 80)
+            self.io.write("")
+            
+            files_analyzed = unassigned_files.get("files_analyzed", 0)
+            analysis = unassigned_files.get("analysis", "")
+            
+            if Panel and isinstance(self.io, ConsoleIO) and self.io._console:
+                self.io._console.print(
+                    Panel(analysis, title=f"📄 Supporting Files ({files_analyzed} files)", border_style="yellow")
+                )
+            else:
+                self.io.write(f"=== Supporting Files ({files_analyzed} analyzed) ===")
+                self.io.write(analysis)
+            
+            self.io.write("")
+            
+            file_summaries = unassigned_files.get("file_summaries", [])
+            if file_summaries:
+                self.io.write(f"  Files included:")
+                for file_summary in file_summaries[:8]:  # Limit to 8
+                    file_path = file_summary.get("file_path", "Unknown")
+                    self.io.write(f"    • {file_path}")
+                if len(file_summaries) > 8:
+                    self.io.write(f"    ... and {len(file_summaries) - 8} more")
+                self.io.write("")
+    
     def _export_ai_analysis(self, result: dict) -> None:
         """Export AI analysis results as a markdown file."""
         default_filename = "ai_analysis_report.md"
@@ -1237,37 +1664,116 @@ class CLIApp:
                 "",
             ]
             
-            project_analysis = result.get("project_analysis", {})
-            analysis_text = project_analysis.get("analysis", "No analysis available")
-            
-            markdown_lines.extend([
-                "## 📊 Project Analysis",
-                "",
-                analysis_text,
-                "",
-                "---",
-                "",
-            ])
-            
-            file_summaries = result.get("file_summaries", [])
-            if file_summaries:
+            # Check if multi-project mode
+            if result.get("mode") == "multi_project":
+                projects = result.get("projects", [])
+                project_count = result.get("project_count", len(projects))
+                unassigned_files = result.get("unassigned_files")
+                
+                header = f"## 🎯 Multi-Project Portfolio ({project_count} Projects"
+                if unassigned_files:
+                    header += f" + Supporting Files"
+                header += ")"
+                
                 markdown_lines.extend([
-                    "## 📄 File-Level Analysis",
-                    "",
-                    f"Analyzed {len(file_summaries)} important files:",
+                    header,
                     "",
                 ])
                 
-                for idx, summary in enumerate(file_summaries, 1):
-                    file_path = summary.get("file_path", "Unknown")
-                    analysis = summary.get("analysis", "No analysis available")
+                # Portfolio summary
+                portfolio_summary = result.get("portfolio_summary")
+                if portfolio_summary:
+                    summary_text = portfolio_summary.get("summary", "")
+                    markdown_lines.extend([
+                        "### 📋 Portfolio Overview",
+                        "",
+                        summary_text,
+                        "",
+                        "---",
+                        "",
+                    ])
+                
+                # Individual project analyses
+                markdown_lines.extend([
+                    "## 📂 Individual Project Analyses",
+                    "",
+                ])
+                
+                for idx, project in enumerate(projects, 1):
+                    project_name = project.get("project_name", f"Project {idx}")
+                    project_path = project.get("project_path", "")
+                    files_analyzed = project.get("files_analyzed", 0)
+                    analysis = project.get("analysis", "No analysis available")
                     
                     markdown_lines.extend([
-                        f"### {idx}. `{file_path}`",
+                        f"### {idx}. {project_name}",
+                        "",
+                        f"**Path:** `{project_path}`",
+                        f"**Files Analyzed:** {files_analyzed}",
+                        "",
+                        analysis,
+                        "",
+                        "---",
+                        "",
+                    ])
+                
+                # Add unassigned files section
+                if unassigned_files:
+                    files_analyzed = unassigned_files.get("files_analyzed", 0)
+                    analysis = unassigned_files.get("analysis", "")
+                    file_summaries = unassigned_files.get("file_summaries", [])
+                    
+                    markdown_lines.extend([
+                        f"## 📄 Supporting Files ({files_analyzed} files)",
+                        "",
+                        "*These are documentation, configuration, and other files found outside the main project directories.*",
                         "",
                         analysis,
                         "",
                     ])
+                    
+                    if file_summaries:
+                        markdown_lines.extend([
+                            "**Files included:**",
+                            "",
+                        ])
+                        for file_summary in file_summaries:
+                            file_path = file_summary.get("file_path", "Unknown")
+                            markdown_lines.append(f"- `{file_path}`")
+                        markdown_lines.extend(["", "---", ""])
+            else:
+                # Single project mode
+                project_analysis = result.get("project_analysis", {})
+                analysis_text = project_analysis.get("analysis", "No analysis available")
+                
+                markdown_lines.extend([
+                    "## 📊 Project Analysis",
+                    "",
+                    analysis_text,
+                    "",
+                    "---",
+                    "",
+                ])
+                
+                file_summaries = result.get("file_summaries", [])
+                if file_summaries:
+                    markdown_lines.extend([
+                        "## 📄 File-Level Analysis",
+                        "",
+                        f"Analyzed {len(file_summaries)} important files:",
+                        "",
+                    ])
+                    
+                    for idx, summary in enumerate(file_summaries, 1):
+                        file_path = summary.get("file_path", "Unknown")
+                        analysis = summary.get("analysis", "No analysis available")
+                        
+                        markdown_lines.extend([
+                            f"### {idx}. `{file_path}`",
+                            "",
+                            analysis,
+                            "",
+                        ])
             
             markdown_lines.extend([
                 "---",

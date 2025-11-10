@@ -10,8 +10,8 @@ from dataclasses import dataclass
 from collections import Counter, defaultdict
 import logging
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
 
 
 @dataclass
