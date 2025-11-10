@@ -1,6 +1,23 @@
 
 # Jacob Damery
 
+## Week 10 (November 3rd – 9th)
+
+I expanded our local media analyzer so every modality—images, video frames, and now audio—produces meaningful insights entirely offline. A new PyTorch helper loads TorchVision’s ResNet for visual labels and Torchaudio + Librosa for wav2vec2 transcription, BPM estimation, spectral centroid, and heuristic genre tags. Those labels, summaries, tempo stats, and transcript excerpts now flow through the scanner, MediaAnalyzer, CLI tables, and JSON output, giving reviewers immediate context without calling external APIs.
+
+### Reflection
+
+- **What went well:** The PyTorch/Torchaudio modules plugged into the existing scanner pipeline with minimal refactors, analyzer metrics automatically picked up the new fields, and the CLI felt more useful once tempo/genre summaries appeared next to each clip.
+- **What didn’t go well:** Librosa’s extra dependencies slowed down the first install, torchaudio emitted deprecation warnings during MP3 loads, and full `pytest` runs still choke on Supabase config because the upstream tests require real credentials.
+
+### Next Steps
+
+1. Add a cache/weights preloader so the first CLI run doesn’t stall while wav2vec2 downloads.  
+2. Offer a “lightweight” mode that skips transcription when users only need tempo/genre.  
+3. Update repository tests to mock Supabase so the full suite can run headless.
+
+
+
 ## Week 9 October 27th - November 2nd
 This week I worked on the full media analysis flow: the scanner now extracts structured metadata for images, audio, and video; a deterministic MediaAnalyzer rolls it into insights/issues (with tests and docs); and a Rich/Questionary CLI lets teammates explore results interactively. I experimented with a CLIP/Whisper “advanced” layer but parked it because the dependency stack was heavy. Most friction came from polishing the CLI (handling non-TTY prompts, default paths, exit behavior) and keeping everything Python 3.9-compatible
 <img width="720" height="431" alt="Screenshot 2025-11-02 at 7 36 57 PM" src="https://github.com/user-attachments/assets/36d3b3b7-73c6-4bab-b7e2-53aa91b78d5e" />
