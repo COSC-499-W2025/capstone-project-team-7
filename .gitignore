@@ -7,6 +7,14 @@ env/
 .env.local
 *.env
 
+.pyc_cache/
+.cache/
+.tmp_archives/
+
+# Editor/project files
+git
+*.pyc
+
 .vscode/
 .DS_Store
 
