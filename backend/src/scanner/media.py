@@ -5,9 +5,30 @@ import io
 import wave
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional, Tuple
 
 from .media_types import AudioMetadata, ImageMetadata, MediaMetadata, VideoMetadata
+
+try:
+    from .vision import (
+        audio_content_insights,
+        image_content_labels,
+        summarize_labels,
+        video_content_labels,
+    )
+except Exception:  # pragma: no cover - optional deps may be missing
+    def image_content_labels(data: bytes, *, top_k: int = 3) -> list:
+        return []
+
+    def video_content_labels(data: bytes, suffix: str, *, top_k: int = 3, frame_samples: int = 8) -> list:
+        return []
+
+    def audio_content_insights(data: bytes, suffix: str, *, top_k: int = 3) -> dict:
+        return {}
+
+    def summarize_labels(labels: list, *, prefix: str = "Likely contains") -> str:
+        return ""
 
 # Optional imports – downstream code handles None gracefully when dependencies are missing.
 try:
@@ -92,6 +113,12 @@ def _extract_image_metadata(data: bytes) -> MediaExtractionResult:
             }
             if "dpi" in image.info:
                 metadata["dpi"] = image.info["dpi"]
+            labels = image_content_labels(data)
+            if labels:
+                metadata["content_labels"] = labels
+                summary = summarize_labels(labels)
+                if summary:
+                    metadata["content_summary"] = summary
             logger.debug(
                 "Extracted image metadata: width=%s height=%s mode=%s format=%s",
                 metadata["width"],
@@ -108,7 +135,7 @@ def _extract_audio_metadata(
     path: str, extension: str, data: bytes, mime_type: Optional[str]
 ) -> MediaExtractionResult:
     if extension == ".wav" or mime_type in {"audio/wav", "audio/x-wav", "audio/wave"}:
-        return _extract_wav_metadata(data)
+        return _extract_wav_metadata(data, extension or Path(path).suffix)
 
     if MutagenFile is None:
         return MediaExtractionResult(metadata=None, error="mutagen not installed")
@@ -142,6 +169,8 @@ def _extract_audio_metadata(
     if channels:
         metadata["channels"] = int(channels)
 
+    _annotate_audio_labels(metadata, data, extension or Path(path).suffix)
+
     if metadata:
         logger.debug(
             "Extracted audio metadata: duration=%s bitrate=%s sample_rate=%s channels=%s",
@@ -153,7 +182,28 @@ def _extract_audio_metadata(
     return MediaExtractionResult(metadata=metadata if metadata else None)
 
 
-def _extract_wav_metadata(data: bytes) -> MediaExtractionResult:
+def _annotate_audio_labels(metadata: AudioMetadata, data: bytes, suffix: str) -> None:
+    insights = audio_content_insights(data, suffix)
+    if not insights:
+        return
+    labels = insights.get("labels")
+    if labels:
+        metadata["content_labels"] = labels  # type: ignore[assignment]
+    summary = insights.get("summary")
+    if isinstance(summary, str) and summary:
+        metadata["content_summary"] = summary
+    tempo = insights.get("tempo_bpm")
+    if isinstance(tempo, (int, float)):
+        metadata["tempo_bpm"] = float(tempo)
+    genres = insights.get("genre_tags")
+    if isinstance(genres, list) and genres:
+        metadata["genre_tags"] = [str(tag) for tag in genres][:5]
+    transcript = insights.get("transcript")
+    if isinstance(transcript, str) and transcript:
+        metadata["transcript_excerpt"] = transcript[:200]
+
+
+def _extract_wav_metadata(data: bytes, suffix: str) -> MediaExtractionResult:
     try:
         with contextlib.closing(wave.open(io.BytesIO(data))) as wav_file:
             frame_count = wav_file.getnframes()
@@ -173,6 +223,7 @@ def _extract_wav_metadata(data: bytes) -> MediaExtractionResult:
                 metadata["sample_rate"],
                 metadata["channels"],
             )
+            _annotate_audio_labels(metadata, data, suffix or ".wav")
             return MediaExtractionResult(metadata=metadata)
     except wave.Error as exc:
         return MediaExtractionResult(metadata=None, error=f"WAV parse error: {exc}")
@@ -204,6 +255,13 @@ def _extract_video_metadata(
     bitrate = getattr(info, "bitrate", None)
     if bitrate:
         metadata["bitrate"] = int(bitrate)
+
+    labels = video_content_labels(data, extension or Path(path).suffix)
+    if labels:
+        metadata["content_labels"] = labels
+        summary = summarize_labels(labels, prefix="Appears to show")
+        if summary:
+            metadata["content_summary"] = summary
 
     if metadata:
         logger.debug(
