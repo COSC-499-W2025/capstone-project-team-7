@@ -12,7 +12,6 @@ from .display import render_table
 from .language_stats import summarize_languages
 from ..scanner.errors import ParserError
 from ..scanner.models import ScanPreferences
-from ..scanner.media import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 from ..scanner.parser import parse_zip
 from ..local_analysis.code_parser import CodeAnalyzer
 from ..local_analysis.code_cli import display_analysis_results
@@ -54,10 +53,6 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Run static code analysis (complexity, maintainability, security).",
     )
-    parser.add_argument("archive", type=Path, help="Path to a .zip archive or directory.")
-    parser.add_argument("--relevant-only", action="store_true")
-    parser.add_argument("--json", action="store_true")
-    parser.add_argument("--code", action="store_true")
     args = parser.parse_args(argv)
 
     analysis_result = None
@@ -212,9 +207,6 @@ def load_preferences(profile_name: str | None) -> ScanPreferences | None:
     return _preferences_from_config(manager.config, target_profile)
 
 
-_MEDIA_EXTENSIONS = [ext.lower() for ext in IMAGE_EXTENSIONS + AUDIO_EXTENSIONS + VIDEO_EXTENSIONS]
-
-
 def _preferences_from_config(config: dict, profile_name: str | None) -> ScanPreferences | None:
     if not config:
         return None
@@ -225,19 +217,7 @@ def _preferences_from_config(config: dict, profile_name: str | None) -> ScanPref
 
     extensions = profile.get("extensions") or None
     if extensions:
-        normalized = []
-        seen = set()
-        for ext in extensions:
-            lowered = ext.lower()
-            if lowered not in seen:
-                seen.add(lowered)
-                normalized.append(lowered)
-        if profile_key == "all":
-            for media_ext in _MEDIA_EXTENSIONS:
-                if media_ext not in seen:
-                    normalized.append(media_ext)
-                    seen.add(media_ext)
-        extensions = normalized
+        extensions = [ext.lower() for ext in extensions]
 
     excluded_dirs = profile.get("exclude_dirs") or None
     max_file_size_mb = config.get("max_file_size_mb")
