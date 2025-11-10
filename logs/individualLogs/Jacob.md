@@ -15,6 +15,7 @@ I expanded our local media analyzer so every modality—images, video frames, an
 1. Add a cache/weights preloader so the first CLI run doesn’t stall while wav2vec2 downloads.  
 2. Offer a “lightweight” mode that skips transcription when users only need tempo/genre.  
 3. Update repository tests to mock Supabase so the full suite can run headless.
+<img width="1064" height="621" alt="Screenshot 2025-11-09 at 4 35 36 PM" src="https://github.com/user-attachments/assets/74d7cc91-25a7-44d2-9030-931f1ba7daeb" />
 
 
 
