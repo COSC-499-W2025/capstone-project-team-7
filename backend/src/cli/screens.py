@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+import textwrap
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -834,5 +836,4 @@ class ScanResultsScreen(ModalScreen[None]):
         callback = getattr(self.app, "on_scan_results_screen_closed", None)
         if callable(callback):
             callback()
-
 
