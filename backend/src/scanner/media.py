@@ -9,7 +9,26 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 from .media_types import AudioMetadata, ImageMetadata, MediaMetadata, VideoMetadata
-from .vision import audio_content_insights, image_content_labels, summarize_labels, video_content_labels
+
+try:
+    from .vision import (
+        audio_content_insights,
+        image_content_labels,
+        summarize_labels,
+        video_content_labels,
+    )
+except Exception:  # pragma: no cover - optional deps may be missing
+    def image_content_labels(data: bytes, *, top_k: int = 3) -> list:
+        return []
+
+    def video_content_labels(data: bytes, suffix: str, *, top_k: int = 3, frame_samples: int = 8) -> list:
+        return []
+
+    def audio_content_insights(data: bytes, suffix: str, *, top_k: int = 3) -> dict:
+        return {}
+
+    def summarize_labels(labels: list, *, prefix: str = "Likely contains") -> str:
+        return ""
 
 # Optional imports – downstream code handles None gracefully when dependencies are missing.
 try:
