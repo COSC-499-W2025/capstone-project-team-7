@@ -12,7 +12,7 @@ if sys.platform == 'win32':
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 # Import code analysis module
-from code_parser import CodeAnalyzer
+from .code_parser import CodeAnalyzer
 
 
 def get_path_from_user():

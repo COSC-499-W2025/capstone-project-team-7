@@ -56,6 +56,13 @@ try:
     import questionary
 except ImportError:  # pragma: no cover
     questionary = None
+    
+try: 
+    from ..local_analysis.code_parser import CodeAnalyzer
+    from ..local_analysis.code_cli import display_analysis_results
+    CODE_ANALYSIS_AVAILABLE = True
+except ImportError:
+    CODE_ANALYSIS_AVAILABLE = False
 
 
 # Menu option names used across the CLI skeleton.
@@ -207,6 +214,7 @@ class CLIApp:
         self._has_media_files: bool = False
         self._last_media_analysis: Optional[dict] = None
         self._media_analyzer = MediaAnalyzer()
+        self._code_analysis_result: Optional[object] = None
 
     def run(self) -> None:
         """Main event loop. Renders the menu until the user exits."""
@@ -440,7 +448,7 @@ class CLIApp:
 
         languages = self._summarize_languages(parse_result.files)
         self._render_scan_summary(parse_result, relevant_only)
-        
+
         # Check for PDFs and offer analysis
         pdf_files = [f for f in parse_result.files if f.mime_type == 'application/pdf']
         if pdf_files and PDF_AVAILABLE:
@@ -452,9 +460,28 @@ class CLIApp:
             if analyze_choice == 0:
                 with self.io.status("Analyzing PDFs..."):
                     self._analyze_pdfs_from_scan(target, pdf_files)
+                    
+                    
+        code_extensions = {'.py', '.js', '.ts', '.tsx', '.java', '.c', '.cpp', '.go', 
+                   '.rs', '.rb', '.php', '.cs', '.html', '.css', '.jsx', '.h', '.hpp'}
+        
+        code_files = [f for f in parse_result.files 
+              if Path(f.path).suffix.lower() in code_extensions]
+
+        if code_files and CODE_ANALYSIS_AVAILABLE:
+            self.io.write(f"\n💻 Found {len(code_files)} code file(s) in scan.")
+            analyze_choice = self.io.choose(
+                "Would you like to analyze code quality?",
+                ["Yes", "No"]
+            )
+            if analyze_choice == 0:
+                with self.io.status("Analyzing code..."):
+                    self._analyze_code_from_scan(target, parse_result)
+        
         
         self.io.write_success("Scan completed successfully.")
 
+       
         while True:
             actions = [
                 ("View file list", lambda: self._render_file_list(parse_result, languages)),
@@ -467,6 +494,8 @@ class CLIApp:
                 actions.append(("View Git Analysis", self._handle_git_analysis_option))
             if self._has_media_files:
                 actions.append(("View Media Insights", self._handle_media_analysis_option))
+            if self._code_analysis_result:
+                actions.append(("View Code Analysis", self._handle_code_analysis_option))
             actions.append(("Back", None))
 
             labels = [label for label, _ in actions]
@@ -896,6 +925,68 @@ class CLIApp:
 
         self._render_media_analysis(analysis)
 
+    def _analyze_code_from_scan(self, target: Path, parse_result: ParseResult) -> None:
+        """Analyze code files found during scan."""
+        if not CODE_ANALYSIS_AVAILABLE:
+            self.io.write_error("Code analysis is not available. Install tree-sitter:")
+            self.io.write("  pip install -r requirements.txt")
+            return
+        
+        try:
+            # Get preferences for analyzer configuration
+            manager = self._config_manager_factory(self.session.user_id) if self.session else None
+            preferences = None
+            if manager:
+                preferences = self._preferences_from_config(manager.config, manager.get_current_profile())
+            
+            # Configure analyzer
+            max_file_mb = 5.0
+            if preferences and preferences.max_file_size_bytes:
+                max_file_mb = preferences.max_file_size_bytes / (1024 * 1024)
+            
+            analyzer = CodeAnalyzer(
+                max_file_mb=max_file_mb,
+                max_depth=10,
+                excluded={'node_modules', '.git', '__pycache__', 'venv', '.venv', 'build', 'dist'}
+            )
+            
+            # Analyze the directory
+            self._code_analysis_result = analyzer.analyze_directory(target)
+            
+            successful = self._code_analysis_result.successful
+            failed = self._code_analysis_result.failed
+            
+            if successful > 0:
+                self.io.write_success(f"\nCode Analysis complete: {successful} files analyzed")
+                if failed > 0:
+                    self.io.write_warning(f"  {failed} files failed analysis")
+            else:
+                self.io.write_warning("No files were successfully analyzed.")
+            
+        except ImportError as e:
+            self.io.write_error(f"Code analysis unavailable: {e}")
+            self.io.write("Install tree-sitter: pip install -r requirements.txt")
+        except Exception as e:
+            self.io.write_error(f"Code analysis failed: {e}")
+            import traceback
+            self.io.write_error(traceback.format_exc())
+
+
+    def _handle_code_analysis_option(self) -> None:
+        """Display results in cli"""
+        if not self._code_analysis_result:
+            self.io.write_warning("No code analysis available.")
+            return
+            
+        # Reuse the display function!
+        display_analysis_results(
+            result=self._code_analysis_result,
+            path=self._last_scan_path,
+            show_interactive_prompts=False  # No "Press Enter" in app
+        )
+
+    
+    
     def _login_flow(self) -> None:
         email = self.io.prompt("Email: ").strip()
         password = self.io.prompt_hidden("Password: ")
