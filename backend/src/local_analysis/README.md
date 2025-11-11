@@ -4,7 +4,7 @@ This module provides privacy-first, in-house analysis capabilities for PDFs and 
 
 ## 📋 Table of Contents
 - [Features](#features)
-- [CLI Integration](#cli-integration)
+- [Textual Integration](#textual-integration)
 - [Quick Start](#quick-start)
 - [Supported File Types](#supported-file-types)
 - [Configuration](#configuration)
@@ -16,26 +16,26 @@ This module provides privacy-first, in-house analysis capabilities for PDFs and 
 
 ---
 
-## CLI Integration
+## Textual Integration
 
 ### Automatic PDF Analysis During Portfolio Scans
 
-The PDF analysis module is fully integrated into the CLI workflow (`src/cli/app.py`). When you run a portfolio scan that contains PDF files:
+The PDF analysis module is fully integrated into the Textual workflow (`src/cli/textual_app.py`). When you run a portfolio scan that contains PDF files:
 
 1. **Automatic Detection**: The scanner identifies all PDF files in the scanned directory or archive.
 2. **Optional Analysis**: After the scan completes, you're prompted whether to analyze the PDFs.
 3. **In-Memory Processing**: PDFs are extracted from the archive (if scanning a .zip) or read directly from the filesystem.
 4. **Local Summarization**: Each PDF is parsed and summarized using the in-house TF-IDF based summarizer.
-5. **CLI Display**: View PDF summaries, statistics, keywords, and key points directly in the terminal.
+5. **UI Display**: View PDF summaries, statistics, keywords, and key points directly in the terminal.
 6. **JSON Export**: All PDF analysis results are included in scan exports for further review.
 
 **Privacy Note**: All PDF processing happens locally on your machine. No data is sent to external services.
 
-### Example CLI Workflow
+### Example Workflow
 
 ```bash
-# Start the CLI
-python -m src.cli.app
+# Start the Textual UI
+python -m src.cli.textual_app
 
 # Select "Run Portfolio Scan"
 # Choose a directory containing PDF files
@@ -61,8 +61,6 @@ summary = summarizer.generate_summary(result.text_content, result.file_name)
 print(f"Summary: {summary.summary_text}")
 print(f"Keywords: {summary.keywords[:5]}")
 ```
-
-For complete CLI documentation, see `src/cli/CLI_GUIDE.md`.
 
 ---
 

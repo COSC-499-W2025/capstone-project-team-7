@@ -130,23 +130,9 @@ python3 scripts/auth_cli.py check   demo+1@example.com StrongPass123!
 - **Secure Access**: Authenticated requests using user access tokens
 - **Cross-Session Support**: Consents survive logout and app restarts
 
-## CLI Quick Start
+## Textual UI Quick Start
 
-To launch the interactive CLI (arrow-key menu), use the provided helper script from a terminal:
-
-```bash
-bash scripts/run_cli.sh
-```
-
-On Windows (PowerShell 5+), run the companion script instead:
-
-```powershell
-pwsh -File scripts/run_cli.ps1
-```
-
-The script makes sure the project virtual environment exists, installs any missing dependencies, loads environment variables from `.env`, and starts the menu inside a real terminal (required for the arrow-based navigation). Press `Ctrl+C` to exit at any time.
-
-For the Textual UI preview, use the matching helpers:
+The interactive dashboard is implemented with [Textual](https://textual.textualize.io/). Use the helper scripts to bootstrap the virtual environment, install dependencies, load `.env`, and launch the UI:
 
 ```bash
 bash scripts/run_textual_cli.sh
@@ -155,3 +141,11 @@ bash scripts/run_textual_cli.sh
 ```powershell
 pwsh -File scripts/run_textual_cli.ps1
 ```
+
+You can also run it directly if your environment is already configured:
+
+```bash
+python -m src.cli.textual_app
+```
+
+Press `Ctrl+C` to exit at any time.
