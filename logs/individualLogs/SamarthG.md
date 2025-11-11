@@ -1,5 +1,11 @@
 # Samarth Grover (@Samarth-G)
 
+## Week 10: November 3 - November 9
+
+This week I enhanced the AI analysis system with multi-project support and configurable LLM parameters. I started by expanding `summarize_scan_with_ai()` to accept a project_dirs parameter, enabling the system to handle portfolios containing multiple independent projects rather than treating everything as a single codebase. <br> Next, I implemented `_analyze_multiple_projects()`, which intelligently organizes files by their respective projects, performs targeted per-project analysis, and handles any unassigned files separately to ensure comprehensive coverage of the entire portfolio. <br> After which, I built `_generate_portfolio_summary()` to produce high-level portfolio insights when multiple projects are detected, highlighting overall technical strengths, breadth of skills across projects, and noting any loose files that exist outside the main project structures. <br> On top of that, I added configurable LLM parameters including temperature and max tokens, implementing CLI prompts with validation to give users control over analysis behavior while maintaining consistency across all LLM calls. <br> Finally, I switched the default model to gpt-4o-mini for improved cost-efficiency and ensured all new parameters are properly validated and consistently applied throughout the analysis pipeline. These enhancements enable the tool to provide more coherent, context-aware results for complex portfolios while giving users flexibility in how their code is analyzed.
+
+![Week 10 Image](./assets/SamarthG-W9.png)
+
 ## Week 9: October 27 - November 2
 
 This week I integrated the LLM analysis module into the main application workflow. I started by modifying client.py to add the `summarize_scan_with_ai()` method, which orchestrates the entire analysis process by reading file contents from scan results, analyzing individual files using `summarize_tagged_file()`, and generating project overviews through `analyze_project()`. <br>
