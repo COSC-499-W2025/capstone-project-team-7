@@ -49,6 +49,9 @@ class ScanState:
     pdf_candidates: List[FileMetadata] = field(default_factory=list)
     pdf_results: List[Any] = field(default_factory=list)
     pdf_summaries: List[Any] = field(default_factory=list)
+    code_file_count: int = 0
+    code_analysis_result: Optional[Any] = None
+    code_analysis_error: Optional[str] = None
 
 
 @dataclass

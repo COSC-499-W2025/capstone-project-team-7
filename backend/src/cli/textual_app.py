@@ -22,6 +22,11 @@ from .services.ai_service import (
 )
 from .services.scan_service import ScanService
 from .services.session_service import SessionService
+from .services.code_analysis_service import (
+    CodeAnalysisError,
+    CodeAnalysisService,
+    CodeAnalysisUnavailableError,
+)
 from .state import AIState, ConsentState, PreferencesState, ScanState, SessionState
 from .screens import (
     AIKeyCancelled,
@@ -102,6 +107,7 @@ class PortfolioTextualApp(App):
         self._session_service = SessionService(reporter=self._report_filesystem_issue)
         self._preferences_service = PreferencesService(media_extensions=MEDIA_EXTENSIONS)
         self._ai_service = AIService()
+        self._code_service = CodeAnalysisService()
         self._preferences_screen = None
         self._scan_results_screen: Optional[ScanResultsScreen] = None
         self._media_analyzer = MediaAnalyzer()
@@ -383,6 +389,9 @@ class PortfolioTextualApp(App):
         self._scan_state.pdf_candidates = run_result.pdf_candidates
         self._scan_state.pdf_results = []
         self._scan_state.pdf_summaries = []
+        self._scan_state.code_file_count = len(self._code_service.code_file_candidates(run_result.parse_result))
+        self._scan_state.code_analysis_result = None
+        self._scan_state.code_analysis_error = None
         self._show_status("Scan completed successfully.", "success")
         detail_panel.update(self._scan_service.format_scan_overview(self._scan_state))
         self._show_scan_results_dialog()
@@ -394,8 +403,10 @@ class PortfolioTextualApp(App):
             ("summary", "Show overview"),
             ("files", "View file list"),
             ("languages", "Language breakdown"),
-            ("export", "Export JSON report"),
         ]
+        if self._scan_state.code_file_count:
+            actions.append(("code", "Code analysis"))
+        actions.append(("export", "Export JSON report"))
         if self._scan_state.pdf_candidates:
             label = "View PDF summaries" if self._scan_state.pdf_summaries else "Analyze PDF files"
             actions.append(("pdf", label))
@@ -457,6 +468,10 @@ class PortfolioTextualApp(App):
                 return
             screen.display_output(table, context="Language breakdown")
             screen.set_message("Language breakdown ready.", tone="success")
+            return
+
+        if action == "code":
+            await self._handle_code_analysis_action(screen)
             return
 
         if action == "export":
@@ -770,6 +785,54 @@ class PortfolioTextualApp(App):
                 lines.append(f"  • {item}")
 
         return "\n".join(lines)
+
+    async def _handle_code_analysis_action(self, screen: ScanResultsScreen) -> None:
+        if self._scan_state.code_file_count <= 0:
+            screen.display_output(
+                "No supported code files were detected in the last scan.", context="Code analysis"
+            )
+            screen.set_message("Run another scan with source files present.", tone="warning")
+            return
+        if not self._scan_state.target:
+            screen.display_output("Scan target unavailable. Rerun the scan to analyze code.", context="Code analysis")
+            screen.set_message("No scan target available.", tone="warning")
+            return
+
+        if self._scan_state.code_analysis_result is None:
+            screen.set_message("Analyzing codebase…", tone="info")
+            try:
+                result = await asyncio.to_thread(self._perform_code_analysis)
+            except CodeAnalysisUnavailableError as exc:
+                guidance = (
+                    "Code analysis requires the optional tree-sitter parsers.\n"
+                    "Install the language bindings listed in the README and rerun the scan."
+                )
+                screen.display_output(guidance, context="Code analysis")
+                screen.set_message(str(exc), tone="error")
+                self._scan_state.code_analysis_error = str(exc)
+                return
+            except CodeAnalysisError as exc:
+                screen.display_output(f"Unable to analyze code: {exc}", context="Code analysis")
+                screen.set_message("Code analysis failed.", tone="error")
+                self._scan_state.code_analysis_error = str(exc)
+                return
+            self._scan_state.code_analysis_result = result
+            self._scan_state.code_analysis_error = None
+
+        summary_text = self._code_service.format_summary(self._scan_state.code_analysis_result)
+        screen.display_output(summary_text, context="Code analysis")
+        screen.set_message("Code analysis ready.", tone="success")
+
+    def _perform_code_analysis(self):
+        target = self._scan_state.target
+        if target is None:
+            raise CodeAnalysisError("No scan target available.")
+        preferences = None
+        try:
+            preferences = self._current_scan_preferences()
+        except Exception:
+            preferences = None
+        return self._code_service.run_analysis(target, preferences)
 
     def _analyze_pdfs_sync(self) -> None:
         """Run local PDF parsing and summarization."""
