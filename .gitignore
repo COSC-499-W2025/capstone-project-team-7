@@ -26,3 +26,5 @@ backend/__pycache__/
 tests/__pycache__/
 backend/src/auth/__pycache__/
 backend/.deps-installed
+.venv_textual
+backend/textual_app/.venv_textual

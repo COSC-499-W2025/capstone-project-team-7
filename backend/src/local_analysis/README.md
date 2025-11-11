@@ -10,7 +10,6 @@ This module provides privacy-first, in-house analysis capabilities for PDFs and 
 - [Configuration](#configuration)
 - [Common Use Cases](#common-use-cases)
 - [Data Structures](#data-structures)
-- [CLI Usage](#cli-usage)
 - [Privacy & Security](#privacy--security)
 - [Testing](#testing)
 
@@ -170,36 +169,16 @@ if result.success and result.metadata:
     print(f"Summary: {result.summary}")
 ```
 
-### CLI Usage
-
-```bash
-# PDF Commands
-python pdf_cli.py info document.pdf
-python pdf_cli.py parse document.pdf -o output.txt
-python pdf_cli.py summarize document.pdf -s 5
-python pdf_cli.py batch ./pdfs/ -o summaries.json
-
-# Document Commands
-python document_cli.py info README.md
-python document_cli.py analyze document.txt -o output.json
-python document_cli.py summarize README.md -s 7
-python document_cli.py batch ./docs/ -o summaries.json
-```
-
-See `CLI_REFERENCE.md` for complete CLI documentation.
-
----
-
 ## Supported File Types
 
-| Type | Extensions | CLI Tool | Features |
-|------|------------|----------|----------|
-| **PDF** | `.pdf` | `pdf_cli.py` | Text extraction, metadata, page count |
-| **Text** | `.txt` | `document_cli.py` | Basic text analysis, summarization |
-| **Markdown** | `.md`, `.markdown` | `document_cli.py` | Headings, code blocks, links, images |
-| **ReStructuredText** | `.rst` | `document_cli.py` | Basic text analysis |
-| **Log Files** | `.log` | `document_cli.py` | Basic text analysis |
-| **Word Documents** | `.docx` | `document_cli.py` | Pages, sections, headings (requires python-docx) |
+| Type | Extensions | Processor | Features |
+|------|------------|-----------|----------|
+| **PDF** | `.pdf` | `pdf_parser.py` + `pdf_summarizer.py` | Text extraction, metadata, summaries |
+| **Text** | `.txt` | `document_analyzer.py` | Word counts, summaries, readability |
+| **Markdown** | `.md`, `.markdown` | `document_analyzer.py` | Heading extraction, code/links/images |
+| **ReStructuredText** | `.rst` | `document_analyzer.py` | Structural analysis, summarization |
+| **Log Files** | `.log` | `document_analyzer.py` | Line/paragraph counts, keyword extraction |
+| **Word Documents** | `.docx` | `docx_analyzer.py` | Page/section counts, heading extraction (requires `python-docx`) |
 
 ---
 
@@ -395,44 +374,6 @@ class DocumentMetadata:
 
 ---
 
-## CLI Usage
-
-### PDF CLI Tool
-
-```bash
-# Get PDF information
-python pdf_cli.py info document.pdf
-
-# Extract text
-python pdf_cli.py parse document.pdf -o output.txt
-
-# Generate summary
-python pdf_cli.py summarize document.pdf -s 5 -k 10
-
-# Batch process PDFs
-python pdf_cli.py batch ./pdfs/ -o summaries.json
-```
-
-### Document CLI Tool
-
-```bash
-# Get document information
-python document_cli.py info README.md
-
-# Analyze document
-python document_cli.py analyze document.txt -o analysis.json
-
-# Generate summary
-python document_cli.py summarize README.md -s 7 -k 15
-
-# Batch process documents
-python document_cli.py batch ./docs/ -o summaries.json
-```
-
-**See `CLI_REFERENCE.md` for complete documentation.**
-
----
-
 ## Error Handling
 
 All functions return result objects with success flags:
@@ -502,11 +443,8 @@ local_analysis/
 ├── pdf_summarizer.py          # Text summarization (shared by PDF and documents)
 ├── document_analyzer.py       # Document analysis (.txt, .md, .rst, .log)
 ├── docx_analyzer.py          # DOCX extension (optional)
-├── pdf_cli.py                # PDF CLI tool
-├── document_cli.py           # Document CLI tool
 ├── demo_document_analysis.py # Interactive demos
-├── README.md                 # This file
-└── CLI_REFERENCE.md          # Complete CLI documentation
+└── README.md                 # This file
 ```
 
 ### Design Principles
@@ -568,11 +506,8 @@ Contributions welcome! Please ensure:
 ## Support
 
 For detailed examples, see `example_usage.py`.  
-For CLI commands, see `CLI_REFERENCE.md`.  
 For issues, open an issue in the project repository.
 - **Demos**: See `demo_document_analysis.py` for interactive examples
-- **CLI Reference**: See `CLI_REFERENCE.md` for complete CLI documentation
-- **Issues**: Open an issue in the project repository
 - **Examples**: Check the `tests/` directory for usage examples
 
 ---

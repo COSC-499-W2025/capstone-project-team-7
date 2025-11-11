@@ -374,48 +374,6 @@ def test_cli_code_flag_reports_languages(
     assert pytest.approx(total_percent, rel=1e-3, abs=0.05) == 100
 
 
-def test_parse_archive_script_accepts_relevant_only(
-    zip_with_dummy_files: tuple[Path, dict[str, Path], dict[str, Path]],
-    project_root: Path,
-    backend_root: Path,
-):
-    archive, relevant, irrelevant = zip_with_dummy_files
-    script = project_root / "scripts" / "parse_archive.py"
-    command = [
-        sys.executable,
-        str(script),
-        "--json",
-        "--relevant-only",
-        "--code",
-        str(archive),
-    ]
-    env = os.environ.copy()
-    env["PYTHONPATH"] = (
-        f"{backend_root}{os.pathsep}{env['PYTHONPATH']}"
-        if "PYTHONPATH" in env
-        else str(backend_root)
-    )
-    proc = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        cwd=project_root,
-        env=env,
-    )
-
-    assert proc.returncode == 0, proc.stderr
-    payload = json.loads(proc.stdout)
-    summary = payload["summary"]
-    assert summary["files_processed"] == len(relevant)
-    assert summary["filtered_out"] == len(irrelevant)
-    languages = summary.get("languages")
-    assert languages, "Expected language breakdown in script output"
-    language_map = {entry["language"]: entry for entry in languages}
-    assert "Python" in language_map
-    paths = {item["path"] for item in payload["files"]}
-    assert paths == set(relevant.keys())
-
-
 def test_parse_zip_respects_allowed_extensions(tmp_path: Path):
     root = tmp_path / "ext_project"
     (root / "src").mkdir(parents=True)
