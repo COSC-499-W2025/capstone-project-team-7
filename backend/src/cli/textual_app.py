@@ -114,6 +114,7 @@ class PortfolioTextualApp(App):
         self._media_analyzer = MediaAnalyzer()
         self._media_vision_ready = media_vision_capabilities_enabled()
         self._debug_log_path = Path.home() / ".textual_ai_debug.log"
+        self._ai_output_path = Path.cwd() / "ai-analysis-latest.md"
         self._debug_log("PortfolioTextualApp initialized")
 
     def compose(self) -> ComposeResult:
@@ -1454,6 +1455,22 @@ class PortfolioTextualApp(App):
         if self._session_state.session:
             self._session_service.persist_session(self._session_state.session_path, self._session_state.session)
 
+    def _persist_ai_output(self, formatted_text: str, raw_result: Dict[str, Any]) -> bool:
+        """Write the latest AI analysis to disk for easier reading.
+
+        Returns True if the file was written.
+        """
+        try:
+            content = formatted_text.strip() or "[b]AI-Powered Analysis[/b]\n\nNo AI insights were returned."
+            raw_dump = json.dumps(raw_result, indent=2, default=str)
+            payload = f"{content}\n\n---\n\nRaw AI payload:\n{raw_dump}\n"
+            self._ai_output_path.write_text(payload, encoding="utf-8")
+            self._debug_log(f"AI analysis written to {self._ai_output_path}")
+            return True
+        except Exception as exc:
+            self._debug_log(f"Failed to persist AI analysis: {exc}")
+            return False
+
     def _clear_session(self) -> None:
         self._session_service.clear_session(self._session_state.session_path)
 
@@ -1524,6 +1541,20 @@ class PortfolioTextualApp(App):
         )
         asyncio.create_task(
             self._verify_ai_key(event.api_key, event.temperature, event.max_tokens)
+        )
+
+    def request_ai_key_verification(
+        self,
+        api_key: str,
+        temperature: Optional[float],
+        max_tokens: Optional[int],
+    ) -> None:
+        """Direct invocation path when Textual message dispatch misbehaves."""
+        self._debug_log(
+            f"request_ai_key_verification invoked temp={temperature} tokens={max_tokens} pending={self._ai_state.pending_analysis}"
+        )
+        asyncio.create_task(
+            self._verify_ai_key(api_key, temperature, max_tokens)
         )
 
     def on_ai_key_cancelled(self, event: AIKeyCancelled) -> None:
@@ -1826,11 +1857,18 @@ class PortfolioTextualApp(App):
             )
         else:
             self._ai_state.last_analysis = result
-            detail_panel.update(self._ai_service.format_analysis(result))
+            rendered = self._ai_service.format_analysis(result)
+            if rendered.strip():
+                detail_panel.update(rendered)
+            else:
+                detail_panel.update("[b]AI-Powered Analysis[/b]\n\nNo AI insights were returned.")
+            saved = self._persist_ai_output(rendered, result)
             files_count = result.get("files_analyzed_count")
             message = "AI analysis complete."
             if files_count:
                 message = f"AI analysis complete — {files_count} files reviewed."
+            if saved:
+                message = f"{message} Saved to {self._ai_output_path.name}."
             self._show_status(message, "success")
         finally:
             self._ai_state.task = None
