@@ -26,6 +26,7 @@ try:
 except ImportError:  # pragma: no cover
     TextLog = None  # type: ignore[assignment]
 
+from .message_utils import dispatch_message
 
 class ScanParametersChosen(Message):
     """Raised when the user submits scan parameters from the dialog."""
@@ -79,14 +80,14 @@ class ScanConfigScreen(ModalScreen[None]):
             return
         checkbox = self.query_one("#scan-relevant", Checkbox)
         target = Path(path_value).expanduser()
-        self.app.post_message(ScanParametersChosen(target, bool(checkbox.value)))
+        dispatch_message(self.app, ScanParametersChosen(target, bool(checkbox.value)))
         self.dismiss(None)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "submit":
             self._dismiss_with_validation()
         elif event.button.id == "cancel":
-            self.app.post_message(ScanCancelled())
+            dispatch_message(self.app, ScanCancelled())
             self.dismiss(None)
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -95,7 +96,7 @@ class ScanConfigScreen(ModalScreen[None]):
 
     def on_key(self, event: Key) -> None:  # pragma: no cover - Textual keyboard hook
         if event.key == "escape":
-            self.app.post_message(ScanCancelled())
+            dispatch_message(self.app, ScanCancelled())
             self.dismiss(None)
 
 
@@ -179,14 +180,14 @@ class LoginScreen(ModalScreen[None]):
         if not result:
             return
         email, password = result
-        self.app.post_message(LoginSubmitted(email, password))
+        dispatch_message(self.app, LoginSubmitted(email, password))
         self.dismiss(None)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "login-submit":
             self._submit()
         elif event.button.id == "login-cancel":
-            self.app.post_message(LoginCancelled())
+            dispatch_message(self.app, LoginCancelled())
             self.dismiss(None)
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -195,7 +196,7 @@ class LoginScreen(ModalScreen[None]):
 
     def on_key(self, event: Key) -> None:  # pragma: no cover - keyboard shortcut
         if event.key == "escape":
-            self.app.post_message(LoginCancelled())
+            dispatch_message(self.app, LoginCancelled())
             self.dismiss(None)
 
 
@@ -268,7 +269,7 @@ class AIKeyScreen(ModalScreen[None]):
             except ValueError:
                 self.query_one("#ai-key-message", Static).update("Max tokens must be a positive integer.")
                 return
-        self.app.post_message(AIKeySubmitted(api_key, temperature, tokens))
+        dispatch_message(self.app, AIKeySubmitted(api_key, temperature, tokens))
         self.dismiss(None)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -282,7 +283,7 @@ class AIKeyScreen(ModalScreen[None]):
         if event.button.id == "ai-key-submit":
             self._submit()
         elif event.button.id == "ai-key-cancel":
-            self.app.post_message(AIKeyCancelled())
+            dispatch_message(self.app, AIKeyCancelled())
             self.dismiss(None)
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -298,7 +299,7 @@ class AIKeyScreen(ModalScreen[None]):
 
     def on_key(self, event: Key) -> None:  # pragma: no cover - escape shortcut
         if event.key == "escape":
-            self.app.post_message(AIKeyCancelled())
+            dispatch_message(self.app, AIKeyCancelled())
             self.dismiss(None)
 
 
@@ -353,7 +354,7 @@ class ConsentScreen(ModalScreen[None]):
         if action == "close":
             self.dismiss(None)
             return
-        self.app.post_message(ConsentAction(action))
+        dispatch_message(self.app, ConsentAction(action))
         if action != "review":
             self.dismiss(None)
 
@@ -480,26 +481,26 @@ class PreferencesScreen(ModalScreen[None]):
             if not self._current_profile:
                 self._set_message("Select a profile to activate.", tone="warning")
                 return
-            self.app.post_message(PreferencesEvent("set_active", {"name": self._current_profile}))
+            dispatch_message(self.app, PreferencesEvent("set_active", {"name": self._current_profile}))
             return
         if button_id == "pref-delete-profile":
             if not self._current_profile:
                 self._set_message("Select a profile to delete first.", tone="warning")
                 return
-            self.app.post_message(PreferencesEvent("delete_profile", {"name": self._current_profile}))
+            dispatch_message(self.app, PreferencesEvent("delete_profile", {"name": self._current_profile}))
             return
         if button_id == "pref-save-settings":
             payload = self._collect_settings()
             if payload is None:
                 return
-            self.app.post_message(PreferencesEvent("update_settings", payload))
+            dispatch_message(self.app, PreferencesEvent("update_settings", payload))
             return
         if button_id == "pref-save-profile":
             payload = self._collect_profile_inputs()
             if payload is None:
                 return
             action = "create_profile" if self._edit_mode == "new" else "update_profile"
-            self.app.post_message(PreferencesEvent(action, payload))
+            dispatch_message(self.app, PreferencesEvent(action, payload))
             return
 
     def _load_profile(self, profile_name: str) -> None:
@@ -741,7 +742,7 @@ class ScanResultsScreen(ModalScreen[None]):
         if action == "close":
             self.dismiss(None)
             return
-        self.app.post_message(ScanResultAction(action))
+        dispatch_message(self.app, ScanResultAction(action))
 
     def set_detail_context(self, title: str) -> None:
         self._detail_context = title or "Scan result detail"
@@ -850,4 +851,3 @@ class ScanResultsScreen(ModalScreen[None]):
         callback = getattr(self.app, "on_scan_results_screen_closed", None)
         if callable(callback):
             callback()
-

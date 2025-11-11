@@ -13,6 +13,7 @@ from textual.containers import Vertical
 from textual.events import Mount
 from textual.widgets import Header, Footer, Static, ListView, ListItem, Label
 
+from .message_utils import dispatch_message
 from .services.preferences_service import PreferencesService
 from .services.ai_service import (
     AIService,
@@ -201,7 +202,7 @@ class PortfolioTextualApp(App):
             return
 
         if label == "Run Portfolio Scan":
-            self.post_message(RunScanRequested())
+            dispatch_message(self, RunScanRequested())
             return
 
         if label == "View Last Analysis":
@@ -1518,6 +1519,9 @@ class PortfolioTextualApp(App):
 
     def on_ai_key_submitted(self, event: AIKeySubmitted) -> None:
         event.stop()
+        self._debug_log(
+            f"AIKeySubmitted received temp={event.temperature} tokens={event.max_tokens} pending={self._ai_state.pending_analysis}"
+        )
         asyncio.create_task(
             self._verify_ai_key(event.api_key, event.temperature, event.max_tokens)
         )
