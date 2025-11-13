@@ -17,7 +17,10 @@ try:
         summarize_labels,
         video_content_labels,
     )
+    VISION_HELPER_AVAILABLE = True
 except Exception:  # pragma: no cover - optional deps may be missing
+    VISION_HELPER_AVAILABLE = False
+
     def image_content_labels(data: bytes, *, top_k: int = 3) -> list:
         return []
 
@@ -29,6 +32,11 @@ except Exception:  # pragma: no cover - optional deps may be missing
 
     def summarize_labels(labels: list, *, prefix: str = "Likely contains") -> str:
         return ""
+
+
+def media_vision_capabilities_enabled() -> bool:
+    """Return True when the advanced torch-based helper is available."""
+    return VISION_HELPER_AVAILABLE
 
 # Optional imports – downstream code handles None gracefully when dependencies are missing.
 try:

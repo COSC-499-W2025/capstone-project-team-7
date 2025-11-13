@@ -2,722 +2,80 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
+import zipfile
 from datetime import datetime
 from pathlib import Path
+import sys
 from typing import Optional, Dict, Any, List
 
 from textual.app import App, ComposeResult, Binding
-from textual.containers import Horizontal, Vertical, ScrollableContainer
-from textual.events import Mount, Key
-from textual.message import Message
-from textual.screen import ModalScreen
-from textual.widgets import (
-    Header,
-    Footer,
-    Static,
-    ListView,
-    ListItem,
-    Label,
-    Input,
-    Checkbox,
-    Button,
-    Log,
+from textual.containers import Vertical
+from textual.events import Mount
+from textual.widgets import Header, Footer, Static, ListView, ListItem, Label
+
+from .message_utils import dispatch_message
+from .services.preferences_service import PreferencesService
+from .services.ai_service import (
+    AIService,
+    AIDependencyError,
+    AIProviderError,
+    InvalidAIKeyError,
 )
-
-from rich.text import Text
-
-from .archive_utils import ensure_zip
-from .language_stats import summarize_languages
-from ..cli.display import render_table, render_language_table
+from .services.scan_service import ScanService
+from .services.session_service import SessionService
+from .services.code_analysis_service import (
+    CodeAnalysisError,
+    CodeAnalysisService,
+    CodeAnalysisUnavailableError,
+)
+from .state import AIState, ConsentState, PreferencesState, ScanState, SessionState
+from .screens import (
+    AIKeyCancelled,
+    AIKeyScreen,
+    AIKeySubmitted,
+    ConsentAction,
+    ConsentScreen,
+    LoginCancelled,
+    LoginScreen,
+    LoginSubmitted,
+    NoticeScreen,
+    PreferencesEvent,
+    PreferencesScreen,
+    RunScanRequested,
+    ScanCancelled,
+    ScanConfigScreen,
+    ScanParametersChosen,
+    ScanResultAction,
+    ScanResultsScreen,
+)
+from ..cli.display import render_language_table
 from ..scanner.errors import ParserError
-from ..scanner.models import ScanPreferences, ParseResult
-from ..scanner.parser import parse_zip
-from ..scanner.media import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
+from ..scanner.models import ScanPreferences, ParseResult, FileMetadata
+from ..scanner.media import (
+    AUDIO_EXTENSIONS,
+    IMAGE_EXTENSIONS,
+    VIDEO_EXTENSIONS,
+    media_vision_capabilities_enabled,
+)
 from ..auth.consent_validator import ConsentValidator, ConsentError, ExternalServiceError, ConsentRecord
 from ..auth.session import Session, SupabaseAuth, AuthError
 from ..auth import consent as consent_storage
 from ..local_analysis.git_repo import analyze_git_repo
 from ..local_analysis.media_analyzer import MediaAnalyzer
 
+# Optional PDF analysis dependencies
+try:
+    from ..local_analysis.pdf_parser import create_parser, PDFParseResult
+    from ..local_analysis.pdf_summarizer import create_summarizer, DocumentSummary
+    PDF_AVAILABLE = True
+except Exception:  # pragma: no cover - PDF extras missing
+    PDF_AVAILABLE = False
+    PDFParseResult = None  # type: ignore[assignment]
+    DocumentSummary = None  # type: ignore[assignment]
+
 MEDIA_EXTENSIONS = tuple(
     sorted(set(IMAGE_EXTENSIONS + AUDIO_EXTENSIONS + VIDEO_EXTENSIONS))
 )
-
-
-class ScanParametersChosen(Message):
-    """Raised when the user submits scan parameters from the dialog."""
-
-    def __init__(self, target: Path, relevant_only: bool) -> None:
-        super().__init__()
-        self.target = target
-        self.relevant_only = relevant_only
-
-
-class ScanCancelled(Message):
-    """Raised when the user cancels the scan configuration dialog."""
-
-    pass
-
-
-class ScanConfigScreen(ModalScreen[None]):
-    """Modal screen requesting scan parameters."""
-
-    def __init__(self, default_path: str = "", relevant_only: bool = True) -> None:
-        super().__init__()
-        self._default_path = default_path
-        self._default_relevant = relevant_only
-
-    def compose(self) -> ComposeResult:
-        yield Vertical(
-            Static("Run Portfolio Scan", classes="dialog-title"),
-            Static(
-                "Enter a directory or .zip path to scan. The parser will create a temporary archive when needed.",
-                classes="dialog-subtitle",
-            ),
-            Input(value=self._default_path, placeholder="/path/to/project", id="scan-path"),
-            Checkbox("Relevant files only", value=self._default_relevant, id="scan-relevant"),
-            Static("", id="scan-message", classes="dialog-message"),
-            Horizontal(
-                Button("Cancel", id="cancel"),
-                Button("Run Scan", id="submit", variant="primary"),
-                classes="dialog-buttons",
-            ),
-            classes="dialog",
-        )
-
-    def on_mount(self, event: Mount) -> None:  # pragma: no cover - UI focus setup
-        self.query_one("#scan-path", Input).focus()
-
-    def _dismiss_with_validation(self) -> None:
-        input_widget = self.query_one("#scan-path", Input)
-        path_value = input_widget.value.strip()
-        if not path_value:
-            self.query_one("#scan-message", Static).update("Provide a file system path before running the scan.")
-            return
-        checkbox = self.query_one("#scan-relevant", Checkbox)
-        target = Path(path_value).expanduser()
-        self.app.post_message(ScanParametersChosen(target, bool(checkbox.value)))
-        self.dismiss(None)
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "submit":
-            self._dismiss_with_validation()
-        elif event.button.id == "cancel":
-            self.app.post_message(ScanCancelled())
-            self.dismiss(None)
-
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        if event.input.id == "scan-path":
-            self._dismiss_with_validation()
-
-    def on_key(self, event: Key) -> None:  # pragma: no cover - Textual keyboard hook
-        if event.key == "escape":
-            self.app.post_message(ScanCancelled())
-            self.dismiss(None)
-
-
-class RunScanRequested(Message):
-    """Signal that the user wants to launch a portfolio scan."""
-
-    pass
-
-
-class LoginSubmitted(Message):
-    """Raised when the user submits Supabase credentials."""
-
-    def __init__(self, email: str, password: str) -> None:
-        super().__init__()
-        self.email = email
-        self.password = password
-
-
-class LoginCancelled(Message):
-    """Raised when the login dialog is dismissed without submitting."""
-
-    pass
-
-
-class AIKeySubmitted(Message):
-    """Raised when the user submits an API key for AI analysis."""
-
-    def __init__(self, api_key: str) -> None:
-        super().__init__()
-        self.api_key = api_key
-
-
-class AIKeyCancelled(Message):
-    """Raised when the API key dialog is dismissed without submitting."""
-
-    pass
-
-class LoginScreen(ModalScreen[None]):
-    """Modal dialog for collecting Supabase credentials."""
-
-    def __init__(self, default_email: str = "") -> None:
-        super().__init__()
-        self._default_email = default_email
-
-    def compose(self) -> ComposeResult:
-        yield Vertical(
-            Static("Sign in to Supabase", classes="dialog-title"),
-            Input(value=self._default_email, placeholder="name@example.com", id="login-email"),
-            Input(password=True, placeholder="Password", id="login-password"),
-            Static("", id="login-message", classes="dialog-message"),
-            Horizontal(
-                Button("Cancel", id="login-cancel"),
-                Button("Sign In", id="login-submit", variant="primary"),
-                classes="dialog-buttons",
-            ),
-            classes="dialog",
-        )
-
-    def on_mount(self, event: Mount) -> None:  # pragma: no cover - focus wiring
-        target_id = "login-password" if self._default_email else "login-email"
-        self.query_one(f"#{target_id}", Input).focus()
-
-    def _validate(self) -> tuple[str, str] | None:
-        email_input = self.query_one("#login-email", Input)
-        password_input = self.query_one("#login-password", Input)
-        email = email_input.value.strip()
-        password = password_input.value
-        if not email or not password:
-            self.query_one("#login-message", Static).update("Enter an email and password to continue.")
-            if not email:
-                email_input.focus()
-            else:
-                password_input.focus()
-            return None
-        return email, password
-
-    def _submit(self) -> None:
-        result = self._validate()
-        if not result:
-            return
-        email, password = result
-        self.app.post_message(LoginSubmitted(email, password))
-        self.dismiss(None)
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "login-submit":
-            self._submit()
-        elif event.button.id == "login-cancel":
-            self.app.post_message(LoginCancelled())
-            self.dismiss(None)
-
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        if event.input.id in {"login-email", "login-password"}:
-            self._submit()
-
-    def on_key(self, event: Key) -> None:  # pragma: no cover - keyboard shortcut
-        if event.key == "escape":
-            self.app.post_message(LoginCancelled())
-            self.dismiss(None)
-
-
-class AIKeyScreen(ModalScreen[None]):
-    """Modal dialog for collecting an AI API key."""
-
-    def __init__(self, default_key: str = "") -> None:
-        super().__init__()
-        self._default_key = default_key
-
-    def compose(self) -> ComposeResult:
-        yield Vertical(
-            Static("Provide OpenAI API Key", classes="dialog-title"),
-            Static(
-                "Your API key is used in-memory for this session to run AI analysis. It is not stored on disk.",
-                classes="dialog-subtitle",
-            ),
-            Input(
-                value=self._default_key,
-                placeholder="sk-...",
-                password=True,
-                id="ai-key-input",
-            ),
-            Static("", id="ai-key-message", classes="dialog-message"),
-            Horizontal(
-                Button("Cancel", id="ai-key-cancel"),
-                Button("Verify", id="ai-key-submit", variant="primary"),
-                classes="dialog-buttons",
-            ),
-            classes="dialog",
-        )
-
-    def on_mount(self, event: Mount) -> None:  # pragma: no cover - focus setup
-        self.query_one("#ai-key-input", Input).focus()
-
-    def _submit(self) -> None:
-        input_widget = self.query_one("#ai-key-input", Input)
-        api_key = input_widget.value.strip()
-        if not api_key:
-            self.query_one("#ai-key-message", Static).update("Enter an API key to continue.")
-            return
-        self.app.post_message(AIKeySubmitted(api_key))
-        self.dismiss(None)
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "ai-key-submit":
-            self._submit()
-        elif event.button.id == "ai-key-cancel":
-            self.app.post_message(AIKeyCancelled())
-            self.dismiss(None)
-
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        if event.input.id == "ai-key-input":
-            self._submit()
-
-    def on_key(self, event: Key) -> None:  # pragma: no cover - escape shortcut
-        if event.key == "escape":
-            self.app.post_message(AIKeyCancelled())
-            self.dismiss(None)
-
-
-class ConsentAction(Message):
-    """Raised when the user invokes a consent-related action."""
-
-    def __init__(self, action: str) -> None:
-        super().__init__()
-        self.action = action
-
-
-class ConsentScreen(ModalScreen[None]):
-    """Interactive consent management dialog."""
-
-    def __init__(self, has_required: bool, has_external: bool) -> None:
-        super().__init__()
-        self._has_required = has_required
-        self._has_external = has_external
-
-    def compose(self) -> ComposeResult:
-        required_label = "Withdraw required consent" if self._has_required else "Grant required consent"
-        external_label = "Disable external services" if self._has_external else "Enable external services"
-        status_lines = []
-        status_lines.append(f"Required consent: {'granted' if self._has_required else 'missing'}")
-        status_lines.append(f"External services: {'enabled' if self._has_external else 'disabled'}")
-
-        yield Vertical(
-            Static("Manage consent", classes="dialog-title"),
-            Static("\n".join(status_lines), classes="dialog-subtitle"),
-            Vertical(
-                Button("Review notice", id="consent-review"),
-                Button(required_label, id="consent-required", variant="primary"),
-                Button(external_label, id="consent-external"),
-                classes="consent-actions",
-            ),
-            Horizontal(
-                Button("Close", id="consent-close"),
-            ),
-            classes="dialog consent-dialog",
-        )
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        mapping = {
-            "consent-review": "review",
-            "consent-required": "toggle_required",
-            "consent-external": "toggle_external",
-            "consent-close": "close",
-        }
-        action = mapping.get(event.button.id)
-        if not action:
-            return
-        if action == "close":
-            self.dismiss(None)
-            return
-        self.app.post_message(ConsentAction(action))
-        if action != "review":
-            self.dismiss(None)
-
-    def on_key(self, event: Key) -> None:  # pragma: no cover - keyboard shortcut
-        if event.key == "escape":
-            self.dismiss(None)
-
-
-class NoticeScreen(ModalScreen[None]):
-    """Modal dialog to display the privacy notice."""
-
-    def __init__(self, notice_text: str) -> None:
-        super().__init__()
-        self._notice = notice_text
-
-    def compose(self) -> ComposeResult:
-        yield Vertical(
-            Static("Privacy notice", classes="dialog-title"),
-            Log(highlight=False, id="notice-log"),
-            Horizontal(
-                Button("Close", id="notice-close", variant="primary"),
-                classes="dialog-buttons",
-            ),
-            classes="dialog notice-dialog",
-        )
-
-    def on_mount(self, event: Mount) -> None:  # pragma: no cover - populate notice on open
-        self.query_one("#notice-log", Log).write(self._notice)
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "notice-close":
-            self.dismiss(None)
-
-    def on_key(self, event: Key) -> None:  # pragma: no cover - keyboard shortcut
-        if event.key == "escape":
-            self.dismiss(None)
-
-
-class PreferencesEvent(Message):
-    """Raised when the user makes a preferences-related request."""
-
-    def __init__(self, action: str, payload: Dict[str, Any]) -> None:
-        super().__init__()
-        self.action = action
-        self.payload = payload
-
-
-class PreferencesScreen(ModalScreen[None]):
-    """Interactive dialog for managing scan profiles and settings."""
-
-    def __init__(self, summary: Dict[str, Any], profiles: Dict[str, Dict[str, Any]]) -> None:
-        super().__init__()
-        self._summary = summary or {}
-        self._profiles = dict(sorted((profiles or {}).items()))
-        self._active_profile = self._summary.get("current_profile")
-        self._current_profile: Optional[str] = None
-        self._edit_mode: str = "existing"
-
-    def compose(self) -> ComposeResult:
-        profile_items: list[ListItem] = []
-        for name in self._profiles.keys():
-            item = ListItem(Label(name))
-            item.data = name  # type: ignore[attr-defined]
-            profile_items.append(item)
-
-        yield Vertical(
-            Static("Manage preferences", classes="dialog-title"),
-            Static(
-                "Adjust scan profiles and general settings. Changes sync to Supabase when saved.",
-                classes="dialog-subtitle",
-            ),
-            Horizontal(
-                Vertical(
-                    Static("Profiles", classes="group-title"),
-                    ListView(*profile_items, id="pref-profile-list"),
-                    Button("Set as active", id="pref-set-active"),
-                    Button("Create new profile", id="pref-new-profile"),
-                    Button("Delete profile", id="pref-delete-profile"),
-                    classes="pref-column pref-column-left",
-                ),
-                Vertical(
-                    Static("Profile details", classes="group-title"),
-                    Input(placeholder="Profile name", id="pref-name"),
-                    Input(placeholder="Description", id="pref-description"),
-                    Input(placeholder="Extensions (comma separated)", id="pref-extensions"),
-                    Input(placeholder="Exclude directories (comma separated)", id="pref-excludes"),
-                    Static("General settings", classes="group-title"),
-                    Input(placeholder="Max file size (MB)", id="pref-max-size"),
-                    Checkbox("Follow symbolic links", id="pref-follow-symlinks"),
-                    classes="pref-column pref-column-right",
-                ),
-            ),
-            Static("", id="pref-message", classes="dialog-message"),
-            Horizontal(
-                Button("Cancel", id="pref-cancel"),
-                Button("Save profile", id="pref-save-profile", variant="primary"),
-                Button("Save settings", id="pref-save-settings"),
-                classes="dialog-buttons",
-            ),
-            classes="dialog preferences-dialog",
-        )
-
-    def on_mount(self, _: Mount) -> None:  # pragma: no cover - focus wiring
-        self._sync_profile_selection(self._active_profile)
-        self._apply_general_settings()
-
-    def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
-        if event.control.id != "pref-profile-list":
-            return
-        item = event.item
-        profile_name = getattr(item, "data", None)
-        if profile_name:
-            self._load_profile(profile_name)
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        button_id = event.button.id or ""
-        if button_id == "pref-cancel":
-            self.dismiss(None)
-            return
-        if button_id == "pref-new-profile":
-            self._prepare_new_profile()
-            return
-        if button_id == "pref-set-active":
-            if not self._current_profile:
-                self._set_message("Select a profile to activate.", tone="warning")
-                return
-            self.app.post_message(PreferencesEvent("set_active", {"name": self._current_profile}))
-            return
-        if button_id == "pref-delete-profile":
-            if not self._current_profile:
-                self._set_message("Select a profile to delete first.", tone="warning")
-                return
-            self.app.post_message(PreferencesEvent("delete_profile", {"name": self._current_profile}))
-            return
-        if button_id == "pref-save-settings":
-            payload = self._collect_settings()
-            if payload is None:
-                return
-            self.app.post_message(PreferencesEvent("update_settings", payload))
-            return
-        if button_id == "pref-save-profile":
-            payload = self._collect_profile_inputs()
-            if payload is None:
-                return
-            action = "create_profile" if self._edit_mode == "new" else "update_profile"
-            self.app.post_message(PreferencesEvent(action, payload))
-            return
-
-    def _load_profile(self, profile_name: str) -> None:
-        profile = self._profiles.get(profile_name)
-        name_input = self.query_one("#pref-name", Input)
-        desc_input = self.query_one("#pref-description", Input)
-        exts_input = self.query_one("#pref-extensions", Input)
-        excl_input = self.query_one("#pref-excludes", Input)
-
-        if not profile:
-            name_input.value = profile_name
-            name_input.disabled = False
-            desc_input.value = ""
-            exts_input.value = ""
-            excl_input.value = ""
-            self._current_profile = None
-            self._edit_mode = "new"
-            self._set_message("Creating new profile.", tone="info")
-            return
-
-        name_input.value = profile_name
-        name_input.disabled = True
-        desc_input.value = profile.get("description", "")
-        exts_input.value = ", ".join(profile.get("extensions", []))
-        excl_input.value = ", ".join(profile.get("exclude_dirs", []))
-        self._current_profile = profile_name
-        self._edit_mode = "existing"
-        self._set_message("Editing existing profile.", tone="info")
-
-    def _prepare_new_profile(self) -> None:
-        self._edit_mode = "new"
-        self._current_profile = None
-        name_input = self.query_one("#pref-name", Input)
-        name_input.disabled = False
-        name_input.value = ""
-        self.query_one("#pref-description", Input).value = ""
-        self.query_one("#pref-extensions", Input).value = ""
-        self.query_one("#pref-excludes", Input).value = ""
-        name_input.focus()
-        self._set_message("Enter details for a new profile.", tone="info")
-
-    def _collect_profile_inputs(self) -> Optional[Dict[str, Any]]:
-        name_input = self.query_one("#pref-name", Input)
-        desc_input = self.query_one("#pref-description", Input)
-        exts_input = self.query_one("#pref-extensions", Input)
-        excl_input = self.query_one("#pref-excludes", Input)
-
-        name = name_input.value.strip()
-        if not name:
-            self._set_message("Profile name is required.", tone="error")
-            name_input.focus()
-            return None
-
-        extensions = [item.strip() for item in exts_input.value.split(",") if item.strip()]
-        exclude_dirs = [item.strip() for item in excl_input.value.split(",") if item.strip()]
-
-        if not extensions:
-            self._set_message("Provide at least one file extension.", tone="error")
-            exts_input.focus()
-            return None
-
-        payload = {
-            "name": name,
-            "description": desc_input.value.strip(),
-            "extensions": extensions,
-            "exclude_dirs": exclude_dirs,
-        }
-
-        if self._edit_mode == "existing":
-            payload["original_name"] = self._current_profile
-        else:
-            self._current_profile = name
-
-        return payload
-
-    def _collect_settings(self) -> Optional[Dict[str, Any]]:
-        size_input = self.query_one("#pref-max-size", Input)
-        follow_checkbox = self.query_one("#pref-follow-symlinks", Checkbox)
-
-        value = size_input.value.strip()
-        if value and not value.isdigit():
-            self._set_message("Max file size must be a positive integer.", tone="error")
-            size_input.focus()
-            return None
-
-        max_size = int(value) if value else None
-        return {
-            "max_file_size_mb": max_size,
-            "follow_symlinks": bool(follow_checkbox.value),
-        }
-
-    def _apply_general_settings(self) -> None:
-        size_input = self.query_one("#pref-max-size", Input)
-        follow_checkbox = self.query_one("#pref-follow-symlinks", Checkbox)
-        max_size = self._summary.get("max_file_size_mb")
-        size_input.value = str(max_size) if max_size is not None else ""
-        follow_checkbox.value = bool(self._summary.get("follow_symlinks"))
-
-    def _sync_profile_selection(self, preferred: Optional[str]) -> None:
-        list_view = self.query_one("#pref-profile-list", ListView)
-        target_index = 0
-        names = []
-        for idx, child in enumerate(list_view.children):
-            data_value = getattr(child, "data", None)
-            names.append(data_value)
-            if preferred and data_value == preferred:
-                target_index = idx
-        if list_view.children:
-            list_view.index = target_index
-            selected = names[target_index]
-            if selected:
-                self._load_profile(selected)
-            else:
-                self._prepare_new_profile()
-        else:
-            self._prepare_new_profile()
-
-    def update_state(
-        self,
-        summary: Dict[str, Any],
-        profiles: Dict[str, Dict[str, Any]],
-        message: Optional[str] = None,
-        tone: str = "info",
-    ) -> None:
-        self._summary = summary or {}
-        self._profiles = dict(sorted((profiles or {}).items()))
-        self._active_profile = self._summary.get("current_profile")
-        self._rebuild_profile_list()
-        next_profile = self._current_profile if self._current_profile in self._profiles else self._active_profile
-        self._sync_profile_selection(next_profile)
-        self._apply_general_settings()
-        if message is not None:
-            self._set_message(message, tone=tone)
-
-    def _rebuild_profile_list(self) -> None:
-        list_view = self.query_one("#pref-profile-list", ListView)
-        try:
-            list_view.clear()
-        except AttributeError:  # pragma: no cover - compatibility fallback
-            for child in list(list_view.children):
-                child.remove()
-        for name in self._profiles.keys():
-            item = ListItem(Label(name))
-            item.data = name  # type: ignore[attr-defined]
-            try:
-                list_view.append(item)
-            except AttributeError:  # pragma: no cover - compatibility fallback
-                list_view.mount(item)
-
-    def _set_message(self, text: str, *, tone: str) -> None:
-        message_widget = self.query_one("#pref-message", Static)
-        message_widget.update(text)
-        for class_name in ("info", "warning", "error", "success"):
-            message_widget.remove_class(class_name)
-        message_widget.add_class(tone)
-
-    def dismiss(self, result: Optional[object] = None) -> None:  # pragma: no cover - UI callback
-        super().dismiss(result)
-        callback = getattr(self.app, "on_preferences_screen_closed", None)
-        if callable(callback):
-            callback()
-
-class ScanResultAction(Message):
-    """Raised when the user selects an action from the scan results dialog."""
-
-    def __init__(self, action: str) -> None:
-        super().__init__()
-        self.action = action
-
-
-class ScanResultsScreen(ModalScreen[None]):
-    """Modal dialog presenting post-scan actions and output."""
-
-    def __init__(self, summary_text: str, actions: List[tuple[str, str]]) -> None:
-        super().__init__()
-        self._summary_text = summary_text
-        self._actions = actions
-        self._detail_context = "Scan result detail"
-        self._lines: List[str] = []
-
-    def compose(self) -> ComposeResult:
-        button_widgets = [
-            Button(label, id=f"scan-action-{action}") for action, label in self._actions
-        ]
-        actions_layout = Vertical(*button_widgets, classes="scan-actions-list") if button_widgets else Vertical(classes="scan-actions-list")
-        log_widget = Log(highlight=False, id="scan-results-log")
-        yield Vertical(
-            Static("Scan results", classes="dialog-title"),
-            log_widget,
-            Static("", id="scan-results-message", classes="dialog-message"),
-            ScrollableContainer(actions_layout, id="scan-actions-container", classes="scan-actions-container"),
-            classes="dialog scan-results-dialog",
-        )
-
-    def on_mount(self, _: Mount) -> None:  # pragma: no cover - UI setup
-        self.display_output(self._summary_text, context="Overview")
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        button_id = event.button.id or ""
-        if not button_id.startswith("scan-action-"):
-            return
-        action = button_id.replace("scan-action-", "", 1)
-        if action == "close":
-            self.dismiss(None)
-            return
-        self.app.post_message(ScanResultAction(action))
-
-    def set_detail_context(self, title: str) -> None:
-        self._detail_context = title or "Scan result detail"
-
-    def display_output(
-        self,
-        text: str,
-        *,
-        context: Optional[str] = None,
-        allow_horizontal: bool = False,
-    ) -> None:
-        if context:
-            self.set_detail_context(context)
-        log = self.query_one("#scan-results-log", Log)
-        log.clear()
-        lines = text.splitlines() or [""]
-        self._lines = [raw_line or "" for raw_line in lines]
-        if self._detail_context:
-            log.write(f"[bold]{self._detail_context}[/bold]")
-            log.write("")
-        for line in self._lines:
-            if "[" in line and "]" in line:
-                try:
-                    log.write(line)
-                    continue
-                except Exception:
-                    pass
-            log.write(line or " ")
-
-    def set_message(self, message: str, *, tone: str = "info") -> None:
-        widget = self.query_one("#scan-results-message", Static)
-        widget.update(message)
-        for class_name in ("info", "warning", "error", "success"):
-            widget.remove_class(class_name)
-        widget.add_class(tone)
-
-    def dismiss(self, result: Optional[object] = None) -> None:  # pragma: no cover - cleanup hook
-        super().dismiss(result)
-        callback = getattr(self.app, "on_scan_results_screen_closed", None)
-        if callable(callback):
-            callback()
 
 
 class PortfolioTextualApp(App):
@@ -727,6 +85,7 @@ class PortfolioTextualApp(App):
     MENU_ITEMS = [
         ("Account", "Sign in to Supabase or sign out of the current session."),
         ("Run Portfolio Scan", "Prepare an archive or directory and run the portfolio scan workflow."),
+        ("View Last Analysis", "Reopen the results from the most recent scan without rescanning."),
         ("Settings & User Preferences", "Manage scan profiles, file filters, and other preferences."),
         ("Consent Management", "Review and update required and external consent settings."),
         ("AI-Powered Analysis", "Trigger AI-based analysis for recent scan results (requires consent)."),
@@ -740,36 +99,23 @@ class PortfolioTextualApp(App):
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self._last_scan_target: Optional[Path] = None
-        self._session_path = Path.home() / ".portfolio_cli_session.json"
-        self._session: Optional[Session] = None
-        self._last_email: str = ""
-        self._auth: Optional[SupabaseAuth] = None
-        self._auth_error: Optional[str] = None
-        self._consent_validator = ConsentValidator()
-        self._consent_record: Optional[ConsentRecord] = None
-        self._consent_error: Optional[str] = None
-        self._preferences_summary: Optional[Dict[str, Any]] = None
-        self._preferences_profiles: Dict[str, Dict[str, Any]] = {}
-        self._preferences_error: Optional[str] = None
+        self._session_state = SessionState()
+        self._consent_state = ConsentState()
+        self._preferences_state = PreferencesState()
+        self._scan_state = ScanState()
+        self._ai_state = AIState()
+        self._scan_service = ScanService()
+        self._session_service = SessionService(reporter=self._report_filesystem_issue)
+        self._preferences_service = PreferencesService(media_extensions=MEDIA_EXTENSIONS)
+        self._ai_service = AIService()
+        self._code_service = CodeAnalysisService()
         self._preferences_screen = None
-        self._preferences_config: Dict[str, Any] = {}
-        self._last_parse_result: Optional[ParseResult] = None
-        self._last_scan_archive: Optional[Path] = None
-        self._last_languages: List[dict] = []
-        self._has_media_files: bool = False
-        self._last_git_repos: List[Path] = []
-        self._last_git_analysis: List[dict] = []
-        self._last_media_analysis: Optional[dict] = None
-        self._last_relevant_only: bool = True
         self._scan_results_screen: Optional[ScanResultsScreen] = None
         self._media_analyzer = MediaAnalyzer()
-        self._login_task: Optional[asyncio.Task] = None
-        self._llm_client = None
-        self._llm_api_key: Optional[str] = None
-        self._last_ai_analysis: Optional[dict] = None
-        self._ai_task: Optional[asyncio.Task] = None
-        self._pending_ai_analysis: bool = False
+        self._media_vision_ready = media_vision_capabilities_enabled()
+        self._debug_log_path = Path.home() / ".textual_ai_debug.log"
+        self._ai_output_path = Path.cwd() / "ai-analysis-latest.md"
+        self._debug_log("PortfolioTextualApp initialized")
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -827,6 +173,8 @@ class PortfolioTextualApp(App):
         detail_panel = self.query_one("#detail", Static)
         if label == "Account":
             detail_panel.update(self._render_account_detail())
+        elif label == "View Last Analysis":
+            detail_panel.update(self._render_last_scan_detail())
         elif label == "Settings & User Preferences":
             detail_panel.update(self._render_preferences_detail())
         elif label == "Consent Management":
@@ -845,7 +193,7 @@ class PortfolioTextualApp(App):
             return
 
         if label == "Account":
-            if self._session:
+            if self._session_state.session:
                 self._logout()
             else:
                 self._show_login_dialog()
@@ -855,11 +203,20 @@ class PortfolioTextualApp(App):
             return
 
         if label == "Run Portfolio Scan":
-            self.post_message(RunScanRequested())
+            dispatch_message(self, RunScanRequested())
+            return
+
+        if label == "View Last Analysis":
+            if not self._scan_state.parse_result:
+                self._show_status("Run a portfolio scan to populate this view.", "warning")
+                self._refresh_current_detail()
+                return
+            self._show_status("Opening the most recent scan results…", "info")
+            self._show_scan_results_dialog()
             return
 
         if label == "Settings & User Preferences":
-            if not self._session:
+            if not self._session_state.session:
                 self._show_status("Sign in to manage preferences.", "warning")
                 self._update_detail(index)
                 return
@@ -869,7 +226,7 @@ class PortfolioTextualApp(App):
             return
 
         if label == "Consent Management":
-            if not self._session:
+            if not self._session_state.session:
                 self._show_status("Sign in to manage consent.", "warning")
                 self._update_detail(index)
                 return
@@ -884,7 +241,7 @@ class PortfolioTextualApp(App):
         self._show_status(f"{label} is coming soon. Hang tight!", "info")
 
     def action_toggle_account(self) -> None:
-        if self._session:
+        if self._session_state.session:
             self._logout()
         else:
             self._show_login_dialog()
@@ -893,11 +250,11 @@ class PortfolioTextualApp(App):
         detail_panel = self.query_one("#detail", Static)
         detail_panel.update(self._render_ai_detail())
 
-        if not self._session:
+        if not self._session_state.session:
             self._show_status("Sign in to use AI-powered analysis.", "warning")
             return
 
-        if not self._consent_record:
+        if not self._consent_state.record:
             self._show_status("Grant required consent before running AI analysis.", "warning")
             return
 
@@ -905,28 +262,40 @@ class PortfolioTextualApp(App):
             self._show_status("Enable external services consent to use AI analysis.", "warning")
             return
 
-        if not self._last_parse_result:
+        if not self._scan_state.parse_result:
             self._show_status("Run a scan before starting AI analysis.", "warning")
             return
 
-        if self._ai_task and not self._ai_task.done():
+        if self._ai_state.task and not self._ai_state.task.done():
             self._show_status("AI analysis already in progress…", "info")
             return
 
-        if self._llm_client is None:
-            self._pending_ai_analysis = True
+        if self._ai_state.client is None:
+            self._ai_state.pending_analysis = True
             self._show_ai_key_dialog()
             return
 
         self._start_ai_analysis()
 
     def _show_status(self, message: str, tone: str) -> None:
+        try:
+            print(f"STATUS: {message} [{tone}]", file=sys.__stderr__)
+        except Exception:
+            pass
         status_panel = self.query_one("#status", Static)
         status_panel.update(message)
         for tone_name in ("info", "success", "warning", "error"):
             status_panel.remove_class(tone_name)
         status_panel.add_class(tone)
         return
+
+    def _debug_log(self, message: str) -> None:
+        try:
+            timestamp = datetime.now().isoformat(timespec="seconds")
+            with self._debug_log_path.open("a", encoding="utf-8") as fp:
+                fp.write(f"{timestamp} | {message}\n")
+        except Exception:
+            pass
 
     def _report_filesystem_issue(self, message: str, tone: str = "error") -> None:
         """Show filesystem-related warnings when the UI is ready; otherwise log them."""
@@ -960,7 +329,7 @@ class PortfolioTextualApp(App):
         self._show_status(status_message, "error")
 
     async def on_run_scan_requested(self, _: RunScanRequested) -> None:
-        default_path = str(self._last_scan_target) if self._last_scan_target else ""
+        default_path = str(self._scan_state.target) if self._scan_state.target else ""
         self.push_screen(ScanConfigScreen(default_path=default_path))
 
     async def _run_scan(self, target: Path, relevant_only: bool) -> None:
@@ -971,8 +340,8 @@ class PortfolioTextualApp(App):
         self._reset_scan_state()
 
         try:
-            archive_path, parse_result = await asyncio.to_thread(
-                self._perform_scan, target, relevant_only, preferences
+            run_result = await asyncio.to_thread(
+                self._scan_service.run_scan, target, relevant_only, preferences
             )
         except ParserError as exc:
             self._surface_error(
@@ -1010,99 +379,52 @@ class PortfolioTextualApp(App):
             )
             return
 
-        self._last_scan_target = target
-        self._last_scan_archive = archive_path
-        self._last_parse_result = parse_result
-        self._last_relevant_only = relevant_only
-        self._last_languages = summarize_languages(parse_result.files) if parse_result.files else []
-        self._last_git_repos = self._detect_git_repositories(target)
-        self._last_git_analysis = []
-        self._has_media_files = any(getattr(meta, "media_info", None) for meta in parse_result.files)
-        self._last_media_analysis = None
+        self._scan_state.target = target
+        self._scan_state.archive = run_result.archive_path
+        self._scan_state.parse_result = run_result.parse_result
+        self._scan_state.relevant_only = relevant_only
+        self._scan_state.languages = run_result.languages
+        self._scan_state.git_repos = run_result.git_repos
+        self._scan_state.git_analysis = []
+        self._scan_state.has_media_files = run_result.has_media_files
+        self._scan_state.media_analysis = None
+        self._scan_state.pdf_candidates = run_result.pdf_candidates
+        self._scan_state.pdf_results = []
+        self._scan_state.pdf_summaries = []
+        self._scan_state.code_file_count = len(self._code_service.code_file_candidates(run_result.parse_result))
+        self._scan_state.code_analysis_result = None
+        self._scan_state.code_analysis_error = None
         self._show_status("Scan completed successfully.", "success")
-        detail_panel.update(self._format_scan_overview())
+        detail_panel.update(self._scan_service.format_scan_overview(self._scan_state))
         self._show_scan_results_dialog()
 
-    def _perform_scan(
-        self,
-        target: Path,
-        relevant_only: bool,
-        preferences: ScanPreferences,
-    ) -> tuple[Path, ParseResult]:
-        try:
-            archive_path = ensure_zip(target, preferences=preferences)
-        except PermissionError as exc:
-            raise PermissionError(f"Permission denied while preparing archive: {exc}") from exc
-        except OSError as exc:
-            raise OSError(f"Unable to prepare archive for scan: {exc}") from exc
-        parse_result = parse_zip(
-            archive_path,
-            relevant_only=relevant_only,
-            preferences=preferences,
-        )
-        return archive_path, parse_result
-
-    def _format_scan_overview(self) -> str:
-        lines = ["[b]Run Portfolio Scan[/b]"]
-        if self._last_scan_target:
-            lines.append(f"Target: {self._last_scan_target}")
-        if self._last_scan_archive:
-            lines.append(f"Archive: {self._last_scan_archive}")
-        lines.append(f"Relevant files only: {'Yes' if self._last_relevant_only else 'No'}")
-        lines.append("")
-        lines.append("[b]Summary[/b]")
-        summary = dict(self._last_parse_result.summary) if self._last_parse_result else {}
-        files_processed = summary.get("files_processed")
-        if files_processed is not None:
-            lines.append(f"- Files processed: {files_processed}")
-        bytes_processed = summary.get("bytes_processed")
-        if bytes_processed is not None:
-            lines.append(f"- Bytes processed: {bytes_processed}")
-        issues_count = summary.get("issues_count")
-        if issues_count is not None:
-            lines.append(f"- Issues: {issues_count}")
-        filtered_out = summary.get("filtered_out")
-        if filtered_out is not None and self._last_relevant_only:
-            lines.append(f"- Filtered out: {filtered_out}")
-
-        if self._last_languages:
-            lines.append("")
-            lines.append("[b]Top languages[/b]")
-            for entry in self._last_languages[:5]:
-                language = entry.get("language", "Unknown")
-                percentage = entry.get("file_percent", 0.0)
-                count = entry.get("files", 0)
-                lines.append(f"- {language}: {percentage:.1f}% ({count} files)")
-
-        if self._last_git_repos:
-            lines.append("")
-            lines.append(f"Detected git repositories: {len(self._last_git_repos)}")
-        if self._has_media_files:
-            lines.append("Media files detected: yes")
-
-        return "\n".join(lines)
-
     def _show_scan_results_dialog(self) -> None:
-        if not self._last_parse_result:
+        if not self._scan_state.parse_result:
             return
         actions: List[tuple[str, str]] = [
             ("summary", "Show overview"),
             ("files", "View file list"),
             ("languages", "Language breakdown"),
-            ("export", "Export JSON report"),
         ]
-        if self._last_git_repos:
+        if self._scan_state.code_file_count:
+            actions.append(("code", "Code analysis"))
+        actions.append(("export", "Export JSON report"))
+        if self._scan_state.pdf_candidates:
+            label = "View PDF summaries" if self._scan_state.pdf_summaries else "Analyze PDF files"
+            actions.append(("pdf", label))
+        if self._scan_state.git_repos:
             actions.append(("git", "Run Git analysis"))
-        if self._has_media_files:
+        if self._scan_state.has_media_files:
             actions.append(("media", "View media insights"))
         actions.append(("close", "Close"))
         self._close_scan_results_screen()
-        screen = ScanResultsScreen(self._format_scan_overview(), actions)
+        overview = self._scan_service.format_scan_overview(self._scan_state)
+        screen = ScanResultsScreen(overview, actions)
         self._scan_results_screen = screen
         self.push_screen(screen)
         try:
             screen.set_message("Select an action to explore scan results.", tone="info")
-            screen.display_output(self._format_scan_overview(), context="Overview")
+            screen.display_output(overview, context="Overview")
         except Exception:
             pass
 
@@ -1117,36 +439,31 @@ class PortfolioTextualApp(App):
             return
 
         if action == "summary":
-            screen.display_output(self._format_scan_overview(), context="Overview")
+            screen.display_output(self._scan_service.format_scan_overview(self._scan_state), context="Overview")
             screen.set_message("Overview refreshed.", tone="success")
             return
 
-        if self._last_parse_result is None:
+        if self._scan_state.parse_result is None:
             screen.set_message("No scan data available.", tone="error")
             return
 
         if action == "files":
             screen.set_message("Rendering file list…", tone="info")
             try:
-                lines = await asyncio.to_thread(
-                    render_table,
-                    self._last_scan_archive or Path(""),
-                    self._last_parse_result,
+                rows = self._scan_service.build_file_listing_rows(
+                    self._scan_state.parse_result,
+                    self._scan_state.relevant_only,
                 )
             except Exception as exc:  # pragma: no cover - rendering safeguard
                 screen.set_message(f"Failed to render file list: {exc}", tone="error")
                 return
-            screen.display_output(
-                "\n".join(lines),
-                context="Files",
-                allow_horizontal=True,
-            )
+            screen.display_file_list(rows, context="Files")
             screen.set_message("File list ready.", tone="success")
             return
 
         if action == "languages":
             screen.set_message("Preparing language breakdown…", tone="info")
-            table = render_language_table(self._last_languages)
+            table = render_language_table(self._scan_state.languages)
             if not table:
                 screen.display_output("No language data available.", context="Language breakdown")
                 screen.set_message("Language statistics unavailable for this scan.", tone="warning")
@@ -1155,8 +472,12 @@ class PortfolioTextualApp(App):
             screen.set_message("Language breakdown ready.", tone="success")
             return
 
+        if action == "code":
+            await self._handle_code_analysis_action(screen)
+            return
+
         if action == "export":
-            if self._last_scan_archive is None:
+            if self._scan_state.archive is None:
                 screen.set_message("Scan archive missing; rerun the scan before exporting.", tone="error")
                 return
             screen.set_message("Exporting scan report…", tone="info")
@@ -1169,8 +490,36 @@ class PortfolioTextualApp(App):
             screen.set_message(f"Report saved to {destination}", tone="success")
             return
 
+        if action == "pdf":
+            if not self._scan_state.pdf_candidates:
+                screen.display_output("No PDF files were detected in the last scan.", context="PDF analysis")
+                screen.set_message("No PDF files available for analysis.", tone="warning")
+                return
+            if not PDF_AVAILABLE:
+                screen.display_output(
+                    "PDF analysis requires the optional 'pypdf' dependency.\n"
+                    "Install it with `pip install pypdf` and rerun the scan.",
+                    context="PDF analysis",
+                )
+                screen.set_message("PDF analysis dependencies missing.", tone="error")
+                return
+            if not self._scan_state.pdf_summaries:
+                screen.set_message("Analyzing PDF files…", tone="info")
+                try:
+                    await asyncio.to_thread(self._analyze_pdfs_sync)
+                except Exception as exc:  # pragma: no cover - parsing safeguard
+                    screen.set_message(f"Failed to analyze PDFs: {exc}", tone="error")
+                    return
+            if not self._scan_state.pdf_summaries:
+                screen.display_output("Unable to generate PDF summaries.", context="PDF analysis")
+                screen.set_message("PDF analysis did not produce any summaries.", tone="warning")
+                return
+            screen.display_output(self._format_pdf_summaries(), context="PDF summaries")
+            screen.set_message("PDF summaries ready.", tone="success")
+            return
+
         if action == "git":
-            if not self._last_git_repos:
+            if not self._scan_state.git_repos:
                 screen.display_output("No git repositories detected in the last scan.", context="Git analysis")
                 screen.set_message("Run another scan with git repositories present.", tone="warning")
                 return
@@ -1185,7 +534,7 @@ class PortfolioTextualApp(App):
             return
 
         if action == "media":
-            if not self._has_media_files:
+            if not self._scan_state.has_media_files:
                 screen.display_output("No media files were detected in the last scan.", context="Media insights")
                 screen.set_message("Run another scan with media assets to view insights.", tone="warning")
                 return
@@ -1201,45 +550,16 @@ class PortfolioTextualApp(App):
 
         screen.set_message("Unsupported action.", tone="error")
 
-    def _detect_git_repositories(self, target: Path) -> List[Path]:
-        repos: List[Path] = []
-        seen: set[Path] = set()
-
-        base = target if target.is_dir() else target.parent
-        if not base.exists():
-            return repos
-
-        def _record(path: Path) -> None:
-            resolved = path.resolve()
-            if resolved not in seen:
-                seen.add(resolved)
-                repos.append(path)
-
-        if (base / ".git").is_dir():
-            _record(base)
-
-        if target.is_dir():
-            try:
-                for dirpath, dirnames, _ in os.walk(target):
-                    if ".git" in dirnames:
-                        repo_root = Path(dirpath)
-                        _record(repo_root)
-                        dirnames.remove(".git")
-            except Exception:  # pragma: no cover - filesystem safety
-                return repos
-
-        return repos
-
     def _collect_git_analysis(self) -> List[dict]:
-        if self._last_git_analysis:
-            return self._last_git_analysis
+        if self._scan_state.git_analysis:
+            return self._scan_state.git_analysis
         analyses: List[dict] = []
-        for repo in self._last_git_repos:
+        for repo in self._scan_state.git_repos:
             try:
                 analyses.append(analyze_git_repo(str(repo)))
             except Exception as exc:
                 analyses.append({"path": str(repo), "error": str(exc)})
-        self._last_git_analysis = analyses
+        self._scan_state.git_analysis = analyses
         return analyses
 
     def _format_git_analysis(self, analyses: List[dict]) -> str:
@@ -1296,12 +616,12 @@ class PortfolioTextualApp(App):
         return "\n".join(lines).strip()
 
     def _collect_media_analysis(self) -> dict:
-        if self._last_media_analysis is not None:
-            return self._last_media_analysis
-        if not self._last_parse_result:
+        if self._scan_state.media_analysis is not None:
+            return self._scan_state.media_analysis
+        if not self._scan_state.parse_result:
             return {}
-        analysis = self._media_analyzer.analyze(self._last_parse_result.files)
-        self._last_media_analysis = analysis
+        analysis = self._media_analyzer.analyze(self._scan_state.parse_result.files)
+        self._scan_state.media_analysis = analysis
         return analysis
 
     def _format_media_analysis(self, analysis: dict | None) -> str:
@@ -1313,65 +633,398 @@ class PortfolioTextualApp(App):
         insights = analysis.get("insights") or []
         issues = analysis.get("issues") or []
 
-        lines: List[str] = ["Media Summary:"]
+        lines: List[str] = []
+        if not self._media_vision_ready:
+            lines.append(
+                "[#facc15]Advanced classifiers unavailable. "
+                "Install torch/torchvision/torchaudio + librosa/soundfile to enable content labels and transcripts.[/#facc15]"
+            )
+            lines.append("")
         lines.append(
-            f"  Total: {summary.get('total_media_files', 0)} | Images: {summary.get('image_files', 0)} | "
-            f"Audio: {summary.get('audio_files', 0)} | Video: {summary.get('video_files', 0)}"
+            "Summary:"
+            f"\n  • Total media files: {summary.get('total_media_files', 0)}"
+            f"\n  • Images: {summary.get('image_files', 0)}"
+            f"\n  • Audio: {summary.get('audio_files', 0)}"
+            f"\n  • Video: {summary.get('video_files', 0)}"
         )
 
         image_metrics = metrics.get("images") or {}
-        if image_metrics:
-            lines.append("  Image metrics:")
-            avg = image_metrics.get("average_resolution")
-            if isinstance(avg, dict):
-                dims = avg.get("dimensions") or [0, 0]
-                lines.append(f"    Average resolution: {dims[0]}x{dims[1]}")
+        if image_metrics.get("count"):
+            lines.append("")
+            lines.append("[i]Image metrics[/i]")
+            avg_w = image_metrics.get("average_width")
+            avg_h = image_metrics.get("average_height")
+            if avg_w and avg_h:
+                lines.append(f"  • Average resolution: {avg_w:.0f}×{avg_h:.0f}")
             max_res = image_metrics.get("max_resolution")
             if isinstance(max_res, dict):
-                dims = max_res.get("dimensions") or [0, 0]
-                lines.append(f"    Largest: {dims[0]}x{dims[1]} ({max_res.get('path', 'unknown')})")
+                dims = max_res.get("dimensions") or (0, 0)
+                lines.append(
+                    f"  • Largest asset: {dims[0]}×{dims[1]} ({max_res.get('path', 'unknown')})"
+                )
+            min_res = image_metrics.get("min_resolution")
+            if isinstance(min_res, dict):
+                dims = min_res.get("dimensions") or (0, 0)
+                lines.append(
+                    f"  • Smallest asset: {dims[0]}×{dims[1]} ({min_res.get('path', 'unknown')})"
+                )
+            aspect = image_metrics.get("common_aspect_ratios") or {}
+            if aspect:
+                preview = ", ".join(f"{ratio} ({count})" for ratio, count in list(aspect.items())[:3])
+                lines.append(f"  • Common aspect ratios: {preview}")
+            top_labels = image_metrics.get("top_labels") or []
+            if top_labels:
+                label_summary = ", ".join(
+                    f"{entry.get('label')} ({entry.get('share', 0) * 100:.0f}%)"
+                    for entry in top_labels[:3]
+                    if entry.get("label")
+                )
+                if label_summary:
+                    lines.append(f"  • Content highlights: {label_summary}")
+            sample_summaries = image_metrics.get("content_summaries") or []
+            if sample_summaries:
+                lines.append("  • Sample descriptions:")
+                for entry in sample_summaries[:3]:
+                    summary = entry.get("summary")
+                    path = entry.get("path", "unknown")
+                    if summary:
+                        lines.append(f"    - {summary} ({path})")
 
-        audio_metrics = metrics.get("audio") or {}
-        if audio_metrics:
-            lines.append("  Audio metrics:")
-            lines.append(
-                f"    Total duration: {audio_metrics.get('total_duration', 0):.1f}s | "
-                f"Average: {audio_metrics.get('average_duration', 0):.1f}s"
-            )
+        def _format_timed_metrics(label: str, payload: dict[str, Any]) -> None:
+            if not payload.get("count"):
+                return
+            lines.append("")
+            lines.append(f"[i]{label} metrics[/i]")
+            total = payload.get("total_duration_seconds", 0.0)
+            avg = payload.get("average_duration_seconds", 0.0)
+            lines.append(f"  • Total duration: {total:.1f}s (avg {avg:.1f}s)")
+            longest = payload.get("longest_clip")
+            if isinstance(longest, dict):
+                lines.append(
+                    f"  • Longest clip: {longest.get('path', 'unknown')} "
+                    f"({longest.get('duration_seconds', 0):.1f}s)"
+                )
+            shortest = payload.get("shortest_clip")
+            if isinstance(shortest, dict):
+                lines.append(
+                    f"  • Shortest clip: {shortest.get('path', 'unknown')} "
+                    f"({shortest.get('duration_seconds', 0):.1f}s)"
+                )
+            bitrate_stats = payload.get("bitrate_stats")
+            if bitrate_stats:
+                lines.append(
+                    "  • Bitrate: "
+                    f"{bitrate_stats.get('average', 0)} kbps avg "
+                    f"(min {bitrate_stats.get('min', 0)}, max {bitrate_stats.get('max', 0)})"
+                )
+            sample_stats = payload.get("sample_rate_stats")
+            if sample_stats:
+                lines.append(
+                    "  • Sample rate: "
+                    f"{sample_stats.get('average', 0)} Hz avg "
+                    f"(min {sample_stats.get('min', 0)}, max {sample_stats.get('max', 0)})"
+                )
+            channels = payload.get("channel_distribution") or {}
+            if channels:
+                channel_summary = ", ".join(f"{ch}ch × {count}" for ch, count in channels.items())
+                lines.append(f"  • Channel layout: {channel_summary}")
+            top_labels = payload.get("top_labels") or []
+            if top_labels:
+                label_summary = ", ".join(
+                    f"{entry.get('label')} ({entry.get('share', 0) * 100:.0f}%)"
+                    for entry in top_labels[:3]
+                    if entry.get("label")
+                )
+                if label_summary:
+                    lines.append(f"  • Content highlights: {label_summary}")
+            sample_summaries = payload.get("content_summaries") or []
+            if sample_summaries:
+                lines.append("  • Sample descriptions:")
+                for entry in sample_summaries[:3]:
+                    summary = entry.get("summary")
+                    path = entry.get("path", "unknown")
+                    if summary:
+                        lines.append(f"    - {summary} ({path})")
+            transcripts = payload.get("transcript_excerpts") or []
+            if transcripts:
+                lines.append("  • Transcript excerpts:")
+                for entry in transcripts[:2]:
+                    excerpt = entry.get("excerpt")
+                    path = entry.get("path", "unknown")
+                    if excerpt:
+                        lines.append(f"    - {excerpt} [{path}]")
+            if label == "Audio":
+                tempo = payload.get("tempo_stats")
+                if tempo:
+                    lines.append(
+                        "  • Tempo: "
+                        f"avg {tempo.get('average', 0):.0f} BPM "
+                        f"(range {tempo.get('min', 0):.0f}-{tempo.get('max', 0):.0f})"
+                    )
+                top_genres = payload.get("top_genres") or []
+                if top_genres:
+                    genre_summary = ", ".join(
+                        f"{entry.get('genre')} ({entry.get('share', 0) * 100:.0f}%)"
+                        for entry in top_genres[:3]
+                        if entry.get("genre")
+                    )
+                    if genre_summary:
+                        lines.append(f"  • Genre mix: {genre_summary}")
 
-        video_metrics = metrics.get("video") or {}
-        if video_metrics:
-            lines.append("  Video metrics:")
-            lines.append(
-                f"    Total duration: {video_metrics.get('total_duration', 0):.1f}s | "
-                f"Average: {video_metrics.get('average_duration', 0):.1f}s"
-            )
+        _format_timed_metrics("Audio", metrics.get("audio") or {})
+        _format_timed_metrics("Video", metrics.get("video") or {})
 
         if insights:
-            lines.append("  Insights:")
+            lines.append("")
+            lines.append("Insights:")
             for item in insights:
-                lines.append(f"    - {item}")
+                lines.append(f"  • {item}")
 
         if issues:
-            lines.append("  Potential issues:")
+            lines.append("")
+            lines.append("Potential issues:")
             for item in issues:
-                lines.append(f"    - {item}")
+                lines.append(f"  • {item}")
 
         return "\n".join(lines)
 
+    async def _handle_code_analysis_action(self, screen: ScanResultsScreen) -> None:
+        if self._scan_state.code_file_count <= 0:
+            screen.display_output(
+                "No supported code files were detected in the last scan.", context="Code analysis"
+            )
+            screen.set_message("Run another scan with source files present.", tone="warning")
+            return
+        if not self._scan_state.target:
+            screen.display_output("Scan target unavailable. Rerun the scan to analyze code.", context="Code analysis")
+            screen.set_message("No scan target available.", tone="warning")
+            return
+
+        if self._scan_state.code_analysis_result is None:
+            screen.set_message("Analyzing codebase…", tone="info")
+            try:
+                result = await asyncio.to_thread(self._perform_code_analysis)
+            except CodeAnalysisUnavailableError as exc:
+                guidance = (
+                    "Code analysis requires the optional tree-sitter parsers.\n"
+                    "Install the language bindings listed in the README and rerun the scan."
+                )
+                screen.display_output(guidance, context="Code analysis")
+                screen.set_message(str(exc), tone="error")
+                self._scan_state.code_analysis_error = str(exc)
+                return
+            except CodeAnalysisError as exc:
+                screen.display_output(f"Unable to analyze code: {exc}", context="Code analysis")
+                screen.set_message("Code analysis failed.", tone="error")
+                self._scan_state.code_analysis_error = str(exc)
+                return
+            self._scan_state.code_analysis_result = result
+            self._scan_state.code_analysis_error = None
+
+        summary_text = self._code_service.format_summary(self._scan_state.code_analysis_result)
+        screen.display_output(summary_text, context="Code analysis")
+        screen.set_message("Code analysis ready.", tone="success")
+
+    def _perform_code_analysis(self):
+        target = self._scan_state.target
+        if target is None:
+            raise CodeAnalysisError("No scan target available.")
+        preferences = None
+        try:
+            preferences = self._current_scan_preferences()
+        except Exception:
+            preferences = None
+        return self._code_service.run_analysis(target, preferences)
+
+    def _analyze_pdfs_sync(self) -> None:
+        """Run local PDF parsing and summarization."""
+        if not PDF_AVAILABLE:
+            raise RuntimeError("PDF analysis is not available. Install the 'pypdf' extra.")
+        if not self._scan_state.pdf_candidates:
+            raise RuntimeError("No PDF files detected in the last scan.")
+        archive_path = self._scan_state.archive
+        base_path = self._scan_state.target if self._scan_state.target and self._scan_state.target.is_dir() else None
+        if archive_path is None and base_path is None:
+            raise RuntimeError("Scan artifacts missing; rerun the scan before analyzing PDFs.")
+
+        parser = create_parser(max_file_size_mb=25.0, max_pages_per_pdf=200)
+        summarizer = create_summarizer(max_summary_sentences=7, keyword_count=15)
+
+        self._scan_state.pdf_results = []
+        summaries: List[DocumentSummary] = []
+        archive_reader: Optional[zipfile.ZipFile] = None
+        try:
+            if archive_path and archive_path.exists():
+                archive_reader = zipfile.ZipFile(archive_path, "r")
+            for meta in self._scan_state.pdf_candidates:
+                pdf_bytes = self._read_pdf_from_archive(meta, archive_reader)
+                if pdf_bytes is None and base_path:
+                    pdf_bytes = self._read_pdf_from_directory(meta, base_path)
+                if pdf_bytes is None:
+                    summaries.append(
+                        DocumentSummary(
+                            file_name=Path(meta.path).name,
+                            summary_text="",
+                            key_points=[],
+                            keywords=[],
+                            statistics={},
+                            success=False,
+                            error_message="Unable to read PDF bytes from archive or filesystem.",
+                        )
+                    )
+                    continue
+                try:
+                    parse_result = parser.parse_from_bytes(pdf_bytes, meta.path)
+                except Exception as exc:
+                    summaries.append(
+                        DocumentSummary(
+                            file_name=Path(meta.path).name,
+                            summary_text="",
+                            key_points=[],
+                            keywords=[],
+                            statistics={},
+                            success=False,
+                            error_message=f"Failed to parse PDF: {exc}",
+                        )
+                    )
+                    continue
+                self._scan_state.pdf_results.append(parse_result)
+                if parse_result.success and parse_result.text_content:
+                    try:
+                        summary = summarizer.generate_summary(
+                            parse_result.text_content,
+                            parse_result.file_name,
+                        )
+                    except Exception as exc:
+                        summaries.append(
+                            DocumentSummary(
+                                file_name=parse_result.file_name,
+                                summary_text="",
+                                key_points=[],
+                                keywords=[],
+                                statistics={},
+                                success=False,
+                                error_message=f"Failed to summarize PDF: {exc}",
+                            )
+                        )
+                        continue
+                    summaries.append(summary)
+                else:
+                    summaries.append(
+                        DocumentSummary(
+                            file_name=parse_result.file_name,
+                            summary_text="",
+                            key_points=[],
+                            keywords=[],
+                            statistics={},
+                            success=False,
+                            error_message=parse_result.error_message or "Unable to parse PDF content.",
+                        )
+                    )
+        finally:
+            if archive_reader is not None:
+                archive_reader.close()
+        self._scan_state.pdf_summaries = summaries
+
+    def _read_pdf_from_archive(
+        self,
+        meta: FileMetadata,
+        archive: Optional[zipfile.ZipFile],
+    ) -> Optional[bytes]:
+        if archive is None:
+            return None
+        for candidate in self._pdf_archive_candidates(meta.path):
+            try:
+                return archive.read(candidate)
+            except KeyError:
+                continue
+        return None
+
+    def _read_pdf_from_directory(self, meta: FileMetadata, base_path: Path) -> Optional[bytes]:
+        candidate = self._resolve_pdf_filesystem_path(meta.path, base_path)
+        if candidate and candidate.exists():
+            try:
+                return candidate.read_bytes()
+            except OSError:
+                return None
+        return None
+
+    def _pdf_archive_candidates(self, stored_path: str) -> List[str]:
+        normalized = stored_path.replace("\\", "/")
+        candidates = [normalized]
+        stripped = normalized.lstrip("./")
+        if stripped and stripped not in candidates:
+            candidates.append(stripped)
+        if "/" in stripped:
+            _, tail = stripped.split("/", 1)
+            if tail and tail not in candidates:
+                candidates.append(tail)
+        return candidates
+
+    def _resolve_pdf_filesystem_path(self, stored_path: str, base_path: Path) -> Optional[Path]:
+        normalized = stored_path.replace("\\", "/").lstrip("./")
+        relative = Path(normalized)
+        if not relative.parts:
+            return None
+        if relative.parts[0] == base_path.name and len(relative.parts) > 1:
+            relative = Path(*relative.parts[1:])
+        return base_path / relative
+
+    def _format_pdf_summaries(self) -> str:
+        if not self._scan_state.pdf_summaries:
+            return "No PDF summaries available."
+        sections: List[str] = []
+        for summary in self._scan_state.pdf_summaries:
+            lines: List[str] = []
+            lines.append("=" * 60)
+            lines.append(f"📄 {summary.file_name}")
+            lines.append("=" * 60)
+            if not summary.success:
+                lines.append(f"❌ Unable to summarize file: {summary.error_message or 'Unknown error.'}")
+                sections.append("\n".join(lines))
+                continue
+            lines.append("")
+            lines.append("📝 SUMMARY")
+            lines.append(f"  {summary.summary_text}")
+            if summary.statistics:
+                stats = summary.statistics
+                lines.append("")
+                lines.append("📊 STATISTICS")
+                lines.append(f"  Words: {stats.get('total_words', 0):,}")
+                lines.append(f"  Sentences: {stats.get('total_sentences', 0)}")
+                lines.append(f"  Unique words: {stats.get('unique_words', 0):,}")
+                avg_len = stats.get("avg_sentence_length")
+                if isinstance(avg_len, (int, float)):
+                    lines.append(f"  Avg sentence length: {avg_len:.1f} words")
+            if summary.keywords:
+                keywords_preview = ", ".join(
+                    f"{word} ({count})" for word, count in summary.keywords[:10]
+                )
+                lines.append("")
+                lines.append("🔑 TOP KEYWORDS")
+                lines.append(f"  {keywords_preview}")
+            if summary.key_points:
+                lines.append("")
+                lines.append("💡 KEY POINTS")
+                for idx, point in enumerate(summary.key_points[:5], start=1):
+                    snippet = point if len(point) <= 120 else point[:117] + "..."
+                    lines.append(f"  {idx}. {snippet}")
+            sections.append("\n".join(lines))
+        return "\n\n".join(sections).strip()
+
     def _export_scan_report(self) -> Path:
-        if self._last_parse_result is None or self._last_scan_archive is None:
+        if self._scan_state.parse_result is None or self._scan_state.archive is None:
             raise RuntimeError("No scan results to export.")
         target_dir = (
-            self._last_scan_target.parent if self._last_scan_target else Path.cwd()
+            self._scan_state.target.parent if self._scan_state.target else Path.cwd()
         )
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         filename = f"scan_result_{timestamp}.json"
         destination = target_dir / filename
         payload = self._build_export_payload(
-            self._last_parse_result,
-            self._last_languages,
-            self._last_scan_archive,
+            self._scan_state.parse_result,
+            self._scan_state.languages,
+            self._scan_state.archive,
         )
         try:
             destination.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -1393,8 +1046,8 @@ class PortfolioTextualApp(App):
         processed = summary.get("bytes_processed", 0)
         payload = {
             "archive": str(archive),
-            "target": str(self._last_scan_target) if self._last_scan_target else None,
-            "relevant_only": self._last_relevant_only,
+            "target": str(self._scan_state.target) if self._scan_state.target else None,
+            "relevant_only": self._scan_state.relevant_only,
             "files": [
                 {
                     "path": meta.path,
@@ -1429,52 +1082,74 @@ class PortfolioTextualApp(App):
             payload["summary"]["media_read_errors"] = media_read_errors
         if languages:
             payload["summary"]["languages"] = languages
-        if self._last_git_analysis:
-            payload["git_analysis"] = self._last_git_analysis
-        if self._has_media_files:
-            media_payload = self._last_media_analysis
+        if self._scan_state.git_analysis:
+            payload["git_analysis"] = self._scan_state.git_analysis
+        if self._scan_state.has_media_files:
+            media_payload = self._scan_state.media_analysis
             if media_payload is None:
                 try:
                     media_payload = self._media_analyzer.analyze(result.files)
-                    self._last_media_analysis = media_payload
+                    self._scan_state.media_analysis = media_payload
                 except Exception:
                     media_payload = None
             if media_payload:
                 payload["media_analysis"] = media_payload
+        if self._scan_state.pdf_summaries:
+            payload["pdf_analysis"] = {
+                "total_pdfs": len(self._scan_state.pdf_summaries),
+                "successful": len([summary for summary in self._scan_state.pdf_summaries if summary.success]),
+                "summaries": [
+                    {
+                        "file_name": summary.file_name,
+                        "success": summary.success,
+                        "summary": summary.summary_text if summary.success else None,
+                        "keywords": [
+                            {"word": word, "count": count} for word, count in summary.keywords
+                        ]
+                        if summary.success
+                        else [],
+                        "statistics": summary.statistics if summary.success else {},
+                        "key_points": summary.key_points if summary.success else [],
+                        "error": summary.error_message if not summary.success else None,
+                    }
+                    for summary in self._scan_state.pdf_summaries
+                ],
+            }
         return payload
 
     def _show_login_dialog(self) -> None:
         try:
             self._get_auth()
         except AuthError as exc:
-            self._auth_error = str(exc)
+            self._session_state.auth_error = str(exc)
             self._show_status(f"Sign in unavailable: {exc}", "error")
             return
-        self.push_screen(LoginScreen(default_email=self._last_email))
+        self.push_screen(LoginScreen(default_email=self._session_state.last_email))
 
     def _show_ai_key_dialog(self) -> None:
-        self.push_screen(AIKeyScreen(default_key=self._llm_api_key or ""))
+        self.push_screen(AIKeyScreen(default_key=self._ai_state.api_key or ""))
 
     def _get_auth(self) -> SupabaseAuth:
-        if self._auth is not None:
-            return self._auth
-        self._auth = SupabaseAuth()
-        self._auth_error = None
-        return self._auth
+        if self._session_state.auth is not None:
+            return self._session_state.auth
+        self._session_state.auth = SupabaseAuth()
+        self._session_state.auth_error = None
+        return self._session_state.auth
 
     def _show_consent_dialog(self) -> None:
-        has_required = self._consent_record is not None
+        has_required = self._consent_state.record is not None
         has_external = self._has_external_consent()
         self.push_screen(ConsentScreen(has_required, has_external))
 
     def _show_preferences_dialog(self) -> None:
         self._load_preferences()
-        summary = self._preferences_summary or self._default_preferences_structure()
-        profiles = self._preferences_profiles or self._default_preferences_structure()["scan_profiles"]
+        fallback_summary, fallback_profiles, _, _ = self._preferences_service.load_preferences("")
+        summary = self._preferences_state.summary or fallback_summary
+        profiles = self._preferences_state.profiles or fallback_profiles
         screen = PreferencesScreen(summary, profiles)
         self._preferences_screen = screen
-        if self._preferences_error:
-            self._show_status(f"Preferences may be stale: {self._preferences_error}", "warning")
+        if self._preferences_state.error:
+            self._show_status(f"Preferences may be stale: {self._preferences_state.error}", "warning")
         self.push_screen(screen)
 
     def on_preferences_screen_closed(self) -> None:
@@ -1509,22 +1184,22 @@ class PortfolioTextualApp(App):
 
     def _cleanup_async_tasks(self) -> None:
         """Ensure background tasks are cancelled before logout or shutdown."""
-        if self._login_task:
-            self._cancel_task(self._login_task, "Login")
-            self._login_task = None
-        if self._ai_task:
-            self._cancel_task(self._ai_task, "AI analysis")
-            self._ai_task = None
+        if self._session_state.login_task:
+            self._cancel_task(self._session_state.login_task, "Login")
+            self._session_state.login_task = None
+        if self._ai_state.task:
+            self._cancel_task(self._ai_state.task, "AI analysis")
+            self._ai_state.task = None
 
     def _logout(self) -> None:
-        if not self._session:
+        if not self._session_state.session:
             return
         self._cleanup_async_tasks()
-        self._llm_client = None
-        self._llm_api_key = None
-        self._last_ai_analysis = None
-        self._last_email = self._session.email
-        self._session = None
+        self._ai_state.client = None
+        self._ai_state.api_key = None
+        self._ai_state.last_analysis = None
+        self._session_state.last_email = self._session_state.session.email
+        self._session_state.session = None
         self._clear_session()
         self._invalidate_cached_state()
         self._refresh_consent_state()
@@ -1534,31 +1209,34 @@ class PortfolioTextualApp(App):
         self._refresh_current_detail()
 
     def _invalidate_cached_state(self) -> None:
-        self._consent_record = None
-        self._consent_error = None
-        self._preferences_summary = None
-        self._preferences_profiles = {}
-        self._preferences_error = None
-        self._preferences_config = {}
+        self._consent_state.record = None
+        self._consent_state.error = None
+        self._preferences_state.summary = None
+        self._preferences_state.profiles = {}
+        self._preferences_state.error = None
+        self._preferences_state.config = {}
         self._reset_scan_state()
 
     def _invalidate_preferences_cache(self) -> None:
-        self._preferences_summary = None
-        self._preferences_profiles = {}
-        self._preferences_error = None
-        self._preferences_config = {}
+        self._preferences_state.summary = None
+        self._preferences_state.profiles = {}
+        self._preferences_state.error = None
+        self._preferences_state.config = {}
 
     def _reset_scan_state(self) -> None:
-        self._last_parse_result = None
-        self._last_scan_archive = None
-        self._last_languages = []
-        self._has_media_files = False
-        self._last_git_repos = []
-        self._last_git_analysis = []
-        self._last_media_analysis = None
-        self._last_relevant_only = True
+        self._scan_state.parse_result = None
+        self._scan_state.archive = None
+        self._scan_state.languages = []
+        self._scan_state.has_media_files = False
+        self._scan_state.git_repos = []
+        self._scan_state.git_analysis = []
+        self._scan_state.media_analysis = None
+        self._scan_state.pdf_candidates = []
+        self._scan_state.pdf_results = []
+        self._scan_state.pdf_summaries = []
+        self._scan_state.relevant_only = True
         self._close_scan_results_screen()
-        self._last_ai_analysis = None
+        self._ai_state.last_analysis = None
 
     def _close_scan_results_screen(self) -> None:
         if self._scan_results_screen is None:
@@ -1571,13 +1249,13 @@ class PortfolioTextualApp(App):
             pass
 
     def _has_external_consent(self) -> bool:
-        if not self._session:
+        if not self._session_state.session:
             return False
-        record = consent_storage.get_consent(self._session.user_id, ConsentValidator.SERVICE_EXTERNAL)
+        record = consent_storage.get_consent(self._session_state.session.user_id, ConsentValidator.SERVICE_EXTERNAL)
         return bool(record and record.get("consent_given"))
 
     async def _handle_toggle_required(self) -> None:
-        if not self._session:
+        if not self._session_state.session:
             self._show_status("Sign in to manage consent.", "error")
             return
         self._show_status("Updating required consent…", "info")
@@ -1593,7 +1271,7 @@ class PortfolioTextualApp(App):
             self._after_consent_update()
 
     async def _handle_toggle_external(self) -> None:
-        if not self._session:
+        if not self._session_state.session:
             self._show_status("Sign in to manage consent.", "error")
             return
         self._show_status("Updating external services consent…", "info")
@@ -1607,10 +1285,10 @@ class PortfolioTextualApp(App):
             self._after_consent_update()
 
     def _toggle_required_consent_sync(self) -> str:
-        if not self._session:
+        if not self._session_state.session:
             raise ConsentError("No active session")
-        user_id = self._session.user_id
-        if self._consent_record:
+        user_id = self._session_state.session.user_id
+        if self._consent_state.record:
             consent_storage.withdraw_consent(user_id, ConsentValidator.SERVICE_FILE_ANALYSIS)
             return "Required consent withdrawn."
         consent_data = {
@@ -1619,13 +1297,13 @@ class PortfolioTextualApp(App):
             "privacy_ack": True,
             "allow_external_services": self._has_external_consent(),
         }
-        self._consent_validator.validate_upload_consent(user_id, consent_data)
+        self._consent_state.validator.validate_upload_consent(user_id, consent_data)
         return "Required consent granted."
 
     def _toggle_external_consent_sync(self) -> str:
-        if not self._session:
+        if not self._session_state.session:
             raise ConsentError("No active session")
-        user_id = self._session.user_id
+        user_id = self._session_state.session.user_id
         if self._has_external_consent():
             consent_storage.withdraw_consent(user_id, ConsentValidator.SERVICE_EXTERNAL)
             return "External services consent withdrawn."
@@ -1642,13 +1320,18 @@ class PortfolioTextualApp(App):
         self._refresh_current_detail()
 
     async def _handle_preferences_action(self, action: str, payload: Dict[str, Any]) -> None:
-        if not self._session:
+        if not self._session_state.session:
             self._show_status("Sign in to manage preferences.", "error")
             return
 
         self._show_status("Updating preferences…", "info")
         try:
-            success, message = await asyncio.to_thread(self._execute_preferences_action_sync, action, payload)
+            success, message = await asyncio.to_thread(
+                self._preferences_service.execute_action,
+                self._session_state.session.user_id,
+                action,
+                payload,
+            )
         except Exception as exc:  # pragma: no cover - defensive fallback
             self._show_status(f"Unexpected preferences error: {exc}", "error")
             self._update_preferences_screen(message=str(exc), tone="error")
@@ -1669,83 +1352,11 @@ class PortfolioTextualApp(App):
         if not screen:
             return
         try:
-            summary = self._preferences_summary or {}
-            profiles = self._preferences_profiles or {}
+            summary = self._preferences_state.summary or {}
+            profiles = self._preferences_state.profiles or {}
             screen.update_state(summary, profiles, message=message, tone=tone)
         except Exception:
             pass
-
-    def _execute_preferences_action_sync(self, action: str, payload: Dict[str, Any]) -> tuple[bool, str]:
-        if not self._session:
-            return False, "No active session."
-
-        from ..config.config_manager import ConfigManager  # Imported lazily to avoid startup cost
-
-        try:
-            manager = ConfigManager(self._session.user_id)
-        except Exception as exc:
-            return False, f"Unable to load preferences: {exc}"
-
-        try:
-            if action == "set_active":
-                name = payload.get("name")
-                if not name:
-                    return False, "Profile name missing."
-                if not manager.set_current_profile(name):
-                    return False, f"Failed to activate profile '{name}'."
-                return True, f"Active profile set to {name}."
-
-            if action == "delete_profile":
-                name = payload.get("name")
-                if not name:
-                    return False, "Profile name missing."
-                if not manager.delete_profile(name):
-                    return False, f"Unable to delete profile '{name}'."
-                return True, f"Profile {name} deleted."
-
-            if action == "create_profile":
-                name = payload.get("name")
-                extensions = payload.get("extensions", [])
-                exclude_dirs = payload.get("exclude_dirs", [])
-                description = payload.get("description", "Custom profile")
-                if not manager.create_custom_profile(name, extensions, exclude_dirs, description):
-                    return False, f"Unable to create profile '{name}'."
-                return True, f"Profile {name} created."
-
-            if action == "update_profile":
-                name = payload.get("name")
-                extensions = payload.get("extensions", [])
-                exclude_dirs = payload.get("exclude_dirs", [])
-                description = payload.get("description", None)
-                if not manager.update_profile(
-                    name,
-                    extensions=extensions,
-                    exclude_dirs=exclude_dirs,
-                    description=description,
-                ):
-                    return False, f"Unable to update profile '{name}'."
-                return True, f"Profile {name} updated."
-
-            if action == "update_settings":
-                max_size = payload.get("max_file_size_mb")
-                follow_symlinks = payload.get("follow_symlinks")
-                updates = {}
-                if max_size is not None:
-                    updates["max_file_size_mb"] = max_size
-                if follow_symlinks is not None:
-                    updates["follow_symlinks"] = bool(follow_symlinks)
-                if not updates:
-                    return False, "No settings to update."
-                if not manager.update_settings(
-                    max_file_size_mb=updates.get("max_file_size_mb"),
-                    follow_symlinks=updates.get("follow_symlinks"),
-                ):
-                    return False, "Unable to update settings."
-                return True, "Settings updated."
-        except Exception as exc:
-            return False, str(exc)
-
-        return False, "Unknown preferences action."
 
     async def _handle_login(self, email: str, password: str) -> None:
         try:
@@ -1755,7 +1366,7 @@ class PortfolioTextualApp(App):
             try:
                 auth = self._get_auth()
             except AuthError as exc:
-                self._auth_error = str(exc)
+                self._session_state.auth_error = str(exc)
                 self._show_status(f"Sign in unavailable: {exc}", "error")
                 return
 
@@ -1763,15 +1374,15 @@ class PortfolioTextualApp(App):
             try:
                 session = await asyncio.to_thread(auth.login, email, password)
             except AuthError as exc:
-                self._auth_error = str(exc)
+                self._session_state.auth_error = str(exc)
                 self._show_status(f"Sign in failed: {exc}", "error")
                 return
             except Exception as exc:  # pragma: no cover - network/IO failures
                 self._show_status(f"Unexpected sign in error: {exc}", "error")
                 return
-            self._session = session
-            self._last_email = session.email
-            self._auth_error = None
+            self._session_state.session = session
+            self._session_state.last_email = session.email
+            self._session_state.auth_error = None
             self._persist_session()
             self._invalidate_cached_state()
             self._refresh_consent_state()
@@ -1780,88 +1391,88 @@ class PortfolioTextualApp(App):
             self._show_status(f"Signed in as {session.email}", "success")
             self._refresh_current_detail()
         finally:
-            self._login_task = None
+            self._session_state.login_task = None
 
-    async def _verify_ai_key(self, api_key: str) -> None:
+    async def _verify_ai_key(
+        self,
+        api_key: str,
+        temperature: Optional[float],
+        max_tokens: Optional[int],
+    ) -> None:
         if not api_key:
-            self._pending_ai_analysis = False
+            self._ai_state.pending_analysis = False
             self._show_status("API key required for AI analysis.", "error")
             return
-        try:
-            from ..analyzer.llm.client import LLMClient, InvalidAPIKeyError, LLMError
-        except Exception as exc:  # pragma: no cover - optional dependency missing
-            self._pending_ai_analysis = False
-            self._show_status(f"AI analysis unavailable: {exc}", "error")
-            return
-
+        self._debug_log(f"_verify_ai_key start masked={api_key[:4] + '...' if api_key else 'None'} pending={self._ai_state.pending_analysis}")
         self._show_status("Verifying AI API key…", "info")
 
-        def _create_client() -> LLMClient:
-            client = LLMClient(api_key=api_key)
-            client.verify_api_key()
-            return client
-
         try:
-            client = await asyncio.to_thread(_create_client)
-        except InvalidAPIKeyError as exc:
-            self._llm_client = None
-            self._llm_api_key = None
-            self._pending_ai_analysis = False
+            client, client_config = await asyncio.to_thread(
+                self._ai_service.verify_client,
+                api_key,
+                temperature,
+                max_tokens,
+            )
+            self._debug_log("verify_client returned successfully")
+        except InvalidAIKeyError as exc:
+            self._ai_state.client = None
+            self._ai_state.api_key = None
+            self._ai_state.pending_analysis = False
             self._show_status(f"Invalid API key: {exc}", "error")
+            self._debug_log(f"verify_ai_key invalid_key {exc}")
             return
-        except LLMError as exc:
-            self._pending_ai_analysis = False
+        except AIProviderError as exc:
+            self._ai_state.pending_analysis = False
             self._show_status(f"AI service error: {exc}", "error")
+            self._debug_log(f"verify_ai_key provider_error {exc}")
+            return
+        except AIDependencyError as exc:
+            self._ai_state.pending_analysis = False
+            self._show_status(f"AI analysis unavailable: {exc}", "error")
+            self._debug_log(f"verify_ai_key dependency_error {exc}")
             return
         except Exception as exc:
-            self._pending_ai_analysis = False
+            self._ai_state.pending_analysis = False
             self._show_status(f"Failed to verify API key: {exc}", "error")
+            self._debug_log(f"verify_ai_key unexpected_error {exc.__class__.__name__}: {exc}")
             return
 
-        self._llm_client = client
-        self._llm_api_key = api_key
-        self._show_status("API key verified successfully.", "success")
+        self._ai_state.client = client
+        self._ai_state.api_key = api_key
+        self._show_status(
+            f"API key verified • temp {client_config.temperature} • max tokens {client_config.max_tokens}",
+            "success",
+        )
+        self._debug_log(
+            f"verify_ai_key success temp={client_config.temperature} max_tokens={client_config.max_tokens}"
+        )
 
-        if self._pending_ai_analysis:
-            self._pending_ai_analysis = False
+        if self._ai_state.pending_analysis:
+            self._ai_state.pending_analysis = False
             self._start_ai_analysis()
 
     def _persist_session(self) -> None:
-        if not self._session:
-            return
+        if self._session_state.session:
+            self._session_service.persist_session(self._session_state.session_path, self._session_state.session)
+
+    def _persist_ai_output(self, formatted_text: str, raw_result: Dict[str, Any]) -> bool:
+        """Write the latest AI analysis to disk for easier reading.
+
+        Returns True if the file was written.
+        """
         try:
-            self._session_path.parent.mkdir(parents=True, exist_ok=True)
-            payload = {
-                "user_id": self._session.user_id,
-                "email": self._session.email,
-                "access_token": getattr(self._session, "access_token", ""),
-            }
-            self._session_path.write_text(json.dumps(payload), encoding="utf-8")
-        except PermissionError as exc:  # pragma: no cover - filesystem issues
-            self._report_filesystem_issue(
-                f"Unable to save session data to {self._session_path}: {exc}",
-                tone="error",
-            )
-        except OSError as exc:  # pragma: no cover - filesystem issues
-            self._report_filesystem_issue(
-                f"Unable to persist session data ({self._session_path}): {exc}",
-                tone="error",
-            )
+            content = formatted_text.strip() or "[b]AI-Powered Analysis[/b]\n\nNo AI insights were returned."
+            raw_dump = json.dumps(raw_result, indent=2, default=str)
+            payload = f"{content}\n\n---\n\nRaw AI payload:\n{raw_dump}\n"
+            self._ai_output_path.write_text(payload, encoding="utf-8")
+            self._debug_log(f"AI analysis written to {self._ai_output_path}")
+            return True
+        except Exception as exc:
+            self._debug_log(f"Failed to persist AI analysis: {exc}")
+            return False
 
     def _clear_session(self) -> None:
-        try:
-            if self._session_path.exists():
-                self._session_path.unlink()
-        except PermissionError as exc:  # pragma: no cover - filesystem issues
-            self._report_filesystem_issue(
-                f"Permission denied while removing stored session data: {exc}",
-                tone="warning",
-            )
-        except OSError as exc:  # pragma: no cover - filesystem issues
-            self._report_filesystem_issue(
-                f"Unable to remove stored session data ({self._session_path}): {exc}",
-                tone="warning",
-            )
+        self._session_service.clear_session(self._session_state.session_path)
 
     def _update_session_status(self) -> None:
         try:
@@ -1869,22 +1480,22 @@ class PortfolioTextualApp(App):
         except Exception:  # pragma: no cover - widget not mounted yet
             return
 
-        if self._session:
+        if self._session_state.session:
             consent_badge = "[#9ca3af]Consent pending[/#9ca3af]"
-            if self._consent_record:
+            if self._consent_state.record:
                 consent_badge = "[green]Consent granted[/green]"
-            elif self._consent_error:
+            elif self._consent_state.error:
                 consent_badge = "[#9ca3af]Consent required[/#9ca3af]"
 
             external = consent_storage.get_consent(
-                self._session.user_id, ConsentValidator.SERVICE_EXTERNAL
+                self._session_state.session.user_id, ConsentValidator.SERVICE_EXTERNAL
             )
             external_badge = "[#9ca3af]External off[/#9ca3af]"
             if external and external.get("consent_given"):
                 external_badge = "[green]External on[/green]"
 
             status_panel.update(
-                f"[b]{self._session.email}[/b] • {consent_badge} • {external_badge}  (Ctrl+L to sign out)"
+                f"[b]{self._session_state.session.email}[/b] • {consent_badge} • {external_badge}  (Ctrl+L to sign out)"
             )
         else:
             status_panel.update(
@@ -1918,19 +1529,38 @@ class PortfolioTextualApp(App):
 
     def on_login_submitted(self, event: LoginSubmitted) -> None:
         event.stop()
-        if self._login_task and not self._login_task.done():
+        if self._session_state.login_task and not self._session_state.login_task.done():
             self._show_status("Sign in already in progress…", "warning")
             return
-        self._login_task = asyncio.create_task(self._handle_login(event.email, event.password))
+        self._session_state.login_task = asyncio.create_task(self._handle_login(event.email, event.password))
 
     def on_ai_key_submitted(self, event: AIKeySubmitted) -> None:
         event.stop()
-        asyncio.create_task(self._verify_ai_key(event.api_key))
+        self._debug_log(
+            f"AIKeySubmitted received temp={event.temperature} tokens={event.max_tokens} pending={self._ai_state.pending_analysis}"
+        )
+        asyncio.create_task(
+            self._verify_ai_key(event.api_key, event.temperature, event.max_tokens)
+        )
+
+    def request_ai_key_verification(
+        self,
+        api_key: str,
+        temperature: Optional[float],
+        max_tokens: Optional[int],
+    ) -> None:
+        """Direct invocation path when Textual message dispatch misbehaves."""
+        self._debug_log(
+            f"request_ai_key_verification invoked temp={temperature} tokens={max_tokens} pending={self._ai_state.pending_analysis}"
+        )
+        asyncio.create_task(
+            self._verify_ai_key(api_key, temperature, max_tokens)
+        )
 
     def on_ai_key_cancelled(self, event: AIKeyCancelled) -> None:
         event.stop()
-        self._pending_ai_analysis = False
-        if self._ai_task and not self._ai_task.done():
+        self._ai_state.pending_analysis = False
+        if self._ai_state.task and not self._ai_state.task.done():
             return
         self._show_status("AI key entry cancelled.", "info")
 
@@ -1952,51 +1582,22 @@ class PortfolioTextualApp(App):
     # --- Session, consent, and preferences helpers ---
 
     def _load_session(self) -> None:
-        if not self._session_path:
-            return
-        try:
-            data = json.loads(self._session_path.read_text(encoding="utf-8"))
-            user_id = data.get("user_id")
-            email = data.get("email")
-            token = data.get("access_token", "")
-            if user_id and email:
-                self._session = Session(user_id=user_id, email=email, access_token=token)
-                self._last_email = email
-        except FileNotFoundError:
-            self._session = None
-        except PermissionError as exc:
-            self._session = None
-            self._report_filesystem_issue(
-                f"Permission denied while reading saved session data: {exc}",
-                tone="warning",
-            )
-        except OSError as exc:
-            self._session = None
-            self._report_filesystem_issue(
-                f"Unable to read saved session data ({self._session_path}): {exc}",
-                tone="warning",
-            )
-        except json.JSONDecodeError as exc:
-            self._session = None
-            self._report_filesystem_issue(
-                f"Saved session data is corrupted ({exc}). Sign in again to refresh it.",
-                tone="warning",
-            )
+        session = self._session_service.load_session(self._session_state.session_path)
+        self._session_state.session = session
+        if session:
+            self._session_state.last_email = session.email
 
     def _refresh_consent_state(self) -> None:
-        self._consent_record = None
-        self._consent_error = None
-        if not self._session:
+        self._consent_state.record = None
+        self._consent_state.error = None
+        if not self._session_state.session:
             return
-        try:
-            record = self._consent_validator.check_required_consent(self._session.user_id)
-            self._consent_record = record
-        except ConsentError:
-            self._consent_error = "Required consent has not been granted yet."
-        except ExternalServiceError:
-            self._consent_error = "External services consent is pending."
-        except Exception as exc:  # pragma: no cover - defensive fallback
-            self._consent_error = f"Unable to verify consent: {exc}"
+        record, error = self._session_service.refresh_consent(
+            self._consent_state.validator,
+            self._session_state.session.user_id,
+        )
+        self._consent_state.record = record
+        self._consent_state.error = error
         if getattr(self, "is_mounted", False):
             try:
                 self._update_session_status()
@@ -2004,123 +1605,43 @@ class PortfolioTextualApp(App):
                 pass
 
     def _load_preferences(self) -> None:
-        if self._preferences_summary and self._preferences_profiles and not self._preferences_error:
+        if self._preferences_state.summary and self._preferences_state.profiles and not self._preferences_state.error:
             return
-        self._preferences_summary = None
-        self._preferences_profiles = {}
-        self._preferences_error = None
-        if not self._session:
+        self._preferences_state.summary = None
+        self._preferences_state.profiles = {}
+        self._preferences_state.error = None
+        self._preferences_state.config = {}
+        if not self._session_state.session:
             return
-        try:
-            from ..config.config_manager import ConfigManager  # type: ignore
-        except Exception as exc:  # pragma: no cover - import guarded
-            self._preferences_error = str(exc)
-            self._apply_fallback_preferences()
-            return
-
-        try:
-            manager = ConfigManager(self._session.user_id)
-            self._preferences_summary = manager.get_config_summary()
-            config = getattr(manager, "config", {})
-            if isinstance(config, dict):
-                self._preferences_config = config
-            profiles = config.get("scan_profiles", {}) if isinstance(config, dict) else {}
-            if isinstance(profiles, dict):
-                self._preferences_profiles = profiles
-        except Exception as exc:  # pragma: no cover - Supabase failures
-            self._preferences_error = str(exc)
-            self._apply_fallback_preferences()
-
-    def _apply_fallback_preferences(self) -> None:
-        fallback = self._default_preferences_structure()
-        self._preferences_summary = {
-            "current_profile": "sample",
-            "description": fallback["scan_profiles"]["sample"]["description"],
-            "extensions": fallback["scan_profiles"]["sample"]["extensions"],
-            "exclude_dirs": fallback["scan_profiles"]["sample"]["exclude_dirs"],
-            "max_file_size_mb": fallback["max_file_size_mb"],
-            "follow_symlinks": fallback["follow_symlinks"],
-        }
-        self._preferences_profiles = fallback["scan_profiles"]
-        self._preferences_config = fallback
-
-    @staticmethod
-    def _default_preferences_structure() -> Dict[str, Any]:
-        return {
-            "scan_profiles": {
-                "sample": {
-                    "description": "Scan common code and doc file types.",
-                    "extensions": [".py", ".md", ".json", ".txt"],
-                    "exclude_dirs": ["__pycache__", "node_modules", ".git"],
-                }
-            },
-            "max_file_size_mb": 10,
-            "follow_symlinks": False,
-        }
-
-    def _preferences_from_config(self, config: Dict[str, Any], profile_name: Optional[str]) -> ScanPreferences:
-        if not config:
-            return ScanPreferences()
-
-        scan_profiles = config.get("scan_profiles", {}) or {}
-        profile_key = profile_name or config.get("current_profile")
-        profile = scan_profiles.get(profile_key, {}) if isinstance(scan_profiles, dict) else {}
-
-        extensions = profile.get("extensions") or None
-        if extensions:
-            normalized: List[str] = []
-            seen: set[str] = set()
-            for ext in extensions:
-                lowered = ext.lower()
-                if lowered not in seen:
-                    seen.add(lowered)
-                    normalized.append(lowered)
-            if profile_key == "all":
-                for media_ext in MEDIA_EXTENSIONS:
-                    if media_ext not in seen:
-                        seen.add(media_ext)
-                        normalized.append(media_ext)
-            extensions = normalized
-
-        excluded_dirs = profile.get("exclude_dirs") or None
-        max_file_size_mb = config.get("max_file_size_mb")
-        max_file_size_bytes = (
-            int(max_file_size_mb * 1024 * 1024)
-            if isinstance(max_file_size_mb, (int, float))
-            else None
-        )
-        follow_symlinks = config.get("follow_symlinks")
-
-        return ScanPreferences(
-            allowed_extensions=extensions,
-            excluded_dirs=excluded_dirs,
-            max_file_size_bytes=max_file_size_bytes,
-            follow_symlinks=follow_symlinks,
-        )
+        summary, profiles, config, error = self._preferences_service.load_preferences(self._session_state.session.user_id)
+        self._preferences_state.summary = summary
+        self._preferences_state.profiles = profiles
+        self._preferences_state.config = config
+        self._preferences_state.error = error
 
     def _current_scan_preferences(self) -> ScanPreferences:
-        config = self._preferences_config or self._default_preferences_structure()
+        config = self._preferences_state.config or self._preferences_service.default_structure()
         profile_name = None
-        if self._preferences_summary and isinstance(self._preferences_summary, dict):
-            profile_name = self._preferences_summary.get("current_profile")
+        if self._preferences_state.summary and isinstance(self._preferences_state.summary, dict):
+            profile_name = self._preferences_state.summary.get("current_profile")
         if profile_name is None and isinstance(config, dict):
             profile_name = config.get("current_profile")
-        return self._preferences_from_config(config, profile_name)
+        return self._preferences_service.preferences_from_config(config, profile_name)
 
     def _render_account_detail(self) -> str:
         lines = ["[b]Account[/b]"]
-        if self._session:
-            consent_status = "[green]granted[/green]" if self._consent_record else "[#9ca3af]pending[/#9ca3af]"
-            if self._consent_error:
-                consent_status = f"[#9ca3af]pending[/#9ca3af] — {self._consent_error}"
+        if self._session_state.session:
+            consent_status = "[green]granted[/green]" if self._consent_state.record else "[#9ca3af]pending[/#9ca3af]"
+            if self._consent_state.error:
+                consent_status = f"[#9ca3af]pending[/#9ca3af] — {self._consent_state.error}"
             external = consent_storage.get_consent(
-                self._session.user_id, ConsentValidator.SERVICE_EXTERNAL
+                self._session_state.session.user_id, ConsentValidator.SERVICE_EXTERNAL
             )
             external_status = "[green]enabled[/green]" if external and external.get("consent_given") else "[#9ca3af]disabled[/#9ca3af]"
             lines.extend(
                 [
                     "",
-                    f"• User: [b]{self._session.email}[/b]",
+                    f"• User: [b]{self._session_state.session.email}[/b]",
                     f"• Required consent: {consent_status}",
                     f"• External services: {external_status}",
                     "",
@@ -2135,13 +1656,50 @@ class PortfolioTextualApp(App):
                     "• Press Enter or Ctrl+L to sign in.",
                 ]
             )
-            if self._auth_error:
-                lines.append(f"• [#9ca3af]Auth issue:[/#9ca3af] {self._auth_error}")
+            if self._session_state.auth_error:
+                lines.append(f"• [#9ca3af]Auth issue:[/#9ca3af] {self._session_state.auth_error}")
+        return "\n".join(lines)
+
+    def _render_last_scan_detail(self) -> str:
+        lines = ["[b]View Last Analysis[/b]"]
+        if not self._scan_state.parse_result:
+            lines.extend(
+                [
+                    "",
+                    "• No scans have been completed yet.",
+                    "• Run 'Run Portfolio Scan' to populate this view.",
+                ]
+            )
+            return "\n".join(lines)
+
+        summary = self._scan_state.parse_result.summary or {}
+        files_processed = summary.get("files_processed", len(self._scan_state.parse_result.files))
+        issues_count = summary.get("issues_count", len(self._scan_state.parse_result.issues))
+        filtered = summary.get("filtered_out")
+        target = str(self._scan_state.target) if self._scan_state.target else "Unknown target"
+
+        lines.extend(
+            [
+                "",
+                f"• Target: {target}",
+                f"• Relevant files only: {'Yes' if self._scan_state.relevant_only else 'No'}",
+                f"• Files processed: {files_processed}",
+                f"• Issues: {issues_count}",
+            ]
+        )
+        if filtered is not None and self._scan_state.relevant_only:
+            lines.append(f"• Filtered out: {filtered}")
+        lines.extend(
+            [
+                "",
+                "Press Enter to reopen the most recent results without rescanning.",
+            ]
+        )
         return "\n".join(lines)
 
     def _render_preferences_detail(self) -> str:
         lines = ["[b]Settings & Preferences[/b]"]
-        if not self._session:
+        if not self._session_state.session:
             lines.extend(
                 [
                     "",
@@ -2151,10 +1709,10 @@ class PortfolioTextualApp(App):
             return "\n".join(lines)
 
         self._load_preferences()
-        if self._preferences_error:
-            lines.append(f"\n[#94a3b8]Warning:[/#94a3b8] {self._preferences_error}")
+        if self._preferences_state.error:
+            lines.append(f"\n[#94a3b8]Warning:[/#94a3b8] {self._preferences_state.error}")
 
-        summary = self._preferences_summary or {}
+        summary = self._preferences_state.summary or {}
         lines.extend(
             [
                 "",
@@ -2166,16 +1724,16 @@ class PortfolioTextualApp(App):
             ]
         )
 
-        if self._preferences_profiles:
+        if self._preferences_state.profiles:
             preview = []
-            for name, details in list(self._preferences_profiles.items())[:3]:
+            for name, details in list(self._preferences_state.profiles.items())[:3]:
                 desc = details.get("description", "")
                 preview.append(f"{name} — {desc}")
             lines.append("")
             lines.append("Available profiles:")
             lines.extend(f"  • {item}" for item in preview)
-            if len(self._preferences_profiles) > 3:
-                lines.append(f"  • … {len(self._preferences_profiles) - 3} more")
+            if len(self._preferences_state.profiles) > 3:
+                lines.append(f"  • … {len(self._preferences_state.profiles) - 3} more")
 
         lines.append("")
         lines.append("Press Enter to open the preferences dialog.")
@@ -2183,24 +1741,24 @@ class PortfolioTextualApp(App):
 
     def _render_ai_detail(self) -> str:
         lines = ["[b]AI-Powered Analysis[/b]"]
-        if not self._session:
+        if not self._session_state.session:
             lines.extend(["", "• Sign in to unlock AI-powered summaries."])
             return "\n".join(lines)
 
-        if not self._consent_record:
+        if not self._consent_state.record:
             lines.append("\n• Grant required consent to enable AI analysis.")
         if not self._has_external_consent():
             lines.append("• External services consent must be enabled.")
-        if not self._last_parse_result:
+        if not self._scan_state.parse_result:
             lines.append("• Run a scan to provide data for the analysis.")
 
-        if self._llm_client is None:
+        if self._ai_state.client is None:
             lines.append("\nPress Enter to add or verify your OpenAI API key.")
         else:
             lines.append("\nAPI key verified — press Enter to refresh insights.")
 
-        if self._last_ai_analysis:
-            summary = self._summarize_ai_analysis(self._last_ai_analysis)
+        if self._ai_state.last_analysis:
+            summary = self._ai_service.summarize_analysis(self._ai_state.last_analysis)
             if summary:
                 lines.append("")
                 lines.append(summary)
@@ -2209,15 +1767,15 @@ class PortfolioTextualApp(App):
 
     def _render_consent_detail(self) -> str:
         lines = ["[b]Consent Management[/b]"]
-        if not self._session:
+        if not self._session_state.session:
             lines.extend(["", "• Sign in (Ctrl+L) to review consent state."])
             return "\n".join(lines)
 
         self._refresh_consent_state()
-        record = self._consent_record
+        record = self._consent_state.record
         required = "[green]granted[/green]" if record else "[#9ca3af]missing[/#9ca3af]"
         external = consent_storage.get_consent(
-            self._session.user_id, ConsentValidator.SERVICE_EXTERNAL
+            self._session_state.session.user_id, ConsentValidator.SERVICE_EXTERNAL
         )
         external_status = "[green]enabled[/green]" if external and external.get("consent_given") else "[#9ca3af]disabled[/#9ca3af]"
         lines.extend(
@@ -2230,59 +1788,62 @@ class PortfolioTextualApp(App):
         if record and getattr(record, "created_at", None):
             timestamp = record.created_at.isoformat(timespec="minutes")
             lines.append(f"• Granted on: {timestamp}")
-        if self._consent_error:
-            lines.append(f"• [#9ca3af]Note:[/#9ca3af] {self._consent_error}")
+        if self._consent_state.error:
+            lines.append(f"• [#9ca3af]Note:[/#9ca3af] {self._consent_state.error}")
         lines.append("")
         lines.append("Press Enter to review privacy notices or toggle consent settings.")
         return "\n".join(lines)
 
     def _start_ai_analysis(self) -> None:
-        if self._ai_task and not self._ai_task.done():
+        if self._ai_state.task and not self._ai_state.task.done():
             return
-        self._pending_ai_analysis = False
+        self._ai_state.pending_analysis = False
         detail_panel = self.query_one("#detail", Static)
         detail_panel.update("[b]AI-Powered Analysis[/b]\n\nPreparing AI insights…")
         self._show_status("Preparing AI analysis…", "info")
-        self._ai_task = asyncio.create_task(self._run_ai_analysis())
+        self._ai_state.task = asyncio.create_task(self._run_ai_analysis())
 
     async def _run_ai_analysis(self) -> None:
-        try:
-            from ..analyzer.llm.client import InvalidAPIKeyError, LLMError
-        except Exception as exc:  # pragma: no cover - optional dependency missing
-            self._surface_error(
-                "AI-Powered Analysis",
-                f"Unavailable: {exc}",
-                "Ensure the optional AI dependencies are installed (see backend/requirements.txt).",
-            )
-            self._ai_task = None
-            return
-
         detail_panel = self.query_one("#detail", Static)
 
-        if not self._llm_client or not self._last_parse_result:
+        if not self._ai_state.client or not self._scan_state.parse_result:
             self._surface_error(
                 "AI-Powered Analysis",
                 "A recent scan and a verified API key are required.",
                 "Run a portfolio scan, grant external consent, then provide your OpenAI API key.",
             )
-            self._ai_task = None
+            self._ai_state.task = None
             return
 
         try:
-            result = await asyncio.to_thread(self._execute_ai_analysis)
+            result = await asyncio.to_thread(
+                self._ai_service.execute_analysis,
+                self._ai_state.client,
+                self._scan_state.parse_result,
+                languages=self._scan_state.languages or [],
+                target_path=str(self._scan_state.target) if self._scan_state.target else None,
+                archive_path=str(self._scan_state.archive) if self._scan_state.archive else None,
+                git_repos=self._scan_state.git_repos,
+            )
         except asyncio.CancelledError:
             self._show_status("AI analysis cancelled.", "info")
             detail_panel.update(self._render_ai_detail())
             raise
-        except InvalidAPIKeyError as exc:
-            self._llm_client = None
-            self._llm_api_key = None
+        except InvalidAIKeyError as exc:
+            self._ai_state.client = None
+            self._ai_state.api_key = None
             self._surface_error(
                 "AI-Powered Analysis",
                 f"Invalid API key: {exc}",
                 "Copy a fresh key from OpenAI and try again.",
             )
-        except LLMError as exc:
+        except AIDependencyError as exc:
+            self._surface_error(
+                "AI-Powered Analysis",
+                f"Unavailable: {exc}",
+                "Ensure the optional AI dependencies are installed (see backend/requirements.txt).",
+            )
+        except AIProviderError as exc:
             self._surface_error(
                 "AI-Powered Analysis",
                 f"AI service error: {exc}",
@@ -2295,91 +1856,22 @@ class PortfolioTextualApp(App):
                 "Check your network connection and rerun the analysis.",
             )
         else:
-            self._last_ai_analysis = result
-            detail_panel.update(self._format_ai_analysis(result))
+            self._ai_state.last_analysis = result
+            rendered = self._ai_service.format_analysis(result)
+            if rendered.strip():
+                detail_panel.update(rendered)
+            else:
+                detail_panel.update("[b]AI-Powered Analysis[/b]\n\nNo AI insights were returned.")
+            saved = self._persist_ai_output(rendered, result)
             files_count = result.get("files_analyzed_count")
             message = "AI analysis complete."
             if files_count:
                 message = f"AI analysis complete — {files_count} files reviewed."
+            if saved:
+                message = f"{message} Saved to {self._ai_output_path.name}."
             self._show_status(message, "success")
         finally:
-            self._ai_task = None
-
-    def _execute_ai_analysis(self) -> dict:
-        if not self._llm_client or not self._last_parse_result:
-            raise RuntimeError("AI analysis prerequisites missing.")
-
-        scan_path = (
-            str(self._last_scan_target)
-            if self._last_scan_target
-            else str(self._last_scan_archive or "")
-        )
-        relevant_files = [
-            {
-                "path": meta.path,
-                "size": meta.size_bytes,
-                "mime_type": meta.mime_type,
-            }
-            for meta in self._last_parse_result.files
-        ]
-        languages = self._last_languages or summarize_languages(self._last_parse_result.files)
-        scan_summary = {
-            "total_files": len(self._last_parse_result.files),
-            "total_size_bytes": sum(meta.size_bytes for meta in self._last_parse_result.files),
-            "language_breakdown": languages,
-            "scan_path": scan_path,
-        }
-        return self._llm_client.summarize_scan_with_ai(
-            scan_summary=scan_summary,
-            relevant_files=relevant_files,
-            scan_base_path=scan_path,
-        )
-
-    def _format_ai_analysis(self, result: dict) -> str:
-        lines: List[str] = ["[b]AI-Powered Analysis[/b]"]
-
-        project_analysis = (result or {}).get("project_analysis") or {}
-        analysis_text = project_analysis.get("analysis")
-        if analysis_text:
-            lines.append("\n[b]Project Insights[/b]")
-            lines.append(analysis_text)
-
-        file_summaries = (result or {}).get("file_summaries") or []
-        if file_summaries:
-            lines.append("\n[b]Key Files[/b]")
-            for idx, summary in enumerate(file_summaries, 1):
-                file_path = summary.get("file_path", "Unknown file")
-                lines.append(f"[b]{idx}. {file_path}[/b]")
-                lines.append(summary.get("analysis", "No analysis available."))
-                lines.append("")
-
-        skipped = (result or {}).get("skipped_files") or []
-        if skipped:
-            lines.append("[b]Skipped Files[/b]")
-            for item in skipped:
-                path = item.get("path", "unknown")
-                reason = item.get("reason", "No reason provided.")
-                size_mb = item.get("size_mb")
-                size_txt = f" ({size_mb:.2f} MB)" if isinstance(size_mb, (int, float)) else ""
-                lines.append(f"- {path}{size_txt}: {reason}")
-
-        return "\n".join(lines).strip()
-
-    def _summarize_ai_analysis(self, result: dict) -> str:
-        parts: List[str] = []
-        files_count = result.get("files_analyzed_count")
-        if files_count:
-            parts.append(f"Files analyzed: {files_count}")
-        file_summaries = result.get("file_summaries") or []
-        if file_summaries:
-            parts.append(f"Key file insights: {len(file_summaries)}")
-        analysis_text = (result.get("project_analysis") or {}).get("analysis") or ""
-        if analysis_text:
-            snippet = analysis_text.strip().splitlines()[0]
-            if len(snippet) > 120:
-                snippet = snippet[:117] + "..."
-            parts.append(f"Preview: {snippet}")
-        return "\n".join(f"- {text}" for text in parts) if parts else ""
+            self._ai_state.task = None
 
 
 def main() -> None:

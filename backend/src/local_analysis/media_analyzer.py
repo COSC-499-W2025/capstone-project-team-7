@@ -219,6 +219,7 @@ class _ImageStats:
         self.min_resolution: Optional[Dict[str, Any]] = None
         self._records: list[Dict[str, Any]] = []
         self.label_counts: Counter[str] = Counter()
+        self._summaries: list[Dict[str, str]] = []
 
     def add(self, path: str, info: Mapping[str, Any]) -> None:
         width = int(info.get("width") or 0)
@@ -248,6 +249,14 @@ class _ImageStats:
             confidence = entry.get("confidence")
             if label and isinstance(confidence, (int, float)):
                 self.label_counts[label] += float(confidence)
+        summary = info.get("content_summary")
+        if isinstance(summary, str) and summary.strip():
+            self._summaries.append(
+                {
+                    "path": path,
+                    "summary": summary.strip(),
+                }
+            )
 
         if (
             self.max_resolution is None
@@ -284,6 +293,7 @@ class _ImageStats:
             "min_resolution": self.min_resolution,
             "common_aspect_ratios": dict(self.common_aspect_ratios.most_common(5)),
             "top_labels": self.top_labels(),
+            "content_summaries": self._summaries[:5],
         }
 
     def top_labels(self, limit: int = 5) -> Sequence[Dict[str, Any]]:
@@ -310,6 +320,8 @@ class _TimedMediaStats:
         self.label_counts: Counter[str] = Counter()
         self.tempos: list[float] = []
         self.genre_counts: Counter[str] = Counter()
+        self._summaries: list[Dict[str, str]] = []
+        self._transcripts: list[Dict[str, str]] = []
 
     def add(self, path: str, info: Mapping[str, Any]) -> None:
         duration = float(info.get("duration_seconds") or 0.0)
@@ -351,6 +363,22 @@ class _TimedMediaStats:
         for genre in genres:
             if isinstance(genre, str):
                 self.genre_counts[genre] += 1
+        summary = info.get("content_summary")
+        if isinstance(summary, str) and summary.strip():
+            self._summaries.append(
+                {
+                    "path": path,
+                    "summary": summary.strip(),
+                }
+            )
+        transcript = info.get("transcript_excerpt")
+        if isinstance(transcript, str) and transcript.strip():
+            self._transcripts.append(
+                {
+                    "path": path,
+                    "excerpt": transcript.strip(),
+                }
+            )
 
     @property
     def average_duration(self) -> float:
@@ -374,6 +402,8 @@ class _TimedMediaStats:
             "top_labels": self.top_labels(),
             "tempo_stats": _coerce_float_stats(self.tempos),
             "top_genres": self.top_genres(),
+            "content_summaries": self._summaries[:5],
+            "transcript_excerpts": self._transcripts[:5],
         }
 
     def top_labels(self, limit: int = 5) -> Sequence[Dict[str, Any]]:

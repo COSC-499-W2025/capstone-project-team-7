@@ -211,21 +211,78 @@ ScanConfigScreen {
     overflow: hidden;
 }
 
-#scan-results-log {
+.scan-results-body {
+    height: 1fr;
+    width: 100%;
+}
+
+.scan-results-log-panel {
+    width: 1fr;
+    height: 1fr;
+    padding: 0 1 0 0;
+}
+
+.scan-results-context {
+    text-style: bold;
+    color: #9ca3af;
+    margin-bottom: 1;
+}
+
+.scan-results-output {
     height: 1fr;
     min-height: 12;
     border: tall #242832;
     padding: 0 1;
     background: #0f1115;
+    overflow-x: auto;
+}
+
+.scan-results-output > #scan-results-log,
+.scan-results-output > #scan-results-files {
+    height: 1fr;
+}
+
+#scan-results-files {
+    padding: 0;
+    border: none;
+    background: transparent;
+}
+
+#scan-results-files ListItem {
+    border: none;
+    padding: 0;
+}
+
+.scan-results-file-label {
+    text-style: none;
+}
+
+.scan-results-log-panel #scan-results-message {
+    margin-top: 1;
+}
+
+.scan-actions-panel {
+    width: 26;
+    min-width: 22;
+    max-width: 32;
+    height: 1fr;
+    border-left: tall #242832;
+    padding: 0 1;
+    background: #111318;
+}
+
+.scan-actions-title {
+    text-style: bold;
+    color: #9ca3af;
+    margin-bottom: 1;
 }
 
 .scan-actions-container {
-    height: auto;
+    height: 1fr;
     margin-top: 0;
     border: none;
     padding: 0;
     background: transparent;
-    max-height: 6;
     overflow-y: auto;
 }
 
@@ -235,6 +292,7 @@ ScanConfigScreen {
 }
 
 .scan-actions-list Button {
+    width: 100%;
     margin-top: 0;
     margin-bottom: 0;
 }

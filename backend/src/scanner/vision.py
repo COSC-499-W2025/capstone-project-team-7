@@ -17,13 +17,17 @@ try:  # Pillow is mandatory for image decoding
 except ImportError:  # pragma: no cover - optional dependency
     Image = None  # type: ignore[assignment]
 
-try:  # Heavy optional dependencies for local inference
+try:  # Core torch is needed for any vision/audio insights.
     import torch
+    import torch.hub
+except Exception:  # pragma: no cover - torch missing entirely
+    torch = None  # type: ignore[assignment]
+
+try:  # TorchVision provides image/video classifiers.
     from torchvision import transforms
     from torchvision.io import read_video
     from torchvision.models import resnet50, ResNet50_Weights
-except Exception:  # pragma: no cover - torch/torchvision missing
-    torch = None  # type: ignore[assignment]
+except Exception:  # pragma: no cover - torchvision missing or incompatible
     transforms = None  # type: ignore[assignment]
     read_video = None  # type: ignore[assignment]
     resnet50 = None  # type: ignore[assignment]
@@ -31,9 +35,12 @@ except Exception:  # pragma: no cover - torch/torchvision missing
 
 try:  # Optional speech model for audio insights.
     import torchaudio
-    from torchaudio.pipelines import WAV2VEC2_ASR_BASE_960H
-except Exception:  # pragma: no cover - torchaudio missing
+except Exception:  # pragma: no cover - torchaudio missing or incompatible
     torchaudio = None  # type: ignore[assignment]
+
+try:
+    from torchaudio.pipelines import WAV2VEC2_ASR_BASE_960H
+except Exception:  # pragma: no cover - bundle unavailable
     WAV2VEC2_ASR_BASE_960H = None  # type: ignore[assignment]
 
 try:  # Optional DSP helpers for tempo/genre heuristics.
@@ -73,6 +80,17 @@ _STOP_WORDS = {
     "these",
     "those",
 }
+
+
+def _checkpoint_path(filename: str) -> Path | None:
+    if torch is None:
+        return None
+    try:
+        hub_dir = Path(torch.hub.get_dir())
+    except Exception:
+        hub_dir = Path.home() / ".cache" / "torch"
+    candidate = hub_dir / "hub" / "checkpoints" / filename
+    return candidate if candidate.exists() else None
 
 
 def image_content_labels(data: bytes, *, top_k: int = DEFAULT_TOP_K) -> List[ContentLabel]:
@@ -233,28 +251,55 @@ class _TorchVisionEngine:
         if torch is None or resnet50 is None:
             raise RuntimeError("Torch/Torchvision unavailable")
 
-        if ResNet50_Weights is not None:
-            weights = ResNet50_Weights.DEFAULT  # type: ignore[attr-defined]
-            self.model = resnet50(weights=weights)
-            self.preprocess = weights.transforms()
-            self.labels: Sequence[str] = weights.meta.get("categories", [])
-        else:  # pragma: no cover - fallback for very old torchvision
-            self.model = resnet50(pretrained=True)
-            if transforms is None:
+        self.labels: Sequence[str]
+        try:
+            if ResNet50_Weights is not None:
+                weights = ResNet50_Weights.DEFAULT  # type: ignore[attr-defined]
+                self.model = resnet50(weights=weights)
+                self.preprocess = weights.transforms()
+                self.labels = weights.meta.get("categories", [])
+            else:  # pragma: no cover - fallback for very old torchvision
+                self.model = resnet50(pretrained=True)
+                if transforms is None:
+                    raise RuntimeError("Torchvision transforms unavailable")
+                self.preprocess = transforms.Compose(
+                    [
+                        transforms.Resize(256),
+                        transforms.CenterCrop(224),
+                        transforms.ToTensor(),
+                        transforms.Normalize(
+                            mean=[0.485, 0.456, 0.406],
+                            std=[0.229, 0.224, 0.225],
+                        ),
+                    ]
+                )
+                self.labels = tuple()
+        except Exception as exc:  # pragma: no cover - download failed/offline
+            logger.warning("Falling back to cached ResNet weights: %s", exc)
+            cache_path = _checkpoint_path("resnet50-11ad3fa6.pth")
+            if cache_path is None:
+                raise
+            self.model = resnet50(weights=None)
+            state_dict = torch.load(str(cache_path), map_location="cpu")
+            self.model.load_state_dict(state_dict)
+            if ResNet50_Weights is not None:
+                self.preprocess = ResNet50_Weights.DEFAULT.transforms()  # type: ignore[attr-defined]
+                self.labels = ResNet50_Weights.DEFAULT.meta.get("categories", [])  # type: ignore[attr-defined]
+            elif transforms is not None:
+                self.preprocess = transforms.Compose(
+                    [
+                        transforms.Resize(256),
+                        transforms.CenterCrop(224),
+                        transforms.ToTensor(),
+                        transforms.Normalize(
+                            mean=[0.485, 0.456, 0.406],
+                            std=[0.229, 0.224, 0.225],
+                        ),
+                    ]
+                )
+                self.labels = tuple()
+            else:
                 raise RuntimeError("Torchvision transforms unavailable")
-            self.preprocess = transforms.Compose(
-                [
-                    transforms.Resize(256),
-                    transforms.CenterCrop(224),
-                    transforms.ToTensor(),
-                    transforms.Normalize(
-                        mean=[0.485, 0.456, 0.406],
-                        std=[0.229, 0.224, 0.225],
-                    ),
-                ]
-            )
-            self.labels = tuple()
-
         self.model.eval()
 
     def classify(self, image: "Image.Image", *, top_k: int) -> List[ContentLabel]:
@@ -283,7 +328,14 @@ class _AudioInsightEngine:
         if torch is None or torchaudio is None or WAV2VEC2_ASR_BASE_960H is None:
             raise RuntimeError("Torchaudio wav2vec bundle unavailable")
         self.bundle = WAV2VEC2_ASR_BASE_960H
-        self.model = self.bundle.get_model()
+        try:
+            self.model = self.bundle.get_model()
+        except Exception as exc:  # pragma: no cover - offline fallback
+            logger.warning("Falling back to cached wav2vec2 weights: %s", exc)
+            checkpoint = _checkpoint_path("wav2vec2_fairseq_base_ls960_asr_ls960.pth")
+            if checkpoint is None:
+                raise
+            self.model = torch.jit.load(str(checkpoint))
         self.labels = self.bundle.get_labels()
         self.sample_rate = int(self.bundle.sample_rate)
         self.blank_symbol = self.labels[0] if self.labels else "-"
@@ -292,7 +344,7 @@ class _AudioInsightEngine:
     def analyze(self, data: bytes, *, suffix: str, top_k: int) -> dict[str, object]:
         waveform, sample_rate = self._load_waveform(data, suffix)
         if waveform is None:
-            return []
+            return {}
         if waveform.dim() == 1:
             waveform = waveform.unsqueeze(0)
         if waveform.size(0) > 1:
