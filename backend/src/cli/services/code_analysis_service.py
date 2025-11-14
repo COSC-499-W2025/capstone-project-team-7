@@ -70,9 +70,16 @@ class CodeAnalysisService:
             if suffix in CODE_FILE_EXTENSIONS:
                 candidates.append(meta)
         return candidates
+    
+    
+    
 
     # --- Execution helpers -------------------------------------------------
 
+    
+    
+    
+    
     def run_analysis(
         self,
         target: Path,

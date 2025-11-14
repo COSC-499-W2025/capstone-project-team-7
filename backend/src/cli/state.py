@@ -61,3 +61,10 @@ class AIState:
     last_analysis: Optional[Dict[str, Any]] = None
     task: Optional[asyncio.Task[Any]] = None
     pending_analysis: bool = False
+
+@dataclass
+class ProjectsState:
+    """State for managing saved projects."""
+    projects_list: List[Dict[str, Any]] = field(default_factory=list)
+    selected_project: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None

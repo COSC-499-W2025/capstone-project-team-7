@@ -14,6 +14,8 @@ from textual.events import Mount
 from textual.widgets import Header, Footer, Static, ListView, ListItem, Label
 
 from .message_utils import dispatch_message
+
+from .services.projects_service import ProjectsService, ProjectsServiceError 
 from .services.preferences_service import PreferencesService
 from .services.ai_service import (
     AIService,
@@ -28,7 +30,7 @@ from .services.code_analysis_service import (
     CodeAnalysisService,
     CodeAnalysisUnavailableError,
 )
-from .state import AIState, ConsentState, PreferencesState, ScanState, SessionState
+from .state import AIState, ConsentState, PreferencesState, ProjectsState, ScanState, SessionState
 from .screens import (
     AIKeyCancelled,
     AIKeyScreen,
@@ -47,6 +49,10 @@ from .screens import (
     ScanParametersChosen,
     ScanResultAction,
     ScanResultsScreen,
+    ProjectSelected,       
+    ProjectDeleted,         
+    ProjectsScreen,       
+    ProjectViewerScreen,  
 )
 from ..cli.display import render_language_table
 from ..scanner.errors import ParserError
@@ -85,6 +91,7 @@ class PortfolioTextualApp(App):
     MENU_ITEMS = [
         ("Account", "Sign in to Supabase or sign out of the current session."),
         ("Run Portfolio Scan", "Prepare an archive or directory and run the portfolio scan workflow."),
+        ("View Saved Projects", "Browse and view previously saved project scans."), 
         ("View Last Analysis", "Reopen the results from the most recent scan without rescanning."),
         ("Settings & User Preferences", "Manage scan profiles, file filters, and other preferences."),
         ("Consent Management", "Review and update required and external consent settings."),
@@ -100,6 +107,7 @@ class PortfolioTextualApp(App):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._session_state = SessionState()
+        self._projects_state = ProjectsState()
         self._consent_state = ConsentState()
         self._preferences_state = PreferencesState()
         self._scan_state = ScanState()
@@ -109,6 +117,8 @@ class PortfolioTextualApp(App):
         self._preferences_service = PreferencesService(media_extensions=MEDIA_EXTENSIONS)
         self._ai_service = AIService()
         self._code_service = CodeAnalysisService()
+        self._projects_service = ProjectsService()
+
         self._preferences_screen = None
         self._scan_results_screen: Optional[ScanResultsScreen] = None
         self._media_analyzer = MediaAnalyzer()
@@ -175,6 +185,8 @@ class PortfolioTextualApp(App):
             detail_panel.update(self._render_account_detail())
         elif label == "View Last Analysis":
             detail_panel.update(self._render_last_scan_detail())
+        elif label == "View Saved Projects":  # ✨ NEW
+            detail_panel.update(self._render_saved_projects_detail())
         elif label == "Settings & User Preferences":
             detail_panel.update(self._render_preferences_detail())
         elif label == "Consent Management":
@@ -236,6 +248,14 @@ class PortfolioTextualApp(App):
 
         if label == "AI-Powered Analysis":
             self._handle_ai_analysis_selection()
+            return
+        if label == "View Saved Projects":
+            if not self._session_state.session:
+                self._show_status("Sign in to view saved projects.", "warning")
+                self._update_detail(index)
+                return
+            self._show_status("Loading saved projects…", "info")
+            asyncio.create_task(self._load_and_show_projects())
             return
 
         self._show_status(f"{label} is coming soon. Hang tight!", "info")
@@ -483,6 +503,24 @@ class PortfolioTextualApp(App):
             screen.set_message("Exporting scan report…", tone="info")
             try:
                 destination = await asyncio.to_thread(self._export_scan_report)
+                
+                # Save to database
+                if self._session_state.session:
+                    self._debug_log("Building payload for database save...")
+                    payload = self._build_export_payload(
+                        self._scan_state.parse_result,
+                        self._scan_state.languages,
+                        self._scan_state.archive,
+                    )
+                    self._debug_log(f"Payload built, calling _save_scan_to_database...")
+                    await self._save_scan_to_database(payload)
+                    self._debug_log("Database save completed")
+                else:
+                    self._debug_log("No session, skipping database save")
+                
+                
+                
+                
             except Exception as exc:  # pragma: no cover - filesystem safeguard
                 screen.set_message(f"Failed to export scan: {exc}", tone="error")
                 return
@@ -1034,6 +1072,20 @@ class PortfolioTextualApp(App):
             ) from exc
         except OSError as exc:
             raise OSError(f"Unable to write export to {destination}: {exc}") from exc
+       
+        if self._session_state.session:
+            try:
+                # Get the running event loop
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # Schedule the coroutine as a task
+                    asyncio.ensure_future(self._save_scan_to_database(payload))
+                else:
+                    # No loop running, skip database save
+                    self._debug_log("No event loop running, skipping database save")
+            except Exception as exc:
+                # Log but don't fail - user still has local export
+                self._debug_log(f"Failed to schedule database save: {exc}")
         return destination
 
     def _build_export_payload(
@@ -1115,7 +1167,125 @@ class PortfolioTextualApp(App):
                     for summary in self._scan_state.pdf_summaries
                 ],
             }
+            
+        # ✨ CODE ANALYSIS ✨
+        if self._scan_state.code_analysis_result:
+            code_result = self._scan_state.code_analysis_result
+            
+            # ✅ Access summary attribute (it's a dict)
+            code_summary = code_result.summary
+            
+            payload["code_analysis"] = {
+                "success": True,
+                "path": code_result.path,
+                
+                # File-level stats
+                "total_files": code_summary.get("total_files", 0),
+                "successful_files": code_result.successful,
+                "failed_files": code_result.failed,
+                
+                # Language breakdown
+                "languages": code_summary.get("languages", {}),
+                
+                # Code metrics
+                "metrics": {
+                    "total_lines": code_summary.get("total_lines", 0),
+                    "total_code_lines": code_summary.get("total_code", 0),
+                    "total_comments": code_summary.get("total_comments", 0),
+                    "total_functions": code_summary.get("total_functions", 0),
+                    "total_classes": code_summary.get("total_classes", 0),
+                    "average_complexity": code_summary.get("avg_complexity", 0.0),
+                    "average_maintainability": code_summary.get("avg_maintainability", 0.0),
+                },
+                
+                # Quality indicators
+                "quality": {
+                    "security_issues": code_summary.get("security_issues", 0),
+                    "todos": code_summary.get("todos", 0),
+                    "high_priority_files": code_summary.get("high_priority_files", 0),
+                    "functions_needing_refactor": code_summary.get("functions_needing_refactor", 0),
+                },
+                
+                # Refactor candidates (top 5)
+                "refactor_candidates": self._extract_refactor_candidates(code_result),
+                
+                # Per-file details (first 50)
+                "file_details": self._extract_file_details(code_result),
+            }
+            
+        elif self._scan_state.code_file_count > 0:
+            # Code files detected but not analyzed
+            payload["code_analysis"] = {
+                "success": False,
+                "total_files": self._scan_state.code_file_count,
+                "status": "not_analyzed",
+                "message": "Code files detected but analysis was not performed",
+                "error": self._scan_state.code_analysis_error
+            }
         return payload
+    
+    
+    def _extract_refactor_candidates(self, code_result) -> List[Dict[str, Any]]:
+        """Extract refactor candidates from DirectoryResult."""
+        try:
+            candidates = code_result.get_refactor_candidates(limit=5)
+            return [
+                {
+                    "path": candidate.path,
+                    "language": candidate.language,
+                    "lines": candidate.metrics.lines,
+                    "code_lines": candidate.metrics.code_lines,
+                    "complexity": candidate.metrics.complexity,
+                    "maintainability": candidate.metrics.maintainability_score,
+                    "priority": candidate.metrics.refactor_priority,
+                    "top_functions": [
+                        {
+                            "name": func.name,
+                            "lines": func.lines,
+                            "complexity": func.complexity,
+                            "params": func.params,
+                            "needs_refactor": func.needs_refactor,
+                        }
+                        for func in candidate.metrics.top_functions[:3]
+                    ],
+                }
+                for candidate in candidates
+            ]
+        except Exception as exc:
+            self._debug_log(f"Failed to extract refactor candidates: {exc}")
+            return []
+
+    def _extract_file_details(self, code_result) -> List[Dict[str, Any]]:
+        """Extract per-file analysis details."""
+        try:
+            files = code_result.files
+            
+            return [
+                {
+                    "path": file_result.path,
+                    "language": file_result.language,
+                    "success": file_result.success,
+                    "size_mb": file_result.size_mb,
+                    "analysis_time_ms": file_result.time_ms,
+                    "metrics": {
+                        "lines": file_result.metrics.lines,
+                        "code_lines": file_result.metrics.code_lines,
+                        "comments": file_result.metrics.comments,
+                        "functions": file_result.metrics.functions,
+                        "classes": file_result.metrics.classes,
+                        "complexity": file_result.metrics.complexity,
+                        "maintainability": file_result.metrics.maintainability_score,
+                        "priority": file_result.metrics.refactor_priority,
+                        "security_issues_count": len(file_result.metrics.security_issues),
+                        "todos_count": len(file_result.metrics.todos),
+                    } if file_result.metrics else {},
+                    "error": file_result.error if not file_result.success else None,
+                }
+                for file_result in files[:50]  # Limit to first 50 files
+            ]
+        except Exception as exc:
+            self._debug_log(f"Failed to extract file details: {exc}")
+            return []
 
     def _show_login_dialog(self) -> None:
         try:
@@ -1135,7 +1305,18 @@ class PortfolioTextualApp(App):
         self._session_state.auth = SupabaseAuth()
         self._session_state.auth_error = None
         return self._session_state.auth
-
+    
+    def _get_projects_service(self) -> ProjectsService:
+        """Lazy initialize projects service when needed."""
+        if self._projects_service is not None:
+            return self._projects_service
+        
+        try:
+            self._projects_service = ProjectsService()
+            return self._projects_service
+        except ProjectsServiceError as exc:
+            raise ProjectsServiceError(f"Unable to initialize projects service: {exc}") from exc
+        
     def _show_consent_dialog(self) -> None:
         has_required = self._consent_state.record is not None
         has_external = self._has_external_consent()
@@ -1659,6 +1840,48 @@ class PortfolioTextualApp(App):
             if self._session_state.auth_error:
                 lines.append(f"• [#9ca3af]Auth issue:[/#9ca3af] {self._session_state.auth_error}")
         return "\n".join(lines)
+    
+    
+    def _render_saved_projects_detail(self) -> str:
+        """Render the saved projects detail panel."""
+        lines = ["[b]View Saved Projects[/b]"]
+        
+        if not self._session_state.session:
+            lines.extend([
+                "",
+                "• Sign in (Ctrl+L) to view your saved project scans.",
+                "• Projects are automatically saved when you export scan results.",
+            ])
+            return "\n".join(lines)
+        
+        project_count = len(self._projects_state.projects_list)
+        
+        lines.extend([
+            "",
+            f"• Saved projects: {project_count}",
+            "• Press Enter to browse your projects.",
+            "",
+            "Each export automatically saves to your project library.",
+        ])
+        
+        if project_count > 0:
+            recent = self._projects_state.projects_list[0]
+            name = recent.get("project_name", "Unknown")
+            timestamp = recent.get("scan_timestamp", "")
+            
+            if timestamp:
+                try:
+                    dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                    timestamp_str = dt.strftime("%Y-%m-%d")
+                except:
+                    timestamp_str = "recently"
+            else:
+                timestamp_str = "recently"
+            
+            lines.append(f"• Most recent: {name} ({timestamp_str})")
+        
+        return "\n".join(lines)
+    
 
     def _render_last_scan_detail(self) -> str:
         lines = ["[b]View Last Analysis[/b]"]
@@ -1872,6 +2095,135 @@ class PortfolioTextualApp(App):
             self._show_status(message, "success")
         finally:
             self._ai_state.task = None
+            
+    # --- Projects helpers ---
+
+    async def _load_and_show_projects(self) -> None:
+        """Load user's projects and show the projects screen."""
+        if not self._session_state.session:
+            self._show_status("Sign in to view projects.", "error")
+            return
+        
+        try:
+            projects_service = self._get_projects_service()
+        except ProjectsServiceError as exc:
+            self._show_status(f"Projects unavailable: {exc}", "error")
+            return
+        
+        try:
+            projects = await asyncio.to_thread(
+                projects_service.get_user_projects,
+                self._session_state.session.user_id
+            )
+        except ProjectsServiceError as exc:
+            self._show_status(f"Failed to load projects: {exc}", "error")
+            return
+        except Exception as exc:
+            self._show_status(f"Unexpected error loading projects: {exc}", "error")
+            return
+        
+        self._projects_state.projects_list = projects
+        self._projects_state.error = None
+        self._show_status(f"Loaded {len(projects)} project(s).", "success")
+        self.push_screen(ProjectsScreen(projects))
+
+    async def on_project_selected(self, message: ProjectSelected) -> None:
+        """Handle when user selects a project to view."""
+        message.stop()
+        
+        if not self._session_state.session:
+            self._show_status("Sign in required.", "error")
+            return
+        
+        project_id = message.project.get("id")
+        if not project_id:
+            self._show_status("Invalid project selected.", "error")
+            return
+        
+        self._show_status("Loading project details…", "info")
+        
+        try:
+            projects_service = self._get_projects_service()
+            full_project = await asyncio.to_thread(
+                projects_service.get_project_scan,
+                self._session_state.session.user_id,
+                project_id
+            )
+        except Exception as exc:
+            self._show_status(f"Failed to load project: {exc}", "error")
+            return
+        
+        if not full_project:
+            self._show_status("Project not found.", "error")
+            return
+        
+        self._projects_state.selected_project = full_project
+        self._show_status("Project loaded.", "success")
+        self.push_screen(ProjectViewerScreen(full_project))
+
+    async def on_project_deleted(self, message: ProjectDeleted) -> None:
+        """Handle when user deletes a project."""
+        message.stop()
+        
+        if not self._session_state.session:
+            self._show_status("Sign in required.", "error")
+            return
+        
+        project_id = message.project_id
+        self._show_status("Deleting project…", "info")
+        
+        try:
+            projects_service = self._get_projects_service()
+            success = await asyncio.to_thread(
+                projects_service.delete_project,
+                self._session_state.session.user_id,
+                project_id
+            )
+        except Exception as exc:
+            self._show_status(f"Failed to delete project: {exc}", "error")
+            return
+        
+        if success:
+            self._show_status("Project deleted successfully.", "success")
+            # Reload projects list
+            await self._load_and_show_projects()
+        else:
+            self._show_status("Failed to delete project.", "error")
+        
+        
+    async def _save_scan_to_database(self, scan_data: Dict[str, Any]) -> None:
+        """Save the scan to the projects database."""
+        if not self._session_state.session:
+            return
+        
+        try:
+            projects_service = self._get_projects_service()
+        except ProjectsServiceError:
+            # Silently fail - user still has local export
+            return
+        
+        # Generate project name from target
+        target = self._scan_state.target
+        if target:
+            project_name = target.name
+            project_path = str(target)
+        else:
+            project_name = f"Scan_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            project_path = "Unknown"
+        
+        try:
+            await asyncio.to_thread(
+                projects_service.save_scan,
+                self._session_state.session.user_id,
+                project_name,
+                project_path,
+                scan_data
+            )
+            self._debug_log(f"Scan saved to database: {project_name}")
+        except Exception as exc:
+            # Log but don't fail - user still has local export
+            self._debug_log(f"Failed to save scan to database: {exc}")
+    
 
 
 def main() -> None:

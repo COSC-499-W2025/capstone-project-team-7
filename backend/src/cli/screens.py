@@ -864,3 +864,467 @@ class ScanResultsScreen(ModalScreen[None]):
         callback = getattr(self.app, "on_scan_results_screen_closed", None)
         if callable(callback):
             callback()
+
+# ============================================================================
+# PROJECT MANAGEMENT SCREENS
+# ============================================================================
+
+class ProjectSelected(Message):
+    """Message sent when user selects a project to view."""
+    
+    def __init__(self, project: Dict[str, Any]) -> None:
+        super().__init__()
+        self.project = project
+
+
+class ProjectDeleted(Message):
+    """Message sent when user deletes a project."""
+    
+    def __init__(self, project_id: str) -> None:
+        super().__init__()
+        self.project_id = project_id
+
+
+class ProjectsScreen(ModalScreen[None]):
+    """Screen for browsing saved project scans."""
+    
+    CSS = """
+    ProjectsScreen {
+        align: center middle;
+    }
+    
+    #projects-dialog {
+        width: 90;
+        height: 35;
+        border: thick $background 80%;
+        background: $surface;
+        padding: 1 2;
+    }
+    
+    #projects-title {
+        width: 100%;
+        content-align: center middle;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+    
+    #projects-list {
+        width: 100%;
+        height: 20;
+        border: solid $primary;
+        margin-bottom: 1;
+    }
+    
+    .project-item {
+        padding: 0 1;
+    }
+    
+    #projects-detail {
+        width: 100%;
+        height: 8;
+        border: solid $primary;
+        padding: 1;
+        margin-bottom: 1;
+    }
+    
+    #projects-buttons {
+        width: 100%;
+        height: auto;
+        align: center middle;
+    }
+    
+    Button {
+        margin: 0 1;
+    }
+    
+    #projects-status {
+        width: 100%;
+        height: auto;
+        content-align: center middle;
+        margin-top: 1;
+        padding: 0 1;
+    }
+    
+    .status-info { color: $text; }
+    .status-error { color: $error; }
+    .status-success { color: $success; }
+    """
+    
+    def __init__(self, projects: List[Dict[str, Any]]) -> None:
+        super().__init__()
+        self.projects = projects
+        self.selected_project: Optional[Dict[str, Any]] = None
+    
+    def compose(self):
+        with Vertical(id="projects-dialog"):
+            yield Static("📁 Saved Project Scans", id="projects-title")
+            
+            if not self.projects:
+                yield Static(
+                    "No saved projects found.\n\n"
+                    "Run a portfolio scan and export it to save your first project!",
+                    id="projects-detail"
+                )
+            else:
+                # Create list items
+                items = [
+                    ListItem(Label(self._format_project_item(proj), classes="project-item"))
+                    for proj in self.projects
+                ]
+                yield ListView(*items, id="projects-list")
+                yield Static("Select a project to view details", id="projects-detail")
+            
+            with Horizontal(id="projects-buttons"):
+                if self.projects:
+                    yield Button("View", id="view-btn", variant="primary")
+                    yield Button("Delete", id="delete-btn", variant="error")
+                yield Button("Close", id="close-btn")
+            
+            yield Static("", id="projects-status", classes="status-info")
+    
+    def _format_project_item(self, project: Dict[str, Any]) -> str:
+        """Format a project for display in the list."""
+        name = project.get("project_name", "Unknown")
+        timestamp = project.get("scan_timestamp", "")
+        files = project.get("total_files", 0)
+        
+        # Format timestamp
+        if timestamp:
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                timestamp_str = dt.strftime("%Y-%m-%d %H:%M")
+            except:
+                timestamp_str = timestamp[:16]
+        else:
+            timestamp_str = "Unknown date"
+        
+        # Analysis badges
+        badges = []
+        if project.get("has_code_analysis"):
+            badges.append("💻")
+        if project.get("has_git_analysis"):
+            badges.append("🔀")
+        if project.get("has_pdf_analysis"):
+            badges.append("📄")
+        if project.get("has_media_analysis"):
+            badges.append("🎨")
+        
+        badge_str = " ".join(badges) if badges else ""
+        
+        return f"{name} • {timestamp_str} • {files} files {badge_str}"
+    
+    def on_mount(self) -> None:
+        """Focus the list when mounted."""
+        if self.projects:
+            try:
+                list_view = self.query_one("#projects-list", ListView)
+                list_view.focus()
+            except:
+                pass
+    
+    def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
+        """Update detail panel when project is highlighted."""
+        if event.control.id == "projects-list":
+            index = event.control.index or 0
+            if 0 <= index < len(self.projects):
+                self.selected_project = self.projects[index]
+                self._update_detail(self.selected_project)
+    
+    def _update_detail(self, project: Dict[str, Any]) -> None:
+        """Update the detail panel with project info."""
+        try:
+            detail = self.query_one("#projects-detail", Static)
+            
+            name = project.get("project_name", "Unknown")
+            path = project.get("project_path", "Unknown")
+            timestamp = project.get("scan_timestamp", "Unknown")
+            files = project.get("total_files", 0)
+            lines = project.get("total_lines", 0)
+            languages = project.get("languages", [])
+            
+            # Format timestamp
+            if timestamp != "Unknown":
+                try:
+                    from datetime import datetime
+                    dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                    timestamp = dt.strftime("%Y-%m-%d at %H:%M:%S")
+                except:
+                    pass
+            
+            langs_str = ", ".join(languages[:5]) if languages else "None detected"
+            if len(languages) > 5:
+                langs_str += f" (+{len(languages) - 5} more)"
+            
+            text = (
+                f"[b]{name}[/b]\n"
+                f"Path: {path}\n"
+                f"Scanned: {timestamp}\n"
+                f"Files: {files} • Lines: {lines:,}\n"
+                f"Languages: {langs_str}"
+            )
+            
+            detail.update(text)
+        except Exception:
+            pass
+    
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button presses."""
+        button_id = event.button.id
+        
+        if button_id == "close-btn":
+            self.dismiss(None)
+        
+        elif button_id == "view-btn":
+            if self.selected_project:
+                self.post_message(ProjectSelected(self.selected_project))
+            else:
+                self._set_status("Please select a project first", "error")
+        
+        elif button_id == "delete-btn":
+            if self.selected_project:
+                project_id = self.selected_project.get("id")
+                if project_id:
+                    self.post_message(ProjectDeleted(project_id))
+            else:
+                self._set_status("Please select a project first", "error")
+    
+    def _set_status(self, message: str, tone: str = "info") -> None:
+        """Update status message."""
+        try:
+            status = self.query_one("#projects-status", Static)
+            status.update(message)
+            for t in ("info", "error", "success"):
+                status.remove_class(f"status-{t}")
+            status.add_class(f"status-{tone}")
+        except Exception:
+            pass
+
+
+class ProjectViewerScreen(ModalScreen[None]):
+    """Screen for viewing detailed project scan data."""
+    
+    CSS = """
+    ProjectViewerScreen {
+        align: center middle;
+    }
+    
+    #viewer-dialog {
+        width: 95;
+        height: 40;
+        border: thick $background 80%;
+        background: $surface;
+        padding: 1 2;
+    }
+    
+    #viewer-title {
+        width: 100%;
+        content-align: center middle;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+    
+    #viewer-tabs {
+        width: 100%;
+        height: auto;
+        align: center middle;
+        margin-bottom: 1;
+    }
+    
+    #viewer-content {
+        width: 100%;
+        height: 30;
+        border: solid $primary;
+        padding: 1;
+        overflow-y: auto;
+        margin-bottom: 1;
+    }
+    
+    #viewer-buttons {
+        width: 100%;
+        height: auto;
+        align: center middle;
+    }
+    
+    Button {
+        margin: 0 1;
+    }
+    
+    .tab-active {
+        background: $primary;
+        color: $text;
+    }
+    """
+    
+    def __init__(self, project: Dict[str, Any]) -> None:
+        super().__init__()
+        self.project = project
+        self.scan_data = project.get("scan_data", {})
+        self.current_tab = "overview"
+        
+        # Determine available tabs
+        self.available_tabs = ["overview"]
+        if self.scan_data.get("code_analysis"):
+            self.available_tabs.append("code")
+        if self.scan_data.get("git_analysis"):
+            self.available_tabs.append("git")
+        if self.scan_data.get("pdf_analysis"):
+            self.available_tabs.append("pdf")
+        if self.scan_data.get("media_analysis"):
+            self.available_tabs.append("media")
+    
+    def compose(self):
+        project_name = self.project.get("project_name", "Project")
+        
+        with Vertical(id="viewer-dialog"):
+            yield Static(f"📊 {project_name}", id="viewer-title")
+            
+            # Tab buttons
+            with Horizontal(id="viewer-tabs"):
+                yield Button("Overview", id="tab-overview", variant="primary")
+                if "code" in self.available_tabs:
+                    yield Button("Code Analysis", id="tab-code")
+                if "git" in self.available_tabs:
+                    yield Button("Git Stats", id="tab-git")
+                if "pdf" in self.available_tabs:
+                    yield Button("PDF Analysis", id="tab-pdf")
+                if "media" in self.available_tabs:
+                    yield Button("Media Analysis", id="tab-media")
+            
+            # Content area
+            yield Static(self._render_overview(), id="viewer-content")
+            
+            # Action buttons
+            with Horizontal(id="viewer-buttons"):
+                yield Button("Close", id="close-btn", variant="primary")
+    
+    def on_mount(self) -> None:
+        """Set initial tab styling."""
+        self._update_tab_styling()
+    
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button presses."""
+        button_id = event.button.id
+        
+        if button_id == "close-btn":
+            self.dismiss(None)
+        
+        elif button_id.startswith("tab-"):
+            tab_name = button_id.replace("tab-", "")
+            self.current_tab = tab_name
+            self._update_tab_styling()
+            self._update_content()
+    
+    def _update_tab_styling(self) -> None:
+        """Update tab button styling based on current tab."""
+        for tab in self.available_tabs:
+            try:
+                button = self.query_one(f"#tab-{tab}", Button)
+                if tab == self.current_tab:
+                    button.variant = "primary"
+                else:
+                    button.variant = "default"
+            except:
+                pass
+    
+    def _update_content(self) -> None:
+        """Update content based on current tab."""
+        try:
+            content = self.query_one("#viewer-content", Static)
+            
+            if self.current_tab == "overview":
+                content.update(self._render_overview())
+            elif self.current_tab == "code":
+                content.update(self._render_code_analysis())
+            elif self.current_tab == "git":
+                content.update(self._render_git_analysis())
+            elif self.current_tab == "pdf":
+                content.update(self._render_pdf_analysis())
+            elif self.current_tab == "media":
+                content.update(self._render_media_analysis())
+        except Exception:
+            pass
+    
+    def _render_overview(self) -> str:
+        """Render overview tab."""
+        lines: List[str] = []
+        
+        lines.append("[b]Project Overview[/b]\n")
+        
+        # Basic info
+        lines.append(f"Name: {self.project.get('project_name', 'Unknown')}")
+        lines.append(f"Path: {self.project.get('project_path', 'Unknown')}")
+        
+        timestamp = self.project.get("scan_timestamp", "Unknown")
+        if timestamp != "Unknown":
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                timestamp = dt.strftime("%Y-%m-%d at %H:%M:%S")
+            except:
+                pass
+        lines.append(f"Scanned: {timestamp}")
+        
+        lines.append("")
+        
+        # Summary stats
+        summary = self.scan_data.get("summary", {})
+        lines.append("[b]Summary[/b]")
+        lines.append(f"Files processed: {summary.get('files_processed', 0)}")
+        lines.append(f"Bytes processed: {summary.get('bytes_processed', 0):,}")
+        lines.append(f"Issues found: {summary.get('issues_count', 0)}")
+        
+        filtered = summary.get("filtered_out")
+        if filtered is not None:
+            lines.append(f"Files filtered: {filtered}")
+        
+        lines.append("")
+        
+        # Languages
+        languages = summary.get("languages", [])
+        if languages:
+            lines.append("[b]Languages Detected[/b]")
+            if isinstance(languages, list):
+                for lang in languages[:10]:
+                    if isinstance(lang, dict):
+                        name = lang.get("name", "Unknown")
+                        count = lang.get("files", 0)
+                        lines.append(f"  • {name}: {count} files")
+            lines.append("")
+        
+        # Analysis types
+        lines.append("[b]Available Analyses[/b]")
+        if self.scan_data.get("code_analysis"):
+            lines.append("  ✓ Code Analysis")
+        if self.scan_data.get("git_analysis"):
+            lines.append("  ✓ Git Statistics")
+        if self.scan_data.get("pdf_analysis"):
+            lines.append("  ✓ PDF Analysis")
+        if self.scan_data.get("media_analysis"):
+            lines.append("  ✓ Media Analysis")
+        
+        return "\n".join(lines)
+    
+    def _render_code_analysis(self) -> str:
+        """Render code analysis tab - TRUNCATED for brevity."""
+        code_data = self.scan_data.get("code_analysis", {})
+        if not code_data:
+            return "No code analysis data available."
+        
+        lines: List[str] = ["[b]Code Analysis[/b]\n"]
+        lines.append(f"Total files: {code_data.get('total_files', 0)}")
+        lines.append(f"Maintainability: {code_data.get('metrics', {}).get('average_maintainability', 0):.1f}/100")
+        # Add more rendering here...
+        return "\n".join(lines)
+    
+    def _render_git_analysis(self) -> str:
+        """Render git analysis - stub."""
+        return "Git analysis rendering coming soon..."
+    
+    def _render_pdf_analysis(self) -> str:
+        """Render PDF analysis - stub."""
+        return "PDF analysis rendering coming soon..."
+    
+    def _render_media_analysis(self) -> str:
+        """Render media analysis - stub."""
+        return "Media analysis rendering coming soon..."
