@@ -142,12 +142,23 @@ class SkillsAnalysisService:
         if not skills:
             return "No skills detected in this project.\n"
         
+        # Map short category names to display names
+        category_display_names = {
+            "oop": "Object-Oriented Programming",
+            "data_structures": "Data Structures",
+            "algorithms": "Algorithms",
+            "patterns": "Design Patterns",
+            "practices": "Best Practices"
+        }
+        
         # Group skills by category
         categorized: Dict[str, List[Skill]] = {}
         for skill in skills:
-            if skill.category not in categorized:
-                categorized[skill.category] = []
-            categorized[skill.category].append(skill)
+            # Get display name for category
+            display_name = category_display_names.get(skill.category, skill.category)
+            if display_name not in categorized:
+                categorized[display_name] = []
+            categorized[display_name].append(skill)
         
         # Build summary text
         lines = [f"Skills Detected: {len(skills)} total\n"]
