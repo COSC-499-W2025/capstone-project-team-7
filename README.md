@@ -49,10 +49,4 @@ You can also run it directly if your environment is already configured:
 python -m src.cli.textual_app
 ```
 
-Press `Ctrl+C` to exit at any time.
-
-### AI Analysis Tips
-
-- After signing in, run **Run Portfolio Scan** for the project you want analyzed, then select **AI-Powered Analysis**.
-- Provide your OpenAI key when prompted. Temperature and max-token inputs are optional; defaults are 0.7 / 1000.
-- Every successful AI run now saves the formatted output (plus the raw JSON payload) to `ai-analysis-latest.md` in the repo root so you can read or share the report outside the Textual UI.
+Press `q` to exit at any time.
