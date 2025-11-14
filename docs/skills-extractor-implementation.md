@@ -3,6 +3,16 @@
 ## Overview
 Implemented a comprehensive **Skills Extraction System** that analyzes code to identify computer science skills with **depth of insight** rather than surface-level descriptions. This directly addresses Milestone 1 requirements and your instructor's feedback about going beyond basic language detection.
 
+**Status**: ✅ **COMPLETE AND INTEGRATED** into Textual CLI
+
+## Quick Reference
+
+- **Core Module**: `backend/src/analyzer/skills_extractor.py` (~636 lines)
+- **Service Layer**: `backend/src/cli/services/skills_analysis_service.py` (~293 lines)
+- **Tests**: `tests/test_skills_extractor.py` (23 tests, all passing ✅)
+- **Integration Tests**: `backend/test_skills_integration.py` (3 tests, all passing ✅)
+- **Documentation**: See `backend/src/analyzer/README.md` for complete usage guide
+
 ## What Was Built
 
 ### 1. Core Module: `skills_extractor.py` (~700 lines)
@@ -303,4 +313,47 @@ The module is:
 - ✅ **Extensible** (easy to add patterns)
 - ✅ **Production-ready** (error handling, logging)
 
-**Next:** Integrate with your existing CLI and test on real projects!
+---
+
+## ✅ CLI Integration Complete (Updated)
+
+### Skills Extractor Now Fully Integrated into Textual CLI
+
+The skills extraction system has been **fully integrated** into the existing Textual CLI application.
+
+#### Integration Components:
+
+**1. SkillsAnalysisService** (`backend/src/cli/services/skills_analysis_service.py`)
+- Bridges CLI and SkillsExtractor module
+- Handles file reading, extraction, formatting, and export
+
+**2. State Management** (`backend/src/cli/state.py`)
+- Added `skills_analysis_result` and `skills_analysis_error` fields
+
+**3. Textual App** (`backend/src/cli/textual_app.py`)
+- "Skills analysis" button in scan results menu
+- Background execution (non-blocking UI)
+- Result caching for instant re-viewing
+- Automatic inclusion in JSON exports
+
+#### User Flow:
+```
+Run Scan → View Results → Click "Skills analysis" → See Formatted Skills → Export JSON
+```
+
+#### Integration Test Results:
+```
+✅ PASSED: Service Initialization
+✅ PASSED: Skills Extraction
+✅ PASSED: ScanState Integration
+
+🎉 All tests passing!
+```
+
+#### Documentation:
+- Core: `SKILLS_EXTRACTOR_README.md`
+- Integration: `SKILLS_CLI_INTEGRATION.md`
+- Demo: `skills_demo.py`
+
+**Status: ✅ FEATURE COMPLETE AND INTEGRATED**
+

@@ -2,6 +2,25 @@
 
 A sophisticated module for extracting computer science skills and concepts from code analysis, with a focus on **depth of insight** rather than surface-level descriptions.
 
+**Status**: ✅ **Fully integrated into Textual CLI** - Ready to use!
+
+## Table of Contents
+- [Overview](#overview)
+- [Quick Start](#quick-start)
+- [Usage Examples](#usage-examples)
+- [Skill Categories](#skill-categories)
+- [Understanding the Output](#understanding-the-output)
+- [Export Format](#export-format)
+- [Supported Languages](#supported-languages)
+- [Testing](#testing)
+- [Integration Points](#integration-points)
+  - [✅ Textual CLI Integration](#-textual-cli-integration-ready-to-use)
+  - [API Routes](#with-api-routes-api)
+- [Best Practices](#best-practices)
+- [Future Enhancements](#future-enhancements)
+- [Related Modules](#related-modules)
+- [Contributing](#contributing)
+
 ## Overview
 
 The Skills Extractor analyzes code to identify evidence of:
@@ -297,22 +316,111 @@ python skills_demo.py
 
 ## Integration Points
 
-### With CLI (`parse_zip.py`)
-Add skills extraction to the scan pipeline:
+### ✅ Textual CLI Integration (READY TO USE)
 
+The Skills Extractor is **fully integrated** into the Textual CLI application. Users can extract and view skills directly from scan results.
+
+**How to Use:**
+1. Run the CLI: `python -m src.cli.textual_app`
+2. Select "Run Portfolio Scan" and choose a project directory
+3. In scan results, click **"Skills analysis"** button
+4. View formatted skills summary organized by category
+5. Export JSON (skills automatically included)
+
+**Display Format:**
+```
+Skills Detected: 15 total
+============================================================
+
+Object-Oriented Programming (4 skills):
+------------------------------------------------------------
+  • Encapsulation (Advanced, 8 instances)
+    Defines classes with private attributes and controlled access
+  • Polymorphism (Intermediate, 3 instances)
+    Uses method overriding and interface implementations
+
+Data Structures (5 skills):
+------------------------------------------------------------
+  • Hash Maps (Advanced, 12 instances)
+    Implements dictionaries and lookup tables efficiently
+...
+```
+
+**Features:**
+- ✅ Background execution (non-blocking UI)
+- ✅ Result caching (instant re-viewing)
+- ✅ Automatic JSON export integration
+- ✅ Smart file filtering (excludes node_modules, .git, etc.)
+- ✅ Multi-language support
+- ✅ Proficiency levels (Beginner/Intermediate/Advanced)
+
+**Service Layer:**
+The `SkillsAnalysisService` (`cli/services/skills_analysis_service.py`) provides:
 ```python
-from analyzer.skills_extractor import SkillsExtractor
+from cli.services.skills_analysis_service import SkillsAnalysisService
 
-# In parse_zip or CLI handler
-skills_extractor = SkillsExtractor()
-skills = skills_extractor.extract_skills(
-    code_analysis=analysis_result,
-    git_analysis=git_repos,
-    file_contents=important_files
+service = SkillsAnalysisService()
+
+# Extract skills from a project
+skills = service.extract_skills(
+    target_path=Path("./project"),
+    code_analysis_result=code_result,  # Optional
+    git_analysis_result=git_result,    # Optional
+    file_contents=files_dict           # Optional (auto-read if None)
 )
 
-# Add to output
-payload["skills"] = skills_extractor.export_to_dict()
+# Format for display
+summary = service.format_summary(skills)
+print(summary)
+
+# Prepare for export
+export_data = service.export_skills_data(skills)
+```
+
+**State Management:**
+Skills are cached in `ScanState` for instant re-viewing:
+```python
+# In textual_app.py
+self._scan_state.skills_analysis_result  # List[Skill]
+self._scan_state.skills_analysis_error   # Optional[str]
+```
+
+**Export Format:**
+Skills are automatically included in JSON exports:
+```json
+{
+  "skills_analysis": {
+    "success": true,
+    "total_skills": 15,
+    "skills_by_category": {
+      "Object-Oriented Programming": [...],
+      "Data Structures": [...],
+      "Algorithms": [...],
+      "Design Patterns": [...],
+      "Best Practices": [...]
+    },
+    "top_skills": [
+      {
+        "name": "Hash Maps",
+        "category": "Data Structures",
+        "proficiency": 0.92,
+        "evidence_count": 12
+      }
+    ],
+    "all_skills": [...]
+  }
+}
+```
+
+**Testing:**
+```bash
+# Run integration tests
+python backend/test_skills_integration.py
+
+# Expected output:
+✅ PASSED: Service Initialization
+✅ PASSED: Skills Extraction
+✅ PASSED: ScanState Integration
 ```
 
 ### With API Routes (`api/`)

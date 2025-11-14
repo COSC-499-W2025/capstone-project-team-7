@@ -30,6 +30,10 @@ from .services.code_analysis_service import (
     CodeAnalysisService,
     CodeAnalysisUnavailableError,
 )
+from .services.skills_analysis_service import (
+    SkillsAnalysisService,
+    SkillsAnalysisError,
+)
 from .state import AIState, ConsentState, PreferencesState, ProjectsState, ScanState, SessionState
 from .screens import (
     AIKeyCancelled,
@@ -117,6 +121,7 @@ class PortfolioTextualApp(App):
         self._preferences_service = PreferencesService(media_extensions=MEDIA_EXTENSIONS)
         self._ai_service = AIService()
         self._code_service = CodeAnalysisService()
+        self._skills_service = SkillsAnalysisService()
         self._projects_service = ProjectsService()
 
         self._preferences_screen = None
@@ -414,6 +419,8 @@ class PortfolioTextualApp(App):
         self._scan_state.code_file_count = len(self._code_service.code_file_candidates(run_result.parse_result))
         self._scan_state.code_analysis_result = None
         self._scan_state.code_analysis_error = None
+        self._scan_state.skills_analysis_result = None
+        self._scan_state.skills_analysis_error = None
         self._show_status("Scan completed successfully.", "success")
         detail_panel.update(self._scan_service.format_scan_overview(self._scan_state))
         self._show_scan_results_dialog()
@@ -428,6 +435,7 @@ class PortfolioTextualApp(App):
         ]
         if self._scan_state.code_file_count:
             actions.append(("code", "Code analysis"))
+            actions.append(("skills", "Skills analysis"))
         actions.append(("export", "Export JSON report"))
         if self._scan_state.pdf_candidates:
             label = "View PDF summaries" if self._scan_state.pdf_summaries else "Analyze PDF files"
@@ -494,6 +502,10 @@ class PortfolioTextualApp(App):
 
         if action == "code":
             await self._handle_code_analysis_action(screen)
+            return
+
+        if action == "skills":
+            await self._handle_skills_analysis_action(screen)
             return
 
         if action == "export":
@@ -874,6 +886,59 @@ class PortfolioTextualApp(App):
             preferences = None
         return self._code_service.run_analysis(target, preferences)
 
+    async def _handle_skills_analysis_action(self, screen: ScanResultsScreen) -> None:
+        """Handle skills analysis action from the scan results screen."""
+        if self._scan_state.code_file_count <= 0:
+            screen.display_output(
+                "No supported code files were detected in the last scan.", context="Skills analysis"
+            )
+            screen.set_message("Run another scan with source files present.", tone="warning")
+            return
+        if not self._scan_state.target:
+            screen.display_output("Scan target unavailable. Rerun the scan to analyze skills.", context="Skills analysis")
+            screen.set_message("No scan target available.", tone="warning")
+            return
+
+        if self._scan_state.skills_analysis_result is None:
+            screen.set_message("Extracting skills from codebase…", tone="info")
+            try:
+                skills = await asyncio.to_thread(self._perform_skills_analysis)
+            except SkillsAnalysisError as exc:
+                screen.display_output(f"Unable to extract skills: {exc}", context="Skills analysis")
+                screen.set_message("Skills analysis failed.", tone="error")
+                self._scan_state.skills_analysis_error = str(exc)
+                return
+            self._scan_state.skills_analysis_result = skills
+            self._scan_state.skills_analysis_error = None
+
+        summary_text = self._skills_service.format_summary(self._scan_state.skills_analysis_result)
+        screen.display_output(summary_text, context="Skills analysis")
+        screen.set_message("Skills analysis ready.", tone="success")
+
+    def _perform_skills_analysis(self):
+        """Perform skills extraction from the scanned project."""
+        target = self._scan_state.target
+        if target is None:
+            raise SkillsAnalysisError("No scan target available.")
+        
+        # Collect all available analysis data
+        code_analysis = self._scan_state.code_analysis_result
+        git_analysis = None
+        if self._scan_state.git_analysis:
+            # Combine git analysis results if available
+            git_analysis = {
+                'commit_count': sum(g.get('commit_count', 0) for g in self._scan_state.git_analysis),
+                'contributor_count': sum(g.get('contributor_count', 0) for g in self._scan_state.git_analysis),
+                'path': str(target)
+            }
+        
+        return self._skills_service.extract_skills(
+            target_path=target,
+            code_analysis_result=code_analysis,
+            git_analysis_result=git_analysis,
+            file_contents=None  # Let the service read files
+        )
+
     def _analyze_pdfs_sync(self) -> None:
         """Run local PDF parsing and summarization."""
         if not PDF_AVAILABLE:
@@ -1222,6 +1287,23 @@ class PortfolioTextualApp(App):
                 "message": "Code files detected but analysis was not performed",
                 "error": self._scan_state.code_analysis_error
             }
+        
+        # ✨ SKILLS ANALYSIS ✨
+        if self._scan_state.skills_analysis_result:
+            skills_data = self._skills_service.export_skills_data(self._scan_state.skills_analysis_result)
+            payload["skills_analysis"] = {
+                "success": True,
+                **skills_data
+            }
+        elif self._scan_state.code_file_count > 0:
+            # Code files detected but skills not extracted
+            payload["skills_analysis"] = {
+                "success": False,
+                "status": "not_analyzed",
+                "message": "Code files detected but skills extraction was not performed",
+                "error": self._scan_state.skills_analysis_error
+            }
+        
         return payload
     
     
