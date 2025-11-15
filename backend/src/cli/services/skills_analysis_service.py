@@ -299,6 +299,135 @@ class SkillsAnalysisService:
         
         return skills_data
 
+    def format_skills_summary(self, skills: List[Skill]) -> str:
+        """Format a concise skills summary with key statistics.
+        
+        Args:
+            skills: List of extracted Skill objects
+            
+        Returns:
+            Formatted summary string
+        """
+        if not skills:
+            return "No skills detected."
+        
+        # Category mapping
+        category_display = {
+            "oop": "Object-Oriented Programming",
+            "data_structures": "Data Structures",
+            "algorithms": "Algorithms",
+            "patterns": "Design Patterns",
+            "practices": "Best Practices"
+        }
+        
+        # Calculate stats
+        total_proficiency = sum(s.proficiency_score for s in skills)
+        avg_proficiency = total_proficiency / len(skills)
+        
+        # Group by category
+        from collections import defaultdict
+        category_counts = defaultdict(int)
+        for skill in skills:
+            category_counts[skill.category] += 1
+        
+        # Find top skills
+        sorted_skills = sorted(skills, key=lambda s: s.proficiency_score, reverse=True)
+        top_3 = sorted_skills[:3]
+        
+        # Build summary
+        lines = []
+        lines.append("[b]Skills Overview[/b]")
+        lines.append(f"Total skills detected: {len(skills)}")
+        lines.append(f"Average proficiency: {avg_proficiency:.2f}")
+        lines.append("")
+        lines.append("[b]By Category[/b]")
+        for cat_key, count in sorted(category_counts.items(), key=lambda x: x[1], reverse=True):
+            display_name = category_display.get(cat_key, cat_key)
+            lines.append(f"- {display_name}: {count} skills")
+        lines.append("")
+        lines.append("[b]Top Skills[/b]")
+        for i, skill in enumerate(top_3, 1):
+            level = "Advanced" if skill.proficiency_score >= 0.8 else "Intermediate" if skill.proficiency_score >= 0.5 else "Beginner"
+            lines.append(f"{i}. {skill.name} ({level}, proficiency: {skill.proficiency_score:.2f})")
+            if skill.description:
+                lines.append(f"   {skill.description}")
+        
+        return "\n".join(lines)
+
+    def format_skills_paragraph(self, skills: List[Skill]) -> str:
+        """Generate a narrative paragraph summarizing the skills analysis.
+        
+        Args:
+            skills: List of extracted Skill objects
+            
+        Returns:
+            A paragraph-style summary of the skills
+        """
+        if not skills:
+            return "No programming skills were detected in the analyzed code."
+        
+        # Category mapping
+        category_display = {
+            "oop": "object-oriented programming",
+            "data_structures": "data structures",
+            "algorithms": "algorithms",
+            "patterns": "design patterns",
+            "practices": "best practices"
+        }
+        
+        # Calculate stats
+        total_proficiency = sum(s.proficiency_score for s in skills)
+        avg_proficiency = total_proficiency / len(skills)
+        
+        # Group by category
+        from collections import defaultdict
+        category_counts = defaultdict(int)
+        for skill in skills:
+            category_counts[skill.category] += 1
+        
+        # Determine proficiency level
+        if avg_proficiency >= 0.75:
+            proficiency_desc = "demonstrates advanced proficiency"
+        elif avg_proficiency >= 0.6:
+            proficiency_desc = "shows solid proficiency"
+        elif avg_proficiency >= 0.4:
+            proficiency_desc = "exhibits moderate proficiency"
+        else:
+            proficiency_desc = "displays foundational proficiency"
+        
+        # Get top skill
+        top_skill = max(skills, key=lambda s: s.proficiency_score)
+        
+        # Build category list (top 3)
+        sorted_categories = sorted(category_counts.items(), key=lambda x: x[1], reverse=True)[:3]
+        category_names = [category_display.get(cat, cat) for cat, _ in sorted_categories]
+        
+        # Construct paragraph
+        if len(category_names) == 1:
+            categories_text = category_names[0]
+        elif len(category_names) == 2:
+            categories_text = f"{category_names[0]} and {category_names[1]}"
+        else:
+            categories_text = f"{', '.join(category_names[:-1])}, and {category_names[-1]}"
+        
+        paragraph = (
+            f"The analysis detected {len(skills)} programming skill{'' if len(skills) == 1 else 's'} "
+            f"across the codebase, which {proficiency_desc} with an average score of {avg_proficiency:.2f}. "
+            f"The code primarily showcases expertise in {categories_text}, "
+            f"with '{top_skill.name}' standing out as the most prominent skill "
+            f"(proficiency: {top_skill.proficiency_score:.2f}). "
+        )
+        
+        # Add context about category distribution
+        if len(category_counts) > 3:
+            paragraph += f"Skills span {len(category_counts)} different categories, indicating a well-rounded technical foundation."
+        elif len(category_counts) > 1:
+            paragraph += "The skill distribution reflects a balanced approach to software development."
+        else:
+            paragraph += "The analysis reveals a focused specialization in this area."
+        
+        return paragraph
+
     def get_skills_summary_stats(self, skills: List[Skill]) -> Dict[str, Any]:
         """
         Generate summary statistics for skills.

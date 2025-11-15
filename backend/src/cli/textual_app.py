@@ -421,8 +421,18 @@ class PortfolioTextualApp(App):
         self._scan_state.code_analysis_error = None
         self._scan_state.skills_analysis_result = None
         self._scan_state.skills_analysis_error = None
+        
+        # Auto-extract skills in background if code files are present
+        if self._scan_state.code_file_count > 0:
+            try:
+                skills = await asyncio.to_thread(self._perform_skills_analysis)
+                self._scan_state.skills_analysis_result = skills
+            except Exception:
+                # Silent failure - user can manually trigger if needed
+                pass
+        
         self._show_status("Scan completed successfully.", "success")
-        detail_panel.update(self._scan_service.format_scan_overview(self._scan_state))
+        detail_panel.update(self._scan_service.format_scan_overview(self._scan_state, include_skills=True))
         self._show_scan_results_dialog()
 
     def _show_scan_results_dialog(self) -> None:
@@ -467,7 +477,7 @@ class PortfolioTextualApp(App):
             return
 
         if action == "summary":
-            screen.display_output(self._scan_service.format_scan_overview(self._scan_state), context="Overview")
+            screen.display_output(self._scan_service.format_scan_overview(self._scan_state, include_skills=True), context="Overview")
             screen.set_message("Overview refreshed.", tone="success")
             return
 
@@ -911,8 +921,20 @@ class PortfolioTextualApp(App):
             self._scan_state.skills_analysis_result = skills
             self._scan_state.skills_analysis_error = None
 
-        summary_text = self._skills_service.format_summary(self._scan_state.skills_analysis_result)
-        screen.display_output(summary_text, context="Skills analysis")
+        # Display paragraph summary, then concise summary, then detailed breakdown
+        paragraph_summary = self._skills_service.format_skills_paragraph(self._scan_state.skills_analysis_result)
+        skills_summary = self._skills_service.format_skills_summary(self._scan_state.skills_analysis_result)
+        detailed_summary = self._skills_service.format_summary(self._scan_state.skills_analysis_result)
+        
+        full_output = (
+            "[b]Summary[/b]\n" + 
+            paragraph_summary + 
+            "\n\n" + "=" * 60 + "\n\n" + 
+            skills_summary + 
+            "\n\n" + "=" * 60 + "\n\n" + 
+            detailed_summary
+        )
+        screen.display_output(full_output, context="Skills analysis")
         screen.set_message("Skills analysis ready.", tone="success")
 
     def _perform_skills_analysis(self):

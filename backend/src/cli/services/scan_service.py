@@ -55,7 +55,7 @@ class ScanService:
             pdf_candidates=pdf_candidates,
         )
 
-    def format_scan_overview(self, state: ScanState) -> str:
+    def format_scan_overview(self, state: ScanState, include_skills: bool = False) -> str:
         """Render the overview block shown in the Textual detail panel."""
         lines = ["[b]Run Portfolio Scan[/b]"]
         if state.target:
@@ -87,6 +87,36 @@ class ScanService:
                 percentage = entry.get("file_percent", 0.0)
                 count = entry.get("files", 0)
                 lines.append(f"- {language}: {percentage:.1f}% ({count} files)")
+
+        # Add skills summary if requested and available
+        if include_skills and state.skills_analysis_result:
+            lines.append("")
+            lines.append("[b]Skills Summary[/b]")
+            skills = state.skills_analysis_result
+            lines.append(f"- Total skills detected: {len(skills)}")
+            
+            # Group by category
+            from collections import defaultdict
+            category_counts = defaultdict(int)
+            category_display = {
+                "oop": "OOP",
+                "data_structures": "Data Structures",
+                "algorithms": "Algorithms",
+                "patterns": "Design Patterns",
+                "practices": "Best Practices"
+            }
+            
+            for skill in skills:
+                category_counts[skill.category] += 1
+            
+            for cat_key, count in category_counts.items():
+                display_name = category_display.get(cat_key, cat_key)
+                lines.append(f"- {display_name}: {count} skills")
+            
+            # Show top 3 skills
+            if skills:
+                sorted_skills = sorted(skills, key=lambda s: s.proficiency_score, reverse=True)
+                lines.append(f"- Top skill: {sorted_skills[0].name} (proficiency: {sorted_skills[0].proficiency_score:.2f})")
 
         if state.git_repos:
             lines.append("")
