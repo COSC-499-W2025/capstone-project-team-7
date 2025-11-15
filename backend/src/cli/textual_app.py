@@ -1480,6 +1480,11 @@ class PortfolioTextualApp(App):
         if not self._session_state.session:
             return
         self._cleanup_async_tasks()
+        
+        # Clear consent persistence before logout
+        consent_storage.clear_session_token()
+        consent_storage.clear_user_consents_cache(self._session_state.session.user_id)
+        
         self._ai_state.client = None
         self._ai_state.api_key = None
         self._ai_state.last_analysis = None
@@ -1669,6 +1674,11 @@ class PortfolioTextualApp(App):
             self._session_state.last_email = session.email
             self._session_state.auth_error = None
             self._persist_session()
+            
+            # Setup consent persistence with authenticated session
+            consent_storage.set_session_token(session.access_token)
+            consent_storage.load_user_consents(session.user_id, session.access_token)
+            
             self._invalidate_cached_state()
             self._refresh_consent_state()
             self._load_preferences()
@@ -1871,6 +1881,9 @@ class PortfolioTextualApp(App):
         self._session_state.session = session
         if session:
             self._session_state.last_email = session.email
+            # Restore consent persistence with the loaded session
+            consent_storage.set_session_token(session.access_token)
+            consent_storage.load_user_consents(session.user_id, session.access_token)
 
     def _refresh_consent_state(self) -> None:
         self._consent_state.record = None
