@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 import zipfile
 from datetime import datetime
 from pathlib import Path
 import sys
-from typing import Optional, Dict, Any, List
+import time
+from typing import Optional, Dict, Any, List, Sequence
 
 from textual.app import App, ComposeResult, Binding
 from textual.containers import Vertical
@@ -335,13 +337,69 @@ class PortfolioTextualApp(App):
     async def _run_scan(self, target: Path, relevant_only: bool) -> None:
         self._show_status("Scanning project – please wait…", "info")
         detail_panel = self.query_one("#detail", Static)
-        detail_panel.update("[b]Run Portfolio Scan[/b]\n\nPreparing scan…")
+        detail_panel.update(self._render_scan_progress([], None))
         preferences = self._current_scan_preferences()
         self._reset_scan_state()
+        progress_entries: list[dict[str, float | None]] = []
+        progress_lock = threading.Lock()
+        progress_start = time.perf_counter()
+        progress_stop = asyncio.Event()
+
+        def _progress_snapshot(elapsed: float) -> tuple[list[tuple[str, float]], tuple[str, float] | None]:
+            with progress_lock:
+                entries = [dict(entry) for entry in progress_entries]
+            completed: list[tuple[str, float]] = []
+            current: tuple[str, float] | None = None
+            for entry in entries:
+                step = str(entry.get("step", ""))
+                end = entry.get("end")
+                if end is not None:
+                    completed.append((step, float(end)))
+                else:
+                    current = (step, elapsed)
+            return completed, current
+
+        async def _progress_heartbeat() -> None:
+            try:
+                while not progress_stop.is_set():
+                    snapshot = _progress_snapshot(time.perf_counter() - progress_start)
+                    try:
+                        detail_panel.update(self._render_scan_progress(*snapshot))
+                    except Exception:
+                        pass
+                    await asyncio.sleep(0.5)
+            finally:
+                snapshot = _progress_snapshot(time.perf_counter() - progress_start)
+                try:
+                    detail_panel.update(self._render_scan_progress(*snapshot))
+                except Exception:
+                    pass
+
+        heartbeat_task = asyncio.create_task(_progress_heartbeat())
+
+        def _progress_update(step: str) -> None:
+            elapsed = time.perf_counter() - progress_start
+            with progress_lock:
+                if progress_entries and progress_entries[-1].get("end") is None:
+                    progress_entries[-1]["end"] = elapsed
+                progress_entries.append({"step": step, "start": elapsed, "end": None})
+
+            def _update_status() -> None:
+                self._show_status(f"{step} ({elapsed:.1f}s elapsed)", "info")
+
+            try:
+                self.call_from_thread(_update_status)
+            except Exception:
+                pass
+
+        def _finalize_progress() -> None:
+            with progress_lock:
+                if progress_entries and progress_entries[-1].get("end") is None:
+                    progress_entries[-1]["end"] = time.perf_counter() - progress_start
 
         try:
             run_result = await asyncio.to_thread(
-                self._scan_service.run_scan, target, relevant_only, preferences
+                self._scan_service.run_scan, target, relevant_only, preferences, _progress_update
             )
         except ParserError as exc:
             self._surface_error(
@@ -378,11 +436,16 @@ class PortfolioTextualApp(App):
                 "Re-run the scan with a smaller directory or inspect application logs for more detail.",
             )
             return
+        finally:
+            _finalize_progress()
+            progress_stop.set()
+            await heartbeat_task
 
         self._scan_state.target = target
         self._scan_state.archive = run_result.archive_path
         self._scan_state.parse_result = run_result.parse_result
         self._scan_state.relevant_only = relevant_only
+        self._scan_state.scan_timings = run_result.timings
         self._scan_state.languages = run_result.languages
         self._scan_state.git_repos = run_result.git_repos
         self._scan_state.git_analysis = []
@@ -1227,6 +1290,7 @@ class PortfolioTextualApp(App):
         self._scan_state.parse_result = None
         self._scan_state.archive = None
         self._scan_state.languages = []
+        self._scan_state.scan_timings = []
         self._scan_state.has_media_files = False
         self._scan_state.git_repos = []
         self._scan_state.git_analysis = []
@@ -1628,6 +1692,28 @@ class PortfolioTextualApp(App):
             profile_name = config.get("current_profile")
         return self._preferences_service.preferences_from_config(config, profile_name)
 
+    def _render_scan_progress(
+        self,
+        completed_steps: Sequence[tuple[str, float]],
+        current_step: tuple[str, float] | None,
+    ) -> str:
+        lines = ["[b]Run Portfolio Scan[/b]", "", "[b]Current step[/b]"]
+        if current_step:
+            step, elapsed = current_step
+            lines.append(f"• {step} ({elapsed:.1f}s elapsed)")
+        else:
+            lines.append("• Initializing scan…")
+
+        if completed_steps:
+            lines.append("")
+            lines.append("[b]Completed[/b]")
+            for step, elapsed in completed_steps[-4:]:
+                lines.append(f"• {step} ({elapsed:.1f}s)")
+
+        lines.append("")
+        lines.append("Large directories may take a minute. Press Ctrl+C to cancel safely.")
+        return "\n".join(lines)
+
     def _render_account_detail(self) -> str:
         lines = ["[b]Account[/b]"]
         if self._session_state.session:
@@ -1875,7 +1961,12 @@ class PortfolioTextualApp(App):
 
 
 def main() -> None:
-    PortfolioTextualApp().run()
+    try:
+        PortfolioTextualApp().run()
+    except KeyboardInterrupt:
+        # Ensure Ctrl+C exits cleanly without dumping a traceback to the terminal.
+        print("\nScan interrupted by user. Exiting…")
+        raise SystemExit(130) from None
 
 
 if __name__ == "__main__":
