@@ -41,6 +41,7 @@ class ScanState:
     archive: Optional[Path] = None
     parse_result: Optional[ParseResult] = None
     relevant_only: bool = True
+    scan_timings: List[tuple[str, float]] = field(default_factory=list)
     languages: List[Dict[str, Any]] = field(default_factory=list)
     git_repos: List[Path] = field(default_factory=list)
     git_analysis: List[Dict[str, Any]] = field(default_factory=list)

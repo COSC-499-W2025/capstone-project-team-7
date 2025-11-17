@@ -3,7 +3,8 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+import time
+from typing import Callable, Dict, List, Optional, Tuple, TypeVar
 
 from ..archive_utils import ensure_zip
 from ..language_stats import summarize_languages
@@ -11,6 +12,7 @@ from ..state import ScanState
 from ...scanner.models import FileMetadata, ParseResult, ScanPreferences
 from ...scanner.parser import parse_zip
 
+T = TypeVar("T")
 
 @dataclass(slots=True)
 class ScanRunResult:
@@ -22,6 +24,7 @@ class ScanRunResult:
     git_repos: List[Path]
     has_media_files: bool
     pdf_candidates: List[FileMetadata]
+    timings: List[Tuple[str, float]]
 
 
 class ScanService:
@@ -32,20 +35,65 @@ class ScanService:
         target: Path,
         relevant_only: bool,
         preferences: ScanPreferences,
+        progress_callback: Callable[[str], None] | None = None,
     ) -> ScanRunResult:
         """Execute the scan pipeline (zip preparation + parsing + metadata)."""
-        archive_path = self._perform_scan(target, relevant_only, preferences)
-        parse_result = parse_zip(
-            archive_path,
-            relevant_only=relevant_only,
-            preferences=preferences,
+
+        timings: list[Tuple[str, float]] = []
+
+        def _report_progress(message: str) -> None:
+            if progress_callback:
+                try:
+                    progress_callback(message)
+                except Exception:
+                    pass
+
+        def _run_step(message: str, label: str, func: Callable[[], T]) -> T:
+            _report_progress(message)
+            start = time.perf_counter()
+            result = func()
+            timings.append((label, time.perf_counter() - start))
+            return result
+
+        archive_path = _run_step(
+            "Preparing archive…",
+            "Archive preparation",
+            lambda: self._perform_scan(target, relevant_only, preferences),
         )
-        languages = summarize_languages(parse_result.files) if parse_result.files else []
-        git_repos = self._detect_git_repositories(target)
-        has_media_files = any(getattr(meta, "media_info", None) for meta in parse_result.files)
-        pdf_candidates = [
-            meta for meta in parse_result.files if (meta.mime_type or "").lower() == "application/pdf"
-        ]
+        parse_result = _run_step(
+            "Parsing files from archive…",
+            "Archive parsing",
+            lambda: parse_zip(
+                archive_path,
+                relevant_only=relevant_only,
+                preferences=preferences,
+            ),
+        )
+        languages: List[Dict[str, object]] = []
+        has_media_files = False
+        pdf_candidates: List[FileMetadata] = []
+
+        def _collect_metadata() -> Tuple[List[Dict[str, object]], bool, List[FileMetadata]]:
+            lang_summary = summarize_languages(parse_result.files) if parse_result.files else []
+            media_present = any(getattr(meta, "media_info", None) for meta in parse_result.files)
+            pdfs = [
+                meta for meta in parse_result.files if (meta.mime_type or "").lower() == "application/pdf"
+            ]
+            return lang_summary, media_present, pdfs
+
+        languages, has_media_files, pdf_candidates = _run_step(
+            "Analyzing metadata and summaries…",
+            "Metadata & summaries",
+            _collect_metadata,
+        )
+        git_repos = _run_step(
+            "Detecting git repositories…",
+            "Git discovery",
+            lambda: self._detect_git_repositories(target),
+        )
+        if timings:
+            total_duration = sum(duration for _, duration in timings)
+            timings.append(("Total duration", total_duration))
         return ScanRunResult(
             archive_path=archive_path,
             parse_result=parse_result,
@@ -53,6 +101,7 @@ class ScanService:
             git_repos=git_repos,
             has_media_files=has_media_files,
             pdf_candidates=pdf_candidates,
+            timings=timings,
         )
 
     def format_scan_overview(self, state: ScanState) -> str:
@@ -95,6 +144,11 @@ class ScanService:
             lines.append("Media files detected: yes")
         if state.pdf_candidates:
             lines.append(f"PDF files detected: {len(state.pdf_candidates)}")
+        if state.scan_timings:
+            lines.append("")
+            lines.append("[b]Scan timings[/b]")
+            for label, duration in state.scan_timings:
+                lines.append(f"- {label}: {duration:.1f}s")
 
         return "\n".join(lines)
 
