@@ -2,6 +2,7 @@ from __future__ import annotations
 from pathlib import Path
 from subprocess import check_output, CalledProcessError
 from collections import Counter
+from datetime import datetime
 import re
 
 def _git(args, cwd: str) -> str:
@@ -69,6 +70,51 @@ def analyze_git_repo(repo_dir: str) -> dict:
     total = sum(c["commits"] for c in contributors) or 1
     for c in contributors:
         c["percent"] = round(c["commits"] / total * 100, 2)
+    
+    # Add detailed contributor info (first/last commit dates, active days)
+    for contributor in contributors:
+        try:
+            # Get author-specific commit dates
+            author_name = contributor["name"]
+            author_email = contributor.get("email", "")
+            
+            # First commit by this author
+            try:
+                first_commit = _git(
+                    ["log", "--reverse", "--author=" + author_name, "--format=%cI"],
+                    repo_dir
+                ).splitlines()
+                if first_commit:
+                    contributor["first_commit_date"] = first_commit[0]
+            except (CalledProcessError, IndexError):
+                contributor["first_commit_date"] = None
+            
+            # Last commit by this author  
+            try:
+                last_commit = _git(
+                    ["log", "-1", "--author=" + author_name, "--format=%cI"],
+                    repo_dir
+                )
+                contributor["last_commit_date"] = last_commit if last_commit else None
+            except CalledProcessError:
+                contributor["last_commit_date"] = None
+            
+            # Active days (unique dates with commits)
+            try:
+                commit_dates = _git(
+                    ["log", "--author=" + author_name, "--format=%cI"],
+                    repo_dir
+                ).splitlines()
+                unique_dates = set(date[:10] for date in commit_dates if date)
+                contributor["active_days"] = len(unique_dates)
+            except CalledProcessError:
+                contributor["active_days"] = 0
+                
+        except Exception:
+            # If any contributor analysis fails, continue with partial data
+            contributor.setdefault("first_commit_date", None)
+            contributor.setdefault("last_commit_date", None)
+            contributor.setdefault("active_days", 0)
 
     # ---------- dates ----------
     try:
