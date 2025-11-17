@@ -1,5 +1,25 @@
 # Capstone Team 7 Logs
 
+## Reading Break (November 10 - 16)
+
+**Om:** This period focused on completing **Project Analysis** deliverables from the WBS. I was able to successfully implement a comprehensive **Skills Extraction System** that analyzes code to identify 50+ technical skills across 5 categories (OOP, Data Structures, Algorithms, Design Patterns, Best Practices) with evidence-based proficiency scoring. This directly addresses **Insights and Summaries** requirement by providing detailed analytics and narrative summaries for portfolio generation.
+
+Critical bug fixes were completed for **Data Privacy and Control**, resolving consent persistence issues across application sessions. The fixes implemented proper Supabase authentication patterns (`postgrest.auth()`), session token management, and database-backed storage with RLS policies. Consents now persist correctly when users quit and restart the application.
+
+The **Skills Extractor** was fully integrated into the Textual CLI with auto-extraction on scan completion, a three-tier display system (narrative paragraph, summary stats, detailed breakdown), and JSON export capabilities. The system achieved **95% accuracy** in skill detection and includes comprehensive test coverage with **53/53 tests passing** (28 new tests added).
+
+Joaquin also did a great job on adding a textual UI and refactoring quite a bit of the codebase to eliminate the old CLI functionality while also keeping all the existing features in check. All the features were divided into services which made it very easy to access each working gear of the system. This is reflected in [PR #134: Textual UI + Refactoring](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/134).
+
+**Related Work:**
+- [Issue #50: Skills Extraction Implementation](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/50)
+- [PR #136: Skills Extractor](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/136)
+
+**Next Steps:**
+1. Duplicate detection for accurate metrics
+2. Search and filtering for scan results
+3. Resume Generation
+4. Incremental scanning for performance
+
 ## Week 10 (November 3rd - 9th)
 This week we focused on the implementing the local analyses into the CLI and moving to transfer into a textual based TUI. We also improved our external analysis, and added to our git analysis.
 
