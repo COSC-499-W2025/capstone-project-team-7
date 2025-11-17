@@ -14,6 +14,8 @@ from ...scanner.parser import parse_zip
 
 T = TypeVar("T")
 
+_DOCUMENT_EXTENSIONS = {".txt", ".md", ".markdown", ".rst", ".log"}
+
 @dataclass(slots=True)
 class ScanRunResult:
     """Artifacts returned after a successful scan."""
@@ -24,6 +26,7 @@ class ScanRunResult:
     git_repos: List[Path]
     has_media_files: bool
     pdf_candidates: List[FileMetadata]
+    document_candidates: List[FileMetadata]
     timings: List[Tuple[str, float]]
 
 
@@ -86,6 +89,11 @@ class ScanService:
             "Metadata & summaries",
             _collect_metadata,
         )
+        document_candidates = [
+            meta
+            for meta in parse_result.files
+            if Path(meta.path).suffix.lower() in _DOCUMENT_EXTENSIONS
+        ]
         git_repos = _run_step(
             "Detecting git repositories…",
             "Git discovery",
@@ -101,6 +109,7 @@ class ScanService:
             git_repos=git_repos,
             has_media_files=has_media_files,
             pdf_candidates=pdf_candidates,
+            document_candidates=document_candidates,
             timings=timings,
         )
 
@@ -144,6 +153,8 @@ class ScanService:
             lines.append("Media files detected: yes")
         if state.pdf_candidates:
             lines.append(f"PDF files detected: {len(state.pdf_candidates)}")
+        if getattr(state, "document_candidates", None):
+            lines.append(f"Document files detected: {len(state.document_candidates)}")
         if state.scan_timings:
             lines.append("")
             lines.append("[b]Scan timings[/b]")

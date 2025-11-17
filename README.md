@@ -56,3 +56,4 @@ Press `Ctrl+C` to exit at any time.
 - After signing in, run **Run Portfolio Scan** for the project you want analyzed, then select **AI-Powered Analysis**.
 - Provide your OpenAI key when prompted. Temperature and max-token inputs are optional; defaults are 0.7 / 1000.
 - Every successful AI run now saves the formatted output (plus the raw JSON payload) to `ai-analysis-latest.md` in the repo root so you can read or share the report outside the Textual UI.
+- The scan results dialog now includes **Analyze documents** whenever Markdown, text, or log files are detected, letting you review summaries, headings, and keyword insights alongside the existing PDF panel.
