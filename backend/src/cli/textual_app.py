@@ -1228,9 +1228,19 @@ class PortfolioTextualApp(App):
     def _extract_refactor_candidates(self, code_result) -> List[Dict[str, Any]]:
         """Extract refactor candidates from DirectoryResult."""
         try:
-            candidates = code_result.get_refactor_candidates(limit=5)
-            return [
-                {
+            # ✅ Get candidates using the proper method
+            candidates = code_result.get_refactor_candidates(limit=10)
+            
+            if not candidates:
+                self._debug_log("No refactor candidates returned from get_refactor_candidates()")
+                return []
+            
+            self._debug_log(f"Found {len(candidates)} refactor candidates")
+            
+            result_list = []
+            for candidate in candidates:
+                # Extract file info
+                file_dict = {
                     "path": candidate.path,
                     "language": candidate.language,
                     "lines": candidate.metrics.lines,
@@ -1238,21 +1248,30 @@ class PortfolioTextualApp(App):
                     "complexity": candidate.metrics.complexity,
                     "maintainability": candidate.metrics.maintainability_score,
                     "priority": candidate.metrics.refactor_priority,
-                    "top_functions": [
-                        {
+                    "top_functions": []
+                }
+                
+                # Extract top functions
+                if hasattr(candidate.metrics, 'top_functions') and candidate.metrics.top_functions:
+                    for func in candidate.metrics.top_functions[:3]:
+                        func_dict = {
                             "name": func.name,
                             "lines": func.lines,
                             "complexity": func.complexity,
                             "params": func.params,
                             "needs_refactor": func.needs_refactor,
                         }
-                        for func in candidate.metrics.top_functions[:3]
-                    ],
-                }
-                for candidate in candidates
-            ]
+                        file_dict["top_functions"].append(func_dict)
+                
+                result_list.append(file_dict)
+            
+            self._debug_log(f"Extracted {len(result_list)} refactor candidates")
+            return result_list
+            
         except Exception as exc:
             self._debug_log(f"Failed to extract refactor candidates: {exc}")
+            import traceback
+            self._debug_log(f"Traceback: {traceback.format_exc()}")
             return []
 
     def _extract_file_details(self, code_result) -> List[Dict[str, Any]]:

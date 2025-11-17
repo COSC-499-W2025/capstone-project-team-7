@@ -908,9 +908,16 @@ class ProjectsScreen(ModalScreen[None]):
         margin-bottom: 1;
     }
     
+    #projects-help {
+        width: 100%;
+        content-align: center middle;
+        color: $text-muted;
+        margin-bottom: 1;
+    }
+    
     #projects-list {
         width: 100%;
-        height: 20;
+        height: 15;
         border: solid $primary;
         margin-bottom: 1;
     }
@@ -935,6 +942,7 @@ class ProjectsScreen(ModalScreen[None]):
     
     Button {
         margin: 0 1;
+        min-width: 12;
     }
     
     #projects-status {
@@ -958,6 +966,10 @@ class ProjectsScreen(ModalScreen[None]):
     def compose(self):
         with Vertical(id="projects-dialog"):
             yield Static("📁 Saved Project Scans", id="projects-title")
+            yield Static(
+                "↑↓ to navigate • Enter to view • Tab to buttons • Esc to close",
+                id="projects-help"
+            )
             
             if not self.projects:
                 yield Static(
@@ -976,9 +988,9 @@ class ProjectsScreen(ModalScreen[None]):
             
             with Horizontal(id="projects-buttons"):
                 if self.projects:
-                    yield Button("View", id="view-btn", variant="primary")
-                    yield Button("Delete", id="delete-btn", variant="error")
-                yield Button("Close", id="close-btn")
+                    yield Button("👁 View Project", id="view-btn", variant="primary")
+                    yield Button("🗑 Delete", id="delete-btn", variant="error")
+                yield Button("✖ Close", id="close-btn")
             
             yield Static("", id="projects-status", classes="status-info")
     
@@ -1015,12 +1027,17 @@ class ProjectsScreen(ModalScreen[None]):
         return f"{name} • {timestamp_str} • {files} files {badge_str}"
     
     def on_mount(self) -> None:
-        """Focus the list when mounted."""
+        """Focus the list when mounted and select first item."""
         if self.projects:
             try:
                 list_view = self.query_one("#projects-list", ListView)
                 list_view.focus()
-            except:
+                
+                # Auto-select first project
+                if len(self.projects) > 0:
+                    self.selected_project = self.projects[0]
+                    self._update_detail(self.selected_project)
+            except Exception as e:
                 pass
     
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
@@ -1030,6 +1047,14 @@ class ProjectsScreen(ModalScreen[None]):
             if 0 <= index < len(self.projects):
                 self.selected_project = self.projects[index]
                 self._update_detail(self.selected_project)
+    
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        """When user presses Enter on a project, open it immediately."""
+        if event.control.id == "projects-list":
+            if self.selected_project:
+                dispatch_message(self, ProjectSelected(self.selected_project))
+            else:
+                self._set_status("No project selected", "warning")
     
     def _update_detail(self, project: Dict[str, Any]) -> None:
         """Update the detail panel with project info."""
@@ -1044,17 +1069,27 @@ class ProjectsScreen(ModalScreen[None]):
             languages = project.get("languages", [])
             
             # Format timestamp
-            if timestamp != "Unknown":
+            if timestamp and timestamp != "Unknown":
                 try:
                     from datetime import datetime
-                    dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-                    timestamp = dt.strftime("%Y-%m-%d at %H:%M:%S")
+                    if "T" in timestamp:
+                        dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                        timestamp = dt.strftime("%Y-%m-%d at %H:%M:%S")
                 except:
-                    pass
+                    timestamp = str(timestamp)[:19]
             
-            langs_str = ", ".join(languages[:5]) if languages else "None detected"
-            if len(languages) > 5:
-                langs_str += f" (+{len(languages) - 5} more)"
+            # Handle languages
+            if not languages:
+                langs_str = "None detected"
+            elif isinstance(languages, list):
+                if len(languages) > 0:
+                    langs_str = ", ".join(str(lang) for lang in languages[:5])
+                    if len(languages) > 5:
+                        langs_str += f" (+{len(languages) - 5} more)"
+                else:
+                    langs_str = "None detected"
+            else:
+                langs_str = str(languages)
             
             text = (
                 f"[b]{name}[/b]\n"
@@ -1065,11 +1100,16 @@ class ProjectsScreen(ModalScreen[None]):
             )
             
             detail.update(text)
-        except Exception:
-            pass
+            
+        except Exception as e:
+            try:
+                detail = self.query_one("#projects-detail", Static)
+                detail.update(f"Error loading details: {e}")
+            except:
+                pass
     
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Handle button presses."""
+        """Handle button clicks - this makes buttons clickable!"""
         button_id = event.button.id
         
         if button_id == "close-btn":
@@ -1077,7 +1117,7 @@ class ProjectsScreen(ModalScreen[None]):
         
         elif button_id == "view-btn":
             if self.selected_project:
-                self.post_message(ProjectSelected(self.selected_project))
+                dispatch_message(self, ProjectSelected(self.selected_project))
             else:
                 self._set_status("Please select a project first", "error")
         
@@ -1085,9 +1125,16 @@ class ProjectsScreen(ModalScreen[None]):
             if self.selected_project:
                 project_id = self.selected_project.get("id")
                 if project_id:
-                    self.post_message(ProjectDeleted(project_id))
+                    dispatch_message(self, ProjectDeleted(project_id))
+                else:
+                    self._set_status("Invalid project ID", "error")
             else:
                 self._set_status("Please select a project first", "error")
+    
+    def on_key(self, event: Key) -> None:
+        """Handle keyboard shortcuts."""
+        if event.key == "escape":
+            self.dismiss(None)
     
     def _set_status(self, message: str, tone: str = "info") -> None:
         """Update status message."""
@@ -1097,7 +1144,7 @@ class ProjectsScreen(ModalScreen[None]):
             for t in ("info", "error", "success"):
                 status.remove_class(f"status-{t}")
             status.add_class(f"status-{tone}")
-        except Exception:
+        except:
             pass
 
 
@@ -1194,9 +1241,10 @@ class ProjectViewerScreen(ModalScreen[None]):
             # Content area
             yield Static(self._render_overview(), id="viewer-content")
             
-            # Action buttons
+            # Action buttons - ✅ ADD BACK BUTTON
             with Horizontal(id="viewer-buttons"):
-                yield Button("Close", id="close-btn", variant="primary")
+                yield Button("← Back", id="back-btn", variant="default")
+                yield Button("✖ Close", id="close-btn", variant="primary")
     
     def on_mount(self) -> None:
         """Set initial tab styling."""
@@ -1207,6 +1255,9 @@ class ProjectViewerScreen(ModalScreen[None]):
         button_id = event.button.id
         
         if button_id == "close-btn":
+            self.dismiss(None)
+        
+        elif button_id == "back-btn":  # ✅ NEW: Back button
             self.dismiss(None)
         
         elif button_id.startswith("tab-"):
@@ -1306,25 +1357,309 @@ class ProjectViewerScreen(ModalScreen[None]):
         return "\n".join(lines)
     
     def _render_code_analysis(self) -> str:
-        """Render code analysis tab - TRUNCATED for brevity."""
+        """Render code analysis tab."""
         code_data = self.scan_data.get("code_analysis", {})
         if not code_data:
             return "No code analysis data available."
         
-        lines: List[str] = ["[b]Code Analysis[/b]\n"]
-        lines.append(f"Total files: {code_data.get('total_files', 0)}")
-        lines.append(f"Maintainability: {code_data.get('metrics', {}).get('average_maintainability', 0):.1f}/100")
-        # Add more rendering here...
+        lines: List[str] = ["[b]Code Quality Analysis[/b]\n"]
+        
+        # Check if analysis was successful
+        if not code_data.get("success"):
+            status = code_data.get("status", "unknown")
+            message = code_data.get("message", "Analysis failed")
+            error = code_data.get("error")
+            
+            lines.append(f"Status: {status}")
+            lines.append(f"Message: {message}")
+            if error:
+                lines.append(f"Error: {error}")
+            return "\n".join(lines)
+        
+        # File stats
+        lines.append("[b]File Statistics:[/b]")
+        lines.append(f"  • Total files analyzed: {code_data.get('total_files', 0)}")
+        lines.append(f"  • Successful: {code_data.get('successful_files', 0)}")
+        lines.append(f"  • Failed: {code_data.get('failed_files', 0)}")
+        lines.append("")
+        
+        # Language breakdown
+        languages = code_data.get("languages", {})
+        if languages:
+            lines.append("[b]Languages:[/b]")
+            for lang, count in sorted(languages.items(), key=lambda x: x[1], reverse=True)[:10]:
+                lines.append(f"  • {lang}: {count} files")
+            lines.append("")
+        
+        # Code metrics
+        metrics = code_data.get("metrics", {})
+        if metrics:
+            lines.append("[b]Code Metrics:[/b]")
+            lines.append(f"  • Total lines: {metrics.get('total_lines', 0):,}")
+            lines.append(f"  • Code lines: {metrics.get('total_code_lines', 0):,}")
+            lines.append(f"  • Comments: {metrics.get('total_comments', 0):,}")
+            lines.append(f"  • Functions: {metrics.get('total_functions', 0):,}")
+            lines.append(f"  • Classes: {metrics.get('total_classes', 0):,}")
+            lines.append(f"  • Avg complexity: {metrics.get('average_complexity', 0):.2f}")
+            lines.append(f"  • Avg maintainability: {metrics.get('average_maintainability', 0):.1f}/100")
+            lines.append("")
+        
+        # Quality indicators
+        quality = code_data.get("quality", {})
+        if quality:
+            lines.append("[b]Quality Indicators:[/b]")
+            lines.append(f"  • Security issues: {quality.get('security_issues', 0)}")
+            lines.append(f"  • TODOs: {quality.get('todos', 0)}")
+            lines.append(f"  • High priority files: {quality.get('high_priority_files', 0)}")
+            lines.append(f"  • Functions needing refactor: {quality.get('functions_needing_refactor', 0)}")
+            lines.append("")
+        
+        # ✅ CHECK IF REFACTOR CANDIDATES EXIST
+        refactor_candidates = code_data.get("refactor_candidates", [])
+        
+        if not refactor_candidates or len(refactor_candidates) == 0:
+            # ✅ Show friendly message if no candidates
+            lines.append("[b]Code Quality:[/b]")
+            lines.append("  ✅ No files need immediate refactoring!")
+            lines.append("  Your codebase has good maintainability scores.")
+            return "\n".join(lines)
+        
+        # ✅ SHOW REFACTOR CANDIDATES
+        lines.append("[b]Files Needing Attention:[/b]")
+        
+        for idx, candidate in enumerate(refactor_candidates[:5], 1):
+            path = candidate.get("path", "Unknown")
+            complexity = candidate.get("complexity", 0)
+            maintainability = candidate.get("maintainability", 0)
+            priority = candidate.get("priority", "Unknown")
+            code_lines = candidate.get("code_lines", 0)
+            
+            lines.append(f"\n  {idx}. 📄 {path}")
+            lines.append(f"     • Lines of code: {code_lines}")
+            lines.append(f"     • Complexity: {complexity:.1f}")
+            lines.append(f"     • Maintainability: {maintainability:.1f}/100")
+            lines.append(f"     • Priority: {priority}")
+            
+            # Top functions needing work
+            top_functions = candidate.get("top_functions", [])
+            if top_functions:
+                lines.append("     • Functions needing refactor:")
+                for func in top_functions[:3]:
+                    func_name = func.get("name", "Unknown")
+                    func_complexity = func.get("complexity", 0)
+                    func_lines = func.get("lines", 0)
+                    func_params = func.get("params", 0)
+                    needs_refactor = func.get("needs_refactor", False)
+                    
+                    refactor_indicator = "🔴" if needs_refactor else "🟡"
+                    lines.append(
+                        f"       {refactor_indicator} {func_name}() - "
+                        f"complexity: {func_complexity:.1f}, "
+                        f"lines: {func_lines}, "
+                        f"params: {func_params}"
+                    )
+            
+            lines.append("")
+        
+        if len(refactor_candidates) > 5:
+            lines.append(f"  ... +{len(refactor_candidates) - 5} more files need attention")
+            lines.append("")
+        
+        # Summary
+        functions_needing_refactor = quality.get("functions_needing_refactor", 0)
+        if functions_needing_refactor > 0:
+            lines.append("[b]Summary:[/b]")
+            lines.append(f"  • Total functions needing refactor: {functions_needing_refactor}")
+            lines.append(f"  • 🔴 High complexity (>10) should be refactored")
+            lines.append(f"  • 🟡 Medium complexity (5-10) may need review")
+        
         return "\n".join(lines)
+                
+        
     
     def _render_git_analysis(self) -> str:
-        """Render git analysis - stub."""
-        return "Git analysis rendering coming soon..."
+        """Render git analysis tab."""
+        git_data = self.scan_data.get("git_analysis", [])
+        if not git_data:
+            return "No git analysis data available."
+        
+        lines: List[str] = ["[b]Git Repository Analysis[/b]\n"]
+        
+        for idx, repo in enumerate(git_data, 1):
+            if idx > 1:
+                lines.append("\n" + "=" * 60 + "\n")
+            
+            path = repo.get("path", "Unknown")
+            lines.append(f"[b]Repository {idx}: {path}[/b]\n")
+            
+            # Check for errors
+            if repo.get("error"):
+                lines.append(f"❌ Error: {repo['error']}\n")
+                continue
+            
+            # Basic stats
+            commits = repo.get("commit_count", 0)
+            lines.append(f"📊 Total commits: {commits}")
+            
+            # Date range
+            date_range = repo.get("date_range", {})
+            if date_range and isinstance(date_range, dict):
+                start = date_range.get("start", "Unknown")
+                end = date_range.get("end", "Unknown")
+                lines.append(f"📅 Date range: {start} → {end}")
+            
+            # Branches
+            branches = repo.get("branches", [])
+            if branches:
+                branch_list = ", ".join(branches[:5])
+                if len(branches) > 5:
+                    branch_list += f" (+{len(branches) - 5} more)"
+                lines.append(f"🌿 Branches: {branch_list}")
+            
+            # Top contributors
+            contributors = repo.get("contributors", [])
+            if contributors:
+                lines.append("\n[b]Top Contributors:[/b]")
+                for contributor in contributors[:5]:
+                    name = contributor.get("name", "Unknown")
+                    commit_count = contributor.get("commits", 0)
+                    percent = contributor.get("percent", 0)
+                    lines.append(f"  • {name}: {commit_count} commits ({percent}%)")
+                
+                if len(contributors) > 5:
+                    lines.append(f"  ... +{len(contributors) - 5} more contributors")
+            
+            # Commit timeline
+            timeline = repo.get("timeline", [])
+            if timeline:
+                lines.append("\n[b]Recent Activity:[/b]")
+                for month_data in timeline[:6]:
+                    month = month_data.get("month", "Unknown")
+                    commit_count = month_data.get("commits", 0)
+                    lines.append(f"  • {month}: {commit_count} commits")
+                
+                if len(timeline) > 6:
+                    lines.append(f"  ... +{len(timeline) - 6} more months")
+        
+        return "\n".join(lines)
     
     def _render_pdf_analysis(self) -> str:
         """Render PDF analysis - stub."""
         return "PDF analysis rendering coming soon..."
     
     def _render_media_analysis(self) -> str:
-        """Render media analysis - stub."""
-        return "Media analysis rendering coming soon..."
+        """Render media analysis tab."""
+        media_data = self.scan_data.get("media_analysis", {})
+        if not media_data:
+            return "No media analysis data available."
+        
+        lines: List[str] = ["[b]Media Analysis[/b]\n"]
+        
+        # Summary
+        summary = media_data.get("summary", {})
+        if summary:
+            lines.append("[b]Summary:[/b]")
+            lines.append(f"  • Total media files: {summary.get('total_media_files', 0)}")
+            lines.append(f"  • Images: {summary.get('image_files', 0)}")
+            lines.append(f"  • Audio: {summary.get('audio_files', 0)}")
+            lines.append(f"  • Video: {summary.get('video_files', 0)}")
+            lines.append("")
+        
+        # Metrics
+        metrics = media_data.get("metrics", {})
+        
+        # Image metrics
+        image_metrics = metrics.get("images", {})
+        if image_metrics and image_metrics.get("count", 0) > 0:
+            lines.append("[b]Image Metrics:[/b]")
+            
+            avg_w = image_metrics.get("average_width")
+            avg_h = image_metrics.get("average_height")
+            if avg_w and avg_h:
+                lines.append(f"  • Average resolution: {avg_w:.0f}×{avg_h:.0f}")
+            
+            max_res = image_metrics.get("max_resolution", {})
+            if isinstance(max_res, dict) and max_res.get("dimensions"):
+                dims = max_res["dimensions"]
+                path = max_res.get("path", "Unknown")
+                lines.append(f"  • Largest: {dims[0]}×{dims[1]} ({path})")
+            
+            min_res = image_metrics.get("min_resolution", {})
+            if isinstance(min_res, dict) and min_res.get("dimensions"):
+                dims = min_res["dimensions"]
+                path = min_res.get("path", "Unknown")
+                lines.append(f"  • Smallest: {dims[0]}×{dims[1]} ({path})")
+            
+            # Aspect ratios
+            aspect_ratios = image_metrics.get("common_aspect_ratios", {})
+            if aspect_ratios:
+                ratio_str = ", ".join(
+                    f"{ratio} ({count})" 
+                    for ratio, count in list(aspect_ratios.items())[:3]
+                )
+                lines.append(f"  • Common aspect ratios: {ratio_str}")
+            
+            lines.append("")
+        
+        # Audio metrics
+        audio_metrics = metrics.get("audio", {})
+        if audio_metrics and audio_metrics.get("count", 0) > 0:
+            lines.append("[b]Audio Metrics:[/b]")
+            
+            total_dur = audio_metrics.get("total_duration_seconds", 0)
+            avg_dur = audio_metrics.get("average_duration_seconds", 0)
+            lines.append(f"  • Total duration: {total_dur:.1f}s (avg {avg_dur:.1f}s)")
+            
+            bitrate = audio_metrics.get("bitrate_stats", {})
+            if bitrate:
+                lines.append(
+                    f"  • Bitrate: {bitrate.get('average', 0)} kbps avg "
+                    f"(range: {bitrate.get('min', 0)}-{bitrate.get('max', 0)})"
+                )
+            
+            channels = audio_metrics.get("channel_distribution", {})
+            if channels:
+                channel_str = ", ".join(f"{ch}ch × {count}" for ch, count in channels.items())
+                lines.append(f"  • Channel layout: {channel_str}")
+            
+            lines.append("")
+        
+        # Video metrics
+        video_metrics = metrics.get("video", {})
+        if video_metrics and video_metrics.get("count", 0) > 0:
+            lines.append("[b]Video Metrics:[/b]")
+            
+            total_dur = video_metrics.get("total_duration_seconds", 0)
+            avg_dur = video_metrics.get("average_duration_seconds", 0)
+            lines.append(f"  • Total duration: {total_dur:.1f}s (avg {avg_dur:.1f}s)")
+            
+            bitrate = video_metrics.get("bitrate_stats", {})
+            if bitrate:
+                lines.append(
+                    f"  • Bitrate: {bitrate.get('average', 0)} kbps avg "
+                    f"(range: {bitrate.get('min', 0)}-{bitrate.get('max', 0)})"
+                )
+            
+            lines.append("")
+        
+        # Insights
+        insights = media_data.get("insights", [])
+        if insights:
+            lines.append("[b]Insights:[/b]")
+            for insight in insights:
+                lines.append(f"  • {insight}")
+            lines.append("")
+        
+        # Issues
+        issues = media_data.get("issues", [])
+        if issues:
+            lines.append("[b]Potential Issues:[/b]")
+            for issue in issues:
+                lines.append(f"  ⚠ {issue}")
+        
+        return "\n".join(lines)
+    
+    def on_key(self, event: Key) -> None:
+        """Handle keyboard shortcuts."""
+        if event.key == "escape":
+            self.dismiss(None)
