@@ -98,6 +98,12 @@ class PortfolioTextualApp(App):
         Binding("ctrl+q", "quit", "", show=False),
         Binding("ctrl+l", "toggle_account", "Sign In/Out"),
     ]
+    SCAN_PROGRESS_STEPS: Sequence[str] = (
+        "Preparing archive…",
+        "Parsing files from archive…",
+        "Analyzing metadata and summaries…",
+        "Detecting git repositories…",
+    )
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -279,11 +285,12 @@ class PortfolioTextualApp(App):
 
         self._start_ai_analysis()
 
-    def _show_status(self, message: str, tone: str) -> None:
-        try:
-            print(f"STATUS: {message} [{tone}]", file=sys.__stderr__)
-        except Exception:
-            pass
+    def _show_status(self, message: str, tone: str, *, log_to_stderr: bool = True) -> None:
+        if log_to_stderr:
+            try:
+                print(f"STATUS: {message} [{tone}]", file=sys.__stderr__)
+            except Exception:
+                pass
         status_panel = self.query_one("#status", Static)
         status_panel.update(message)
         for tone_name in ("info", "success", "warning", "error"):
@@ -344,6 +351,8 @@ class PortfolioTextualApp(App):
         progress_lock = threading.Lock()
         progress_start = time.perf_counter()
         progress_stop = asyncio.Event()
+        spinner_frames = ("-", "\\", "|", "/")
+        spinner_index = 0
 
         def _progress_snapshot(elapsed: float) -> tuple[list[tuple[str, float]], tuple[str, float] | None]:
             with progress_lock:
@@ -352,14 +361,16 @@ class PortfolioTextualApp(App):
             current: tuple[str, float] | None = None
             for entry in entries:
                 step = str(entry.get("step", ""))
-                end = entry.get("end")
-                if end is not None:
-                    completed.append((step, float(end)))
+                duration = entry.get("duration")
+                if duration is not None:
+                    completed.append((step, float(duration)))
                 else:
-                    current = (step, elapsed)
+                    start = float(entry.get("start") or 0.0)
+                    current = (step, max(0.0, elapsed - start))
             return completed, current
 
         async def _progress_heartbeat() -> None:
+            nonlocal spinner_index
             try:
                 while not progress_stop.is_set():
                     snapshot = _progress_snapshot(time.perf_counter() - progress_start)
@@ -367,6 +378,10 @@ class PortfolioTextualApp(App):
                         detail_panel.update(self._render_scan_progress(*snapshot))
                     except Exception:
                         pass
+                    spinner_char = spinner_frames[spinner_index % len(spinner_frames)]
+                    spinner_index += 1
+                    status_message = self._render_progress_status(spinner_char, snapshot[1])
+                    self._show_status(status_message, "info", log_to_stderr=False)
                     await asyncio.sleep(0.5)
             finally:
                 snapshot = _progress_snapshot(time.perf_counter() - progress_start)
@@ -374,6 +389,8 @@ class PortfolioTextualApp(App):
                     detail_panel.update(self._render_scan_progress(*snapshot))
                 except Exception:
                     pass
+                status_message = self._render_progress_status(spinner_frames[spinner_index % len(spinner_frames)], snapshot[1])
+                self._show_status(status_message, "info", log_to_stderr=False)
 
         heartbeat_task = asyncio.create_task(_progress_heartbeat())
 
@@ -381,21 +398,20 @@ class PortfolioTextualApp(App):
             elapsed = time.perf_counter() - progress_start
             with progress_lock:
                 if progress_entries and progress_entries[-1].get("end") is None:
-                    progress_entries[-1]["end"] = elapsed
-                progress_entries.append({"step": step, "start": elapsed, "end": None})
-
-            def _update_status() -> None:
-                self._show_status(f"{step} ({elapsed:.1f}s elapsed)", "info")
-
-            try:
-                self.call_from_thread(_update_status)
-            except Exception:
-                pass
+                    prev = progress_entries[-1]
+                    prev_start = float(prev.get("start") or 0.0)
+                    prev["end"] = elapsed
+                    prev["duration"] = max(0.0, elapsed - prev_start)
+                progress_entries.append({"step": step, "start": elapsed, "end": None, "duration": None})
 
         def _finalize_progress() -> None:
             with progress_lock:
                 if progress_entries and progress_entries[-1].get("end") is None:
-                    progress_entries[-1]["end"] = time.perf_counter() - progress_start
+                    final_elapsed = time.perf_counter() - progress_start
+                    last_entry = progress_entries[-1]
+                    last_start = float(last_entry.get("start") or 0.0)
+                    last_entry["end"] = final_elapsed
+                    last_entry["duration"] = max(0.0, final_elapsed - last_start)
 
         try:
             run_result = await asyncio.to_thread(
@@ -1697,7 +1713,8 @@ class PortfolioTextualApp(App):
         completed_steps: Sequence[tuple[str, float]],
         current_step: tuple[str, float] | None,
     ) -> str:
-        lines = ["[b]Run Portfolio Scan[/b]", "", "[b]Current step[/b]"]
+        ratio = self._progress_ratio(completed_steps, current_step)
+        lines = ["[b]Run Portfolio Scan[/b]", self._format_progress_bar(ratio), "", "[b]Current step[/b]"]
         if current_step:
             step, elapsed = current_step
             lines.append(f"• {step} ({elapsed:.1f}s elapsed)")
@@ -1707,12 +1724,42 @@ class PortfolioTextualApp(App):
         if completed_steps:
             lines.append("")
             lines.append("[b]Completed[/b]")
-            for step, elapsed in completed_steps[-4:]:
-                lines.append(f"• {step} ({elapsed:.1f}s)")
+            for step, duration in completed_steps[-4:]:
+                lines.append(f"• {step} ({duration:.1f}s)")
 
         lines.append("")
         lines.append("Large directories may take a minute. Press Ctrl+C to cancel safely.")
         return "\n".join(lines)
+
+    def _render_progress_status(
+        self, spinner_char: str, current_step: tuple[str, float] | None
+    ) -> str:
+        if current_step:
+            step, elapsed = current_step
+            return f"{spinner_char} {step} ({elapsed:.1f}s elapsed)"
+        return f"{spinner_char} Preparing scan…"
+
+    def _progress_ratio(
+        self,
+        completed_steps: Sequence[tuple[str, float]],
+        current_step: tuple[str, float] | None,
+    ) -> float:
+        base_total = len(self.SCAN_PROGRESS_STEPS) or 1
+        total_slots = max(base_total, len(completed_steps) + (1 if current_step else 0), 1)
+        completed_count = min(len(completed_steps), total_slots)
+        in_progress = 0.5 if current_step else 0.0
+        ratio = (completed_count + in_progress) / total_slots
+        if not current_step and completed_count >= total_slots:
+            return 1.0
+        return max(0.0, min(1.0, ratio))
+
+    def _format_progress_bar(self, ratio: float, width: int = 24) -> str:
+        ratio = max(0.0, min(1.0, ratio))
+        filled = int(round(ratio * width))
+        filled = min(width, filled)
+        bar = "#" * filled + "-" * (width - filled)
+        percent = int(ratio * 100)
+        return f"[b]Progress[/b] [{bar}] {percent}%"
 
     def _render_account_detail(self) -> str:
         lines = ["[b]Account[/b]"]
