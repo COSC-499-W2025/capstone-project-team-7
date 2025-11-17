@@ -1,5 +1,46 @@
 # Om Mistry (@OM200401)
 
+## Reading Break
+
+### Task Breakdown
+- **60%** New Feature Development (Skills Extractor)
+- **25%** Bug Fixes (Consent Persistence)
+- **10%** Testing & Quality Assurance
+- **5%** Documentation
+
+### Recap of Weekly Goals
+
+1. Design and implement comprehensive skills extraction system
+2. Integrate skills analysis into existing Textual CLI workflow
+3. Fix consent persistence bugs for session restoration
+4. Achieve >90% test coverage for new features
+5. Create user-friendly skill summaries with narrative descriptions
+
+### Features Worked on This Week
+
+#### Insights and Summaries
+Implemented skills extraction system with 50+ pattern detection rules across 5 categories (OOP, Data Structures, Algorithms, Design Patterns, Best Practices). Features evidence-based proficiency scoring and narrative summaries.
+
+#### Data Privacy and Control
+Fixed consent persistence by implementing proper session token management, Supabase authentication patterns, and database-backed storage with RLS policies.
+
+#### Configuration Management
+Enhanced preferences system with skills analysis state management, auto-extraction settings, and export configuration.
+
+**Issue:** [#50 - Skills Extraction Implementation](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/50)
+
+![Issue Overview](./assets/issue-overview-rb.png)
+
+**Pull Request:** [PR #136 - Skills Extractor](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/136#issue-3629172918)
+
+![Pull Request Overview](./assets/pr-overview-rb.png)
+
+### Next Week Priorities
+1. Performance optimization for large codebases
+2. Duplicate detection feature
+3. Search and filtering for scan results
+
+
 ## Week 10: November 3 - November 9
 
 The focus for this week (PR #123) was to integrate the PDF analyser (in house) created last week. I was able to change the inputs and outputs to automatically idenitfy PDF files in the zip folder (Or directory) the user decides to use. Once this is done, the PDF analyser engine extracts metadata for each file including information on word count for the most often used words and then generates summaries for each document. Currently this output is shown in JSON format and this will further be connected to our Supabase that allows the storage of this data - my peer Aaron is working on the design regarding the table usage for this matter. The consent management module introduced earlier in the project now has user persistence which was added in PR #125 now keeps track of the consent from a user using supabase.
