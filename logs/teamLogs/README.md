@@ -14,6 +14,10 @@ Joaquin also did a great job on adding a textual UI and refactoring quite a bit 
 - [Issue #50: Skills Extraction Implementation](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/50)
 - [PR #136: Skills Extractor](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/136)
 
+![Issue Overview](../individualLogs/assets/issue-overview-rb.png)
+![PR #136 Overview](../individualLogs/assets/pr-overview-rb.png)
+
+
 **Next Steps:**
 1. Duplicate detection for accurate metrics
 2. Search and filtering for scan results

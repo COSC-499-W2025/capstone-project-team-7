@@ -3,10 +3,10 @@
 ## Reading Break
 
 ### Task Breakdown
-- **60%** New Feature Development (Skills Extractor)
-- **25%** Bug Fixes (Consent Persistence)
-- **10%** Testing & Quality Assurance
-- **5%** Documentation
+- New Feature Development (Skills Extractor)
+- Bug Fixes (Consent Persistence)
+- Testing & Quality Assurance
+- Documentation
 
 ### Recap of Weekly Goals
 
