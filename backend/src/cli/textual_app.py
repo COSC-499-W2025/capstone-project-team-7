@@ -7,6 +7,7 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 import sys
+import tempfile
 import time
 from typing import Optional, Dict, Any, List, Sequence
 
@@ -74,6 +75,7 @@ from ..auth.session import Session, SupabaseAuth, AuthError
 from ..auth import consent as consent_storage
 from ..local_analysis.git_repo import analyze_git_repo
 from ..local_analysis.media_analyzer import MediaAnalyzer
+from ..local_analysis.document_analyzer import DocumentAnalyzer, DocumentAnalysisResult
 
 # Optional PDF analysis dependencies
 try:
@@ -131,7 +133,12 @@ class PortfolioTextualApp(App):
         self._code_service = CodeAnalysisService()
         self._skills_service = SkillsAnalysisService()
         self._projects_service = ProjectsService()
-
+        try:
+            self._document_analyzer = DocumentAnalyzer()
+            self._document_analysis_error: Optional[str] = None
+        except Exception as exc:  # pragma: no cover - optional dependency issues
+            self._document_analyzer = None
+            self._document_analysis_error = str(exc)
         self._preferences_screen = None
         self._scan_results_screen: Optional[ScanResultsScreen] = None
         self._media_analyzer = MediaAnalyzer()
@@ -139,6 +146,7 @@ class PortfolioTextualApp(App):
         self._debug_log_path = Path.home() / ".textual_ai_debug.log"
         self._ai_output_path = Path.cwd() / "ai-analysis-latest.md"
         self._scan_progress_bar: Optional[ProgressBar] = None
+        self._scan_progress_label: Optional[Static] = None
         self._debug_log("PortfolioTextualApp initialized")
 
     def compose(self) -> ComposeResult:
@@ -157,6 +165,7 @@ class PortfolioTextualApp(App):
                     classes="detail-block",
                 ),
                 ProgressBar(total=100, show_percentage=False, classes="scan-progress hidden", id="scan-progress"),
+                Static("", classes="scan-progress-label hidden", id="scan-progress-label"),
                 classes="detail-wrapper",
             ),
             id="main",
@@ -178,6 +187,11 @@ class PortfolioTextualApp(App):
             self._scan_progress_bar.display = False
         except Exception:
             self._scan_progress_bar = None
+        try:
+            self._scan_progress_label = self.query_one("#scan-progress-label", Static)
+            self._scan_progress_label.add_class("hidden")
+        except Exception:
+            self._scan_progress_label = None
         menu = self.query_one("#menu", ListView)
         menu.focus()
         menu.index = 0
@@ -383,6 +397,10 @@ class PortfolioTextualApp(App):
         if progress_bar:
             progress_bar.display = True
             progress_bar.update(progress=0)
+        progress_label = self._scan_progress_label
+        if progress_label:
+            progress_label.remove_class("hidden")
+            progress_label.update("Preparing scan…")
         detail_panel.update(self._render_scan_progress([], None))
         preferences = self._current_scan_preferences()
         self._reset_scan_state()
@@ -390,8 +408,7 @@ class PortfolioTextualApp(App):
         progress_lock = threading.Lock()
         progress_start = time.perf_counter()
         progress_stop = asyncio.Event()
-        spinner_frames = ("-", "\\", "|", "/")
-        spinner_index = 0
+        self._show_status("Scanning project – press Ctrl+C to cancel.", "info")
 
         def _progress_snapshot(elapsed: float) -> tuple[list[tuple[str, float]], tuple[str, float] | None]:
             with progress_lock:
@@ -409,7 +426,6 @@ class PortfolioTextualApp(App):
             return completed, current
 
         async def _progress_heartbeat() -> None:
-            nonlocal spinner_index
             try:
                 while not progress_stop.is_set():
                     snapshot = _progress_snapshot(time.perf_counter() - progress_start)
@@ -418,12 +434,10 @@ class PortfolioTextualApp(App):
                         detail_panel.update(self._render_scan_progress(*snapshot))
                         if progress_bar:
                             progress_bar.update(progress=ratio * 100)
+                        if progress_label:
+                            progress_label.update(self._render_progress_label(snapshot[1]))
                     except Exception:
                         pass
-                    spinner_char = spinner_frames[spinner_index % len(spinner_frames)]
-                    spinner_index += 1
-                    status_message = self._render_progress_status(spinner_char, snapshot[1])
-                    self._show_status(status_message, "info", log_to_stderr=False)
                     await asyncio.sleep(0.5)
             finally:
                 snapshot = _progress_snapshot(time.perf_counter() - progress_start)
@@ -432,10 +446,10 @@ class PortfolioTextualApp(App):
                     detail_panel.update(self._render_scan_progress(*snapshot))
                     if progress_bar:
                         progress_bar.update(progress=ratio * 100)
+                    if progress_label:
+                        progress_label.update(self._render_progress_label(snapshot[1]))
                 except Exception:
                     pass
-                status_message = self._render_progress_status(spinner_frames[spinner_index % len(spinner_frames)], snapshot[1])
-                self._show_status(status_message, "info", log_to_stderr=False)
 
         heartbeat_task = asyncio.create_task(_progress_heartbeat())
 
@@ -504,6 +518,9 @@ class PortfolioTextualApp(App):
             if progress_bar:
                 progress_bar.update(progress=0)
                 progress_bar.display = False
+            if progress_label:
+                progress_label.add_class("hidden")
+                progress_label.update("")
 
         self._scan_state.target = target
         self._scan_state.archive = run_result.archive_path
@@ -518,6 +535,8 @@ class PortfolioTextualApp(App):
         self._scan_state.pdf_candidates = run_result.pdf_candidates
         self._scan_state.pdf_results = []
         self._scan_state.pdf_summaries = []
+        self._scan_state.document_candidates = run_result.document_candidates
+        self._scan_state.document_results = []
         self._scan_state.code_file_count = len(self._code_service.code_file_candidates(run_result.parse_result))
         self._scan_state.code_analysis_result = None
         self._scan_state.code_analysis_error = None
@@ -550,12 +569,13 @@ class PortfolioTextualApp(App):
             actions.append(("skills", "Skills analysis"))
         actions.append(("export", "Export JSON report"))
         if self._scan_state.pdf_candidates:
-            label = "View PDF summaries" if self._scan_state.pdf_summaries else "Analyze PDF files"
-            actions.append(("pdf", label))
+            actions.append(("pdf", "PDF analysis"))
+        if self._scan_state.document_candidates:
+            actions.append(("documents", "Document analysis"))
         if self._scan_state.git_repos:
-            actions.append(("git", "Run Git analysis"))
+            actions.append(("git", "Git analysis"))
         if self._scan_state.has_media_files:
-            actions.append(("media", "View media insights"))
+            actions.append(("media", "Media analysis"))
         actions.append(("close", "Close"))
         self._close_scan_results_screen()
         overview = self._scan_service.format_scan_overview(self._scan_state)
@@ -676,8 +696,33 @@ class PortfolioTextualApp(App):
                 screen.display_output("Unable to generate PDF summaries.", context="PDF analysis")
                 screen.set_message("PDF analysis did not produce any summaries.", tone="warning")
                 return
-            screen.display_output(self._format_pdf_summaries(), context="PDF summaries")
+            screen.display_output(self._format_pdf_summaries(), context="PDF analysis")
             screen.set_message("PDF summaries ready.", tone="success")
+            return
+
+        if action == "documents":
+            if not self._scan_state.document_candidates:
+                screen.display_output("No document files were detected in the last scan.", context="Document analysis")
+                screen.set_message("No supported document files available for analysis.", tone="warning")
+                return
+            if not self._document_analyzer:
+                message = self._document_analysis_error or "Document analyzer is unavailable."
+                screen.display_output(message, context="Document analysis")
+                screen.set_message("Document analyzer unavailable.", tone="error")
+                return
+            if not self._scan_state.document_results:
+                screen.set_message("Analyzing documents…", tone="info")
+                try:
+                    await asyncio.to_thread(self._analyze_documents_sync)
+                except Exception as exc:
+                    screen.set_message(f"Failed to analyze documents: {exc}", tone="error")
+                    return
+            if not self._scan_state.document_results:
+                screen.display_output("Unable to analyze document files.", context="Document analysis")
+                screen.set_message("Document analysis did not produce any results.", tone="warning")
+                return
+            screen.display_output(self._format_document_analysis(), context="Document analysis")
+            screen.set_message("Document analysis ready.", tone="success")
             return
 
         if action == "git":
@@ -697,7 +742,7 @@ class PortfolioTextualApp(App):
 
         if action == "media":
             if not self._scan_state.has_media_files:
-                screen.display_output("No media files were detected in the last scan.", context="Media insights")
+                screen.display_output("No media files were detected in the last scan.", context="Media analysis")
                 screen.set_message("Run another scan with media assets to view insights.", tone="warning")
                 return
             screen.set_message("Summarizing media metadata…", tone="info")
@@ -706,7 +751,7 @@ class PortfolioTextualApp(App):
             except Exception as exc:  # pragma: no cover - media safeguard
                 screen.set_message(f"Failed to summarize media metadata: {exc}", tone="error")
                 return
-            screen.display_output(self._format_media_analysis(analysis), context="Media insights")
+            screen.display_output(self._format_media_analysis(analysis), context="Media analysis")
             screen.set_message("Media insights ready.", tone="success")
             return
 
@@ -1211,7 +1256,7 @@ class PortfolioTextualApp(App):
                 sections.append("\n".join(lines))
                 continue
             lines.append("")
-            lines.append("📝 SUMMARY")
+            lines.append("Summary")
             lines.append(f"  {summary.summary_text}")
             if summary.statistics:
                 stats = summary.statistics
@@ -1238,6 +1283,152 @@ class PortfolioTextualApp(App):
                     lines.append(f"  {idx}. {snippet}")
             sections.append("\n".join(lines))
         return "\n\n".join(sections).strip()
+
+    def _analyze_documents_sync(self) -> None:
+        analyzer = self._document_analyzer
+        if analyzer is None:
+            raise RuntimeError("Document analyzer is unavailable.")
+        archive_reader: Optional[zipfile.ZipFile] = None
+        if self._scan_state.archive and self._scan_state.archive.exists():
+            archive_reader = zipfile.ZipFile(self._scan_state.archive)
+        base_path = None
+        if self._scan_state.target and self._scan_state.target.is_dir():
+            base_path = self._scan_state.target
+        results: List[DocumentAnalysisResult] = []
+        try:
+            for meta in self._scan_state.document_candidates:
+                result = self._analyze_single_document(meta, analyzer, archive_reader, base_path)
+                if result:
+                    results.append(result)
+        finally:
+            if archive_reader:
+                archive_reader.close()
+        self._scan_state.document_results = results
+
+    def _analyze_single_document(
+        self,
+        meta: FileMetadata,
+        analyzer: DocumentAnalyzer,
+        archive_reader: Optional[zipfile.ZipFile],
+        base_path: Optional[Path],
+    ) -> DocumentAnalysisResult:
+        suffix = Path(meta.path).suffix or ".txt"
+        temp_path: Optional[Path] = None
+        try:
+            source_path: Optional[Path] = None
+            if base_path:
+                candidate = self._resolve_document_filesystem_path(meta.path, base_path)
+                if candidate and candidate.exists():
+                    source_path = candidate
+            if source_path is None:
+                payload = self._read_document_from_archive(meta, archive_reader)
+                if payload is None:
+                    return DocumentAnalysisResult(
+                        file_name=Path(meta.path).name,
+                        file_type=suffix.lower(),
+                        success=False,
+                        error_message="Document contents unavailable in scan archive.",
+                    )
+                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+                temp_file.write(payload)
+                temp_file.flush()
+                temp_file.close()
+                temp_path = Path(temp_file.name)
+                source_path = temp_path
+            return analyzer.analyze_document(source_path)
+        except Exception as exc:
+            return DocumentAnalysisResult(
+                file_name=Path(meta.path).name,
+                file_type=suffix.lower(),
+                success=False,
+                error_message=str(exc),
+            )
+        finally:
+            if temp_path and temp_path.exists():
+                try:
+                    temp_path.unlink()
+                except OSError:
+                    pass
+
+    def _read_document_from_archive(
+        self,
+        meta: FileMetadata,
+        archive_reader: Optional[zipfile.ZipFile],
+    ) -> Optional[bytes]:
+        if archive_reader is None:
+            return None
+        for candidate in self._document_archive_candidates(meta.path):
+            try:
+                return archive_reader.read(candidate)
+            except KeyError:
+                continue
+        return None
+
+    def _document_archive_candidates(self, stored_path: str) -> List[str]:
+        normalized = stored_path.replace("\\", "/")
+        candidates = [normalized]
+        stripped = normalized.lstrip("./")
+        if stripped and stripped not in candidates:
+            candidates.append(stripped)
+        if "/" in stripped:
+            _, tail = stripped.split("/", 1)
+            if tail and tail not in candidates:
+                candidates.append(tail)
+        return candidates
+
+    def _resolve_document_filesystem_path(self, stored_path: str, base_path: Path) -> Optional[Path]:
+        normalized = stored_path.replace("\\", "/").lstrip("./")
+        relative = Path(normalized)
+        if not relative.parts:
+            return None
+        if relative.parts[0] == base_path.name and len(relative.parts) > 1:
+            relative = Path(*relative.parts[1:])
+        return base_path / relative
+
+    def _format_document_analysis(self) -> str:
+        if not self._scan_state.document_results:
+            return "No document analysis available."
+        sections: List[str] = []
+        for result in self._scan_state.document_results:
+            lines: List[str] = []
+            lines.append("=" * 60)
+            lines.append(f"{result.file_name}")
+            lines.append("=" * 60)
+            if not result.success:
+                lines.append(f"❌ Unable to analyze file: {result.error_message or 'Unknown error.'}")
+                sections.append("\n".join(lines))
+                continue
+            metadata = result.metadata
+            if metadata:
+                lines.append(
+                    f"Words: {metadata.word_count} • Paragraphs: {metadata.paragraph_count} • "
+                    f"Lines: {metadata.line_count}"
+                )
+                lines.append(f"Estimated read time: {metadata.reading_time_minutes:.1f} minutes")
+                if metadata.heading_count:
+                    heading_preview = ", ".join(metadata.headings[:3]) if metadata.headings else ""
+                    if heading_preview:
+                        lines.append(f"Headings ({metadata.heading_count}): {heading_preview}")
+                    else:
+                        lines.append(f"Headings detected: {metadata.heading_count}")
+                if metadata.code_blocks or metadata.links or metadata.images:
+                    lines.append(
+                        f"Code blocks: {metadata.code_blocks} • Links: {metadata.links} • Images: {metadata.images}"
+                    )
+            if result.summary:
+                lines.append("")
+                lines.append("Summary:")
+                lines.append(result.summary.strip())
+            if result.keywords:
+                lines.append("")
+                lines.append("Keywords:")
+                keyword_list = ", ".join(word for word, _ in result.keywords[:10])
+                lines.append(keyword_list)
+            if result.error_message and result.success:
+                lines.append("")
+                lines.append(f"Warnings: {result.error_message}")
+            sections.append("\n".join(lines))
+        return "\n\n".join(sections)
 
     def _export_scan_report(self) -> Path:
         if self._scan_state.parse_result is None or self._scan_state.archive is None:
@@ -1646,6 +1837,8 @@ class PortfolioTextualApp(App):
         self._scan_state.pdf_candidates = []
         self._scan_state.pdf_results = []
         self._scan_state.pdf_summaries = []
+        self._scan_state.document_candidates = []
+        self._scan_state.document_results = []
         self._scan_state.relevant_only = True
         self._close_scan_results_screen()
         self._ai_state.last_analysis = None
@@ -2070,13 +2263,11 @@ class PortfolioTextualApp(App):
         lines.append("Large directories may take a minute. Press Ctrl+C to cancel safely.")
         return "\n".join(lines)
 
-    def _render_progress_status(
-        self, spinner_char: str, current_step: tuple[str, float] | None
-    ) -> str:
+    def _render_progress_label(self, current_step: tuple[str, float] | None) -> str:
         if current_step:
             step, elapsed = current_step
-            return f"{spinner_char} {step} ({elapsed:.1f}s elapsed)"
-        return f"{spinner_char} Preparing scan…"
+            return f"{step} ({elapsed:.1f}s elapsed)"
+        return "Preparing scan…"
 
     def _progress_ratio(
         self,

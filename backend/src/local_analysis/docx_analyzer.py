@@ -16,7 +16,7 @@ except ImportError:
     DOCX_AVAILABLE = False
     DocxDocument = None  # type: ignore
 
-from document_analyzer import (
+from .document_analyzer import (
     DocumentAnalyzer, DocumentConfig, DocumentAnalysisResult,
     DocumentMetadata
 )

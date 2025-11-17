@@ -61,6 +61,23 @@ Header, Footer {
     margin-top: 1;
 }
 
+.scan-progress.hidden {
+    display: none;
+}
+
+.scan-progress-label {
+    color: #94a3b8;
+    margin-top: 0;
+}
+
+.scan-progress-label.hidden {
+    display: none;
+}
+
+.scan-progress .progress-label {
+    display: none;
+}
+
 .status {
     margin-top: 1;
     padding: 0 2;

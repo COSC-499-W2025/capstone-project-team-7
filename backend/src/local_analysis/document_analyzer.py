@@ -11,7 +11,7 @@ from collections import Counter
 import logging
 
 # Import the existing PDF summarizer
-from pdf_summarizer import create_summarizer, SummaryConfig
+from .pdf_summarizer import create_summarizer, SummaryConfig
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
