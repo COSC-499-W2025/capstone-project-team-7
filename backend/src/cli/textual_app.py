@@ -13,7 +13,7 @@ from typing import Optional, Dict, Any, List, Sequence
 from textual.app import App, ComposeResult, Binding
 from textual.containers import Vertical
 from textual.events import Mount
-from textual.widgets import Header, Footer, Static, ListView, ListItem, Label
+from textual.widgets import Footer, Header, Label, ListItem, ListView, ProgressBar, Static
 
 from .message_utils import dispatch_message
 from .services.preferences_service import PreferencesService
@@ -123,6 +123,7 @@ class PortfolioTextualApp(App):
         self._media_vision_ready = media_vision_capabilities_enabled()
         self._debug_log_path = Path.home() / ".textual_ai_debug.log"
         self._ai_output_path = Path.cwd() / "ai-analysis-latest.md"
+        self._scan_progress_bar: Optional[ProgressBar] = None
         self._debug_log("PortfolioTextualApp initialized")
 
     def compose(self) -> ComposeResult:
@@ -134,10 +135,14 @@ class PortfolioTextualApp(App):
         yield Vertical(
             Static("Navigation", classes="section-heading"),
             menu_list,
-            Static(
-                "Select an option from the menu to view details.",
-                id="detail",
-                classes="detail-block",
+            Vertical(
+                Static(
+                    "Select an option from the menu to view details.",
+                    id="detail",
+                    classes="detail-block",
+                ),
+                ProgressBar(total=100, show_percentage=False, classes="scan-progress hidden", id="scan-progress"),
+                classes="detail-wrapper",
             ),
             id="main",
         )
@@ -153,6 +158,11 @@ class PortfolioTextualApp(App):
         self._refresh_consent_state()
         self._load_preferences()
         self._update_session_status()
+        try:
+            self._scan_progress_bar = self.query_one("#scan-progress", ProgressBar)
+            self._scan_progress_bar.display = False
+        except Exception:
+            self._scan_progress_bar = None
         menu = self.query_one("#menu", ListView)
         menu.focus()
         menu.index = 0
@@ -344,6 +354,10 @@ class PortfolioTextualApp(App):
     async def _run_scan(self, target: Path, relevant_only: bool) -> None:
         self._show_status("Scanning project – please wait…", "info")
         detail_panel = self.query_one("#detail", Static)
+        progress_bar = self._scan_progress_bar
+        if progress_bar:
+            progress_bar.display = True
+            progress_bar.update(progress=0)
         detail_panel.update(self._render_scan_progress([], None))
         preferences = self._current_scan_preferences()
         self._reset_scan_state()
@@ -374,8 +388,11 @@ class PortfolioTextualApp(App):
             try:
                 while not progress_stop.is_set():
                     snapshot = _progress_snapshot(time.perf_counter() - progress_start)
+                    ratio = self._progress_ratio(*snapshot)
                     try:
                         detail_panel.update(self._render_scan_progress(*snapshot))
+                        if progress_bar:
+                            progress_bar.update(progress=ratio * 100)
                     except Exception:
                         pass
                     spinner_char = spinner_frames[spinner_index % len(spinner_frames)]
@@ -385,8 +402,11 @@ class PortfolioTextualApp(App):
                     await asyncio.sleep(0.5)
             finally:
                 snapshot = _progress_snapshot(time.perf_counter() - progress_start)
+                ratio = self._progress_ratio(*snapshot)
                 try:
                     detail_panel.update(self._render_scan_progress(*snapshot))
+                    if progress_bar:
+                        progress_bar.update(progress=ratio * 100)
                 except Exception:
                     pass
                 status_message = self._render_progress_status(spinner_frames[spinner_index % len(spinner_frames)], snapshot[1])
@@ -456,6 +476,9 @@ class PortfolioTextualApp(App):
             _finalize_progress()
             progress_stop.set()
             await heartbeat_task
+            if progress_bar:
+                progress_bar.update(progress=0)
+                progress_bar.display = False
 
         self._scan_state.target = target
         self._scan_state.archive = run_result.archive_path
@@ -1713,8 +1736,7 @@ class PortfolioTextualApp(App):
         completed_steps: Sequence[tuple[str, float]],
         current_step: tuple[str, float] | None,
     ) -> str:
-        ratio = self._progress_ratio(completed_steps, current_step)
-        lines = ["[b]Run Portfolio Scan[/b]", self._format_progress_bar(ratio), "", "[b]Current step[/b]"]
+        lines = ["[b]Run Portfolio Scan[/b]", "", "[b]Current step[/b]"]
         if current_step:
             step, elapsed = current_step
             lines.append(f"• {step} ({elapsed:.1f}s elapsed)")
@@ -1752,14 +1774,6 @@ class PortfolioTextualApp(App):
         if not current_step and completed_count >= total_slots:
             return 1.0
         return max(0.0, min(1.0, ratio))
-
-    def _format_progress_bar(self, ratio: float, width: int = 24) -> str:
-        ratio = max(0.0, min(1.0, ratio))
-        filled = int(round(ratio * width))
-        filled = min(width, filled)
-        bar = "#" * filled + "-" * (width - filled)
-        percent = int(ratio * 100)
-        return f"[b]Progress[/b] [{bar}] {percent}%"
 
     def _render_account_detail(self) -> str:
         lines = ["[b]Account[/b]"]

@@ -56,6 +56,11 @@ Header, Footer {
     min-height: 6;
 }
 
+.scan-progress {
+    height: 2;
+    margin-top: 1;
+}
+
 .status {
     margin-top: 1;
     padding: 0 2;
