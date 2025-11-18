@@ -438,8 +438,8 @@ class PortfolioTextualApp(App):
                 # Silent failure - user can manually trigger if needed
                 pass
         
-        # Auto-extract contribution metrics if git repos are present
-        if self._scan_state.git_repos:
+        # Auto-extract contribution metrics if code files or git repos are present
+        if self._scan_state.code_file_count > 0 or self._scan_state.git_repos:
             try:
                 contribution_metrics = await asyncio.to_thread(self._perform_contribution_analysis)
                 self._scan_state.contribution_metrics = contribution_metrics
@@ -464,6 +464,8 @@ class PortfolioTextualApp(App):
             actions.append(("skills", "Skills analysis"))
         if self._scan_state.git_repos:
             actions.append(("git", "Run Git analysis"))
+        # Contribution metrics available for all projects (Git or file-based)
+        if self._scan_state.code_file_count > 0 or self._scan_state.git_repos:
             actions.append(("contributions", "Contribution metrics"))
         actions.append(("export", "Export JSON report"))
         if self._scan_state.pdf_candidates:
@@ -1031,24 +1033,25 @@ class PortfolioTextualApp(App):
     
     def _perform_contribution_analysis(self):
         """Perform contribution metrics extraction from the scanned project."""
-        if not self._scan_state.git_analysis:
-            raise ContributionAnalysisError("No git analysis available for contribution metrics.")
+        # Git analysis is optional - can analyze non-Git projects too
+        git_analysis = None
         
-        # Use the first git repository's analysis (or combine if multiple)
-        git_analysis = self._scan_state.git_analysis[0] if len(self._scan_state.git_analysis) == 1 else {
-            'path': str(self._scan_state.target),
-            'commit_count': sum(g.get('commit_count', 0) for g in self._scan_state.git_analysis),
-            'project_type': self._scan_state.git_analysis[0].get('project_type', 'unknown'),
-            'contributors': [],
-            'timeline': []
-        }
-        
-        # If we have multiple repos, use the first one that has complete data
-        if len(self._scan_state.git_analysis) > 1:
-            for git_data in self._scan_state.git_analysis:
-                if git_data.get('contributors') and not git_data.get('error'):
-                    git_analysis = git_data
-                    break
+        if self._scan_state.git_analysis:
+            # Use the first git repository's analysis (or combine if multiple)
+            git_analysis = self._scan_state.git_analysis[0] if len(self._scan_state.git_analysis) == 1 else {
+                'path': str(self._scan_state.target),
+                'commit_count': sum(g.get('commit_count', 0) for g in self._scan_state.git_analysis),
+                'project_type': self._scan_state.git_analysis[0].get('project_type', 'unknown'),
+                'contributors': [],
+                'timeline': []
+            }
+            
+            # If we have multiple repos, use the first one that has complete data
+            if len(self._scan_state.git_analysis) > 1:
+                for git_data in self._scan_state.git_analysis:
+                    if git_data.get('contributors') and not git_data.get('error'):
+                        git_analysis = git_data
+                        break
         
         # Build code analysis dict from DirectoryResult if available
         code_analysis_dict = None
