@@ -38,18 +38,21 @@ class ScanService:
         target: Path,
         relevant_only: bool,
         preferences: ScanPreferences,
-        progress_callback: Callable[[str], None] | None = None,
+        progress_callback: Callable[[str | Dict[str, object]], None] | None = None,
     ) -> ScanRunResult:
         """Execute the scan pipeline (zip preparation + parsing + metadata)."""
 
         timings: list[Tuple[str, float]] = []
 
-        def _report_progress(message: str) -> None:
+        def _emit_progress(payload: str | Dict[str, object]) -> None:
             if progress_callback:
                 try:
-                    progress_callback(message)
+                    progress_callback(payload)
                 except Exception:
                     pass
+
+        def _report_progress(message: str) -> None:
+            _emit_progress(message)
 
         def _run_step(message: str, label: str, func: Callable[[], T]) -> T:
             _report_progress(message)
@@ -63,14 +66,27 @@ class ScanService:
             "Archive preparation",
             lambda: self._perform_scan(target, relevant_only, preferences),
         )
-        parse_result = _run_step(
-            "Parsing files from archive…",
-            "Archive parsing",
-            lambda: parse_zip(
+        def _parse_archive() -> ParseResult:
+            def _file_progress(processed: int, total: int) -> None:
+                _emit_progress(
+                    {
+                        "type": "files",
+                        "processed": processed,
+                        "total": total,
+                    }
+                )
+
+            return parse_zip(
                 archive_path,
                 relevant_only=relevant_only,
                 preferences=preferences,
-            ),
+                progress_callback=_file_progress,
+            )
+
+        parse_result = _run_step(
+            "Parsing files from archive…",
+            "Archive parsing",
+            _parse_archive,
         )
         languages: List[Dict[str, object]] = []
         has_media_files = False

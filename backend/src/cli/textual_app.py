@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import threading
 import zipfile
 from datetime import datetime
@@ -388,7 +389,8 @@ class PortfolioTextualApp(App):
 
     async def on_run_scan_requested(self, _: RunScanRequested) -> None:
         default_path = str(self._scan_state.target) if self._scan_state.target else ""
-        self.push_screen(ScanConfigScreen(default_path=default_path))
+        relevant_only = bool(self._scan_state.relevant_only)
+        self.push_screen(ScanConfigScreen(default_path=default_path, relevant_only=relevant_only))
 
     async def _run_scan(self, target: Path, relevant_only: bool) -> None:
         self._show_status("Scanning project – please wait…", "info")
@@ -405,14 +407,22 @@ class PortfolioTextualApp(App):
         preferences = self._current_scan_preferences()
         self._reset_scan_state()
         progress_entries: list[dict[str, float | None]] = []
+        file_progress_state: dict[str, float | int | None] = {
+            "processed": 0,
+            "total": 0,
+            "start_offset": None,
+        }
         progress_lock = threading.Lock()
         progress_start = time.perf_counter()
         progress_stop = asyncio.Event()
         self._show_status("Scanning project – press Ctrl+C to cancel.", "info")
 
-        def _progress_snapshot(elapsed: float) -> tuple[list[tuple[str, float]], tuple[str, float] | None]:
+        def _progress_snapshot(
+            elapsed: float,
+        ) -> tuple[list[tuple[str, float]], tuple[str, float] | None, dict[str, float | int]]:
             with progress_lock:
                 entries = [dict(entry) for entry in progress_entries]
+                file_state = dict(file_progress_state)
             completed: list[tuple[str, float]] = []
             current: tuple[str, float] | None = None
             for entry in entries:
@@ -423,39 +433,62 @@ class PortfolioTextualApp(App):
                 else:
                     start = float(entry.get("start") or 0.0)
                     current = (step, max(0.0, elapsed - start))
-            return completed, current
+            file_processed = int(file_state.get("processed") or 0)
+            file_total = int(file_state.get("total") or 0)
+            start_offset = file_state.get("start_offset")
+            file_elapsed = 0.0
+            if isinstance(start_offset, (int, float)):
+                file_elapsed = max(0.0, elapsed - float(start_offset))
+            file_snapshot: dict[str, float | int] = {
+                "processed": file_processed,
+                "total": file_total,
+                "elapsed": file_elapsed,
+            }
+            return completed, current, file_snapshot
 
         async def _progress_heartbeat() -> None:
             try:
                 while not progress_stop.is_set():
-                    snapshot = _progress_snapshot(time.perf_counter() - progress_start)
-                    ratio = self._progress_ratio(*snapshot)
+                    completed, current, file_state = _progress_snapshot(time.perf_counter() - progress_start)
+                    ratio = self._progress_ratio(completed, current, file_state)
                     try:
-                        detail_panel.update(self._render_scan_progress(*snapshot))
+                        detail_panel.update(self._render_scan_progress(completed, current))
                         if progress_bar:
                             progress_bar.update(progress=ratio * 100)
                         if progress_label:
-                            progress_label.update(self._render_progress_label(snapshot[1]))
+                            progress_label.update(self._render_progress_label(current, file_state))
                     except Exception:
                         pass
                     await asyncio.sleep(0.5)
             finally:
-                snapshot = _progress_snapshot(time.perf_counter() - progress_start)
-                ratio = self._progress_ratio(*snapshot)
+                completed, current, file_state = _progress_snapshot(time.perf_counter() - progress_start)
+                ratio = self._progress_ratio(completed, current, file_state)
                 try:
-                    detail_panel.update(self._render_scan_progress(*snapshot))
+                    detail_panel.update(self._render_scan_progress(completed, current))
                     if progress_bar:
                         progress_bar.update(progress=ratio * 100)
                     if progress_label:
-                        progress_label.update(self._render_progress_label(snapshot[1]))
+                        progress_label.update(self._render_progress_label(current, file_state))
                 except Exception:
                     pass
 
         heartbeat_task = asyncio.create_task(_progress_heartbeat())
 
-        def _progress_update(step: str) -> None:
+        def _progress_update(event: str | Dict[str, object]) -> None:
             elapsed = time.perf_counter() - progress_start
             with progress_lock:
+                if isinstance(event, dict):
+                    if event.get("type") == "files":
+                        processed = int(event.get("processed") or 0)
+                        total = int(event.get("total") or 0)
+                        file_progress_state["processed"] = processed
+                        file_progress_state["total"] = total
+                        if file_progress_state.get("start_offset") is None:
+                            file_progress_state["start_offset"] = elapsed
+                    return
+                step = str(event)
+                if not step:
+                    return
                 if progress_entries and progress_entries[-1].get("end") is None:
                     prev = progress_entries[-1]
                     prev_start = float(prev.get("start") or 0.0)
@@ -2263,22 +2296,68 @@ class PortfolioTextualApp(App):
         lines.append("Large directories may take a minute. Press Ctrl+C to cancel safely.")
         return "\n".join(lines)
 
-    def _render_progress_label(self, current_step: tuple[str, float] | None) -> str:
+    def _render_progress_label(
+        self,
+        current_step: tuple[str, float] | None,
+        file_progress: Dict[str, object] | None,
+    ) -> str:
         if current_step:
             step, elapsed = current_step
+            if file_progress and self._is_parsing_step(step):
+                total = int(file_progress.get("total") or 0)
+                processed = int(file_progress.get("processed") or 0)
+                if total > 0:
+                    ratio = max(0.0, min(1.0, processed / total))
+                    if ratio >= 1.0:
+                        return f"{step} — 100% complete"
+                    eta_suffix = ""
+                    elapsed_progress = float(file_progress.get("elapsed") or 0.0)
+                    if processed > 0 and processed < total and elapsed_progress > 0.0:
+                        remaining = total - processed
+                        eta_seconds = remaining * (elapsed_progress / processed)
+                        if eta_seconds > 0:
+                            eta_suffix = f" — ETA {self._format_eta_duration(eta_seconds)}"
+                    return f"{step} — {ratio * 100:.0f}% complete{eta_suffix}"
             return f"{step} ({elapsed:.1f}s elapsed)"
         return "Preparing scan…"
+
+    @staticmethod
+    def _is_parsing_step(step: str) -> bool:
+        return "parsing files" in step.lower()
+
+    @staticmethod
+    def _format_eta_duration(seconds: float) -> str:
+        if not math.isfinite(seconds):
+            return "--"
+        seconds = max(0.0, seconds)
+        if seconds < 1:
+            return "<1s"
+        minutes, secs = divmod(int(round(seconds)), 60)
+        if minutes >= 60:
+            hours, minutes = divmod(minutes, 60)
+            return f"{hours}h {minutes:02d}m"
+        if minutes:
+            return f"{minutes}m {secs:02d}s"
+        return f"{secs}s"
 
     def _progress_ratio(
         self,
         completed_steps: Sequence[tuple[str, float]],
         current_step: tuple[str, float] | None,
+        file_progress: Dict[str, object] | None,
     ) -> float:
         base_total = len(self.SCAN_PROGRESS_STEPS) or 1
         total_slots = max(base_total, len(completed_steps) + (1 if current_step else 0), 1)
         completed_count = min(len(completed_steps), total_slots)
-        in_progress = 0.5 if current_step else 0.0
-        ratio = (completed_count + in_progress) / total_slots
+        ratio = completed_count / total_slots
+        if current_step:
+            in_progress = 0.5
+            if file_progress and self._is_parsing_step(current_step[0]):
+                total = int(file_progress.get("total") or 0)
+                processed = int(file_progress.get("processed") or 0)
+                if total > 0:
+                    in_progress = max(0.0, min(1.0, processed / total))
+            ratio += in_progress / total_slots
         if not current_step and completed_count >= total_slots:
             return 1.0
         return max(0.0, min(1.0, ratio))

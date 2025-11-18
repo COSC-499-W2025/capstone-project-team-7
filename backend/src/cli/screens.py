@@ -19,6 +19,7 @@ from textual.widgets import (
     ListView,
     Log,
     Static,
+    Switch,
 )
 
 try:
@@ -59,7 +60,11 @@ class ScanConfigScreen(ModalScreen[None]):
                 classes="dialog-subtitle",
             ),
             Input(value=self._default_path, placeholder="/path/to/project", id="scan-path"),
-            Checkbox("Relevant files only", value=self._default_relevant, id="scan-relevant"),
+            Horizontal(
+                Switch(value=self._default_relevant, id="scan-relevant"),
+                Label("Relevant files only"),
+                classes="switch-row",
+            ),
             Static("", id="scan-message", classes="dialog-message"),
             Horizontal(
                 Button("Cancel", id="cancel"),
@@ -78,7 +83,7 @@ class ScanConfigScreen(ModalScreen[None]):
         if not path_value:
             self.query_one("#scan-message", Static).update("Provide a file system path before running the scan.")
             return
-        checkbox = self.query_one("#scan-relevant", Checkbox)
+        checkbox = self.query_one("#scan-relevant", Switch)
         target = Path(path_value).expanduser()
         dispatch_message(self, ScanParametersChosen(target, bool(checkbox.value)))
         self.dismiss(None)

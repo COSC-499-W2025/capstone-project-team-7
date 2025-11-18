@@ -57,6 +57,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     analysis_result = None
+    git_repos: list[dict] = []
     try:
         preferences = load_preferences(args.profile)
         archive_path = ensure_zip(args.archive, preferences=preferences)
@@ -96,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         archive_path = ensure_zip(args.archive)
         result = parse_zip(archive_path, relevant_only=args.relevant_only)
-        git_repos: list[dict] = []
+        git_repos = []
 
         def _scan_for_git(root: Path):
             if not root.exists():
@@ -120,8 +121,7 @@ def main(argv: list[str] | None = None) -> int:
     languages = summarize_languages(result.files) if args.code else []
 
     if args.json:
-        print(json.dumps(_serialize_result(result, languages,analysis_result), indent=2))
-        payload = _serialize_result(result, languages)
+        payload = _serialize_result(result, languages, analysis_result)
         payload["git_repositories"] = git_repos
         print(json.dumps(payload, indent=2))
     else:
