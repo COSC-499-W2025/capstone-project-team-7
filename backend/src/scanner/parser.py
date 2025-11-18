@@ -4,6 +4,7 @@ import mimetypes
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 import zipfile
+from typing import Callable
 
 from .errors import CorruptArchiveError, UnsupportedArchiveError
 from .media import MediaExtractionResult, extract_media_metadata, is_media_candidate
@@ -156,6 +157,7 @@ def parse_zip(
     *,
     relevant_only: bool = False,
     preferences: ScanPreferences | None = None,
+    progress_callback: Callable[[int, int], None] | None = None,
 ) -> ParseResult:
     # Parse the given .zip archive into file metadata and capture parse issues.
     archive = Path(archive_path)
@@ -193,36 +195,52 @@ def parse_zip(
 
     try:
         with zipfile.ZipFile(archive) as zf:
-            for info in zf.infolist():
+            entries = zf.infolist()
+            total_entries = sum(0 if entry.is_dir() else 1 for entry in entries)
+            processed_entries = 0
+            if progress_callback:
+                try:
+                    progress_callback(0, total_entries)
+                except Exception:
+                    pass
+            for info in entries:
                 normalized = _normalize_entry(info.filename)
                 if normalized is None:
                     raise CorruptArchiveError("Zip is corrupted or unsafe.", "CORRUPT_OR_UNZIP_ERROR")
                 if info.is_dir():
                     continue
-                metadata = _build_metadata(info, normalized)
-                if _should_skip(metadata, excluded_dirs, allowed_extensions, max_file_size):
-                    filtered_out += 1
-                    continue
-                if relevant_only and not _is_relevant(metadata):
-                    filtered_out += 1
-                    continue
-                if is_media_candidate(metadata.path):
-                    extracted, error_code = _attach_media_metadata(
-                        archive_zip=zf,
-                        info=info,
-                        metadata=metadata,
-                        issues=issues,
-                    )
-                    if extracted:
-                        media_with_metadata += 1
-                    if error_code == "MEDIA_METADATA_ERROR":
-                        media_metadata_errors += 1
-                    elif error_code == "MEDIA_READ_ERROR":
-                        media_read_errors += 1
-                    elif error_code == "MEDIA_TOO_LARGE":
-                        media_too_large += 1
-                files.append(metadata)
-                total_bytes += metadata.size_bytes
+                processed_entries += 1
+                try:
+                    metadata = _build_metadata(info, normalized)
+                    if _should_skip(metadata, excluded_dirs, allowed_extensions, max_file_size):
+                        filtered_out += 1
+                        continue
+                    if relevant_only and not _is_relevant(metadata):
+                        filtered_out += 1
+                        continue
+                    if is_media_candidate(metadata.path):
+                        extracted, error_code = _attach_media_metadata(
+                            archive_zip=zf,
+                            info=info,
+                            metadata=metadata,
+                            issues=issues,
+                        )
+                        if extracted:
+                            media_with_metadata += 1
+                        if error_code == "MEDIA_METADATA_ERROR":
+                            media_metadata_errors += 1
+                        elif error_code == "MEDIA_READ_ERROR":
+                            media_read_errors += 1
+                        elif error_code == "MEDIA_TOO_LARGE":
+                            media_too_large += 1
+                    files.append(metadata)
+                    total_bytes += metadata.size_bytes
+                finally:
+                    if progress_callback:
+                        try:
+                            progress_callback(processed_entries, total_entries)
+                        except Exception:
+                            pass
     except zipfile.BadZipFile as exc:
         raise CorruptArchiveError("Zip is corrupted or unsafe.", "CORRUPT_OR_UNZIP_ERROR") from exc
 
