@@ -54,6 +54,8 @@ class ScanState:
     code_analysis_error: Optional[str] = None
     skills_analysis_result: Optional[List[Any]] = None
     skills_analysis_error: Optional[str] = None
+    contribution_metrics: Optional[Any] = None
+    contribution_analysis_error: Optional[str] = None
 
 
 @dataclass

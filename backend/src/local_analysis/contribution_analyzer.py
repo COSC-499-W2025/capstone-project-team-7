@@ -193,21 +193,32 @@ class ContributionAnalyzer:
     
     def analyze_contributions(
         self,
-        git_analysis: Dict[str, Any],
+        git_analysis: Optional[Dict[str, Any]] = None,
         code_analysis: Optional[Dict[str, Any]] = None,
         parse_result: Optional[Any] = None,
     ) -> ProjectContributionMetrics:
         """
-        Analyze contributions from git history and code analysis.
+        Analyze project contributions from git history and code analysis.
+        
+        For Git projects: Uses commit history, contributors, timeline
+        For non-Git projects: Uses file metadata, activity breakdown, code structure
         
         Args:
-            git_analysis: Git repository analysis data
+            git_analysis: Optional git repository analysis data with contributors, commits, etc.
             code_analysis: Optional code analysis results
             parse_result: Optional parse result with file metadata
             
         Returns:
-            ProjectContributionMetrics with comprehensive contribution data
+            ProjectContributionMetrics with extracted data
         """
+        # Determine if this is a Git project or file-based analysis
+        has_git = git_analysis is not None and git_analysis.get('contributors')
+        
+        if not has_git:
+            # Non-Git project: Use file-based analysis
+            return self._analyze_non_git_project(code_analysis, parse_result)
+        
+        # Git project: Extract comprehensive metrics
         metrics = ProjectContributionMetrics(
             project_path=git_analysis.get('path', 'unknown'),
             project_type=git_analysis.get('project_type', 'unknown'),
@@ -390,6 +401,132 @@ class ContributionAnalyzer:
         metrics.overall_activity_breakdown.documentation_lines = activity_counter.get('documentation', 0)
         metrics.overall_activity_breakdown.design_lines = activity_counter.get('design', 0)
         metrics.overall_activity_breakdown.config_lines = activity_counter.get('config', 0)
+    
+    def _analyze_non_git_project(
+        self,
+        code_analysis: Optional[Dict[str, Any]],
+        parse_result: Optional[Any]
+    ) -> ProjectContributionMetrics:
+        """
+        Analyze projects without Git history.
+        
+        Uses file metadata, activity breakdown, and code structure analysis.
+        """
+        self.logger.info("Analyzing non-Git project using file-based metrics")
+        
+        # Determine project path
+        project_path = str(parse_result.base_path) if parse_result and hasattr(parse_result, 'base_path') else 'unknown'
+        
+        # Create metrics with required fields
+        metrics = ProjectContributionMetrics(
+            project_path=project_path,
+            project_type="individual",  # Default to individual (no version control = likely single developer)
+            total_commits=0,
+            total_contributors=1,
+        )
+        
+        # Create a single "Project Author" contributor
+        author = ContributorMetrics(
+            name="Project Author",
+            email=None,
+            commits=0,
+            commit_percentage=100.0,
+        )
+        
+        # Try to extract dates from file metadata
+        if parse_result and hasattr(parse_result, 'files'):
+            dates = self._extract_file_dates(parse_result.files)
+            if dates:
+                author.first_commit_date = dates['earliest']
+                author.last_commit_date = dates['latest']
+                metrics.project_start_date = dates['earliest']
+                metrics.project_end_date = dates['latest']
+                metrics.project_duration_days = self._calculate_duration(
+                    dates['earliest'],
+                    dates['latest']
+                )
+                # Estimate active days as ~30% of duration (conservative estimate)
+                if metrics.project_duration_days:
+                    author.active_days = max(1, int(metrics.project_duration_days * 0.3))
+        
+        metrics.contributors.append(author)
+        
+        # Extract languages from code analysis
+        if code_analysis:
+            languages = code_analysis.get('languages', {})
+            if isinstance(languages, dict):
+                metrics.languages_detected = set(languages.keys())
+            elif isinstance(languages, list):
+                metrics.languages_detected = set(lang.get('name', '') for lang in languages)
+        
+        # Analyze activity breakdown from files (this is the key metric for non-Git projects)
+        if parse_result and hasattr(parse_result, 'files'):
+            self._analyze_activity_breakdown(metrics, parse_result.files, code_analysis)
+        elif code_analysis and 'file_details' in code_analysis:
+            self._analyze_activity_from_code_analysis(metrics, code_analysis)
+        
+        # Calculate "commit" frequency as a proxy (files analyzed per day)
+        if metrics.project_duration_days and metrics.project_duration_days > 0:
+            # Use total lines as a proxy for "work done"
+            total_lines = metrics.overall_activity_breakdown.total_lines
+            if total_lines > 0:
+                # Rough estimate: 100 lines = 1 day of work
+                estimated_work_days = max(1, total_lines // 100)
+                metrics.commit_frequency = estimated_work_days / metrics.project_duration_days
+        
+        self.logger.info(
+            f"Non-Git analysis complete: {metrics.total_contributors} contributor, "
+            f"{metrics.overall_activity_breakdown.total_lines} total lines analyzed"
+        )
+        
+        return metrics
+    
+    def _extract_file_dates(self, files: List[Any]) -> Optional[Dict[str, str]]:
+        """
+        Extract earliest and latest dates from file metadata.
+        
+        Returns dict with 'earliest' and 'latest' ISO date strings, or None.
+        """
+        dates = []
+        
+        for file_obj in files:
+            # Try to get modification time
+            if hasattr(file_obj, 'modified_time') and file_obj.modified_time:
+                dates.append(file_obj.modified_time)
+            elif hasattr(file_obj, 'created_time') and file_obj.created_time:
+                dates.append(file_obj.created_time)
+            elif isinstance(file_obj, dict):
+                if 'modified_time' in file_obj:
+                    dates.append(file_obj['modified_time'])
+                elif 'created_time' in file_obj:
+                    dates.append(file_obj['created_time'])
+        
+        if not dates:
+            return None
+        
+        try:
+            # Parse all dates and find min/max
+            parsed_dates = []
+            for date_str in dates:
+                try:
+                    parsed = datetime.fromisoformat(str(date_str).replace('Z', '+00:00'))
+                    parsed_dates.append(parsed)
+                except (ValueError, AttributeError):
+                    continue
+            
+            if not parsed_dates:
+                return None
+            
+            earliest = min(parsed_dates)
+            latest = max(parsed_dates)
+            
+            return {
+                'earliest': earliest.isoformat(),
+                'latest': latest.isoformat()
+            }
+        except Exception as exc:
+            self.logger.warning(f"Failed to extract file dates: {exc}")
+            return None
     
     def export_to_dict(self, metrics: ProjectContributionMetrics) -> Dict[str, Any]:
         """
