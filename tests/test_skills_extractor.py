@@ -498,9 +498,13 @@ except Exception as e:
 class TestIntegration:
     """Integration tests combining multiple components."""
     
-    def test_full_extraction_pipeline(self):
+    @pytest.fixture
+    def extractor(self):
+        """Create a fresh extractor for each test."""
+        return SkillsExtractor()
+    
+    def test_full_extraction_pipeline(self, extractor):
         """Test complete extraction pipeline with all input types."""
-        extractor = SkillsExtractor()
         
         # Prepare comprehensive test data
         code_analysis = {
@@ -570,6 +574,127 @@ class TestProcessor(unittest.TestCase):
         # Should be exportable
         export = extractor.export_to_dict()
         assert export["summary"]["total_skills"] > 0
+    
+    def test_chronological_overview(self, extractor):
+        """Test chronological overview of skills."""
+        
+        # Create skills with timestamps
+        file_contents = {
+            "old_file.py": """
+def binary_search(arr, target):
+    left, right = 0, len(arr) - 1
+    while left <= right:
+        mid = (left + right) // 2
+        if arr[mid] == target:
+            return mid
+        elif arr[mid] < target:
+            left = mid + 1
+        else:
+            right = mid - 1
+    return -1
+""",
+            "new_file.py": """
+from abc import ABC, abstractmethod
+
+class DataProcessor(ABC):
+    @abstractmethod
+    def process(self):
+        pass
+"""
+        }
+        
+        # Simulate timestamps - set before extraction
+        extractor.file_timestamps = {
+            "old_file.py": "2024-01-15T10:30:00Z",
+            "new_file.py": "2024-03-20T14:45:00Z"
+        }
+        
+        skills = extractor.extract_skills(file_contents=file_contents)
+        
+        # Verify skills were detected
+        assert len(skills) > 0, "No skills detected"
+        
+        # Get chronological overview
+        overview = extractor.get_chronological_overview()
+        
+        # Should have entries
+        assert len(overview) > 0, f"No timeline entries. Skills detected: {list(skills.keys())}"
+        
+        # Should be sorted by period
+        periods = [entry['period'] for entry in overview]
+        assert periods == sorted(periods)
+        
+        # Each entry should have required fields
+        for entry in overview:
+            assert 'period' in entry
+            assert 'skills_exercised' in entry
+            assert 'skill_count' in entry
+            assert 'evidence_count' in entry
+            assert 'details' in entry
+            
+            # Skills should be sorted
+            assert entry['skills_exercised'] == sorted(entry['skills_exercised'])
+    
+    def test_chronological_export(self, extractor):
+        """Test that chronological overview is included in export."""
+        
+        file_contents = {
+            "test.py": """
+import logging
+logger = logging.getLogger(__name__)
+"""
+        }
+        
+        extractor.file_timestamps = {
+            "test.py": "2024-02-10T12:00:00Z"
+        }
+        
+        skills = extractor.extract_skills(file_contents=file_contents)
+        export = extractor.export_to_dict()
+        
+        # Should have chronological_overview in export
+        assert 'chronological_overview' in export
+        assert isinstance(export['chronological_overview'], list)
+        
+        # Evidence should have timestamp
+        for skill_data in export['skills']:
+            for evidence in skill_data['evidence']:
+                assert 'timestamp' in evidence
+    
+    def test_git_timestamp_extraction_no_repo(self, extractor):
+        """Test that git timestamp extraction handles non-repo gracefully."""
+        
+        # Should not raise exception on invalid path
+        extractor._extract_git_timestamps("/nonexistent/path")
+        
+        # Timestamps should be empty or unchanged
+        assert len(extractor.file_timestamps) == 0
+    
+    def test_chronological_with_git_analysis(self, extractor):
+        """Test chronological overview with git analysis."""
+        
+        git_analysis = {
+            "path": "/test/repo",
+            "commit_count": 25,
+            "contributors": [{"name": "Dev", "commits": 25}],
+            "timeline": [
+                {"month": "2024-01", "commits": 10},
+                {"month": "2024-02", "commits": 15},
+            ]
+        }
+        
+        skills = extractor.extract_skills(git_analysis=git_analysis)
+        overview = extractor.get_chronological_overview()
+        
+        # Should have entries with git-based timestamps
+        assert len(overview) > 0
+        
+        # Git skills should have appropriate timestamps
+        git_skill = skills.get("Version Control (Git)")
+        if git_skill:
+            assert len(git_skill.evidence) > 0
+            # Should have timestamp from latest timeline entry
+            assert git_skill.evidence[0].timestamp is not None
 
 
 if __name__ == "__main__":

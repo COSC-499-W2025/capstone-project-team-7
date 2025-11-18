@@ -15,8 +15,10 @@ This module identifies evidence of:
 from typing import Dict, List, Set, Optional, Any
 from dataclasses import dataclass, field
 from collections import defaultdict
+from datetime import datetime
 import re
 import logging
+import subprocess
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +32,7 @@ class SkillEvidence:
     file_path: str
     line_number: Optional[int] = None
     confidence: float = 1.0  # 0.0 to 1.0
+    timestamp: Optional[str] = None  # ISO format timestamp when skill was used
     
     def __hash__(self):
         return hash((self.skill_name, self.file_path, self.line_number))
@@ -66,6 +69,7 @@ class SkillsExtractor:
     def __init__(self):
         self.skills: Dict[str, Skill] = {}
         self.logger = logging.getLogger(__name__)
+        self.file_timestamps: Dict[str, str] = {}  # Cache for file timestamps
         
         # Pattern definitions for skill detection
         self._init_patterns()
@@ -215,7 +219,8 @@ class SkillsExtractor:
         self,
         code_analysis: Optional[Dict] = None,
         git_analysis: Optional[Dict] = None,
-        file_contents: Optional[Dict[str, str]] = None
+        file_contents: Optional[Dict[str, str]] = None,
+        repo_path: Optional[str] = None
     ) -> Dict[str, Skill]:
         """
         Extract skills from various analysis sources.
@@ -224,11 +229,17 @@ class SkillsExtractor:
             code_analysis: Results from CodeAnalyzer (metrics, complexity, etc.)
             git_analysis: Results from git repository analysis
             file_contents: Dictionary mapping file paths to their content
+            repo_path: Path to git repository for extracting file timestamps
         
         Returns:
             Dictionary mapping skill names to Skill objects
         """
         self.skills = {}
+        
+        # Only reset timestamps if we're going to extract new ones
+        if repo_path:
+            self.file_timestamps = {}
+            self._extract_git_timestamps(repo_path)
         
         if code_analysis:
             self._extract_from_code_analysis(code_analysis)
@@ -327,8 +338,58 @@ class SkillsExtractor:
                         evidence
                     )
     
+    def _extract_git_timestamps(self, repo_path: str):
+        """Extract last modification timestamps for files in git repository."""
+        try:
+            # Get all tracked files with their last commit dates
+            result = subprocess.run(
+                ['git', 'ls-files', '-z'],
+                cwd=repo_path,
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            
+            files = result.stdout.strip('\0').split('\0')
+            files = [f for f in files if f]  # Remove empty strings
+            
+            for file_path in files:
+                try:
+                    # Get last commit date for this file
+                    result = subprocess.run(
+                        ['git', 'log', '-1', '--format=%cI', '--', file_path],
+                        cwd=repo_path,
+                        capture_output=True,
+                        text=True,
+                        check=True
+                    )
+                    timestamp = result.stdout.strip()
+                    if timestamp:
+                        # Normalize file path for matching
+                        import os
+                        full_path = os.path.join(repo_path, file_path)
+                        self.file_timestamps[full_path] = timestamp
+                        self.file_timestamps[file_path] = timestamp  # Also store relative path
+                except subprocess.CalledProcessError:
+                    continue
+                    
+        except subprocess.CalledProcessError as e:
+            self.logger.warning(f"Failed to extract git timestamps: {e}")
+        except FileNotFoundError:
+            self.logger.warning("Git not found in PATH")
+        except (NotADirectoryError, OSError) as e:
+            self.logger.warning(f"Invalid repository path: {e}")
+    
     def _extract_from_git_analysis(self, git_analysis: Dict):
         """Extract skills from git repository analysis."""
+        
+        # Get most recent timestamp from timeline
+        timeline = git_analysis.get('timeline', [])
+        latest_timestamp = None
+        if timeline:
+            # Timeline is sorted by month, get the last one
+            latest_month = timeline[-1]['month']
+            latest_timestamp = f"{latest_month}-01T00:00:00Z"
         
         # Check for version control skills
         commit_count = git_analysis.get('commit_count', 0)
@@ -338,7 +399,8 @@ class SkillsExtractor:
                 evidence_type="practice",
                 description=f"Managed {commit_count} commits",
                 file_path=git_analysis.get('path', 'repository'),
-                confidence=0.8
+                confidence=0.8,
+                timestamp=latest_timestamp
             )
             self._add_skill(
                 "Version Control (Git)",
@@ -355,7 +417,8 @@ class SkillsExtractor:
                 evidence_type="practice",
                 description=f"Collaborated with {len(contributors)} contributors",
                 file_path=git_analysis.get('path', 'repository'),
-                confidence=0.9
+                confidence=0.9,
+                timestamp=latest_timestamp
             )
             self._add_skill(
                 "Team Collaboration",
@@ -365,14 +428,14 @@ class SkillsExtractor:
             )
         
         # Check for consistent contribution
-        timeline = git_analysis.get('timeline', [])
         if len(timeline) >= 3:
             evidence = SkillEvidence(
                 skill_name="Consistent Development",
                 evidence_type="practice",
                 description=f"Active development across {len(timeline)} time periods",
                 file_path=git_analysis.get('path', 'repository'),
-                confidence=0.7
+                confidence=0.7,
+                timestamp=latest_timestamp
             )
             self._add_skill(
                 "Consistent Development",
@@ -467,6 +530,9 @@ class SkillsExtractor:
     ):
         """Check for patterns in code and add evidence."""
         
+        # Get timestamp for this file
+        timestamp = self._get_file_timestamp(file_path)
+        
         for pattern_key, skill_name in skill_mapping.items():
             if pattern_key not in pattern_dict:
                 continue
@@ -487,12 +553,28 @@ class SkillsExtractor:
                         description=f"Uses {pattern_key.replace('_', ' ')} in {language}",
                         file_path=file_path,
                         line_number=line_num,
-                        confidence=min(1.0, len(matches) * 0.3 + 0.4)
+                        confidence=min(1.0, len(matches) * 0.3 + 0.4),
+                        timestamp=timestamp
                     )
                     
                     # Add skill with evidence
                     description = self._get_skill_description(skill_name, category, pattern_key)
                     self._add_skill(skill_name, category, description, evidence)
+    
+    def _get_file_timestamp(self, file_path: str) -> Optional[str]:
+        """Get the timestamp for a file from cache."""
+        # Try exact match first
+        if file_path in self.file_timestamps:
+            return self.file_timestamps[file_path]
+        
+        # Try to find by basename match
+        import os
+        basename = os.path.basename(file_path)
+        for cached_path, timestamp in self.file_timestamps.items():
+            if os.path.basename(cached_path) == basename:
+                return timestamp
+        
+        return None
     
     def _detect_language(self, file_path: str) -> Optional[str]:
         """Detect programming language from file extension."""
@@ -597,8 +679,60 @@ class SkillsExtractor:
         
         return sorted_skills[:limit]
     
+    def get_chronological_overview(self) -> List[Dict[str, Any]]:
+        """Get chronological list of skills exercised over time.
+        
+        Returns a list of dictionaries with timestamp and skills exercised at that time,
+        sorted from oldest to newest.
+        """
+        # Collect all evidence with timestamps
+        timeline_entries = []
+        
+        for skill in self.skills.values():
+            for evidence in skill.evidence:
+                if evidence.timestamp:
+                    timeline_entries.append({
+                        'timestamp': evidence.timestamp,
+                        'skill_name': skill.name,
+                        'skill_category': skill.category,
+                        'evidence_type': evidence.evidence_type,
+                        'description': evidence.description,
+                        'file_path': evidence.file_path,
+                        'line_number': evidence.line_number,
+                        'confidence': evidence.confidence
+                    })
+        
+        # Sort by timestamp
+        timeline_entries.sort(key=lambda x: x['timestamp'])
+        
+        # Group by time period (month) for overview
+        from collections import defaultdict
+        monthly_skills = defaultdict(lambda: {'skills': set(), 'details': []})
+        
+        for entry in timeline_entries:
+            # Extract year-month from ISO timestamp
+            period = entry['timestamp'][:7]  # Get YYYY-MM
+            monthly_skills[period]['skills'].add(entry['skill_name'])
+            monthly_skills[period]['details'].append(entry)
+        
+        # Format overview
+        overview = []
+        for period in sorted(monthly_skills.keys()):
+            data = monthly_skills[period]
+            overview.append({
+                'period': period,
+                'skills_exercised': sorted(data['skills']),
+                'skill_count': len(data['skills']),
+                'evidence_count': len(data['details']),
+                'details': data['details']
+            })
+        
+        return overview
+    
     def export_to_dict(self) -> Dict[str, Any]:
         """Export skills to dictionary format for JSON serialization."""
+        
+        chronological = self.get_chronological_overview()
         
         return {
             "skills": [
@@ -615,6 +749,7 @@ class SkillsExtractor:
                             "file": ev.file_path,
                             "line": ev.line_number,
                             "confidence": ev.confidence,
+                            "timestamp": ev.timestamp,
                         }
                         for ev in skill.evidence
                     ]
@@ -631,5 +766,6 @@ class SkillsExtractor:
                     {"name": s.name, "score": s.proficiency_score}
                     for s in self.get_top_skills(5)
                 ]
-            }
+            },
+            "chronological_overview": chronological
         }
