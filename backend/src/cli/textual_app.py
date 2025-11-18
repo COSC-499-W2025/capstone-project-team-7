@@ -30,6 +30,10 @@ from .services.code_analysis_service import (
     CodeAnalysisService,
     CodeAnalysisUnavailableError,
 )
+from .services.skills_analysis_service import (
+    SkillsAnalysisService,
+    SkillsAnalysisError,
+)
 from .state import AIState, ConsentState, PreferencesState, ProjectsState, ScanState, SessionState
 from .screens import (
     AIKeyCancelled,
@@ -117,6 +121,7 @@ class PortfolioTextualApp(App):
         self._preferences_service = PreferencesService(media_extensions=MEDIA_EXTENSIONS)
         self._ai_service = AIService()
         self._code_service = CodeAnalysisService()
+        self._skills_service = SkillsAnalysisService()
         self._projects_service = ProjectsService()
 
         self._preferences_screen = None
@@ -414,8 +419,20 @@ class PortfolioTextualApp(App):
         self._scan_state.code_file_count = len(self._code_service.code_file_candidates(run_result.parse_result))
         self._scan_state.code_analysis_result = None
         self._scan_state.code_analysis_error = None
+        self._scan_state.skills_analysis_result = None
+        self._scan_state.skills_analysis_error = None
+        
+        # Auto-extract skills in background if code files are present
+        if self._scan_state.code_file_count > 0:
+            try:
+                skills = await asyncio.to_thread(self._perform_skills_analysis)
+                self._scan_state.skills_analysis_result = skills
+            except Exception:
+                # Silent failure - user can manually trigger if needed
+                pass
+        
         self._show_status("Scan completed successfully.", "success")
-        detail_panel.update(self._scan_service.format_scan_overview(self._scan_state))
+        detail_panel.update(self._scan_service.format_scan_overview(self._scan_state, include_skills=True))
         self._show_scan_results_dialog()
 
     def _show_scan_results_dialog(self) -> None:
@@ -428,6 +445,7 @@ class PortfolioTextualApp(App):
         ]
         if self._scan_state.code_file_count:
             actions.append(("code", "Code analysis"))
+            actions.append(("skills", "Skills analysis"))
         actions.append(("export", "Export JSON report"))
         if self._scan_state.pdf_candidates:
             label = "View PDF summaries" if self._scan_state.pdf_summaries else "Analyze PDF files"
@@ -459,7 +477,7 @@ class PortfolioTextualApp(App):
             return
 
         if action == "summary":
-            screen.display_output(self._scan_service.format_scan_overview(self._scan_state), context="Overview")
+            screen.display_output(self._scan_service.format_scan_overview(self._scan_state, include_skills=True), context="Overview")
             screen.set_message("Overview refreshed.", tone="success")
             return
 
@@ -494,6 +512,10 @@ class PortfolioTextualApp(App):
 
         if action == "code":
             await self._handle_code_analysis_action(screen)
+            return
+
+        if action == "skills":
+            await self._handle_skills_analysis_action(screen)
             return
 
         if action == "export":
@@ -874,6 +896,71 @@ class PortfolioTextualApp(App):
             preferences = None
         return self._code_service.run_analysis(target, preferences)
 
+    async def _handle_skills_analysis_action(self, screen: ScanResultsScreen) -> None:
+        """Handle skills analysis action from the scan results screen."""
+        if self._scan_state.code_file_count <= 0:
+            screen.display_output(
+                "No supported code files were detected in the last scan.", context="Skills analysis"
+            )
+            screen.set_message("Run another scan with source files present.", tone="warning")
+            return
+        if not self._scan_state.target:
+            screen.display_output("Scan target unavailable. Rerun the scan to analyze skills.", context="Skills analysis")
+            screen.set_message("No scan target available.", tone="warning")
+            return
+
+        if self._scan_state.skills_analysis_result is None:
+            screen.set_message("Extracting skills from codebase…", tone="info")
+            try:
+                skills = await asyncio.to_thread(self._perform_skills_analysis)
+            except SkillsAnalysisError as exc:
+                screen.display_output(f"Unable to extract skills: {exc}", context="Skills analysis")
+                screen.set_message("Skills analysis failed.", tone="error")
+                self._scan_state.skills_analysis_error = str(exc)
+                return
+            self._scan_state.skills_analysis_result = skills
+            self._scan_state.skills_analysis_error = None
+
+        # Display paragraph summary, then concise summary, then detailed breakdown
+        paragraph_summary = self._skills_service.format_skills_paragraph(self._scan_state.skills_analysis_result)
+        skills_summary = self._skills_service.format_skills_summary(self._scan_state.skills_analysis_result)
+        detailed_summary = self._skills_service.format_summary(self._scan_state.skills_analysis_result)
+        
+        full_output = (
+            "[b]Summary[/b]\n" + 
+            paragraph_summary + 
+            "\n\n" + "=" * 60 + "\n\n" + 
+            skills_summary + 
+            "\n\n" + "=" * 60 + "\n\n" + 
+            detailed_summary
+        )
+        screen.display_output(full_output, context="Skills analysis")
+        screen.set_message("Skills analysis ready.", tone="success")
+
+    def _perform_skills_analysis(self):
+        """Perform skills extraction from the scanned project."""
+        target = self._scan_state.target
+        if target is None:
+            raise SkillsAnalysisError("No scan target available.")
+        
+        # Collect all available analysis data
+        code_analysis = self._scan_state.code_analysis_result
+        git_analysis = None
+        if self._scan_state.git_analysis:
+            # Combine git analysis results if available
+            git_analysis = {
+                'commit_count': sum(g.get('commit_count', 0) for g in self._scan_state.git_analysis),
+                'contributor_count': sum(g.get('contributor_count', 0) for g in self._scan_state.git_analysis),
+                'path': str(target)
+            }
+        
+        return self._skills_service.extract_skills(
+            target_path=target,
+            code_analysis_result=code_analysis,
+            git_analysis_result=git_analysis,
+            file_contents=None  # Let the service read files
+        )
+
     def _analyze_pdfs_sync(self) -> None:
         """Run local PDF parsing and summarization."""
         if not PDF_AVAILABLE:
@@ -1222,6 +1309,23 @@ class PortfolioTextualApp(App):
                 "message": "Code files detected but analysis was not performed",
                 "error": self._scan_state.code_analysis_error
             }
+        
+        # ✨ SKILLS ANALYSIS ✨
+        if self._scan_state.skills_analysis_result:
+            skills_data = self._skills_service.export_skills_data(self._scan_state.skills_analysis_result)
+            payload["skills_analysis"] = {
+                "success": True,
+                **skills_data
+            }
+        elif self._scan_state.code_file_count > 0:
+            # Code files detected but skills not extracted
+            payload["skills_analysis"] = {
+                "success": False,
+                "status": "not_analyzed",
+                "message": "Code files detected but skills extraction was not performed",
+                "error": self._scan_state.skills_analysis_error
+            }
+        
         return payload
     
     
@@ -1395,6 +1499,11 @@ class PortfolioTextualApp(App):
         if not self._session_state.session:
             return
         self._cleanup_async_tasks()
+        
+        # Clear consent persistence before logout
+        consent_storage.clear_session_token()
+        consent_storage.clear_user_consents_cache(self._session_state.session.user_id)
+        
         self._ai_state.client = None
         self._ai_state.api_key = None
         self._ai_state.last_analysis = None
@@ -1584,6 +1693,11 @@ class PortfolioTextualApp(App):
             self._session_state.last_email = session.email
             self._session_state.auth_error = None
             self._persist_session()
+            
+            # Setup consent persistence with authenticated session
+            consent_storage.set_session_token(session.access_token)
+            consent_storage.load_user_consents(session.user_id, session.access_token)
+            
             self._invalidate_cached_state()
             self._refresh_consent_state()
             self._load_preferences()
@@ -1786,6 +1900,9 @@ class PortfolioTextualApp(App):
         self._session_state.session = session
         if session:
             self._session_state.last_email = session.email
+            # Restore consent persistence with the loaded session
+            consent_storage.set_session_token(session.access_token)
+            consent_storage.load_user_consents(session.user_id, session.access_token)
 
     def _refresh_consent_state(self) -> None:
         self._consent_state.record = None
