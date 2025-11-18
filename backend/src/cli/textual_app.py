@@ -2143,17 +2143,9 @@ class PortfolioTextualApp(App):
         
         self._projects_state.projects_list = projects
         self._projects_state.error = None
-        self._show_status(f"Loaded {len(projects)} project(s).", "success")
-        
-        # ✅ ADD THIS: Refresh the detail panel with updated count
         self._refresh_current_detail()
-        
         self.push_screen(ProjectsScreen(projects))
-        
-        self._projects_state.projects_list = projects
-        self._projects_state.error = None
         self._show_status(f"Loaded {len(projects)} project(s).", "success")
-        self.push_screen(ProjectsScreen(projects))
 
     async def on_project_selected(self, message: ProjectSelected) -> None:
         """Handle when user selects a project to view."""
