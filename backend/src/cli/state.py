@@ -52,6 +52,10 @@ class ScanState:
     code_file_count: int = 0
     code_analysis_result: Optional[Any] = None
     code_analysis_error: Optional[str] = None
+    skills_analysis_result: Optional[List[Any]] = None
+    skills_analysis_error: Optional[str] = None
+    contribution_metrics: Optional[Any] = None
+    contribution_analysis_error: Optional[str] = None
 
 
 @dataclass
