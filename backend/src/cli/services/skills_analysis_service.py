@@ -38,6 +38,7 @@ class SkillsAnalysisService:
         code_analysis_result: Optional[Any] = None,
         git_analysis_result: Optional[Dict[str, Any]] = None,
         file_contents: Optional[Dict[str, str]] = None,
+        include_chronological: bool = True,
     ) -> List[Skill]:
         """
         Extract skills from the provided project data.
@@ -47,6 +48,7 @@ class SkillsAnalysisService:
             code_analysis_result: Optional CodeAnalyzer DirectoryResult
             git_analysis_result: Optional git analysis data
             file_contents: Optional dictionary mapping file paths to content
+            include_chronological: Whether to extract git timestamps for chronological tracking
             
         Returns:
             List of extracted Skill objects
@@ -64,6 +66,7 @@ class SkillsAnalysisService:
                 file_contents=file_contents,
                 code_analysis=code_analysis_result,
                 git_analysis=git_analysis_result,
+                repo_path=str(target_path) if include_chronological else None,
             )
             
             # Convert dict to list
@@ -250,6 +253,15 @@ class SkillsAnalysisService:
         
         return "\n".join(lines)
 
+    def get_chronological_overview(self) -> List[Dict[str, Any]]:
+        """
+        Get chronological overview of when skills were exercised.
+        
+        Returns:
+            List of time periods with skills exercised in each period
+        """
+        return self._extractor.get_chronological_overview()
+    
     def export_skills_data(self, skills: List[Skill]) -> Dict[str, Any]:
         """
         Export skills data in a format suitable for JSON export.
@@ -264,7 +276,8 @@ class SkillsAnalysisService:
             "total_skills": len(skills),
             "skills_by_category": {},
             "top_skills": [],
-            "all_skills": []
+            "all_skills": [],
+            "chronological_overview": self.get_chronological_overview()
         }
         
         # Categorize skills
@@ -428,6 +441,38 @@ class SkillsAnalysisService:
         
         return paragraph
 
+    def format_chronological_overview(self) -> str:
+        """
+        Format chronological overview of skills for display.
+        
+        Returns:
+            Formatted string showing skills by time period
+        """
+        overview = self.get_chronological_overview()
+        
+        if not overview:
+            return "No chronological data available. Skills were detected but timestamps are not available."
+        
+        lines = ["[b]Skills Timeline[/b]"]
+        lines.append("Skills exercised over time (by month):")
+        lines.append("=" * 60)
+        
+        for entry in overview:
+            period = entry['period']
+            skill_count = entry['skill_count']
+            evidence_count = entry['evidence_count']
+            skills_list = entry['skills_exercised']
+            
+            lines.append(f"\n[b]{period}[/b] ({skill_count} skills, {evidence_count} instances)")
+            for skill_name in skills_list[:5]:  # Show top 5 skills per period
+                lines.append(f"  • {skill_name}")
+            
+            if len(skills_list) > 5:
+                lines.append(f"  ... and {len(skills_list) - 5} more")
+        
+        lines.append("\n" + "=" * 60)
+        return "\n".join(lines)
+    
     def get_skills_summary_stats(self, skills: List[Skill]) -> Dict[str, Any]:
         """
         Generate summary statistics for skills.

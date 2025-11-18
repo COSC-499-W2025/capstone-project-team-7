@@ -921,10 +921,11 @@ class PortfolioTextualApp(App):
             self._scan_state.skills_analysis_result = skills
             self._scan_state.skills_analysis_error = None
 
-        # Display paragraph summary, then concise summary, then detailed breakdown
+        # Display paragraph summary, then concise summary, then detailed breakdown, then chronological timeline
         paragraph_summary = self._skills_service.format_skills_paragraph(self._scan_state.skills_analysis_result)
         skills_summary = self._skills_service.format_skills_summary(self._scan_state.skills_analysis_result)
         detailed_summary = self._skills_service.format_summary(self._scan_state.skills_analysis_result)
+        chronological_summary = self._skills_service.format_chronological_overview()
         
         full_output = (
             "[b]Summary[/b]\n" + 
@@ -932,7 +933,9 @@ class PortfolioTextualApp(App):
             "\n\n" + "=" * 60 + "\n\n" + 
             skills_summary + 
             "\n\n" + "=" * 60 + "\n\n" + 
-            detailed_summary
+            detailed_summary +
+            "\n\n" + "=" * 60 + "\n\n" +
+            chronological_summary
         )
         screen.display_output(full_output, context="Skills analysis")
         screen.set_message("Skills analysis ready.", tone="success")
