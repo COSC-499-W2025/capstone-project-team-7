@@ -8,8 +8,10 @@ Wraps the SkillsExtractor module and formats results for display.
 import logging
 from pathlib import Path
 from typing import Optional, List, Dict, Any
+from collections import defaultdict
 
 from ...analyzer.skills_extractor import SkillsExtractor, Skill, SkillEvidence
+from ...analyzer.project_detector import ProjectDetector, ProjectInfo
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +33,21 @@ class SkillsAnalysisService:
     def __init__(self):
         """Initialize the skills analysis service."""
         self._extractor = SkillsExtractor()
-
+        self._project_detector = ProjectDetector()
+        self._detected_projects: List[ProjectInfo] = []
+    
+    def detect_projects(self, target_path: Path) -> List[ProjectInfo]:
+        """Detect all projects within the target directory.
+        
+        Args:
+            target_path: Path to scan for projects
+            
+        Returns:
+            List of detected ProjectInfo objects
+        """
+        self._detected_projects = self._project_detector.detect_projects(target_path)
+        return self._detected_projects
+    
     def extract_skills(
         self,
         target_path: Path,
@@ -78,6 +94,74 @@ class SkillsAnalysisService:
         except Exception as exc:
             logger.error(f"Skills extraction failed: {exc}")
             raise SkillsAnalysisError(f"Failed to extract skills: {exc}") from exc
+    
+    def extract_skills_per_project(
+        self,
+        target_path: Path,
+        code_analysis_result: Optional[Any] = None,
+        git_analysis_result: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Dict[str, Any]]:
+        """Extract skills separately for each detected project.
+        
+        Args:
+            target_path: Path to the root directory containing projects
+            code_analysis_result: Optional CodeAnalyzer DirectoryResult
+            git_analysis_result: Optional git analysis data
+            
+        Returns:
+            Dictionary mapping project paths to their skill extraction results
+        """
+        # Detect projects if not already done
+        if not self._detected_projects:
+            self.detect_projects(target_path)
+        
+        results = {}
+        
+        for project in self._detected_projects:
+            logger.info(f"Extracting skills for project: {project.name} at {project.path}")
+            
+            try:
+                # Create a new extractor for each project
+                project_extractor = SkillsExtractor()
+                
+                # Read files only from this project's directory
+                file_contents = self._read_source_files(project.path)
+                
+                # Extract skills for this project
+                skills_dict = project_extractor.extract_skills(
+                    file_contents=file_contents,
+                    code_analysis=None,  # TODO: Filter code analysis by project
+                    git_analysis=git_analysis_result if str(project.path) == str(target_path) else None,
+                    repo_path=str(project.path)
+                )
+                
+                skills = list(skills_dict.values())
+                
+                results[str(project.path)] = {
+                    "project_info": {
+                        "name": project.name,
+                        "path": str(project.path),
+                        "type": project.project_type,
+                        "description": project.description,
+                        "markers": project.root_indicators
+                    },
+                    "skills": skills,
+                    "skill_count": len(skills),
+                    "export": project_extractor.export_to_dict()
+                }
+                
+            except Exception as exc:
+                logger.error(f"Failed to extract skills for {project.name}: {exc}")
+                results[str(project.path)] = {
+                    "project_info": {
+                        "name": project.name,
+                        "path": str(project.path),
+                        "type": project.project_type
+                    },
+                    "error": str(exc)
+                }
+        
+        return results
 
     def _read_source_files(self, target_path: Path, max_file_size: int = 500 * 1024) -> Dict[str, str]:
         """
@@ -151,7 +235,10 @@ class SkillsAnalysisService:
             "data_structures": "Data Structures",
             "algorithms": "Algorithms",
             "patterns": "Design Patterns",
-            "practices": "Best Practices"
+            "practices": "Best Practices",
+            "frameworks": "Frameworks & Libraries",
+            "databases": "Database Technologies",
+            "architecture": "Software Architecture"
         }
         
         # Group skills by category
@@ -173,6 +260,9 @@ class SkillsAnalysisService:
             "Data Structures",
             "Algorithms",
             "Design Patterns",
+            "Frameworks & Libraries",
+            "Database Technologies",
+            "Software Architecture",
             "Best Practices"
         ]
         
@@ -330,7 +420,10 @@ class SkillsAnalysisService:
             "data_structures": "Data Structures",
             "algorithms": "Algorithms",
             "patterns": "Design Patterns",
-            "practices": "Best Practices"
+            "practices": "Best Practices",
+            "frameworks": "Frameworks & Libraries",
+            "databases": "Database Technologies",
+            "architecture": "Software Architecture"
         }
         
         # Calculate stats
@@ -385,7 +478,10 @@ class SkillsAnalysisService:
             "data_structures": "data structures",
             "algorithms": "algorithms",
             "patterns": "design patterns",
-            "practices": "best practices"
+            "practices": "best practices",
+            "frameworks": "frameworks and libraries",
+            "databases": "database technologies",
+            "architecture": "software architecture"
         }
         
         # Calculate stats
@@ -470,8 +566,141 @@ class SkillsAnalysisService:
             if len(skills_list) > 5:
                 lines.append(f"  ... and {len(skills_list) - 5} more")
         
-        lines.append("\n" + "=" * 60)
-        return "\n".join(lines)
+        lines.append("\\n" + "=" * 60)
+        return "\\n".join(lines)
+    
+    def format_skill_progression(self) -> str:
+        """Format skill progression over time showing how skills evolved.
+        
+        Returns:
+            Formatted string showing skill progression
+        """
+        progression = self._extractor.get_skill_progression()
+        
+        if not progression:
+            return "No progression data available."
+        
+        lines = ["[b]Skill Progression[/b]"]
+        lines.append("How your skills evolved over time:")
+        lines.append("=" * 60)
+        
+        # Show progression for top skills
+        top_skills = self._extractor.get_top_skills(limit=5)
+        top_skill_names = {s.name for s in top_skills}
+        
+        for skill_name in top_skill_names:
+            if skill_name not in progression:
+                continue
+            
+            skill_timeline = progression[skill_name]
+            lines.append(f"\\n[b]{skill_name}[/b]")
+            
+            # Group by period to show progression
+            periods = {}
+            for entry in skill_timeline:
+                period = entry['period']
+                if period not in periods:
+                    periods[period] = entry
+            
+            # Show progression through periods
+            for period in sorted(periods.keys()):
+                entry = periods[period]
+                level = "Beginner" if entry['proficiency'] < 0.5 else "Intermediate" if entry['proficiency'] < 0.8 else "Advanced"
+                lines.append(f"  {period}: {level} (used {entry['evidence_count']}x)")
+        
+        lines.append("\\n" + "=" * 60)
+        return "\\n".join(lines)
+    
+    def format_skill_adoption(self) -> str:
+        """Format skill adoption timeline showing when skills were first learned.
+        
+        Returns:
+            Formatted string showing skill adoption timeline
+        """
+        adoption = self._extractor.get_skill_adoption_timeline()
+        
+        if not adoption:
+            return "No adoption timeline available."
+        
+        lines = ["[b]Skill Acquisition Timeline[/b]"]
+        lines.append("When you first started using each skill:")
+        lines.append("=" * 60)
+        
+        # Group by period
+        by_period = defaultdict(list)
+        for entry in adoption:
+            by_period[entry['first_used_period']].append(entry)
+        
+        for period in sorted(by_period.keys()):
+            skills_in_period = by_period[period]
+            lines.append(f"\\n[b]{period}[/b] ({len(skills_in_period)} new skills)")
+            
+            for entry in sorted(skills_in_period, key=lambda x: x['current_proficiency'], reverse=True):
+                level = "Advanced" if entry['current_proficiency'] >= 0.8 else "Intermediate" if entry['current_proficiency'] >= 0.5 else "Beginner"
+                lines.append(f"  \u2022 {entry['skill_name']} (now {level}, used {entry['total_usage']}x)")
+        
+        lines.append("\\n" + "=" * 60)
+        return "\\n".join(lines)
+    
+    def format_multi_project_summary(self, projects_results: Dict[str, Dict[str, Any]]) -> str:
+        """Format summary for multiple projects.
+        
+        Args:
+            projects_results: Dictionary of project results from extract_skills_per_project
+            
+        Returns:
+            Formatted summary string
+        """
+        if not projects_results:
+            return "No projects analyzed."
+        
+        lines = ["[b]Multi-Project Analysis[/b]"]
+        lines.append(f"Analyzed {len(projects_results)} project(s):")
+        lines.append("=" * 80)
+        
+        for project_path, result in projects_results.items():
+            if "error" in result:
+                project_info = result["project_info"]
+                lines.append(f"\\n[b]{project_info['name']}[/b] ({project_info['type']})")
+                lines.append(f"  Path: {project_info['path']}")
+                lines.append(f"  [red]Error: {result['error']}[/red]")
+                continue
+            
+            project_info = result["project_info"]
+            skills = result["skills"]
+            
+            lines.append(f"\\n[b]{project_info['name']}[/b] ({project_info['type']})")
+            lines.append(f"  Path: {project_info['path']}")
+            
+            if project_info.get('description'):
+                lines.append(f"  Description: {project_info['description']}")
+            
+            lines.append(f"  Skills detected: {len(skills)}")
+            
+            if skills:
+                # Show top 3 skills for this project
+                sorted_skills = sorted(skills, key=lambda s: s.proficiency_score, reverse=True)[:3]
+                lines.append("  Top skills:")
+                for skill in sorted_skills:
+                    level = "Advanced" if skill.proficiency_score >= 0.8 else "Intermediate" if skill.proficiency_score >= 0.5 else "Beginner"
+                    lines.append(f"    \u2022 {skill.name} ({level})")
+            
+            lines.append("")  # Blank line between projects
+        
+        lines.append("=" * 80)
+        
+        # Add aggregate statistics
+        total_skills = sum(result.get("skill_count", 0) for result in projects_results.values() if "error" not in result)
+        unique_skills = set()
+        for result in projects_results.values():
+            if "error" not in result and "skills" in result:
+                unique_skills.update(s.name for s in result["skills"])
+        
+        lines.append(f"\\n[b]Aggregate Statistics[/b]")
+        lines.append(f"Total skill instances: {total_skills}")
+        lines.append(f"Unique skills: {len(unique_skills)}")
+        
+        return "\\n".join(lines)
     
     def get_skills_summary_stats(self, skills: List[Skill]) -> Dict[str, Any]:
         """

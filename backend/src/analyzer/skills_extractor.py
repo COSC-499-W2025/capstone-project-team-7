@@ -214,6 +214,88 @@ class SkillsExtractor:
                 'java': [r'/\*\*.*\*/', r'//.*@param', r'//.*@return'],
             },
         }
+        
+        # Framework Patterns
+        self.framework_patterns = {
+            'react': {
+                'javascript': [r'import.*from\s+["\']react["\']', r'useState', r'useEffect', r'React\.Component', r'\.jsx'],
+                'typescript': [r'import.*from\s+["\']react["\']', r'useState', r'useEffect', r'FC<', r'\.tsx'],
+            },
+            'vue': {
+                'javascript': [r'import.*from\s+["\']vue["\']', r'Vue\.component', r'v-if', r'v-for', r'\.vue'],
+            },
+            'angular': {
+                'typescript': [r'@Component', r'@Injectable', r'@NgModule', r'import.*@angular'],
+            },
+            'django': {
+                'python': [r'from\s+django', r'django\.db\.models', r'models\.Model', r'\.views', r'urlpatterns'],
+            },
+            'flask': {
+                'python': [r'from\s+flask\s+import', r'@app\.route', r'Flask\(__name__\)', r'render_template'],
+            },
+            'express': {
+                'javascript': [r'require\(["\']express["\']\)', r'express\(\)', r'app\.get\(', r'app\.post\('],
+            },
+            'spring': {
+                'java': [r'@SpringBootApplication', r'@RestController', r'@Autowired', r'import.*springframework'],
+            },
+            'nextjs': {
+                'javascript': [r'import.*from\s+["\']next', r'getServerSideProps', r'getStaticProps', r'next\.config'],
+                'typescript': [r'import.*from\s+["\']next', r'getServerSideProps', r'getStaticProps'],
+            },
+        }
+        
+        # Database & ORM Patterns
+        self.database_patterns = {
+            'sql_queries': {
+                'python': [r'SELECT\s+.*\s+FROM', r'INSERT\s+INTO', r'UPDATE\s+.*\s+SET', r'DELETE\s+FROM'],
+                'java': [r'SELECT\s+.*\s+FROM', r'PreparedStatement', r'executeQuery'],
+                'javascript': [r'SELECT\s+.*\s+FROM', r'\.query\('],
+            },
+            'orm': {
+                'python': [r'from\s+sqlalchemy', r'from\s+django\.db', r'\.objects\.', r'\.filter\(', r'\.all\(\)'],
+                'java': [r'@Entity', r'@Table', r'EntityManager', r'import.*javax\.persistence'],
+            },
+            'mongodb': {
+                'python': [r'from\s+pymongo', r'MongoClient', r'\.find\(', r'\.insert_one'],
+                'javascript': [r'require\(["\']mongoose["\']\)', r'\.find\(', r'\.save\(', r'Schema'],
+            },
+            'redis': {
+                'python': [r'import\s+redis', r'Redis\(', r'\.get\(', r'\.set\('],
+                'javascript': [r'require\(["\']redis["\']\)', r'createClient'],
+            },
+        }
+        
+        # Architecture & Security Patterns
+        self.architecture_patterns = {
+            'mvc': {
+                'python': [r'class\s+\w+View', r'class\s+\w+Controller', r'render\s*\('],
+                'java': [r'@Controller', r'ModelAndView', r'class\s+\w+Controller'],
+            },
+            'rest_api': {
+                'python': [r'@app\.route', r'@api\.route', r'@get', r'@post', r'jsonify'],
+                'java': [r'@RestController', r'@GetMapping', r'@PostMapping', r'@RequestMapping'],
+                'javascript': [r'app\.get\(', r'app\.post\(', r'router\.', r'res\.json'],
+            },
+            'microservices': {
+                'python': [r'import\s+consul', r'service\s+discovery', r'docker-compose'],
+                'java': [r'@EnableDiscoveryClient', r'@FeignClient', r'import.*spring\.cloud'],
+            },
+            'authentication': {
+                'python': [r'import\s+jwt', r'@login_required', r'authenticate', r'bcrypt', r'hash.*password'],
+                'java': [r'@PreAuthorize', r'SecurityContext', r'BCryptPasswordEncoder'],
+                'javascript': [r'passport', r'jwt\.sign', r'bcrypt\.hash', r'authenticate'],
+            },
+            'input_validation': {
+                'python': [r'from\s+pydantic', r'validate', r'validator', r'ValidationError'],
+                'java': [r'@Valid', r'@NotNull', r'@Pattern', r'javax\.validation'],
+                'javascript': [r'joi\.', r'validator\.', r'express-validator'],
+            },
+            'middleware': {
+                'python': [r'@middleware', r'def\s+\w+_middleware', r'MIDDLEWARE'],
+                'javascript': [r'app\.use\(', r'function\s+\w+.*next\)'],
+            },
+        }
     
     def extract_skills(
         self,
@@ -518,6 +600,48 @@ class SkillsExtractor:
                     'documentation': "Code Documentation",
                 }
             )
+            
+            # Check frameworks
+            self._check_patterns(
+                content, file_path, language,
+                self.framework_patterns, "frameworks",
+                {
+                    'react': "React Framework",
+                    'vue': "Vue.js Framework",
+                    'angular': "Angular Framework",
+                    'django': "Django Framework",
+                    'flask': "Flask Framework",
+                    'express': "Express.js Framework",
+                    'spring': "Spring Framework",
+                    'nextjs': "Next.js Framework",
+                }
+            )
+            
+            # Check database patterns
+            self._check_patterns(
+                content, file_path, language,
+                self.database_patterns, "databases",
+                {
+                    'sql_queries': "SQL Database Queries",
+                    'orm': "Object-Relational Mapping (ORM)",
+                    'mongodb': "MongoDB",
+                    'redis': "Redis Caching",
+                }
+            )
+            
+            # Check architecture patterns
+            self._check_patterns(
+                content, file_path, language,
+                self.architecture_patterns, "architecture",
+                {
+                    'mvc': "MVC Architecture",
+                    'rest_api': "RESTful API Design",
+                    'microservices': "Microservices Architecture",
+                    'authentication': "Authentication & Authorization",
+                    'input_validation': "Input Validation",
+                    'middleware': "Middleware Pattern",
+                }
+            )
     
     def _check_patterns(
         self,
@@ -639,6 +763,30 @@ class SkillsExtractor:
             "Code Documentation": "Documents code with comments and docstrings",
             "Version Control (Git)": "Uses Git for source code management",
             "Team Collaboration": "Collaborates with team members on shared codebase",
+            
+            # Frameworks
+            "React Framework": "Builds user interfaces with React component library",
+            "Vue.js Framework": "Develops reactive web applications using Vue.js",
+            "Angular Framework": "Creates enterprise-scale applications with Angular",
+            "Django Framework": "Builds web applications with Django Python framework",
+            "Flask Framework": "Develops lightweight web services with Flask",
+            "Express.js Framework": "Creates Node.js web servers with Express",
+            "Spring Framework": "Builds Java enterprise applications with Spring",
+            "Next.js Framework": "Develops server-side rendered React applications",
+            
+            # Databases
+            "SQL Database Queries": "Writes and optimizes SQL queries for relational databases",
+            "Object-Relational Mapping (ORM)": "Uses ORM tools to interact with databases",
+            "MongoDB": "Works with MongoDB NoSQL database",
+            "Redis Caching": "Implements caching strategies with Redis",
+            
+            # Architecture
+            "MVC Architecture": "Implements Model-View-Controller design pattern",
+            "RESTful API Design": "Designs and implements RESTful web APIs",
+            "Microservices Architecture": "Builds distributed systems with microservices",
+            "Authentication & Authorization": "Implements secure authentication systems",
+            "Input Validation": "Validates and sanitizes user input for security",
+            "Middleware Pattern": "Uses middleware for request/response processing",
         }
         
         return descriptions.get(skill_name, f"Demonstrates {skill_name.lower()}")
@@ -729,10 +877,79 @@ class SkillsExtractor:
         
         return overview
     
+    def get_skill_progression(self) -> Dict[str, List[Dict[str, Any]]]:
+        """Get skill progression over time showing how skills evolved.
+        
+        Returns a dictionary mapping skill names to their progression timeline.
+        Each entry shows when the skill was used and at what level.
+        """
+        skill_timeline = defaultdict(list)
+        
+        for skill in self.skills.values():
+            # Collect all dated evidence for this skill
+            dated_evidence = [ev for ev in skill.evidence if ev.timestamp]
+            
+            if not dated_evidence:
+                continue
+            
+            # Sort by timestamp
+            dated_evidence.sort(key=lambda ev: ev.timestamp)
+            
+            # Track skill usage over time
+            for i, evidence in enumerate(dated_evidence):
+                period = evidence.timestamp[:7]  # YYYY-MM
+                
+                # Calculate proficiency at this point (cumulative)
+                proficiency_at_time = min(1.0, (i + 1) * 0.2 + 0.2)
+                
+                skill_timeline[skill.name].append({
+                    'period': period,
+                    'timestamp': evidence.timestamp,
+                    'proficiency': proficiency_at_time,
+                    'evidence_count': i + 1,
+                    'file': evidence.file_path,
+                    'description': evidence.description
+                })
+        
+        return dict(skill_timeline)
+    
+    def get_skill_adoption_timeline(self) -> List[Dict[str, Any]]:
+        """Get timeline showing when new skills were first adopted.
+        
+        Returns a list of skills with their first usage date, sorted chronologically.
+        """
+        skill_adoptions = []
+        
+        for skill in self.skills.values():
+            # Find earliest evidence with timestamp
+            dated_evidence = [ev for ev in skill.evidence if ev.timestamp]
+            
+            if not dated_evidence:
+                continue
+            
+            earliest = min(dated_evidence, key=lambda ev: ev.timestamp)
+            
+            skill_adoptions.append({
+                'skill_name': skill.name,
+                'category': skill.category,
+                'first_used': earliest.timestamp,
+                'first_used_period': earliest.timestamp[:7],
+                'file': earliest.file_path,
+                'current_proficiency': skill.proficiency_score,
+                'total_usage': len(skill.evidence)
+            })
+        
+        # Sort by first usage
+        skill_adoptions.sort(key=lambda x: x['first_used'])
+        
+        return skill_adoptions
+    
     def export_to_dict(self) -> Dict[str, Any]:
         """Export skills to dictionary format for JSON serialization."""
         
         chronological = self.get_chronological_overview()
+        skill_progression = self.get_skill_progression()
+        skill_adoption = self.get_skill_adoption_timeline()
         
         return {
             "skills": [
@@ -767,5 +984,7 @@ class SkillsExtractor:
                     for s in self.get_top_skills(5)
                 ]
             },
-            "chronological_overview": chronological
+            "chronological_overview": chronological,
+            "skill_progression": skill_progression,
+            "skill_adoption_timeline": skill_adoption
         }
