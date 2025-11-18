@@ -489,48 +489,51 @@ class PreferencesScreen(ModalScreen[None]):
             item.data = name  # type: ignore[attr-defined]
             profile_items.append(item)
 
-        yield ScrollableContainer(
-            Vertical(
-                Static("Manage preferences", classes="dialog-title"),
-                Static(
-                    "Adjust scan profiles and general settings. Changes sync to Supabase when saved.",
-                    classes="dialog-subtitle",
-                ),
-                Horizontal(
-                    Vertical(
-                        Static("Profiles", classes="group-title"),
-                        ListView(*profile_items, id="pref-profile-list"),
-                        Button("Set as active", id="pref-set-active"),
-                        Button("Create new profile", id="pref-new-profile"),
-                        Button("Delete profile", id="pref-delete-profile"),
-                        classes="pref-column pref-column-left",
-                    ),
-                    Vertical(
-                        Static("Profile details", classes="group-title"),
-                        Input(placeholder="Profile name", id="pref-name"),
-                        Input(placeholder="Description", id="pref-description"),
-                        Input(placeholder="Extensions (comma separated)", id="pref-extensions"),
-                        Input(placeholder="Exclude directories (comma separated)", id="pref-excludes"),
-                        Static("General settings", classes="group-title"),
-                        Horizontal(
-                            Switch(id="pref-follow-symlinks"),
-                            Label("Follow symbolic links"),
-                            classes="switch-row",
-                        ),
-                        Input(placeholder="Max file size (MB)", id="pref-max-size"),
-                        classes="pref-column pref-column-right",
-                    ),
-                ),
-                Static("", id="pref-message", classes="dialog-message"),
-                Horizontal(
-                    Button("Back", id="pref-cancel", variant="primary"),
-                    Button("Save profile", id="pref-save-profile", variant="primary"),
-                    Button("Save settings", id="pref-save-settings", variant="primary"),
-                    classes="dialog-buttons",
-                ),
-                Static("", classes="pref-footer-spacer"),
+        yield Vertical(
+            Static("Manage preferences", classes="dialog-title"),
+            Static(
+                "Adjust scan profiles and general settings. Changes sync to Supabase when saved.",
+                classes="dialog-subtitle",
             ),
-            classes="dialog preferences-dialog",
+            Horizontal(
+                Vertical(
+                    Static("Profiles", classes="group-title"),
+                    ListView(*profile_items, id="pref-profile-list"),
+                    Static("Profile actions", classes="group-subtitle"),
+                    Button("Set as active", id="pref-set-active"),
+                    Button("Create new profile", id="pref-new-profile"),
+                    Button("Delete profile", id="pref-delete-profile"),
+                    classes="pref-column pref-column-left",
+                ),
+                Vertical(
+                    Static("Profile details", classes="group-title"),
+                    Input(placeholder="Profile name", id="pref-name"),
+                    Input(placeholder="Description", id="pref-description"),
+                    Input(placeholder="Extensions (comma separated)", id="pref-extensions"),
+                    Input(placeholder="Exclude directories (comma separated)", id="pref-excludes"),
+                    Static("General settings", classes="group-title"),
+                    Horizontal(
+                        Switch(id="pref-follow-symlinks"),
+                        Label("Follow symbolic links"),
+                        classes="switch-row",
+                    ),
+                    Vertical(
+                        Static("Max file size (MB)", classes="field-label"),
+                        Input(placeholder="Enter a limit (blank = unlimited)", id="pref-max-size"),
+                        classes="field-group",
+                    ),
+                    classes="pref-column pref-column-right",
+                ),
+                classes="pref-columns",
+            ),
+            Static("", id="pref-message", classes="dialog-message"),
+            Static("", classes="pref-divider"),
+            Horizontal(
+                Button("Back", id="pref-cancel", variant="primary", classes="pref-action-button"),
+                Button("Save profile", id="pref-save-profile", variant="primary", classes="pref-action-button"),
+                Button("Save settings", id="pref-save-settings", variant="primary", classes="pref-action-button"),
+                classes="pref-actions-row",
+            ),
         )
 
     def on_mount(self, _: Mount) -> None:  # pragma: no cover - focus wiring
