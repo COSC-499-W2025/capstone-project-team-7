@@ -140,7 +140,8 @@ class PortfolioTextualApp(App):
         except Exception as exc:  # pragma: no cover - optional dependency issues
             self._document_analyzer = None
             self._document_analysis_error = str(exc)
-        self._preferences_screen = None
+        self._preferences_screen: Optional[PreferencesScreen] = None
+        self._consent_screen: Optional[ConsentScreen] = None
         self._scan_results_screen: Optional[ScanResultsScreen] = None
         self._media_analyzer = MediaAnalyzer()
         self._media_vision_ready = media_vision_capabilities_enabled()
@@ -1769,7 +1770,37 @@ class PortfolioTextualApp(App):
     def _show_consent_dialog(self) -> None:
         has_required = self._consent_state.record is not None
         has_external = self._has_external_consent()
-        self.push_screen(ConsentScreen(has_required, has_external))
+        screen = ConsentScreen(has_required, has_external)
+        self._consent_screen = screen
+        self.push_screen(screen)
+
+    def on_consent_screen_closed(self) -> None:
+        self._consent_screen = None
+
+    def _set_consent_dialog_busy(self, busy: bool) -> None:
+        screen = self._consent_screen
+        if not screen:
+            return
+        try:
+            screen.set_busy(busy)
+        except Exception:
+            pass
+
+    def _update_consent_dialog_state(
+        self,
+        *,
+        message: Optional[str] = None,
+        tone: str = "info",
+    ) -> None:
+        screen = self._consent_screen
+        if not screen:
+            return
+        try:
+            has_required = self._consent_state.record is not None
+            has_external = self._has_external_consent()
+            screen.update_state(has_required, has_external, message=message, tone=tone)
+        except Exception:
+            pass
 
     def _show_preferences_dialog(self) -> None:
         self._load_preferences()
@@ -1895,30 +1926,41 @@ class PortfolioTextualApp(App):
     async def _handle_toggle_required(self) -> None:
         if not self._session_state.session:
             self._show_status("Sign in to manage consent.", "error")
+            self._update_consent_dialog_state(message="Sign in to manage consent.", tone="error")
+            self._set_consent_dialog_busy(False)
             return
         self._show_status("Updating required consent…", "info")
+        self._update_consent_dialog_state(message="Updating required consent…", tone="info")
         try:
             message = await asyncio.to_thread(self._toggle_required_consent_sync)
         except ConsentError as exc:
             self._show_status(f"Consent error: {exc}", "error")
+            self._update_consent_dialog_state(message=f"Consent error: {exc}", tone="error")
         except Exception as exc:  # pragma: no cover - defensive fallback
             self._show_status(f"Unexpected consent error: {exc}", "error")
+            self._update_consent_dialog_state(message=f"Unexpected consent error: {exc}", tone="error")
         else:
             self._show_status(message, "success")
+            self._update_consent_dialog_state(message=message, tone="success")
         finally:
             self._after_consent_update()
 
     async def _handle_toggle_external(self) -> None:
         if not self._session_state.session:
             self._show_status("Sign in to manage consent.", "error")
+            self._update_consent_dialog_state(message="Sign in to manage consent.", tone="error")
+            self._set_consent_dialog_busy(False)
             return
         self._show_status("Updating external services consent…", "info")
+        self._update_consent_dialog_state(message="Updating external services consent…", tone="info")
         try:
             message = await asyncio.to_thread(self._toggle_external_consent_sync)
         except Exception as exc:  # pragma: no cover - defensive fallback
             self._show_status(f"Unexpected consent error: {exc}", "error")
+            self._update_consent_dialog_state(message=f"Unexpected consent error: {exc}", tone="error")
         else:
             self._show_status(message, "success")
+            self._update_consent_dialog_state(message=message, tone="success")
         finally:
             self._after_consent_update()
 
@@ -1956,6 +1998,8 @@ class PortfolioTextualApp(App):
         self._refresh_consent_state()
         self._update_session_status()
         self._refresh_current_detail()
+        self._update_consent_dialog_state()
+        self._set_consent_dialog_busy(False)
 
     async def _handle_preferences_action(self, action: str, payload: Dict[str, Any]) -> None:
         if not self._session_state.session:
@@ -2213,9 +2257,11 @@ class PortfolioTextualApp(App):
             self._show_privacy_notice()
             return
         if event.action == "toggle_required":
+            self._set_consent_dialog_busy(True)
             asyncio.create_task(self._handle_toggle_required())
             return
         if event.action == "toggle_external":
+            self._set_consent_dialog_busy(True)
             asyncio.create_task(self._handle_toggle_external())
 
     def on_preferences_event(self, event: PreferencesEvent) -> None:

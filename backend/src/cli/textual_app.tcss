@@ -139,6 +139,22 @@ ScanConfigScreen {
     color: #e5e7eb;
 }
 
+.dialog-message.info {
+    color: #94a3b8;
+}
+
+.dialog-message.success {
+    color: #4ade80;
+}
+
+.dialog-message.warning {
+    color: #facc15;
+}
+
+.dialog-message.error {
+    color: #fda4af;
+}
+
 .dialog-buttons {
     padding-top: 1;
 }
@@ -154,6 +170,7 @@ ScanConfigScreen {
 .consent-actions Button {
     margin-left: 0;
     margin-top: 1;
+    width: 100%;
 }
 
 .consent-actions Button:first-child {
@@ -163,6 +180,9 @@ ScanConfigScreen {
 .preferences-dialog {
     width: 80%;
     max-width: 80;
+    height: 90%;
+    max-height: 90%;
+    overflow-y: auto;
 }
 
 .pref-column {
@@ -178,42 +198,36 @@ ScanConfigScreen {
 }
 
 #pref-profile-list {
-    height: 16;
+    height: 10;
+    min-height: 8;
     border: round $primary;
     margin-bottom: 1;
 }
 
 .pref-column-left Button {
     margin-top: 1;
+    width: 100%;
 }
 
 .pref-column-left Button:first-child {
     margin-top: 0;
 }
 
-.pref-column-right Checkbox {
+.pref-column-right .switch-row {
     margin-top: 1;
+}
+
+.switch-row Switch {
+    margin-right: 1;
+}
+
+.pref-footer-spacer {
+    height: 1;
 }
 
 .group-title {
     text-style: bold;
     margin-bottom: 1;
-}
-
-.dialog-message.info {
-    color: $text;
-}
-
-.dialog-message.warning {
-    color: #facc15;
-}
-
-.dialog-message.error {
-    color: #fda4af;
-}
-
-.dialog-message.success {
-    color: #4ade80;
 }
 
 #notice-log {
