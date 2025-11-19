@@ -318,14 +318,41 @@ python skills_demo.py
 
 ### ✅ Textual CLI Integration (READY TO USE)
 
-The Skills Extractor is **fully integrated** into the Textual CLI application. Users can extract and view skills directly from scan results.
+The Skills Extractor is **fully integrated** into the Textual CLI application with **enhanced multi-project support**. Users can extract and view skills directly from scan results.
 
 **How to Use:**
 1. Run the CLI: `python -m src.cli.textual_app`
 2. Select "Run Portfolio Scan" and choose a project directory
-3. In scan results, click **"Skills analysis"** button
-4. View formatted skills summary organized by category
-5. Export JSON (skills automatically included)
+3. **Automatic project detection** identifies multiple projects in the directory
+4. View **project summary** with detected projects, types, and monorepo indicators
+5. In scan results, click **"Skills analysis"** button
+6. View formatted skills summary organized by category
+7. Export JSON (skills automatically included)
+
+**🆕 Multi-Project Detection:**
+The system now automatically detects multiple projects within a scanned directory:
+- **Project markers identified**: package.json, requirements.txt, pom.xml, Cargo.toml, go.mod, and more
+- **Monorepo detection**: Automatically identifies monorepo structures
+- **Project types**: Detects Python, JavaScript, TypeScript, Java, Ruby, Go, Rust, PHP, C#, and multi-language projects
+- **Visual indicators**: Shows 📦 for projects and ⚡ for monorepos
+
+**Enhanced Overview Display:**
+```
+📦 Project Detection
+  2 projects detected
+  ⚡ Monorepo structure identified
+
+  Projects:
+    1. frontend (javascript)
+       └─ package.json, package-lock.json, tsconfig.json +3 more
+    2. backend (python)
+       └─ requirements.txt, setup.py, pyproject.toml
+
+🎯 Skills Detected
+  Error Handling, Asynchronous Programming, React Framework, 
+  RESTful API Design, Automated Testing, MongoDB, Hash-based Data Structures,
+  ...and 8 more
+```
 
 **Display Format:**
 ```
@@ -347,12 +374,46 @@ Data Structures (5 skills):
 ```
 
 **Features:**
+- ✅ Multi-project detection 
+- ✅ Monorepo identification 
+- ✅ Project type recognition 
+- ✅ Enhanced visual overview 
 - ✅ Background execution (non-blocking UI)
 - ✅ Result caching (instant re-viewing)
 - ✅ Automatic JSON export integration
 - ✅ Smart file filtering (excludes node_modules, .git, etc.)
 - ✅ Multi-language support
 - ✅ Proficiency levels (Beginner/Intermediate/Advanced)
+
+**Project Detection Service:**
+The `ProjectDetector` (`analyzer/project_detector.py`) provides:
+```python
+from analyzer.project_detector import ProjectDetector
+
+detector = ProjectDetector()
+
+# Detect all projects in a directory
+projects = detector.detect_projects(Path("./workspace"))
+# Returns: List[ProjectInfo] with name, path, type, and markers
+
+# Check if it's a monorepo
+is_monorepo = detector.is_monorepo(projects)
+
+# Get summary
+summary = detector.get_project_structure_summary(projects)
+# Returns: "Monorepo with 3 projects: 2 python, 1 javascript"
+```
+
+**ProjectInfo Structure:**
+```python
+@dataclass
+class ProjectInfo:
+    name: str                     # Project directory name
+    path: Path                    # Full path to project
+    project_type: str            # "python", "javascript", "multi-language", etc.
+    root_indicators: List[str]   # ["package.json", "tsconfig.json", ...]
+    description: Optional[str]   # "TypeScript project with Docker"
+```
 
 **Service Layer:**
 The `SkillsAnalysisService` (`cli/services/skills_analysis_service.py`) provides:
@@ -378,17 +439,36 @@ export_data = service.export_skills_data(skills)
 ```
 
 **State Management:**
-Skills are cached in `ScanState` for instant re-viewing:
+Enhanced state tracking for projects and skills:
 ```python
 # In textual_app.py
-self._scan_state.skills_analysis_result  # List[Skill]
-self._scan_state.skills_analysis_error   # Optional[str]
+self._scan_state.skills_analysis_result    # List[Skill]
+self._scan_state.skills_analysis_error     # Optional[str]
+self._scan_state.detected_projects         # List[ProjectInfo] 
+self._scan_state.is_monorepo              # bool 
 ```
 
 **Export Format:**
-Skills are automatically included in JSON exports:
+Skills and project information are automatically included in JSON exports:
 ```json
 {
+  "detected_projects": [
+    {
+      "name": "frontend",
+      "path": "/path/to/workspace/frontend",
+      "type": "javascript",
+      "markers": ["package.json", "package-lock.json", "tsconfig.json"],
+      "description": "JavaScript/Node.js project"
+    },
+    {
+      "name": "backend",
+      "path": "/path/to/workspace/backend",
+      "type": "python",
+      "markers": ["requirements.txt", "setup.py"],
+      "description": "Python project"
+    }
+  ],
+  "is_monorepo": true,
   "skills_analysis": {
     "success": true,
     "total_skills": 15,
@@ -421,6 +501,14 @@ python backend/test_skills_integration.py
 ✅ PASSED: Service Initialization
 ✅ PASSED: Skills Extraction
 ✅ PASSED: ScanState Integration
+
+# Test project detection
+python backend/test_multi_project_tabs.py
+
+# Expected output:
+✓ Project detection works (5 projects found)
+✓ State structure is correct
+✓ ALL TESTS PASSED
 ```
 
 ### With API Routes (`api/`)
@@ -463,6 +551,7 @@ Potential improvements:
 
 ## Related Modules
 
+- `project_detector.py`: **Multi-project detection and monorepo identification** 
 - `code_parser.py`: Static code analysis and metrics
 - `git_repo.py`: Git history and contribution analysis
 - `projects_service.py`: Database storage
