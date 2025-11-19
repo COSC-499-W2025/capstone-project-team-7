@@ -39,6 +39,8 @@ class ScanService:
         relevant_only: bool,
         preferences: ScanPreferences,
         progress_callback: Callable[[str | Dict[str, object]], None] | None = None,
+        *,
+        cached_files: Dict[str, Dict[str, Any]] | None = None,
     ) -> ScanRunResult:
         """Execute the scan pipeline (zip preparation + parsing + metadata)."""
 
@@ -81,6 +83,7 @@ class ScanService:
                 relevant_only=relevant_only,
                 preferences=preferences,
                 progress_callback=_file_progress,
+                cached_files=cached_files,
             )
 
         parse_result = _run_step(

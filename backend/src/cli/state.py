@@ -41,6 +41,8 @@ class ScanState:
     archive: Optional[Path] = None
     parse_result: Optional[ParseResult] = None
     relevant_only: bool = True
+    project_id: Optional[str] = None
+    cached_files: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     scan_timings: List[tuple[str, float]] = field(default_factory=list)
     languages: List[Dict[str, Any]] = field(default_factory=list)
     git_repos: List[Path] = field(default_factory=list)

@@ -159,6 +159,27 @@ class ProjectsService:
         except Exception as exc:
             raise ProjectsServiceError(f"Failed to delete project: {exc}") from exc
 
+    def get_project_by_name(self, user_id: str, project_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Fetch an existing project row by name.
+
+        Returns the project record or None if not found.
+        """
+        try:
+            response = (
+                self.client.table("projects")
+                .select("*")
+                .eq("user_id", user_id)
+                .eq("project_name", project_name)
+                .limit(1)
+                .execute()
+            )
+        except Exception as exc:
+            raise ProjectsServiceError(f"Failed to load project: {exc}") from exc
+
+        data = response.data or []
+        return data[0] if data else None
+
     # --- Cached file metadata helpers -------------------------------------------------
 
     def get_cached_files(self, user_id: str, project_id: str) -> Dict[str, Dict[str, Any]]:
@@ -252,3 +273,24 @@ class ProjectsService:
             ).execute()
         except Exception as exc:
             raise ProjectsServiceError(f"Failed to upsert cached files: {exc}") from exc
+
+    def delete_cached_files(
+        self,
+        user_id: str,
+        project_id: str,
+        relative_paths: List[str],
+    ) -> None:
+        """Delete cached file rows for a project."""
+        if not relative_paths:
+            return
+        try:
+            (
+                self.client.table("scan_files")
+                .delete()
+                .eq("owner", user_id)
+                .eq("project_id", project_id)
+                .in_("relative_path", relative_paths)
+                .execute()
+            )
+        except Exception as exc:
+            raise ProjectsServiceError(f"Failed to delete cached files: {exc}") from exc

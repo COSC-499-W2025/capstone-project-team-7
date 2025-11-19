@@ -4,7 +4,7 @@ import mimetypes
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 import zipfile
-from typing import Callable
+from typing import Any, Callable
 
 from .errors import CorruptArchiveError, UnsupportedArchiveError
 from .media import MediaExtractionResult, extract_media_metadata, is_media_candidate
@@ -158,6 +158,7 @@ def parse_zip(
     relevant_only: bool = False,
     preferences: ScanPreferences | None = None,
     progress_callback: Callable[[int, int], None] | None = None,
+    cached_files: dict[str, dict[str, object]] | None = None,
 ) -> ParseResult:
     # Parse the given .zip archive into file metadata and capture parse issues.
     archive = Path(archive_path)
@@ -171,6 +172,7 @@ def parse_zip(
     files: list[FileMetadata] = []
     issues: list[ParseIssue] = []
     total_bytes = 0
+    skipped_files = 0
     filtered_out = 0
     media_with_metadata = 0
     media_metadata_errors = 0
@@ -193,6 +195,8 @@ def parse_zip(
         else None
     )
 
+    cached_files = cached_files or {}
+
     try:
         with zipfile.ZipFile(archive) as zf:
             entries = zf.infolist()
@@ -212,6 +216,13 @@ def parse_zip(
                 processed_entries += 1
                 try:
                     metadata = _build_metadata(info, normalized)
+                    cached_entry = cached_files.get(normalized)
+                    if cached_entry and _cached_entry_matches(metadata, cached_entry):
+                        _apply_cached_metadata(metadata, cached_entry.get("metadata"))
+                        files.append(metadata)
+                        total_bytes += metadata.size_bytes
+                        skipped_files += 1
+                        continue
                     if _should_skip(metadata, excluded_dirs, allowed_extensions, max_file_size):
                         filtered_out += 1
                         continue
@@ -249,6 +260,10 @@ def parse_zip(
         "bytes_processed": total_bytes,
         "issues_count": len(issues),
     }
+    if skipped_files:
+        summary["files_skipped"] = skipped_files
+    if skipped_files:
+        summary["files_skipped"] = skipped_files
     if media_with_metadata:
         summary["media_files_processed"] = media_with_metadata
     if media_metadata_errors:
@@ -391,3 +406,38 @@ def _zip_datetime(info: zipfile.ZipInfo) -> datetime:
         return datetime(*info.date_time, tzinfo=timezone.utc)
     except ValueError:
         return datetime.now(timezone.utc)
+
+
+def _cached_entry_matches(metadata: FileMetadata, cached_entry: dict[str, Any]) -> bool:
+    cached_ts = cached_entry.get("last_seen_modified_at")
+    cached_dt = _parse_cached_timestamp(cached_ts)
+    if cached_dt is None:
+        return False
+    if abs((metadata.modified_at - cached_dt).total_seconds()) > 1:
+        return False
+    cached_size = cached_entry.get("size_bytes")
+    if cached_size is not None and cached_size != metadata.size_bytes:
+        return False
+    return True
+
+
+def _parse_cached_timestamp(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        candidate = value
+        if candidate.endswith("Z"):
+            candidate = candidate[:-1] + "+00:00"
+        try:
+            return datetime.fromisoformat(candidate)
+        except ValueError:
+            return None
+    return None
+
+
+def _apply_cached_metadata(metadata: FileMetadata, cached_payload: Any) -> None:
+    if not isinstance(cached_payload, dict):
+        return
+    media_info = cached_payload.get("media_info")
+    if media_info is not None:
+        metadata.media_info = media_info

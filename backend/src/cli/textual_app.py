@@ -5,7 +5,7 @@ import json
 import math
 import threading
 import zipfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 import sys
 import tempfile
@@ -418,6 +418,33 @@ class PortfolioTextualApp(App):
         progress_stop = asyncio.Event()
         self._show_status("Scanning project – press Ctrl+C to cancel.", "info")
 
+        cached_files: Dict[str, Dict[str, Any]] | None = None
+        session = self._session_state.session
+        project_name_hint = target.name if target else None
+        if session and project_name_hint:
+            try:
+                projects_service = self._get_projects_service()
+            except ProjectsServiceError as exc:
+                self._debug_log(f"Projects service unavailable for caching: {exc}")
+            else:
+                try:
+                    existing = await asyncio.to_thread(
+                        projects_service.get_project_by_name,
+                        session.user_id,
+                        project_name_hint,
+                    )
+                    if existing and existing.get("id"):
+                        project_id = existing["id"]
+                        self._scan_state.project_id = project_id
+                        cached_files = await asyncio.to_thread(
+                            projects_service.get_cached_files,
+                            session.user_id,
+                            project_id,
+                        )
+                except ProjectsServiceError as exc:
+                    self._debug_log(f"Unable to load cached metadata: {exc}")
+        self._scan_state.cached_files = cached_files or {}
+
         def _progress_snapshot(
             elapsed: float,
         ) -> tuple[list[tuple[str, float]], tuple[str, float] | None, dict[str, float | int]]:
@@ -508,7 +535,12 @@ class PortfolioTextualApp(App):
 
         try:
             run_result = await asyncio.to_thread(
-                self._scan_service.run_scan, target, relevant_only, preferences, _progress_update
+                self._scan_service.run_scan,
+                target,
+                relevant_only,
+                preferences,
+                _progress_update,
+                cached_files=cached_files,
             )
         except ParserError as exc:
             self._surface_error(
@@ -1521,6 +1553,7 @@ class PortfolioTextualApp(App):
                     "mime_type": meta.mime_type,
                     "created_at": meta.created_at.isoformat(),
                     "modified_at": meta.modified_at.isoformat(),
+                    "media_info": getattr(meta, "media_info", None),
                 }
                 for meta in result.files
             ],
@@ -1904,6 +1937,8 @@ class PortfolioTextualApp(App):
         self._scan_state.document_candidates = []
         self._scan_state.document_results = []
         self._scan_state.relevant_only = True
+        self._scan_state.project_id = None
+        self._scan_state.cached_files = {}
         self._close_scan_results_screen()
         self._ai_state.last_analysis = None
 
@@ -2856,19 +2891,85 @@ class PortfolioTextualApp(App):
             project_name = f"Scan_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             project_path = "Unknown"
         
+        session = self._session_state.session
+        if not session:
+            return
+
         try:
-            await asyncio.to_thread(
+            project_record = await asyncio.to_thread(
                 projects_service.save_scan,
-                self._session_state.session.user_id,
+                session.user_id,
                 project_name,
                 project_path,
-                scan_data
+                scan_data,
             )
-            self._debug_log(f"Scan saved to database: {project_name}")
         except Exception as exc:
             # Log but don't fail - user still has local export
             self._debug_log(f"Failed to save scan to database: {exc}")
-    
+            return
+
+        project_id = project_record.get("id")
+        if project_id:
+            self._scan_state.project_id = project_id
+        self._debug_log(f"Scan saved to database: {project_name}")
+
+        if not project_id:
+            return
+
+        cached_records = self._build_cached_file_records(scan_data)
+        if not cached_records:
+            return
+
+        try:
+            await asyncio.to_thread(
+                projects_service.upsert_cached_files,
+                session.user_id,
+                project_id,
+                cached_records,
+            )
+            previous_paths = set(self._scan_state.cached_files.keys())
+            current_paths = {entry["relative_path"] for entry in cached_records if entry.get("relative_path")}
+            stale_paths = sorted(previous_paths - current_paths)
+            if stale_paths:
+                await asyncio.to_thread(
+                    projects_service.delete_cached_files,
+                    session.user_id,
+                    project_id,
+                    stale_paths,
+                )
+            self._scan_state.cached_files = {
+                entry["relative_path"]: entry for entry in cached_records if entry.get("relative_path")
+            }
+        except ProjectsServiceError as exc:
+            self._debug_log(f"Failed to update cached file metadata: {exc}")
+
+    def _build_cached_file_records(self, scan_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        files = scan_data.get("files") or []
+        records: List[Dict[str, Any]] = []
+        if not files:
+            return records
+        timestamp = datetime.now(timezone.utc).isoformat()
+        for entry in files:
+            path = entry.get("path")
+            modified = entry.get("modified_at")
+            if not path or not modified:
+                continue
+            media_info = entry.get("media_info")
+            metadata: Dict[str, Any] = {}
+            if media_info:
+                metadata["media_info"] = media_info
+            records.append(
+                {
+                    "relative_path": path,
+                    "size_bytes": entry.get("size_bytes"),
+                    "mime_type": entry.get("mime_type"),
+                    "metadata": metadata,
+                    "last_seen_modified_at": modified,
+                    "last_scanned_at": timestamp,
+                }
+            )
+        return records
+
 
 
 def main() -> None:

@@ -115,6 +115,27 @@ def test_parse_zip_extracts_media_metadata(media_zip: Path):
     assert pytest.approx(audio_meta.media_info["duration_seconds"], rel=1e-3) == 1.0
 
 
+def test_parse_zip_skips_cached_entries(nested_zip: tuple[Path, dict[str, Path]]):
+    archive, files = nested_zip
+
+    initial = parse_zip(archive)
+    sample_meta = next(meta for meta in initial.files if meta.path == "src/main.py")
+    cached = {
+        "src/main.py": {
+            "last_seen_modified_at": sample_meta.modified_at.isoformat(),
+            "size_bytes": sample_meta.size_bytes,
+            "metadata": {"media_info": {"cached": True}},
+        }
+    }
+
+    result = parse_zip(archive, cached_files=cached)
+
+    assert result.summary.get("files_skipped") == 1
+    assert len(result.files) == len(files)
+    cached_meta = next(meta for meta in result.files if meta.path == "src/main.py")
+    assert cached_meta.media_info == {"cached": True}
+
+
 def test_parse_zip_rejects_non_zip(tmp_path: Path):
     fake_archive = tmp_path / "data.txt"
     fake_archive.write_text("not a zip")

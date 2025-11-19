@@ -102,3 +102,50 @@ def test_upsert_cached_files_failure(monkeypatch):
 
     with pytest.raises(ProjectsServiceError):
         service.upsert_cached_files("user", "project", files)
+
+
+def test_get_project_by_name_success():
+    client = _fake_supabase_client()
+    service = DummyProjectsService(client)
+    data = [{"id": "123", "project_name": "demo"}]
+    client.table.return_value.select.return_value.eq.return_value.eq.return_value.limit.return_value.execute.return_value.data = data
+
+    record = service.get_project_by_name("user", "demo")
+
+    assert record["id"] == "123"
+
+
+def test_get_project_by_name_failure():
+    client = _fake_supabase_client()
+    service = DummyProjectsService(client)
+    client.table.return_value.select.return_value.eq.return_value.eq.return_value.limit.return_value.execute.side_effect = Exception("nope")
+
+    with pytest.raises(ProjectsServiceError):
+        service.get_project_by_name("user", "demo")
+
+
+def test_delete_cached_files_calls_delete():
+    client = _fake_supabase_client()
+    service = DummyProjectsService(client)
+
+    service.delete_cached_files("user", "project", ["a.py", "b.py"])
+
+    client.table.assert_called_with("scan_files")
+    delete_call = client.table.return_value.delete.return_value.eq.return_value.eq.return_value.in_
+    delete_call.assert_called_with("relative_path", ["a.py", "b.py"])
+
+
+def test_delete_cached_files_ignores_empty():
+    client = _fake_supabase_client()
+    service = DummyProjectsService(client)
+    service.delete_cached_files("user", "project", [])
+    client.table.assert_not_called()
+
+
+def test_delete_cached_files_failure():
+    client = _fake_supabase_client()
+    service = DummyProjectsService(client)
+    client.table.return_value.delete.return_value.eq.return_value.eq.return_value.in_.side_effect = Exception("boom")
+
+    with pytest.raises(ProjectsServiceError):
+        service.delete_cached_files("user", "project", ["x"])
