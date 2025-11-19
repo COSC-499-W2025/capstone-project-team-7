@@ -23,6 +23,15 @@ from .media_analyzer import (
     MediaAnalyzerConfig,
 )
 
+from .git_repo import analyze_git_repo
+
+from .contribution_analyzer import (
+    ContributionAnalyzer,
+    ProjectContributionMetrics,
+    ContributorMetrics,
+    ActivityBreakdown,
+)
+
 __all__ = [
     # Parser
     'PDFParser',
@@ -40,6 +49,15 @@ __all__ = [
     # Media analyzer
     'MediaAnalyzer',
     'MediaAnalyzerConfig',
+    
+    # Git analysis
+    'analyze_git_repo',
+    
+    # Contribution analysis
+    'ContributionAnalyzer',
+    'ProjectContributionMetrics',
+    'ContributorMetrics',
+    'ActivityBreakdown',
 ]
 
 __version__ = '1.0.0'

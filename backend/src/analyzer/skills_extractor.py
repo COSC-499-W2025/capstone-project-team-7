@@ -380,6 +380,25 @@ class SkillsExtractor:
                 "Maintains consistent development activity over time",
                 evidence
             )
+        
+        # Enhanced: Individual contributor analysis
+        for contributor in contributors:
+            active_days = contributor.get('active_days', 0)
+            if active_days >= 7:  # At least a week of activity
+                contrib_name = contributor.get('name', 'Unknown')
+                evidence = SkillEvidence(
+                    skill_name="Sustained Contribution",
+                    evidence_type="practice",
+                    description=f"{contrib_name} contributed across {active_days} active days",
+                    file_path=git_analysis.get('path', 'repository'),
+                    confidence=0.8
+                )
+                self._add_skill(
+                    "Sustained Contribution",
+                    "practices",
+                    "Demonstrates sustained and regular contribution patterns",
+                    evidence
+                )
     
     def _extract_from_source_code(self, file_contents: Dict[str, str]):
         """Extract skills by analyzing actual source code."""

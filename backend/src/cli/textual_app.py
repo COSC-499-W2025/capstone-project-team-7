@@ -38,6 +38,10 @@ from .services.skills_analysis_service import (
     SkillsAnalysisService,
     SkillsAnalysisError,
 )
+from .services.contribution_analysis_service import (
+    ContributionAnalysisService,
+    ContributionAnalysisError,
+)
 from .state import AIState, ConsentState, PreferencesState, ProjectsState, ScanState, SessionState
 from .screens import (
     AIKeyCancelled,
@@ -133,6 +137,7 @@ class PortfolioTextualApp(App):
         self._ai_service = AIService()
         self._code_service = CodeAnalysisService()
         self._skills_service = SkillsAnalysisService()
+        self._contribution_service = ContributionAnalysisService()
         self._projects_service = ProjectsService()
         try:
             self._document_analyzer = DocumentAnalyzer()
@@ -608,12 +613,23 @@ class PortfolioTextualApp(App):
         self._scan_state.code_analysis_error = None
         self._scan_state.skills_analysis_result = None
         self._scan_state.skills_analysis_error = None
+        self._scan_state.contribution_metrics = None
+        self._scan_state.contribution_analysis_error = None
         
         # Auto-extract skills in background if code files are present
         if self._scan_state.code_file_count > 0:
             try:
                 skills = await asyncio.to_thread(self._perform_skills_analysis)
                 self._scan_state.skills_analysis_result = skills
+            except Exception:
+                # Silent failure - user can manually trigger if needed
+                pass
+        
+        # Auto-extract contribution metrics if code files or git repos are present
+        if self._scan_state.code_file_count > 0 or self._scan_state.git_repos:
+            try:
+                contribution_metrics = await asyncio.to_thread(self._perform_contribution_analysis)
+                self._scan_state.contribution_metrics = contribution_metrics
             except Exception:
                 # Silent failure - user can manually trigger if needed
                 pass
@@ -633,13 +649,28 @@ class PortfolioTextualApp(App):
         if self._scan_state.code_file_count:
             actions.append(("code", "Code analysis"))
             actions.append(("skills", "Skills analysis"))
+        if self._scan_state.git_repos:
+            actions.append(("git", "Run Git analysis"))
+        # Contribution metrics available for all projects (Git or file-based)
+        if self._scan_state.code_file_count > 0 or self._scan_state.git_repos:
+          actions.append(("contributions", "Contribution metrics"))
+
         actions.append(("export", "Export JSON report"))
+
         if self._scan_state.pdf_candidates:
-            actions.append(("pdf", "PDF analysis"))
+          label = (
+            "View PDF summaries"
+            if self._scan_state.pdf_summaries
+            else "Analyze PDF files"
+           )
+          actions.append(("pdf", label))
+
         if self._scan_state.document_candidates:
             actions.append(("documents", "Document analysis"))
+
         if self._scan_state.git_repos:
             actions.append(("git", "Git analysis"))
+
         if self._scan_state.has_media_files:
             actions.append(("media", "Media analysis"))
         actions.append(("close", "Close"))
@@ -704,6 +735,10 @@ class PortfolioTextualApp(App):
 
         if action == "skills":
             await self._handle_skills_analysis_action(screen)
+            return
+        
+        if action == "contributions":
+            await self._handle_contribution_analysis_action(screen)
             return
 
         if action == "export":
@@ -1149,6 +1184,53 @@ class PortfolioTextualApp(App):
         )
         screen.display_output(full_output, context="Skills analysis")
         screen.set_message("Skills analysis ready.", tone="success")
+    
+    async def _handle_contribution_analysis_action(self, screen: ScanResultsScreen) -> None:
+        """Handle contribution analysis action from the scan results screen."""
+        if not self._scan_state.git_repos:
+            screen.set_message(
+                "No git repositories found in this scan. Contribution analysis requires git history.",
+                tone="error"
+            )
+            return
+        
+        if self._scan_state.contribution_metrics is None:
+            screen.set_message("Analyzing contribution metrics…", tone="info")
+            try:
+                contribution_metrics = await asyncio.to_thread(self._perform_contribution_analysis)
+                self._scan_state.contribution_metrics = contribution_metrics
+            except ContributionAnalysisError as exc:
+                error_msg = str(exc)
+                self._scan_state.contribution_analysis_error = error_msg
+                screen.set_message(f"Contribution analysis failed: {error_msg}", tone="error")
+                return
+            except Exception as exc:
+                error_msg = f"Unexpected error: {exc}"
+                self._scan_state.contribution_analysis_error = error_msg
+                screen.set_message(f"Contribution analysis failed: {error_msg}", tone="error")
+                return
+        
+        # Display paragraph summary, then detailed summary, then contributor details
+        paragraph_summary = self._contribution_service.format_contribution_paragraph(
+            self._scan_state.contribution_metrics
+        )
+        main_summary = self._contribution_service.format_summary(
+            self._scan_state.contribution_metrics
+        )
+        contributor_details = self._contribution_service.format_contributors_detail(
+            self._scan_state.contribution_metrics
+        )
+        
+        full_output = (
+            "[b]Contribution Overview[/b]\n" +
+            paragraph_summary +
+            "\n\n" + "=" * 60 + "\n\n" +
+            main_summary +
+            "\n\n" + "=" * 60 + "\n\n" +
+            contributor_details
+        )
+        screen.display_output(full_output, context="Contribution analysis")
+        screen.set_message("Contribution analysis ready.", tone="success")
 
     def _perform_skills_analysis(self):
         """Perform skills extraction from the scanned project."""
@@ -1172,6 +1254,56 @@ class PortfolioTextualApp(App):
             code_analysis_result=code_analysis,
             git_analysis_result=git_analysis,
             file_contents=None  # Let the service read files
+        )
+    
+    def _perform_contribution_analysis(self):
+        """Perform contribution metrics extraction from the scanned project."""
+        # Git analysis is optional - can analyze non-Git projects too
+        git_analysis = None
+        
+        if self._scan_state.git_analysis:
+            # Use the first git repository's analysis (or combine if multiple)
+            git_analysis = self._scan_state.git_analysis[0] if len(self._scan_state.git_analysis) == 1 else {
+                'path': str(self._scan_state.target),
+                'commit_count': sum(g.get('commit_count', 0) for g in self._scan_state.git_analysis),
+                'project_type': self._scan_state.git_analysis[0].get('project_type', 'unknown'),
+                'contributors': [],
+                'timeline': []
+            }
+            
+            # If we have multiple repos, use the first one that has complete data
+            if len(self._scan_state.git_analysis) > 1:
+                for git_data in self._scan_state.git_analysis:
+                    if git_data.get('contributors') and not git_data.get('error'):
+                        git_analysis = git_data
+                        break
+        
+        # Build code analysis dict from DirectoryResult if available
+        code_analysis_dict = None
+        if self._scan_state.code_analysis_result:
+            code_result = self._scan_state.code_analysis_result
+            summary = getattr(code_result, 'summary', {})
+            files = getattr(code_result, 'files', [])
+            
+            code_analysis_dict = {
+                'languages': summary.get('languages', {}),
+                'file_details': [
+                    {
+                        'path': f.path if hasattr(f, 'path') else '',
+                        'language': f.language if hasattr(f, 'language') else '',
+                        'metrics': {
+                            'lines': f.metrics.lines if hasattr(f, 'metrics') and f.metrics else 0,
+                            'code_lines': f.metrics.code_lines if hasattr(f, 'metrics') and f.metrics else 0,
+                        }
+                    }
+                    for f in files if hasattr(f, 'success') and f.success
+                ]
+            }
+        
+        return self._contribution_service.analyze_contributions(
+            git_analysis=git_analysis,
+            code_analysis=code_analysis_dict,
+            parse_result=self._scan_state.parse_result,
         )
 
     def _analyze_pdfs_sync(self) -> None:
@@ -1685,6 +1817,13 @@ class PortfolioTextualApp(App):
                 "message": "Code files detected but skills extraction was not performed",
                 "error": self._scan_state.skills_analysis_error
             }
+        
+        # ✨ CONTRIBUTION METRICS ✨
+        if self._scan_state.contribution_metrics:
+            contribution_data = self._contribution_service.export_data(
+                self._scan_state.contribution_metrics
+            )
+            payload["contribution_metrics"] = contribution_data
         
         return payload
     
@@ -2807,8 +2946,9 @@ class PortfolioTextualApp(App):
         
         self._projects_state.projects_list = projects
         self._projects_state.error = None
-        self._show_status(f"Loaded {len(projects)} project(s).", "success")
+        self._refresh_current_detail()
         self.push_screen(ProjectsScreen(projects))
+        self._show_status(f"Loaded {len(projects)} project(s).", "success")
 
     async def on_project_selected(self, message: ProjectSelected) -> None:
         """Handle when user selects a project to view."""
