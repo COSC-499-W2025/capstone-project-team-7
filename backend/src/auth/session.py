@@ -19,6 +19,7 @@ except ImportError:  # pragma: no cover
 
 AUTH_SIGNUP_PATH = "/auth/v1/signup"
 AUTH_TOKEN_PATH = "/auth/v1/token?grant_type=password"
+AUTH_REFRESH_PATH = "/auth/v1/token?grant_type=refresh_token"
 
 load_dotenv()
 
@@ -34,6 +35,7 @@ class Session:
     user_id: str
     email: str
     access_token: str
+    refresh_token: Optional[str] = None
 
 
 class SupabaseAuth:
@@ -55,11 +57,36 @@ class SupabaseAuth:
         """Authenticate a user and return a session."""
         payload = self._post(AUTH_TOKEN_PATH, {"email": email, "password": password})
         access_token = payload.get("access_token")
+        refresh_token = payload.get("refresh_token")
         user = payload.get("user") or {}
         user_id = user.get("id")
         if not access_token or not user_id:
             raise AuthError("Incomplete response from Supabase during login.")
-        return Session(user_id=user_id, email=user.get("email", email), access_token=access_token)
+        return Session(
+            user_id=user_id,
+            email=user.get("email", email),
+            access_token=access_token,
+            refresh_token=refresh_token,
+        )
+
+    def refresh_session(self, refresh_token: str) -> Session:
+        """Refresh an access token using a stored refresh token."""
+        if not refresh_token:
+            raise AuthError("Refresh token missing. Sign in again.")
+        payload = self._post(AUTH_REFRESH_PATH, {"refresh_token": refresh_token})
+        access_token = payload.get("access_token")
+        new_refresh = payload.get("refresh_token") or refresh_token
+        user = payload.get("user") or {}
+        user_id = user.get("id")
+        email = user.get("email")
+        if not access_token or not user_id:
+            raise AuthError("Incomplete response from Supabase during refresh.")
+        return Session(
+            user_id=user_id,
+            email=email or "",
+            access_token=access_token,
+            refresh_token=new_refresh,
+        )
 
     def _post(self, path: str, data: Dict[str, Any]) -> Dict[str, Any]:
         if requests is None:

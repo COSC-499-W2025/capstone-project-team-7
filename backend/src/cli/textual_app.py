@@ -180,7 +180,7 @@ class PortfolioTextualApp(App):
         yield Footer()
 
     async def on_mount(self, event: Mount) -> None:
-        self._load_session()
+        await self._load_session()
         self._refresh_consent_state()
         self._load_preferences()
         self._update_session_status()
@@ -1929,6 +1929,10 @@ class PortfolioTextualApp(App):
             self._update_consent_dialog_state(message="Sign in to manage consent.", tone="error")
             self._set_consent_dialog_busy(False)
             return
+        if not await self._ensure_session_token_fresh():
+            self._update_consent_dialog_state(message="Session expired. Please sign in again.", tone="error")
+            self._set_consent_dialog_busy(False)
+            return
         self._show_status("Updating required consent…", "info")
         self._update_consent_dialog_state(message="Updating required consent…", tone="info")
         try:
@@ -1949,6 +1953,10 @@ class PortfolioTextualApp(App):
         if not self._session_state.session:
             self._show_status("Sign in to manage consent.", "error")
             self._update_consent_dialog_state(message="Sign in to manage consent.", tone="error")
+            self._set_consent_dialog_busy(False)
+            return
+        if not await self._ensure_session_token_fresh():
+            self._update_consent_dialog_state(message="Session expired. Please sign in again.", tone="error")
             self._set_consent_dialog_busy(False)
             return
         self._show_status("Updating external services consent…", "info")
@@ -2270,14 +2278,52 @@ class PortfolioTextualApp(App):
 
     # --- Session, consent, and preferences helpers ---
 
-    def _load_session(self) -> None:
+    async def _load_session(self) -> None:
         session = self._session_service.load_session(self._session_state.session_path)
         self._session_state.session = session
-        if session:
-            self._session_state.last_email = session.email
-            # Restore consent persistence with the loaded session
-            consent_storage.set_session_token(session.access_token)
-            consent_storage.load_user_consents(session.user_id, session.access_token)
+        if not session:
+            return
+        await self._ensure_session_token_fresh()
+        session = self._session_state.session
+        if not session:
+            return
+        self._session_state.last_email = session.email
+        # Restore consent persistence with the loaded session
+        consent_storage.set_session_token(session.access_token)
+        consent_storage.load_user_consents(session.user_id, session.access_token)
+
+    async def _ensure_session_token_fresh(self, *, force_refresh: bool = False) -> bool:
+        session = self._session_state.session
+        if not session:
+            return False
+        if not session.refresh_token:
+            return bool(session.access_token)
+        if not force_refresh and not self._session_service.needs_refresh(session):
+            return True
+        refresh_token = session.refresh_token
+        try:
+            auth = self._get_auth()
+        except AuthError as exc:
+            self._session_state.auth_error = str(exc)
+            self._show_status(f"Unable to refresh session: {exc}", "error")
+            return False
+        try:
+            refreshed = await asyncio.to_thread(auth.refresh_session, refresh_token)
+        except AuthError as exc:
+            self._session_state.auth_error = str(exc)
+            self._logout()
+            self._show_status("Session expired. Please sign in again.", "warning")
+            return False
+        except Exception as exc:
+            self._show_status(f"Unable to refresh session: {exc}", "warning")
+            return False
+
+        self._session_state.session = refreshed
+        self._session_state.last_email = refreshed.email
+        consent_storage.set_session_token(refreshed.access_token)
+        consent_storage.load_user_consents(refreshed.user_id, refreshed.access_token)
+        self._persist_session()
+        return True
 
     def _refresh_consent_state(self) -> None:
         self._consent_state.record = None

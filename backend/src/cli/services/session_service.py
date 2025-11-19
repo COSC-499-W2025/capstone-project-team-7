@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import json
+import time
 from pathlib import Path
 from typing import Callable, Optional, Tuple
 
@@ -25,8 +27,14 @@ class SessionService:
             user_id = data.get("user_id")
             email = data.get("email")
             token = data.get("access_token", "")
+            refresh_token = data.get("refresh_token")
             if user_id and email:
-                return Session(user_id=user_id, email=email, access_token=token)
+                return Session(
+                    user_id=user_id,
+                    email=email,
+                    access_token=token,
+                    refresh_token=refresh_token,
+                )
         except FileNotFoundError:
             return None
         except PermissionError as exc:
@@ -47,6 +55,7 @@ class SessionService:
                 "user_id": session.user_id,
                 "email": session.email,
                 "access_token": getattr(session, "access_token", ""),
+                "refresh_token": getattr(session, "refresh_token", None),
             }
             path.write_text(json.dumps(payload), encoding="utf-8")
         except (PermissionError, OSError) as exc:
@@ -83,7 +92,25 @@ class SessionService:
         except Exception as exc:  # pragma: no cover - defensive fallback
             return None, f"Unable to verify consent: {exc}"
 
+    def needs_refresh(self, session: Session, leeway_seconds: int = 60) -> bool:
+        return self._token_expired(session.access_token, leeway_seconds)
+
+    @staticmethod
+    def _token_expired(token: str, leeway_seconds: int) -> bool:
+        if not token:
+            return True
+        try:
+            payload_segment = token.split(".")[1]
+            padding = "=" * (-len(payload_segment) % 4)
+            decoded = base64.urlsafe_b64decode(payload_segment + padding)
+            payload = json.loads(decoded.decode("utf-8"))
+            exp = payload.get("exp")
+            if exp is None:
+                return False
+            return int(exp) <= int(time.time()) + leeway_seconds
+        except Exception:
+            return False
+
     def _notify(self, message: str, tone: str) -> None:
         if self._report:
             self._report(message, tone)
-
