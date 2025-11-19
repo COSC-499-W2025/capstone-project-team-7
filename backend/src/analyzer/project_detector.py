@@ -94,6 +94,17 @@ class ProjectDetector:
             ]
         }
         
+        # Patterns that should match as suffixes (e.g., MyApp.csproj)
+        self.suffix_patterns = {
+            '.csproj',
+            '.sln',
+            '.gemspec',
+            '.cabal',
+            '.vcxproj',
+            '.fsproj',
+            '.vbproj'
+        }
+        
         # Directories that should be excluded from traversal
         self.excluded_dirs = {
             'node_modules',
@@ -215,12 +226,21 @@ class ProjectDetector:
         markers = []
         
         try:
-            dir_contents = set(p.name for p in directory.iterdir())
+            dir_contents = list(directory.iterdir())
             
             for language, marker_files in self.project_markers.items():
                 for marker in marker_files:
-                    if marker in dir_contents:
-                        markers.append(marker)
+                    # Check if marker needs suffix matching
+                    if marker in self.suffix_patterns:
+                        # Match any file with this suffix
+                        for file_path in dir_contents:
+                            if file_path.name.endswith(marker):
+                                markers.append(marker)
+                                break  # Only add marker once per type
+                    else:
+                        # Exact filename match
+                        if any(p.name == marker for p in dir_contents):
+                            markers.append(marker)
         except PermissionError:
             logger.debug(f"Permission denied: {directory}")
         

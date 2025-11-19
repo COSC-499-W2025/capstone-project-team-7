@@ -321,6 +321,7 @@ class SkillsExtractor:
         # Only reset timestamps if we're going to extract new ones
         if repo_path:
             self.file_timestamps = {}
+            self._current_repo_path = repo_path
             self._extract_git_timestamps(repo_path)
         
         if code_analysis:
@@ -423,37 +424,48 @@ class SkillsExtractor:
     def _extract_git_timestamps(self, repo_path: str):
         """Extract last modification timestamps for files in git repository."""
         try:
-            # Get all tracked files with their last commit dates
+            # Use a single batched git command to get all file timestamps
+            # Format: <timestamp>\t<filepath> for each file
             result = subprocess.run(
-                ['git', 'ls-files', '-z'],
+                ['git', 'ls-files', '-z', '|', 'xargs', '-0', '-n1', '-I{}', 'git', 'log', '-1', '--format=%cI\t{}', '--', '{}'],
                 cwd=repo_path,
                 capture_output=True,
                 text=True,
-                check=True
+                shell=True
             )
             
-            files = result.stdout.strip('\0').split('\0')
-            files = [f for f in files if f]  # Remove empty strings
-            
-            for file_path in files:
-                try:
-                    # Get last commit date for this file
-                    result = subprocess.run(
-                        ['git', 'log', '-1', '--format=%cI', '--', file_path],
-                        cwd=repo_path,
-                        capture_output=True,
-                        text=True,
-                        check=True
-                    )
-                    timestamp = result.stdout.strip()
-                    if timestamp:
-                        # Normalize file path for matching
-                        import os
-                        full_path = os.path.join(repo_path, file_path)
-                        self.file_timestamps[full_path] = timestamp
-                        self.file_timestamps[file_path] = timestamp  # Also store relative path
-                except subprocess.CalledProcessError:
-                    continue
+            if result.returncode != 0:
+                # Fallback to batch processing using git log with --name-only
+                result = subprocess.run(
+                    ['git', 'log', '--all', '--name-only', '--date=iso-strict', '--format=%cI'],
+                    cwd=repo_path,
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+                
+                lines = result.stdout.strip().split('\n')
+                current_timestamp = None
+                
+                for line in lines:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    # Lines starting with date are timestamps
+                    if line and line[0].isdigit() and 'T' in line:
+                        current_timestamp = line
+                    elif current_timestamp and line:
+                        # This is a file path - store with repo-relative path only
+                        if line not in self.file_timestamps:
+                            self.file_timestamps[line] = current_timestamp
+            else:
+                # Process batched output
+                for line in result.stdout.strip().split('\n'):
+                    if '\t' in line:
+                        timestamp, file_path = line.split('\t', 1)
+                        if timestamp and file_path:
+                            # Store only repo-relative path
+                            self.file_timestamps[file_path] = timestamp
                     
         except subprocess.CalledProcessError as e:
             self.logger.warning(f"Failed to extract git timestamps: {e}")
@@ -706,16 +718,29 @@ class SkillsExtractor:
     
     def _get_file_timestamp(self, file_path: str) -> Optional[str]:
         """Get the timestamp for a file from cache."""
-        # Try exact match first
+        import os
+        
+        # Normalize to repo-relative path if it's absolute
+        # Check if file_path is absolute and convert to relative
+        normalized_path = file_path
+        
+        # If the path is absolute and we have a repo root, make it relative
+        if os.path.isabs(file_path) and hasattr(self, '_current_repo_path'):
+            try:
+                normalized_path = os.path.relpath(file_path, self._current_repo_path)
+                # Normalize path separators to forward slashes for consistency with git
+                normalized_path = normalized_path.replace(os.sep, '/')
+            except ValueError:
+                # Path is on different drive or can't be made relative
+                pass
+        
+        # Try exact match with normalized path
+        if normalized_path in self.file_timestamps:
+            return self.file_timestamps[normalized_path]
+        
+        # Try the original path as well
         if file_path in self.file_timestamps:
             return self.file_timestamps[file_path]
-        
-        # Try to find by basename match
-        import os
-        basename = os.path.basename(file_path)
-        for cached_path, timestamp in self.file_timestamps.items():
-            if os.path.basename(cached_path) == basename:
-                return timestamp
         
         return None
     
