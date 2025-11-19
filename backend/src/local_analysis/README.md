@@ -7,6 +7,7 @@ This module provides privacy-first, in-house analysis capabilities for PDFs and 
 - [Textual Integration](#textual-integration)
 - [Quick Start](#quick-start)
 - [Supported File Types](#supported-file-types)
+- [Contribution Metrics](#contribution-metrics)
 - [Configuration](#configuration)
 - [Common Use Cases](#common-use-cases)
 - [Data Structures](#data-structures)
@@ -90,6 +91,17 @@ print(f"Keywords: {summary.keywords[:5]}")
 - (New) Generates offline image/video/audio content labels with PyTorch (TorchVision + Torchaudio) so you can see what appears or is mentioned in each asset without external APIs
 - (New) Extracts approximate audio tempo (BPM) and genre heuristics using Torchaudio + Librosa so you can tag songs/podcasts quickly
 - Accepts `FileMetadata` objects or persisted records with `media_info`
+
+### 🔄 Contribution Analyzer (`contribution_analyzer.py`)
+
+- **Git & Non-Git Support**: Analyzes both version-controlled and local folder projects
+- **Individual/Collaborative Detection**: Automatically classifies project type
+- **Activity Breakdown**: Categorizes files into code, tests, docs, design, and config
+- **Contributor Metrics**: Tracks commits, active days, and contribution frequency
+- **Timeline Analysis**: Extracts project duration from Git history or file metadata
+- **Language Detection**: Identifies programming languages used
+- **Privacy-First**: All analysis runs locally, no external API calls
+
 ### 📄 Document Analyzer (`document_analyzer.py`)
 
 - **Multiple Format Support**: `.txt`, `.md`, `.markdown`, `.rst`, `.log`, `.docx`
@@ -179,6 +191,145 @@ if result.success and result.metadata:
 | **ReStructuredText** | `.rst` | `document_analyzer.py` | Structural analysis, summarization |
 | **Log Files** | `.log` | `document_analyzer.py` | Line/paragraph counts, keyword extraction |
 | **Word Documents** | `.docx` | `docx_analyzer.py` | Page/section counts, heading extraction (requires `python-docx`) |
+| **Git Repositories** | N/A | `contribution_analyzer.py` + `git_repo.py` | Commit history, contributors, activity breakdown |
+| **Local Projects** | N/A | `contribution_analyzer.py` | File-based metrics, activity classification, timeline estimation |
+
+---
+
+## Contribution Metrics
+
+### Overview
+
+The contribution metrics system analyzes project contributions for **both Git and non-Git projects**. This provides insights into project structure, development activity, and contributor patterns without requiring version control.
+
+### Git Projects
+
+For projects with Git history:
+- **Commit Analysis**: Total commits, commit frequency, timeline
+- **Contributors**: Individual developers with commit counts and percentages
+- **Activity Tracking**: First/last commit dates, active days per contributor
+- **Project Classification**: Individual vs collaborative project detection
+
+### Non-Git Projects
+
+For local folders without version control:
+- **File Metadata Analysis**: Uses file modification/creation dates for timeline
+- **Activity Classification**: Categorizes files into 5 types:
+  - **Code**: Implementation files (src/, lib/, *.py, *.js, etc.)
+  - **Tests**: Test files (test_*, *_test.*, /tests/, *.spec.*)
+  - **Documentation**: Docs and readmes (*.md, *.txt, /docs/)
+  - **Design**: Assets and mockups (*.svg, *.fig, /assets/)
+  - **Configuration**: Config files (*.json, *.yaml, requirements.txt)
+- **Estimated Metrics**: Active days (30% of duration), work frequency
+- **Single Contributor Model**: Assumes "Project Author" for attribution
+
+### Usage Example
+
+```python
+from contribution_analyzer import ContributionAnalyzer
+
+analyzer = ContributionAnalyzer()
+
+# Git project - uses commit history
+git_metrics = analyzer.analyze_contributions(
+    git_analysis=git_data,
+    code_analysis=code_results,
+    parse_result=parsed_files
+)
+
+# Non-Git project - uses file metadata
+non_git_metrics = analyzer.analyze_contributions(
+    git_analysis=None,  # No Git data triggers file-based analysis
+    code_analysis=code_results,
+    parse_result=parsed_files
+)
+
+# Access metrics
+print(f"Project type: {metrics.project_type}")  # "individual" or "collaborative"
+print(f"Duration: {metrics.project_duration_days} days")
+print(f"Code: {metrics.overall_activity_breakdown.code_percentage}%")
+print(f"Tests: {metrics.overall_activity_breakdown.test_percentage}%")
+print(f"Contributors: {metrics.total_contributors}")
+```
+
+### Activity Breakdown Structure
+
+```python
+@dataclass
+class ActivityBreakdown:
+    code_lines: int = 0           # Implementation code
+    test_lines: int = 0           # Test files
+    documentation_lines: int = 0  # Documentation
+    design_lines: int = 0         # Design assets
+    config_lines: int = 0         # Configuration files
+    
+    @property
+    def total_lines(self) -> int
+    
+    @property
+    def percentages(self) -> Dict[str, float]  # Activity type percentages
+```
+
+### Contributor Metrics
+
+```python
+@dataclass
+class ContributorMetrics:
+    name: str                          # Contributor name
+    email: Optional[str]               # Email address
+    commits: int                       # Total commits
+    commit_percentage: float           # % of total commits
+    first_commit_date: Optional[str]   # First contribution
+    last_commit_date: Optional[str]    # Last contribution
+    active_days: Optional[int]         # Days with activity
+    
+    @property
+    def contribution_frequency(self) -> float  # Commits per day
+    
+    @property
+    def days_active_span(self) -> int  # Days between first and last commit
+```
+
+### Git vs Non-Git Comparison
+
+| Feature | Git Projects | Non-Git Projects |
+|---------|-------------|------------------|
+| **Data Source** | Commit history | File metadata |
+| **Contributors** | Extracted from commits | Single "Project Author" |
+| **Timeline** | Commit dates (precise) | File dates (estimated) |
+| **Precision** | High (exact commits) | Moderate (file-based) |
+| **Collaboration** | Multi-contributor | Single contributor assumed |
+| **Best For** | Active development, teams | Personal projects, legacy code |
+
+### Integration with Textual UI
+
+Contribution metrics are automatically extracted during portfolio scans:
+
+1. **Auto-Detection**: System detects Git repositories during scan
+2. **Background Analysis**: Metrics extracted without blocking UI
+3. **Menu Option**: "Contribution metrics" button appears in scan results
+4. **Three-Tier Display**:
+   - Paragraph overview (narrative summary)
+   - Detailed summary (project type, timeline, activity breakdown)
+   - Contributor details (per-contributor metrics)
+5. **JSON Export**: All metrics included in scan export
+
+### Privacy & Accuracy
+
+- ✅ **100% Local**: All analysis runs on your machine
+- ✅ **No External APIs**: No data sent to third parties
+- ✅ **Automatic Fallback**: Works with or without Git
+- ⚠️ **Non-Git Limitations**: Timeline depends on file metadata reliability
+- ⚠️ **Estimation**: Non-Git metrics are estimates, not exact measurements
+
+### Testing
+
+Comprehensive test coverage for both Git and non-Git scenarios:
+- `tests/test_contribution_analyzer.py` - 16 Git-based tests
+- `tests/test_non_git_contributions.py` - 8 non-Git tests
+- **Total: 24 tests, 100% passing**
+
+For detailed documentation on non-Git analysis, see [non-git-contribution-analysis.md](./non-git-contribution-analysis.md).
 
 ---
 
