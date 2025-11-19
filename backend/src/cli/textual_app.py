@@ -7,12 +7,14 @@ import threading
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
+import shutil
 import sys
 import tempfile
 import time
 from typing import Optional, Dict, Any, List, Sequence
 
-from textual.app import App, ComposeResult, Binding
+from textual.app import App, ComposeResult
+from textual.binding import Binding
 from textual.containers import Vertical
 from textual.events import Mount
 from textual.widgets import Footer, Header, Label, ListItem, ListView, ProgressBar, Static
@@ -41,6 +43,10 @@ from .services.skills_analysis_service import (
 from .services.contribution_analysis_service import (
     ContributionAnalysisService,
     ContributionAnalysisError,
+)
+from .services.resume_generation_service import (
+    ResumeGenerationError,
+    ResumeGenerationService,
 )
 from .state import AIState, ConsentState, PreferencesState, ProjectsState, ScanState, SessionState
 from .screens import (
@@ -138,6 +144,7 @@ class PortfolioTextualApp(App):
         self._code_service = CodeAnalysisService()
         self._skills_service = SkillsAnalysisService()
         self._contribution_service = ContributionAnalysisService()
+        self._resume_service = ResumeGenerationService()
         self._projects_service = ProjectsService()
         try:
             self._document_analyzer = DocumentAnalyzer()
@@ -215,11 +222,11 @@ class PortfolioTextualApp(App):
             index = event.control.index or 0
             self._handle_selection(index)
 
-    def exit(self, result: int | None = None) -> None:  # pragma: no cover - Textual shutdown hook
+    def exit(self, result: object | None = None, return_code: int = 0, message: object | None = None) -> None:  # pragma: no cover - Textual shutdown hook
         self._cleanup_async_tasks()
-        super().exit(result)
+        super().exit(result, return_code=return_code, message=message)  # type: ignore[arg-type]
 
-    def action_quit(self) -> None:
+    async def action_quit(self) -> None:
         self.exit()
 
     def _update_detail(self, index: int) -> None:
@@ -589,13 +596,6 @@ class PortfolioTextualApp(App):
                 "Ensure the target directory is accessible and retry.",
             )
             return
-        except FileNotFoundError:
-            self._surface_error(
-                "Run Portfolio Scan",
-                f"Path not found: {target}",
-                "Verify the target exists or provide an absolute path.",
-            )
-            return
         except Exception as exc:  # pragma: no cover - defensive fallback
             self._surface_error(
                 "Run Portfolio Scan",
@@ -636,6 +636,21 @@ class PortfolioTextualApp(App):
         self._scan_state.skills_analysis_error = None
         self._scan_state.contribution_metrics = None
         self._scan_state.contribution_analysis_error = None
+        self._scan_state.resume_item_path = None
+        self._scan_state.resume_item_content = None
+        
+        # Detect projects within scanned directory
+        try:
+            from ..analyzer.project_detector import ProjectDetector
+            detector = ProjectDetector()
+            projects = detector.detect_projects(target)
+            self._scan_state.detected_projects = projects
+            self._scan_state.is_monorepo = detector.is_monorepo(projects)
+            self._debug_log(f"Detected {len(projects)} project(s), monorepo: {self._scan_state.is_monorepo}")
+        except Exception as e:
+            self._debug_log(f"Project detection failed: {e}")
+            self._scan_state.detected_projects = []
+            self._scan_state.is_monorepo = False
         
         # Auto-extract skills in background if code files are present
         if self._scan_state.code_file_count > 0:
@@ -656,9 +671,56 @@ class PortfolioTextualApp(App):
                 pass
         
         self._show_status("Scan completed successfully.", "success")
-        detail_panel.update(self._scan_service.format_scan_overview(self._scan_state, include_skills=True))
+        overview_text = self._format_scan_overview_with_projects()
+        detail_panel.update(overview_text)
         self._show_scan_results_dialog()
 
+    def _format_scan_overview_with_projects(self) -> str:
+        """Format scan overview with project detection information."""
+        parts = []
+        
+        # Project detection summary
+        if self._scan_state.detected_projects:
+            num_projects = len(self._scan_state.detected_projects)
+            parts.append("[bold cyan]📦 Project Detection[/bold cyan]")
+            
+            if num_projects == 1:
+                proj = self._scan_state.detected_projects[0]
+                parts.append(f"  Single project detected: [bold]{proj.name}[/bold]")
+                parts.append(f"  Type: [yellow]{proj.project_type}[/yellow]")
+                if proj.root_indicators:
+                    parts.append(f"  Markers: {', '.join(proj.root_indicators[:5])}")
+            else:
+                parts.append(f"  [bold green]{num_projects} projects detected[/bold green]")
+                if self._scan_state.is_monorepo:
+                    parts.append(f"  [yellow]⚡ Monorepo structure identified[/yellow]")
+                parts.append("")
+                parts.append("  [bold]Projects:[/bold]")
+                for i, proj in enumerate(self._scan_state.detected_projects, 1):
+                    parts.append(f"    {i}. [bold]{proj.name}[/bold] ({proj.project_type})")
+                    if proj.root_indicators:
+                        indicators = ', '.join(proj.root_indicators[:3])
+                        if len(proj.root_indicators) > 3:
+                            indicators += f" +{len(proj.root_indicators) - 3} more"
+                        parts.append(f"       └─ {indicators}")
+            parts.append("")
+        
+        # Regular scan overview
+        parts.append(self._scan_service.format_scan_overview(self._scan_state))
+        
+        # Skills summary if available
+        if self._scan_state.skills_analysis_result:
+            parts.append("")
+            parts.append("[bold cyan]🎯 Skills Detected[/bold cyan]")
+            skills = self._scan_state.skills_analysis_result
+            if skills:
+                skill_names = [s.name if hasattr(s, 'name') else str(s) for s in skills[:10]]
+                parts.append(f"  {', '.join(skill_names)}")
+                if len(skills) > 10:
+                    parts.append(f"  ...and {len(skills) - 10} more")
+        
+        return "\n".join(parts)
+    
     def _show_scan_results_dialog(self) -> None:
         if not self._scan_state.parse_result:
             return
@@ -674,8 +736,8 @@ class PortfolioTextualApp(App):
             actions.append(("git", "Run Git analysis"))
         # Contribution metrics available for all projects (Git or file-based)
         if self._scan_state.code_file_count > 0 or self._scan_state.git_repos:
-          actions.append(("contributions", "Contribution metrics"))
-
+            actions.append(("contributions", "Contribution metrics"))
+        actions.append(("resume", "Generate resume item"))
         actions.append(("export", "Export JSON report"))
 
         if self._scan_state.pdf_candidates:
@@ -696,12 +758,21 @@ class PortfolioTextualApp(App):
             actions.append(("media", "Media analysis"))
         actions.append(("close", "Close"))
         self._close_scan_results_screen()
-        overview = self._scan_service.format_scan_overview(self._scan_state)
+        overview = self._format_scan_overview_with_projects()
         screen = ScanResultsScreen(overview, actions)
         self._scan_results_screen = screen
         self.push_screen(screen)
         try:
-            screen.set_message("Select an action to explore scan results.", tone="info")
+            # Show project count in status message
+            num_projects = len(self._scan_state.detected_projects)
+            if num_projects > 1:
+                msg = f"📦 {num_projects} projects detected. Select an action to explore."
+            elif num_projects == 1:
+                proj = self._scan_state.detected_projects[0]
+                msg = f"📦 {proj.project_type.title()} project. Select an action to explore."
+            else:
+                msg = "Select an action to explore scan results."
+            screen.set_message(msg, tone="info")
             screen.display_output(overview, context="Overview")
         except Exception:
             pass
@@ -717,7 +788,7 @@ class PortfolioTextualApp(App):
             return
 
         if action == "summary":
-            screen.display_output(self._scan_service.format_scan_overview(self._scan_state, include_skills=True), context="Overview")
+            screen.display_output(self._format_scan_overview_with_projects(), context="Overview")
             screen.set_message("Overview refreshed.", tone="success")
             return
 
@@ -760,6 +831,10 @@ class PortfolioTextualApp(App):
         
         if action == "contributions":
             await self._handle_contribution_analysis_action(screen)
+            return
+
+        if action == "resume":
+            await self._handle_resume_generation_action(screen)
             return
 
         if action == "export":
@@ -1190,10 +1265,11 @@ class PortfolioTextualApp(App):
             self._scan_state.skills_analysis_result = skills
             self._scan_state.skills_analysis_error = None
 
-        # Display paragraph summary, then concise summary, then detailed breakdown
+        # Display paragraph summary, then concise summary, then detailed breakdown, then chronological timeline
         paragraph_summary = self._skills_service.format_skills_paragraph(self._scan_state.skills_analysis_result)
         skills_summary = self._skills_service.format_skills_summary(self._scan_state.skills_analysis_result)
         detailed_summary = self._skills_service.format_summary(self._scan_state.skills_analysis_result)
+        chronological_summary = self._skills_service.format_chronological_overview()
         
         full_output = (
             "[b]Summary[/b]\n" + 
@@ -1201,7 +1277,9 @@ class PortfolioTextualApp(App):
             "\n\n" + "=" * 60 + "\n\n" + 
             skills_summary + 
             "\n\n" + "=" * 60 + "\n\n" + 
-            detailed_summary
+            detailed_summary +
+            "\n\n" + "=" * 60 + "\n\n" +
+            chronological_summary
         )
         screen.display_output(full_output, context="Skills analysis")
         screen.set_message("Skills analysis ready.", tone="success")
@@ -1252,6 +1330,72 @@ class PortfolioTextualApp(App):
         )
         screen.display_output(full_output, context="Contribution analysis")
         screen.set_message("Contribution analysis ready.", tone="success")
+
+    async def _handle_resume_generation_action(self, screen: ScanResultsScreen) -> None:
+        """Generate and display a resume-ready project summary."""
+        if self._scan_state.parse_result is None:
+            message = "⚠ No project analysis found — run a scan first."
+            screen.display_output(message, context="Resume item")
+            screen.set_message(message, tone="warning")
+            return
+
+        target = self._scan_state.target or Path.cwd()
+        screen.set_message("Generating resume item…", tone="info")
+
+        git_analysis = self._scan_state.git_analysis
+        if not git_analysis and self._scan_state.git_repos:
+            try:
+                git_analysis = await asyncio.to_thread(self._collect_git_analysis)
+            except Exception as exc:  # pragma: no cover - defensive git safeguard
+                git_analysis = []
+                try:
+                    self._debug_log(f"Git analysis for resume generation failed: {exc}")
+                except Exception:
+                    pass
+
+        try:
+            resume_item = await asyncio.to_thread(
+                self._resume_service.generate_resume_item,
+                target_path=target,
+                parse_result=self._scan_state.parse_result,
+                languages=self._scan_state.languages,
+                code_analysis_result=self._scan_state.code_analysis_result,
+                contribution_metrics=self._scan_state.contribution_metrics,
+                git_analysis=git_analysis,
+                output_path=self._scan_state.resume_item_path,
+                ai_client=self._ai_state.client,
+            )
+        except ResumeGenerationError as exc:
+            text = str(exc)
+            screen.display_output(text, context="Resume item")
+            tone = "warning" if text.strip().startswith("⚠") else "error"
+            screen.set_message(text, tone=tone)
+            return
+        except Exception as exc:  # pragma: no cover - unexpected safeguard
+            screen.display_output(f"Unable to generate resume content: {exc}", context="Resume item")
+            screen.set_message("Resume generation failed.", tone="error")
+            return
+
+        self._scan_state.resume_item_path = resume_item.output_path
+        self._scan_state.resume_item_content = resume_item.to_markdown()
+
+        downloads_note = ""
+        downloads_path = Path.home() / "Downloads" / resume_item.output_path.name
+        try:
+            downloads_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(resume_item.output_path, downloads_path)
+            downloads_note = f"\nAlso copied to: {downloads_path}"
+        except Exception as exc:  # pragma: no cover - filesystem variance
+            try:
+                self._debug_log(f"Failed to copy resume to Downloads: {exc}")
+            except Exception:
+                pass
+
+        screen.display_output(resume_item.to_markdown(), context="Resume item")
+        screen.set_message(
+            f"✓ Resume item saved to: {resume_item.output_path}{downloads_note}",
+            tone="success",
+        )
 
     def _perform_skills_analysis(self):
         """Perform skills extraction from the scanned project."""
@@ -1338,11 +1482,11 @@ class PortfolioTextualApp(App):
         if archive_path is None and base_path is None:
             raise RuntimeError("Scan artifacts missing; rerun the scan before analyzing PDFs.")
 
-        parser = create_parser(max_file_size_mb=25.0, max_pages_per_pdf=200)
-        summarizer = create_summarizer(max_summary_sentences=7, keyword_count=15)
+        parser = create_parser(max_file_size_mb=25.0, max_pages_per_pdf=200)  # type: ignore[misc]
+        summarizer = create_summarizer(max_summary_sentences=7, keyword_count=15)  # type: ignore[misc]
 
         self._scan_state.pdf_results = []
-        summaries: List[DocumentSummary] = []
+        summaries: List[Any] = []
         archive_reader: Optional[zipfile.ZipFile] = None
         try:
             if archive_path and archive_path.exists():
@@ -1352,32 +1496,28 @@ class PortfolioTextualApp(App):
                 if pdf_bytes is None and base_path:
                     pdf_bytes = self._read_pdf_from_directory(meta, base_path)
                 if pdf_bytes is None:
-                    summaries.append(
-                        DocumentSummary(
-                            file_name=Path(meta.path).name,
-                            summary_text="",
-                            key_points=[],
-                            keywords=[],
-                            statistics={},
-                            success=False,
-                            error_message="Unable to read PDF bytes from archive or filesystem.",
-                        )
-                    )
+                    summaries.append({
+                        "file_name": Path(meta.path).name,
+                        "summary_text": "",
+                        "key_points": [],
+                        "keywords": [],
+                        "statistics": {},
+                        "success": False,
+                        "error_message": "Unable to read PDF bytes from archive or filesystem.",
+                    })
                     continue
                 try:
                     parse_result = parser.parse_from_bytes(pdf_bytes, meta.path)
                 except Exception as exc:
-                    summaries.append(
-                        DocumentSummary(
-                            file_name=Path(meta.path).name,
-                            summary_text="",
-                            key_points=[],
-                            keywords=[],
-                            statistics={},
-                            success=False,
-                            error_message=f"Failed to parse PDF: {exc}",
-                        )
-                    )
+                    summaries.append({
+                        "file_name": Path(meta.path).name,
+                        "summary_text": "",
+                        "key_points": [],
+                        "keywords": [],
+                        "statistics": {},
+                        "success": False,
+                        "error_message": f"Failed to parse PDF: {exc}",
+                    })
                     continue
                 self._scan_state.pdf_results.append(parse_result)
                 if parse_result.success and parse_result.text_content:
@@ -1387,31 +1527,27 @@ class PortfolioTextualApp(App):
                             parse_result.file_name,
                         )
                     except Exception as exc:
-                        summaries.append(
-                            DocumentSummary(
-                                file_name=parse_result.file_name,
-                                summary_text="",
-                                key_points=[],
-                                keywords=[],
-                                statistics={},
-                                success=False,
-                                error_message=f"Failed to summarize PDF: {exc}",
-                            )
-                        )
+                        summaries.append({
+                            "file_name": parse_result.file_name,
+                            "summary_text": "",
+                            "key_points": [],
+                            "keywords": [],
+                            "statistics": {},
+                            "success": False,
+                            "error_message": f"Failed to summarize PDF: {exc}",
+                        })
                         continue
                     summaries.append(summary)
                 else:
-                    summaries.append(
-                        DocumentSummary(
-                            file_name=parse_result.file_name,
-                            summary_text="",
-                            key_points=[],
-                            keywords=[],
-                            statistics={},
-                            success=False,
-                            error_message=parse_result.error_message or "Unable to parse PDF content.",
-                        )
-                    )
+                    summaries.append({
+                        "file_name": parse_result.file_name,
+                        "summary_text": "",
+                        "key_points": [],
+                        "keywords": [],
+                        "statistics": {},
+                        "success": False,
+                        "error_message": parse_result.error_message or "Unable to parse PDF content.",
+                    })
         finally:
             if archive_reader is not None:
                 archive_reader.close()
