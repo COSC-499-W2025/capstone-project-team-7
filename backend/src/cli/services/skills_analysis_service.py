@@ -637,7 +637,7 @@ class SkillsAnalysisService:
             
             for entry in sorted(skills_in_period, key=lambda x: x['current_proficiency'], reverse=True):
                 level = "Advanced" if entry['current_proficiency'] >= 0.8 else "Intermediate" if entry['current_proficiency'] >= 0.5 else "Beginner"
-                lines.append(f"  \u2022 {entry['skill_name']} (now {level}, used {entry['total_usage']}x)")
+                lines.append(f"  • {entry['skill_name']} (now {level}, used {entry['total_usage']}x)")
         
         lines.append("\\n" + "=" * 60)
         return "\\n".join(lines)
@@ -683,7 +683,7 @@ class SkillsAnalysisService:
                 lines.append("  Top skills:")
                 for skill in sorted_skills:
                     level = "Advanced" if skill.proficiency_score >= 0.8 else "Intermediate" if skill.proficiency_score >= 0.5 else "Beginner"
-                    lines.append(f"    \u2022 {skill.name} ({level})")
+                    lines.append(f"    • {skill.name} ({level})")
             
             lines.append("")  # Blank line between projects
         
