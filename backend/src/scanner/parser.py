@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import logging
 import mimetypes
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 import zipfile
-from typing import Any, Callable
+from typing import Any, Callable, Dict
 
 from .errors import CorruptArchiveError, UnsupportedArchiveError
 from .media import MediaExtractionResult, extract_media_metadata, is_media_candidate
@@ -152,13 +153,15 @@ _ALLOWED_MIME_TYPES = {
 
 _MAX_MEDIA_BYTES = 20 * 1024 * 1024  # 20 MiB safeguard for media extraction.
 
+logger = logging.getLogger(__name__)
+
 def parse_zip(
     archive_path: Path,
     *,
     relevant_only: bool = False,
     preferences: ScanPreferences | None = None,
     progress_callback: Callable[[int, int], None] | None = None,
-    cached_files: dict[str, dict[str, object]] | None = None,
+    cached_files: Dict[str, Dict[str, Any]] | None = None,
 ) -> ParseResult:
     # Parse the given .zip archive into file metadata and capture parse issues.
     archive = Path(archive_path)
@@ -222,6 +225,7 @@ def parse_zip(
                         files.append(metadata)
                         total_bytes += metadata.size_bytes
                         skipped_files += 1
+                        logger.debug(f"Cache hit: {normalized}")
                         continue
                     if _should_skip(metadata, excluded_dirs, allowed_extensions, max_file_size):
                         filtered_out += 1
@@ -260,8 +264,6 @@ def parse_zip(
         "bytes_processed": total_bytes,
         "issues_count": len(issues),
     }
-    if skipped_files:
-        summary["files_skipped"] = skipped_files
     if skipped_files:
         summary["files_skipped"] = skipped_files
     if media_with_metadata:
@@ -408,7 +410,7 @@ def _zip_datetime(info: zipfile.ZipInfo) -> datetime:
         return datetime.now(timezone.utc)
 
 
-def _cached_entry_matches(metadata: FileMetadata, cached_entry: dict[str, Any]) -> bool:
+def _cached_entry_matches(metadata: FileMetadata, cached_entry: Dict[str, Any]) -> bool:
     cached_ts = cached_entry.get("last_seen_modified_at")
     cached_dt = _parse_cached_timestamp(cached_ts)
     if cached_dt is None:

@@ -208,7 +208,8 @@ class ProjectsService:
             path = row.get("relative_path")
             if not path:
                 continue
-            cached[path] = {
+            normalized = str(path).replace("\\", "/")
+            cached[normalized] = {
                 "size_bytes": row.get("size_bytes"),
                 "mime_type": row.get("mime_type"),
                 "sha256": row.get("sha256"),

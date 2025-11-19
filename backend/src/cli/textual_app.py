@@ -421,6 +421,10 @@ class PortfolioTextualApp(App):
         progress_lock = threading.Lock()
         progress_start = time.perf_counter()
         progress_stop = asyncio.Event()
+        file_batch_threshold = 100
+        file_batch_interval = 0.25
+        file_last_reported = 0
+        file_last_emit = -file_batch_interval
         self._show_status("Scanning project – press Ctrl+C to cancel.", "info")
 
         cached_files: Dict[str, Dict[str, Any]] | None = None
@@ -438,16 +442,21 @@ class PortfolioTextualApp(App):
                         session.user_id,
                         project_name_hint,
                     )
+                except ProjectsServiceError as exc:
+                    self._debug_log(f"Unable to lookup existing project metadata: {exc}")
+                else:
                     if existing and existing.get("id"):
                         project_id = existing["id"]
                         self._scan_state.project_id = project_id
-                        cached_files = await asyncio.to_thread(
-                            projects_service.get_cached_files,
-                            session.user_id,
-                            project_id,
-                        )
-                except ProjectsServiceError as exc:
-                    self._debug_log(f"Unable to load cached metadata: {exc}")
+                        try:
+                            cached_files = await asyncio.to_thread(
+                                projects_service.get_cached_files,
+                                session.user_id,
+                                project_id,
+                            )
+                        except ProjectsServiceError as exc:
+                            cached_files = {}
+                            self._debug_log(f"Unable to load cached metadata: {exc}")
         self._scan_state.cached_files = cached_files or {}
 
         def _progress_snapshot(
@@ -508,12 +517,24 @@ class PortfolioTextualApp(App):
         heartbeat_task = asyncio.create_task(_progress_heartbeat())
 
         def _progress_update(event: str | Dict[str, object]) -> None:
+            nonlocal file_last_reported, file_last_emit
             elapsed = time.perf_counter() - progress_start
             with progress_lock:
                 if isinstance(event, dict):
                     if event.get("type") == "files":
                         processed = int(event.get("processed") or 0)
                         total = int(event.get("total") or 0)
+                        should_emit = False
+                        if total > 0 and processed >= total:
+                            should_emit = True
+                        elif processed - file_last_reported >= file_batch_threshold:
+                            should_emit = True
+                        elif (elapsed - file_last_emit) >= file_batch_interval:
+                            should_emit = True
+                        if not should_emit:
+                            return
+                        file_last_reported = processed
+                        file_last_emit = elapsed
                         file_progress_state["processed"] = processed
                         file_progress_state["total"] = total
                         if file_progress_state.get("start_offset") is None:
@@ -3092,6 +3113,7 @@ class PortfolioTextualApp(App):
         if not files:
             return records
         timestamp = datetime.now(timezone.utc).isoformat()
+        # TODO: Compute SHA256 per entry to detect modifications beyond timestamp + size heuristics.
         for entry in files:
             path = entry.get("path")
             modified = entry.get("modified_at")
