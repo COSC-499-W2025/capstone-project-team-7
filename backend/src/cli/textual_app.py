@@ -2587,9 +2587,12 @@ class PortfolioTextualApp(App):
                 f"• Target: {target}",
                 f"• Relevant files only: {'Yes' if self._scan_state.relevant_only else 'No'}",
                 f"• Files processed: {files_processed}",
-                f"• Issues: {issues_count}",
             ]
         )
+        skipped = summary.get("files_skipped")
+        if skipped:
+            lines.append(f"• Cached skips: {skipped}")
+        lines.append(f"• Issues: {issues_count}")
         if filtered is not None and self._scan_state.relevant_only:
             lines.append(f"• Filtered out: {filtered}")
         lines.extend(

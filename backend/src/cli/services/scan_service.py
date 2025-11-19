@@ -146,6 +146,9 @@ class ScanService:
         files_processed = summary.get("files_processed")
         if files_processed is not None:
             lines.append(f"- Files processed: {files_processed}")
+        skipped_files = summary.get("files_skipped")
+        if skipped_files:
+            lines.append(f"- Cached skips: {skipped_files}")
         bytes_processed = summary.get("bytes_processed")
         if bytes_processed is not None:
             lines.append(f"- Bytes processed: {bytes_processed}")
