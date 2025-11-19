@@ -5,6 +5,7 @@ import json
 import zipfile
 from datetime import datetime
 from pathlib import Path
+import shutil
 import sys
 from typing import Optional, Dict, Any, List
 
@@ -37,6 +38,10 @@ from .services.skills_analysis_service import (
 from .services.contribution_analysis_service import (
     ContributionAnalysisService,
     ContributionAnalysisError,
+)
+from .services.resume_generation_service import (
+    ResumeGenerationError,
+    ResumeGenerationService,
 )
 from .state import AIState, ConsentState, PreferencesState, ProjectsState, ScanState, SessionState
 from .screens import (
@@ -127,6 +132,7 @@ class PortfolioTextualApp(App):
         self._code_service = CodeAnalysisService()
         self._skills_service = SkillsAnalysisService()
         self._contribution_service = ContributionAnalysisService()
+        self._resume_service = ResumeGenerationService()
         self._projects_service = ProjectsService()
 
         self._preferences_screen = None
@@ -428,6 +434,8 @@ class PortfolioTextualApp(App):
         self._scan_state.skills_analysis_error = None
         self._scan_state.contribution_metrics = None
         self._scan_state.contribution_analysis_error = None
+        self._scan_state.resume_item_path = None
+        self._scan_state.resume_item_content = None
         
         # Auto-extract skills in background if code files are present
         if self._scan_state.code_file_count > 0:
@@ -467,6 +475,7 @@ class PortfolioTextualApp(App):
         # Contribution metrics available for all projects (Git or file-based)
         if self._scan_state.code_file_count > 0 or self._scan_state.git_repos:
             actions.append(("contributions", "Contribution metrics"))
+        actions.append(("resume", "Generate resume item"))
         actions.append(("export", "Export JSON report"))
         if self._scan_state.pdf_candidates:
             label = "View PDF summaries" if self._scan_state.pdf_summaries else "Analyze PDF files"
@@ -539,6 +548,10 @@ class PortfolioTextualApp(App):
         
         if action == "contributions":
             await self._handle_contribution_analysis_action(screen)
+            return
+
+        if action == "resume":
+            await self._handle_resume_generation_action(screen)
             return
 
         if action == "export":
@@ -1006,6 +1019,72 @@ class PortfolioTextualApp(App):
         )
         screen.display_output(full_output, context="Contribution analysis")
         screen.set_message("Contribution analysis ready.", tone="success")
+
+    async def _handle_resume_generation_action(self, screen: ScanResultsScreen) -> None:
+        """Generate and display a resume-ready project summary."""
+        if self._scan_state.parse_result is None:
+            message = "⚠ No project analysis found — run a scan first."
+            screen.display_output(message, context="Resume item")
+            screen.set_message(message, tone="warning")
+            return
+
+        target = self._scan_state.target or Path.cwd()
+        screen.set_message("Generating resume item…", tone="info")
+
+        git_analysis = self._scan_state.git_analysis
+        if not git_analysis and self._scan_state.git_repos:
+            try:
+                git_analysis = await asyncio.to_thread(self._collect_git_analysis)
+            except Exception as exc:  # pragma: no cover - defensive git safeguard
+                git_analysis = []
+                try:
+                    self._debug_log(f"Git analysis for resume generation failed: {exc}")
+                except Exception:
+                    pass
+
+        try:
+            resume_item = await asyncio.to_thread(
+                self._resume_service.generate_resume_item,
+                target_path=target,
+                parse_result=self._scan_state.parse_result,
+                languages=self._scan_state.languages,
+                code_analysis_result=self._scan_state.code_analysis_result,
+                contribution_metrics=self._scan_state.contribution_metrics,
+                git_analysis=git_analysis,
+                output_path=self._scan_state.resume_item_path,
+                ai_client=self._ai_state.client,
+            )
+        except ResumeGenerationError as exc:
+            text = str(exc)
+            screen.display_output(text, context="Resume item")
+            tone = "warning" if text.strip().startswith("⚠") else "error"
+            screen.set_message(text, tone=tone)
+            return
+        except Exception as exc:  # pragma: no cover - unexpected safeguard
+            screen.display_output(f"Unable to generate resume content: {exc}", context="Resume item")
+            screen.set_message("Resume generation failed.", tone="error")
+            return
+
+        self._scan_state.resume_item_path = resume_item.output_path
+        self._scan_state.resume_item_content = resume_item.to_markdown()
+
+        downloads_note = ""
+        downloads_path = Path.home() / "Downloads" / resume_item.output_path.name
+        try:
+            downloads_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(resume_item.output_path, downloads_path)
+            downloads_note = f"\nAlso copied to: {downloads_path}"
+        except Exception as exc:  # pragma: no cover - filesystem variance
+            try:
+                self._debug_log(f"Failed to copy resume to Downloads: {exc}")
+            except Exception:
+                pass
+
+        screen.display_output(resume_item.to_markdown(), context="Resume item")
+        screen.set_message(
+            f"✓ Resume item saved to: {resume_item.output_path}{downloads_note}",
+            tone="success",
+        )
 
     def _perform_skills_analysis(self):
         """Perform skills extraction from the scanned project."""
