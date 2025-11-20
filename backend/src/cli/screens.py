@@ -1087,6 +1087,10 @@ class ProjectsScreen(ModalScreen[None]):
             badges.append("📄")
         if project.get("has_media_analysis"):
             badges.append("🎨")
+        if project.get("has_skills_analysis"): 
+            badges.append("🎯")
+        if project.get("has_contribution_metrics"): 
+            badges.append("📊")
         
         badge_str = " ".join(badges) if badges else ""
         
@@ -1242,6 +1246,14 @@ class ProjectViewerScreen(ModalScreen[None]):
         height: auto;
         align: center middle;
         margin-bottom: 1;
+        overflow-x: auto;      
+        overflow-y: hidden;         
+        align: left middle;         
+    }
+    
+    #viewer-tabs Button {
+        padding: 0 2;           
+        margin: 0 1
     }
     
     #viewer-content {
@@ -1366,6 +1378,11 @@ class ProjectViewerScreen(ModalScreen[None]):
                 content.update(self._render_pdf_analysis())
             elif self.current_tab == "media":
                 content.update(self._render_media_analysis())
+            elif self.current_tab == "skills":  
+                content.update(self._render_skills_analysis())
+            elif self.current_tab == "contributions":  
+                content.update(self._render_contributions_analysis())
+
         except Exception:
             pass
     
@@ -1547,8 +1564,9 @@ class ProjectViewerScreen(ModalScreen[None]):
             lines.append(f"  • 🟡 Medium complexity (5-10) may need review")
         
         return "\n".join(lines)
-                
-        
+    
+    
+    
     
     def _render_git_analysis(self) -> str:
         """Render git analysis tab."""
@@ -1616,6 +1634,102 @@ class ProjectViewerScreen(ModalScreen[None]):
         
         return "\n".join(lines)
     
+    def _render_skills_analysis(self) -> str:
+        """Render skills analysis tab."""
+        skills_data = self.scan_data.get("skills_analysis", {})
+        if not skills_data:
+            return "No skills analysis data available."
+        
+        lines: List[str] = ["[b]Skills Analysis[/b]\n"]
+        
+        # Check if analysis was successful
+        if not skills_data.get("success"):
+            status = skills_data.get("status", "unknown")
+            message = skills_data.get("message", "Analysis failed")
+            error = skills_data.get("error")
+            
+            lines.append(f"Status: {status}")
+            lines.append(f"Message: {message}")
+            if error:
+                lines.append(f"Error: {error}")
+            return "\n".join(lines)
+        
+        # Display skills by category
+        skills_by_category = skills_data.get("skills_by_category", {})
+        if skills_by_category:
+            for category, skills in skills_by_category.items():
+                if skills:
+                    lines.append(f"\n[b]{category}:[/b]")
+                    for skill in skills[:10]:  # Show top 10 per category
+                        if isinstance(skill, dict):
+                            name = skill.get("name", "Unknown")
+                            proficiency = skill.get("proficiency", "Unknown")
+                            lines.append(f"  • {name} ({proficiency})")
+                        else:
+                            lines.append(f"  • {skill}")
+                    
+                    if len(skills) > 10:
+                        lines.append(f"  ... +{len(skills) - 10} more skills")
+        
+        # Summary statistics
+        total_skills = skills_data.get("total_skills", 0)
+        if total_skills:
+            lines.append(f"\n[b]Total Skills Detected:[/b] {total_skills}")
+        
+        return "\n".join(lines)
+
+    def _render_contributions_analysis(self) -> str:
+        """Render contribution metrics tab."""
+        contrib_data = self.scan_data.get("contribution_metrics", {})
+        if not contrib_data:
+            return "No contribution metrics available."
+        
+        lines: List[str] = ["[b]Contribution Analysis[/b]\n"]
+        
+        # Overall metrics
+        lines.append("[b]Overall Metrics:[/b]")
+        
+        total_commits = contrib_data.get("total_commits", 0)
+        total_contributors = contrib_data.get("total_contributors", 0)
+        total_lines = contrib_data.get("total_lines_of_code", 0)
+        
+        lines.append(f"  • Total commits: {total_commits}")
+        lines.append(f"  • Total contributors: {total_contributors}")
+        lines.append(f"  • Total lines of code: {total_lines:,}")
+        lines.append("")
+        
+        # Top contributors
+        contributors = contrib_data.get("contributors", [])
+        if contributors:
+            lines.append("[b]Top Contributors:[/b]")
+            for idx, contributor in enumerate(contributors[:5], 1):
+                name = contributor.get("name", "Unknown")
+                commits = contributor.get("commits", 0)
+                lines_added = contributor.get("lines_added", 0)
+                lines_deleted = contributor.get("lines_deleted", 0)
+                
+                lines.append(f"\n  {idx}. {name}")
+                lines.append(f"     • Commits: {commits}")
+                lines.append(f"     • Lines added: {lines_added:,}")
+                lines.append(f"     • Lines deleted: {lines_deleted:,}")
+            
+            if len(contributors) > 5:
+                lines.append(f"\n  ... +{len(contributors) - 5} more contributors")
+        
+        # Activity timeline
+        timeline = contrib_data.get("activity_timeline", [])
+        if timeline:
+            lines.append("\n[b]Recent Activity:[/b]")
+            for month_data in timeline[:6]:
+                month = month_data.get("month", "Unknown")
+                commits = month_data.get("commits", 0)
+                lines.append(f"  • {month}: {commits} commits")
+            
+            if len(timeline) > 6:
+                lines.append(f"  ... +{len(timeline) - 6} more months")
+        
+        return "\n".join(lines)
+        
     def _render_pdf_analysis(self) -> str:
         """Render PDF analysis - stub."""
         return "PDF analysis rendering coming soon..."
