@@ -1285,6 +1285,10 @@ class ProjectViewerScreen(ModalScreen[None]):
             self.available_tabs.append("pdf")
         if self.scan_data.get("media_analysis"):
             self.available_tabs.append("media")
+        if self.scan_data.get("skills_analysis"):  
+            self.available_tabs.append("skills")
+        if self.scan_data.get("contribution_metrics"): 
+            self.available_tabs.append("contributions")
     
     def compose(self):
         project_name = self.project.get("project_name", "Project")
@@ -1303,7 +1307,10 @@ class ProjectViewerScreen(ModalScreen[None]):
                     yield Button("PDF Analysis", id="tab-pdf")
                 if "media" in self.available_tabs:
                     yield Button("Media Analysis", id="tab-media")
-            
+                if "skills" in self.available_tabs:
+                    yield Button("Skills", id="tab-skills")
+                if "contributions" in self.available_tabs:
+                    yield Button("Contributions", id="tab-contributions")
             # Content area
             yield Static(self._render_overview(), id="viewer-content")
             
