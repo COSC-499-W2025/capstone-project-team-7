@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -12,7 +13,10 @@ from ...scanner.models import FileMetadata, ParseResult, ScanPreferences
 from ...scanner.parser import parse_zip
 
 
-@dataclass(slots=True)
+_DATACLASS_KWARGS = {"slots": True} if sys.version_info >= (3, 10) else {}
+
+
+@dataclass(**_DATACLASS_KWARGS)
 class ScanRunResult:
     """Artifacts returned after a successful scan."""
 
