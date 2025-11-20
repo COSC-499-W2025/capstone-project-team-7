@@ -969,7 +969,7 @@ class ProjectsScreen(ModalScreen[None]):
     
     #projects-dialog {
         width: 90;
-        height: 35;
+        min-height: 35;
         border: thick $background 80%;
         background: $surface;
         padding: 1 2;
