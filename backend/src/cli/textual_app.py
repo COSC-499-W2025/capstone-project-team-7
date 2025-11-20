@@ -69,6 +69,7 @@ from .screens import (
     ScanResultsScreen,
     ProjectSelected,       
     ProjectDeleted,         
+    ProjectInsightsCleared,
     ProjectsScreen,       
     ProjectViewerScreen,  
 )
@@ -3170,6 +3171,39 @@ class PortfolioTextualApp(App):
         else:
             self._show_status("Failed to delete project.", "error")
         
+    async def on_project_insights_cleared(self, message: ProjectInsightsCleared) -> None:
+        """Handle deletion of stored insights without removing shared files."""
+        message.stop()
+
+        if not self._session_state.session:
+            self._show_status("Sign in required.", "error")
+            return
+
+        project_id = message.project_id
+        self._show_status("Clearing stored insights…", "info")
+
+        try:
+            projects_service = self._get_projects_service()
+            success = await asyncio.to_thread(
+                projects_service.delete_project_insights,
+                self._session_state.session.user_id,
+                project_id,
+            )
+        except ProjectsServiceError as exc:
+            self._show_status(f"Failed to clear insights: {exc}", "error")
+            return
+        except Exception as exc:
+            self._show_status(f"Unexpected error clearing insights: {exc}", "error")
+            return
+
+        if success:
+            self._show_status(
+                "Insights deleted. Shared uploads remain intact.",
+                "success",
+            )
+            await self._load_and_show_projects()
+        else:
+            self._show_status("No insights were deleted.", "warning")
         
     async def _save_scan_to_database(self, scan_data: Dict[str, Any]) -> None:
         """Save the scan to the projects database."""

@@ -14,7 +14,7 @@ Run with: pytest tests/test_projects_database.py -v
 import pytest
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch, MagicMock, call
 import json
 import sys
 
@@ -42,6 +42,7 @@ def mock_supabase_client():
     table_mock.select.return_value = table_mock
     table_mock.insert.return_value = table_mock
     table_mock.upsert.return_value = table_mock  # ✅ ADD THIS LINE
+    table_mock.update.return_value = table_mock
     table_mock.eq.return_value = table_mock
     table_mock.delete.return_value = table_mock
     table_mock.order.return_value = table_mock
@@ -386,7 +387,43 @@ def test_3_delete_project_from_database(projects_service, mock_supabase_client, 
     print("✓ Test 3 passed: Project deleted successfully")
 
 
-def test_4_data_integrity_validation(projects_service, mock_supabase_client, sample_user_id, sample_scan_data):
+def test_4_delete_project_insights_only(projects_service, mock_supabase_client, sample_user_id):
+    """
+    Test 4: Clear insights for a project without removing shared files.
+    
+    Verifies that:
+    - scan_data and analysis flags are reset
+    - insights_deleted_at timestamp is recorded
+    - Cached scan_files entries are removed, but uploads untouched
+    """
+    execute_mock = Mock()
+    execute_mock.data = [{"id": "project-clean"}]
+    mock_supabase_client.table.return_value.execute.return_value = execute_mock
+
+    success = projects_service.delete_project_insights(sample_user_id, "project-clean")
+
+    assert success is True, "Insight deletion should return True"
+
+    update_call = mock_supabase_client.table.return_value.update.call_args
+    assert update_call is not None
+    update_payload = update_call[0][0]
+    assert update_payload["scan_data"] is None
+    assert update_payload["has_code_analysis"] is False
+    assert update_payload["has_git_analysis"] is False
+    assert update_payload["has_media_analysis"] is False
+    assert update_payload["has_pdf_analysis"] is False
+    assert update_payload["languages"] == []
+    assert update_payload["total_files"] == 0
+    assert update_payload["total_lines"] == 0
+    assert "insights_deleted_at" in update_payload
+
+    # Ensure scan_files table was targeted for cleanup
+    assert call("scan_files") in mock_supabase_client.table.call_args_list
+
+    print("✓ Test 4 passed: Insights deleted without touching shared files")
+
+
+def test_5_data_integrity_validation(projects_service, mock_supabase_client, sample_user_id, sample_scan_data):
     """
     Test 4: Validate data integrity and completeness.
     

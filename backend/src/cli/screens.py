@@ -951,6 +951,14 @@ class ProjectDeleted(Message):
         self.project_id = project_id
 
 
+class ProjectInsightsCleared(Message):
+    """Message sent when user clears insights for a project."""
+
+    def __init__(self, project_id: str) -> None:
+        super().__init__()
+        self.project_id = project_id
+
+
 class ProjectsScreen(ModalScreen[None]):
     """Screen for browsing saved project scans."""
     
@@ -1054,9 +1062,10 @@ class ProjectsScreen(ModalScreen[None]):
             
             with Horizontal(id="projects-buttons"):
                 if self.projects:
-                    yield Button("👁 View Project", id="view-btn", variant="primary")
-                    yield Button("🗑 Delete", id="delete-btn", variant="error")
-                yield Button("✖ Close", id="close-btn")
+                    yield Button("View Project", id="view-btn", variant="primary")
+                    yield Button("Clear insights", id="clear-insights-btn", variant="warning")
+                    yield Button("Delete", id="delete-btn", variant="error")
+                yield Button("Close", id="close-btn")
             
             yield Static("", id="projects-status", classes="status-info")
     
@@ -1196,6 +1205,15 @@ class ProjectsScreen(ModalScreen[None]):
                     self._set_status("Invalid project ID", "error")
             else:
                 self._set_status("Please select a project first", "error")
+        elif button_id == "clear-insights-btn":
+            if self.selected_project:
+                project_id = self.selected_project.get("id")
+                if project_id:
+                    dispatch_message(self, ProjectInsightsCleared(project_id))
+                else:
+                    self._set_status("Invalid project ID", "error")
+            else:
+                self._set_status("Please select a project first", "error")
     
     def on_key(self, event: Key) -> None:
         """Handle keyboard shortcuts."""
@@ -1272,7 +1290,7 @@ class ProjectViewerScreen(ModalScreen[None]):
     def __init__(self, project: Dict[str, Any]) -> None:
         super().__init__()
         self.project = project
-        self.scan_data = project.get("scan_data", {})
+        self.scan_data = project.get("scan_data") or {}
         self.current_tab = "overview"
         
         # Determine available tabs

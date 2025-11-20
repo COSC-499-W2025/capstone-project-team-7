@@ -150,14 +150,64 @@ class ProjectsService:
             True if deleted successfully
         """
         try:
-            response = self.client.table("projects").delete().eq(
-                "user_id", user_id
-            ).eq("id", project_id).execute()
-            
-            return len(response.data) > 0
-            
+            response = (
+                self.client.table("projects")
+                .delete()
+                .eq("user_id", user_id)
+                .eq("id", project_id)
+                .execute()
+            )
         except Exception as exc:
             raise ProjectsServiceError(f"Failed to delete project: {exc}") from exc
+
+        return len(response.data) > 0
+
+    def delete_project_insights(self, user_id: str, project_id: str) -> bool:
+        """
+        Remove stored scan insights for a project while keeping user uploads intact.
+
+        This clears `scan_data` and all cached per-file metadata so the user can
+        re-run analysis later without losing shared artifacts.
+        """
+        try:
+            timestamp = datetime.now().isoformat()
+            update_fields = {
+                "scan_data": None,
+                "scan_timestamp": None,
+                "total_files": 0,
+                "total_lines": 0,
+                "languages": [],
+                "has_media_analysis": False,
+                "has_pdf_analysis": False,
+                "has_code_analysis": False,
+                "has_git_analysis": False,
+                "insights_deleted_at": timestamp,
+            }
+            response = (
+                self.client.table("projects")
+                .update(update_fields)
+                .eq("user_id", user_id)
+                .eq("id", project_id)
+                .execute()
+            )
+        except Exception as exc:
+            raise ProjectsServiceError(f"Failed to delete insights: {exc}") from exc
+
+        if not response.data:
+            return False
+
+        try:
+            (
+                self.client.table("scan_files")
+                .delete()
+                .eq("owner", user_id)
+                .eq("project_id", project_id)
+                .execute()
+            )
+        except Exception as exc:
+            raise ProjectsServiceError(f"Failed to prune cached files: {exc}") from exc
+
+        return True
 
     def get_project_by_name(self, user_id: str, project_name: str) -> Optional[Dict[str, Any]]:
         """
