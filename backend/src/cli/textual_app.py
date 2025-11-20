@@ -752,8 +752,7 @@ class PortfolioTextualApp(App):
         if self._scan_state.document_candidates:
             actions.append(("documents", "Document analysis"))
 
-        if self._scan_state.git_repos:
-            actions.append(("git", "Git analysis"))
+    
 
         if self._scan_state.has_media_files:
             actions.append(("media", "Media analysis"))
