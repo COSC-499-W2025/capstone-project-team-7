@@ -2,18 +2,22 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
+import threading
 import zipfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 import shutil
 import sys
-from typing import Optional, Dict, Any, List
+import tempfile
+import time
+from typing import Optional, Dict, Any, List, Sequence
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
 from textual.events import Mount
-from textual.widgets import Header, Footer, Static, ListView, ListItem, Label
+from textual.widgets import Footer, Header, Label, ListItem, ListView, ProgressBar, Static
 
 from .message_utils import dispatch_message
 
@@ -99,6 +103,7 @@ from ..auth.session import Session, SupabaseAuth, AuthError
 from ..auth import consent as consent_storage
 from ..local_analysis.git_repo import analyze_git_repo
 from ..local_analysis.media_analyzer import MediaAnalyzer
+from ..local_analysis.document_analyzer import DocumentAnalyzer, DocumentAnalysisResult
 
 # Optional PDF analysis dependencies
 try:
@@ -135,6 +140,12 @@ class PortfolioTextualApp(App):
         Binding("ctrl+q", "quit", "", show=False),
         Binding("ctrl+l", "toggle_account", "Sign In/Out"),
     ]
+    SCAN_PROGRESS_STEPS: Sequence[str] = (
+        "Preparing archive…",
+        "Parsing files from archive…",
+        "Analyzing metadata and summaries…",
+        "Detecting git repositories…",
+    )
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -155,16 +166,29 @@ class PortfolioTextualApp(App):
         self._resume_service = ResumeGenerationService()
         self._projects_service = ProjectsService()
         try:
-            self._resume_storage_service: Optional[ResumeStorageService] = ResumeStorageService()
-        except ResumeStorageError:
-            self._resume_storage_service = None
+# Resume storage service (from your branch)
+try:
+    self._resume_storage_service: Optional[ResumeStorageService] = ResumeStorageService()
+except ResumeStorageError:
+    self._resume_storage_service = None
 
-        self._preferences_screen = None
+# Document analyzer (from main)
+try:
+    self._document_analyzer = DocumentAnalyzer()
+    self._document_analysis_error: Optional[str] = None
+except Exception as exc:
+    self._document_analyzer = None
+    self._document_analysis_error = str(exc)
+    self._preferences_screen = None
+    self._consent_screen = InternalConsentScreen()
+
         self._scan_results_screen: Optional[ScanResultsScreen] = None
         self._media_analyzer = MediaAnalyzer()
         self._media_vision_ready = media_vision_capabilities_enabled()
         self._debug_log_path = Path.home() / ".textual_ai_debug.log"
         self._ai_output_path = Path.cwd() / "ai-analysis-latest.md"
+        self._scan_progress_bar: Optional[ProgressBar] = None
+        self._scan_progress_label: Optional[Static] = None
         self._debug_log("PortfolioTextualApp initialized")
 
     def compose(self) -> ComposeResult:
@@ -176,10 +200,15 @@ class PortfolioTextualApp(App):
         yield Vertical(
             Static("Navigation", classes="section-heading"),
             menu_list,
-            Static(
-                "Select an option from the menu to view details.",
-                id="detail",
-                classes="detail-block",
+            Vertical(
+                Static(
+                    "Select an option from the menu to view details.",
+                    id="detail",
+                    classes="detail-block",
+                ),
+                ProgressBar(total=100, show_percentage=False, classes="scan-progress hidden", id="scan-progress"),
+                Static("", classes="scan-progress-label hidden", id="scan-progress-label"),
+                classes="detail-wrapper",
             ),
             id="main",
         )
@@ -191,10 +220,20 @@ class PortfolioTextualApp(App):
         yield Footer()
 
     async def on_mount(self, event: Mount) -> None:
-        self._load_session()
+        await self._load_session()
         self._refresh_consent_state()
         self._load_preferences()
         self._update_session_status()
+        try:
+            self._scan_progress_bar = self.query_one("#scan-progress", ProgressBar)
+            self._scan_progress_bar.display = False
+        except Exception:
+            self._scan_progress_bar = None
+        try:
+            self._scan_progress_label = self.query_one("#scan-progress-label", Static)
+            self._scan_progress_label.add_class("hidden")
+        except Exception:
+            self._scan_progress_label = None
         menu = self.query_one("#menu", ListView)
         menu.focus()
         menu.index = 0
@@ -347,11 +386,12 @@ class PortfolioTextualApp(App):
 
         self._start_ai_analysis()
 
-    def _show_status(self, message: str, tone: str) -> None:
-        try:
-            print(f"STATUS: {message} [{tone}]", file=sys.__stderr__)
-        except Exception:
-            pass
+    def _show_status(self, message: str, tone: str, *, log_to_stderr: bool = True) -> None:
+        if log_to_stderr:
+            try:
+                print(f"STATUS: {message} [{tone}]", file=sys.__stderr__)
+            except Exception:
+                pass
         status_panel = self.query_one("#status", Static)
         status_panel.update(message)
         for tone_name in ("info", "success", "warning", "error"):
@@ -400,18 +440,178 @@ class PortfolioTextualApp(App):
 
     async def on_run_scan_requested(self, _: RunScanRequested) -> None:
         default_path = str(self._scan_state.target) if self._scan_state.target else ""
-        self.push_screen(ScanConfigScreen(default_path=default_path))
+        relevant_only = bool(self._scan_state.relevant_only)
+        self.push_screen(ScanConfigScreen(default_path=default_path, relevant_only=relevant_only))
 
     async def _run_scan(self, target: Path, relevant_only: bool) -> None:
         self._show_status("Scanning project – please wait…", "info")
         detail_panel = self.query_one("#detail", Static)
-        detail_panel.update("[b]Run Portfolio Scan[/b]\n\nPreparing scan…")
+        progress_bar = self._scan_progress_bar
+        if progress_bar:
+            progress_bar.display = True
+            progress_bar.update(progress=0)
+        progress_label = self._scan_progress_label
+        if progress_label:
+            progress_label.remove_class("hidden")
+            progress_label.update("Preparing scan…")
+        detail_panel.update(self._render_scan_progress([], None))
         preferences = self._current_scan_preferences()
         self._reset_scan_state()
+        progress_entries: list[dict[str, float | None]] = []
+        file_progress_state: dict[str, float | int | None] = {
+            "processed": 0,
+            "total": 0,
+            "start_offset": None,
+        }
+        progress_lock = threading.Lock()
+        progress_start = time.perf_counter()
+        progress_stop = asyncio.Event()
+        file_batch_threshold = 100
+        file_batch_interval = 0.25
+        file_last_reported = 0
+        file_last_emit = -file_batch_interval
+        self._show_status("Scanning project – press Ctrl+C to cancel.", "info")
+
+        cached_files: Dict[str, Dict[str, Any]] | None = None
+        session = self._session_state.session
+        project_name_hint = target.name if target else None
+        if session and project_name_hint:
+            try:
+                projects_service = self._get_projects_service()
+            except ProjectsServiceError as exc:
+                self._debug_log(f"Projects service unavailable for caching: {exc}")
+            else:
+                try:
+                    existing = await asyncio.to_thread(
+                        projects_service.get_project_by_name,
+                        session.user_id,
+                        project_name_hint,
+                    )
+                except ProjectsServiceError as exc:
+                    self._debug_log(f"Unable to lookup existing project metadata: {exc}")
+                else:
+                    if existing and existing.get("id"):
+                        project_id = existing["id"]
+                        self._scan_state.project_id = project_id
+                        try:
+                            cached_files = await asyncio.to_thread(
+                                projects_service.get_cached_files,
+                                session.user_id,
+                                project_id,
+                            )
+                        except ProjectsServiceError as exc:
+                            cached_files = {}
+                            self._debug_log(f"Unable to load cached metadata: {exc}")
+        self._scan_state.cached_files = cached_files or {}
+
+        def _progress_snapshot(
+            elapsed: float,
+        ) -> tuple[list[tuple[str, float]], tuple[str, float] | None, dict[str, float | int]]:
+            with progress_lock:
+                entries = [dict(entry) for entry in progress_entries]
+                file_state = dict(file_progress_state)
+            completed: list[tuple[str, float]] = []
+            current: tuple[str, float] | None = None
+            for entry in entries:
+                step = str(entry.get("step", ""))
+                duration = entry.get("duration")
+                if duration is not None:
+                    completed.append((step, float(duration)))
+                else:
+                    start = float(entry.get("start") or 0.0)
+                    current = (step, max(0.0, elapsed - start))
+            file_processed = int(file_state.get("processed") or 0)
+            file_total = int(file_state.get("total") or 0)
+            start_offset = file_state.get("start_offset")
+            file_elapsed = 0.0
+            if isinstance(start_offset, (int, float)):
+                file_elapsed = max(0.0, elapsed - float(start_offset))
+            file_snapshot: dict[str, float | int] = {
+                "processed": file_processed,
+                "total": file_total,
+                "elapsed": file_elapsed,
+            }
+            return completed, current, file_snapshot
+
+        async def _progress_heartbeat() -> None:
+            try:
+                while not progress_stop.is_set():
+                    completed, current, file_state = _progress_snapshot(time.perf_counter() - progress_start)
+                    ratio = self._progress_ratio(completed, current, file_state)
+                    try:
+                        detail_panel.update(self._render_scan_progress(completed, current))
+                        if progress_bar:
+                            progress_bar.update(progress=ratio * 100)
+                        if progress_label:
+                            progress_label.update(self._render_progress_label(current, file_state))
+                    except Exception:
+                        pass
+                    await asyncio.sleep(0.5)
+            finally:
+                completed, current, file_state = _progress_snapshot(time.perf_counter() - progress_start)
+                ratio = self._progress_ratio(completed, current, file_state)
+                try:
+                    detail_panel.update(self._render_scan_progress(completed, current))
+                    if progress_bar:
+                        progress_bar.update(progress=ratio * 100)
+                    if progress_label:
+                        progress_label.update(self._render_progress_label(current, file_state))
+                except Exception:
+                    pass
+
+        heartbeat_task = asyncio.create_task(_progress_heartbeat())
+
+        def _progress_update(event: str | Dict[str, object]) -> None:
+            nonlocal file_last_reported, file_last_emit
+            elapsed = time.perf_counter() - progress_start
+            with progress_lock:
+                if isinstance(event, dict):
+                    if event.get("type") == "files":
+                        processed = int(event.get("processed") or 0)
+                        total = int(event.get("total") or 0)
+                        should_emit = False
+                        if total > 0 and processed >= total:
+                            should_emit = True
+                        elif processed - file_last_reported >= file_batch_threshold:
+                            should_emit = True
+                        elif (elapsed - file_last_emit) >= file_batch_interval:
+                            should_emit = True
+                        if not should_emit:
+                            return
+                        file_last_reported = processed
+                        file_last_emit = elapsed
+                        file_progress_state["processed"] = processed
+                        file_progress_state["total"] = total
+                        if file_progress_state.get("start_offset") is None:
+                            file_progress_state["start_offset"] = elapsed
+                    return
+                step = str(event)
+                if not step:
+                    return
+                if progress_entries and progress_entries[-1].get("end") is None:
+                    prev = progress_entries[-1]
+                    prev_start = float(prev.get("start") or 0.0)
+                    prev["end"] = elapsed
+                    prev["duration"] = max(0.0, elapsed - prev_start)
+                progress_entries.append({"step": step, "start": elapsed, "end": None, "duration": None})
+
+        def _finalize_progress() -> None:
+            with progress_lock:
+                if progress_entries and progress_entries[-1].get("end") is None:
+                    final_elapsed = time.perf_counter() - progress_start
+                    last_entry = progress_entries[-1]
+                    last_start = float(last_entry.get("start") or 0.0)
+                    last_entry["end"] = final_elapsed
+                    last_entry["duration"] = max(0.0, final_elapsed - last_start)
 
         try:
             run_result = await asyncio.to_thread(
-                self._scan_service.run_scan, target, relevant_only, preferences
+                self._scan_service.run_scan,
+                target,
+                relevant_only,
+                preferences,
+                _progress_update,
+                cached_files=cached_files,
             )
         except ParserError as exc:
             self._surface_error(
@@ -441,11 +641,22 @@ class PortfolioTextualApp(App):
                 "Re-run the scan with a smaller directory or inspect application logs for more detail.",
             )
             return
+        finally:
+            _finalize_progress()
+            progress_stop.set()
+            await heartbeat_task
+            if progress_bar:
+                progress_bar.update(progress=0)
+                progress_bar.display = False
+            if progress_label:
+                progress_label.add_class("hidden")
+                progress_label.update("")
 
         self._scan_state.target = target
         self._scan_state.archive = run_result.archive_path
         self._scan_state.parse_result = run_result.parse_result
         self._scan_state.relevant_only = relevant_only
+        self._scan_state.scan_timings = run_result.timings
         self._scan_state.languages = run_result.languages
         self._scan_state.git_repos = run_result.git_repos
         self._scan_state.git_analysis = []
@@ -454,6 +665,8 @@ class PortfolioTextualApp(App):
         self._scan_state.pdf_candidates = run_result.pdf_candidates
         self._scan_state.pdf_results = []
         self._scan_state.pdf_summaries = []
+        self._scan_state.document_candidates = run_result.document_candidates
+        self._scan_state.document_results = []
         self._scan_state.code_file_count = len(self._code_service.code_file_candidates(run_result.parse_result))
         self._scan_state.code_analysis_result = None
         self._scan_state.code_analysis_error = None
@@ -564,11 +777,22 @@ class PortfolioTextualApp(App):
             actions.append(("contributions", "Contribution metrics"))
         actions.append(("resume", "Generate resume item"))
         actions.append(("export", "Export JSON report"))
+
         if self._scan_state.pdf_candidates:
-            label = "View PDF summaries" if self._scan_state.pdf_summaries else "Analyze PDF files"
-            actions.append(("pdf", label))
+          label = (
+            "View PDF summaries"
+            if self._scan_state.pdf_summaries
+            else "Analyze PDF files"
+           )
+          actions.append(("pdf", label))
+
+        if self._scan_state.document_candidates:
+            actions.append(("documents", "Document analysis"))
+
+    
+
         if self._scan_state.has_media_files:
-            actions.append(("media", "View media insights"))
+            actions.append(("media", "Media analysis"))
         actions.append(("close", "Close"))
         self._close_scan_results_screen()
         overview = self._format_scan_overview_with_projects()
@@ -706,8 +930,33 @@ class PortfolioTextualApp(App):
                 screen.display_output("Unable to generate PDF summaries.", context="PDF analysis")
                 screen.set_message("PDF analysis did not produce any summaries.", tone="warning")
                 return
-            screen.display_output(self._format_pdf_summaries(), context="PDF summaries")
+            screen.display_output(self._format_pdf_summaries(), context="PDF analysis")
             screen.set_message("PDF summaries ready.", tone="success")
+            return
+
+        if action == "documents":
+            if not self._scan_state.document_candidates:
+                screen.display_output("No document files were detected in the last scan.", context="Document analysis")
+                screen.set_message("No supported document files available for analysis.", tone="warning")
+                return
+            if not self._document_analyzer:
+                message = self._document_analysis_error or "Document analyzer is unavailable."
+                screen.display_output(message, context="Document analysis")
+                screen.set_message("Document analyzer unavailable.", tone="error")
+                return
+            if not self._scan_state.document_results:
+                screen.set_message("Analyzing documents…", tone="info")
+                try:
+                    await asyncio.to_thread(self._analyze_documents_sync)
+                except Exception as exc:
+                    screen.set_message(f"Failed to analyze documents: {exc}", tone="error")
+                    return
+            if not self._scan_state.document_results:
+                screen.display_output("Unable to analyze document files.", context="Document analysis")
+                screen.set_message("Document analysis did not produce any results.", tone="warning")
+                return
+            screen.display_output(self._format_document_analysis(), context="Document analysis")
+            screen.set_message("Document analysis ready.", tone="success")
             return
 
         if action == "git":
@@ -727,7 +976,7 @@ class PortfolioTextualApp(App):
 
         if action == "media":
             if not self._scan_state.has_media_files:
-                screen.display_output("No media files were detected in the last scan.", context="Media insights")
+                screen.display_output("No media files were detected in the last scan.", context="Media analysis")
                 screen.set_message("Run another scan with media assets to view insights.", tone="warning")
                 return
             screen.set_message("Summarizing media metadata…", tone="info")
@@ -736,7 +985,7 @@ class PortfolioTextualApp(App):
             except Exception as exc:  # pragma: no cover - media safeguard
                 screen.set_message(f"Failed to summarize media metadata: {exc}", tone="error")
                 return
-            screen.display_output(self._format_media_analysis(analysis), context="Media insights")
+            screen.display_output(self._format_media_analysis(analysis), context="Media analysis")
             screen.set_message("Media insights ready.", tone="success")
             return
 
@@ -1400,7 +1649,7 @@ class PortfolioTextualApp(App):
                 sections.append("\n".join(lines))
                 continue
             lines.append("")
-            lines.append("📝 SUMMARY")
+            lines.append("Summary")
             lines.append(f"  {summary.summary_text}")
             if summary.statistics:
                 stats = summary.statistics
@@ -1427,6 +1676,152 @@ class PortfolioTextualApp(App):
                     lines.append(f"  {idx}. {snippet}")
             sections.append("\n".join(lines))
         return "\n\n".join(sections).strip()
+
+    def _analyze_documents_sync(self) -> None:
+        analyzer = self._document_analyzer
+        if analyzer is None:
+            raise RuntimeError("Document analyzer is unavailable.")
+        archive_reader: Optional[zipfile.ZipFile] = None
+        if self._scan_state.archive and self._scan_state.archive.exists():
+            archive_reader = zipfile.ZipFile(self._scan_state.archive)
+        base_path = None
+        if self._scan_state.target and self._scan_state.target.is_dir():
+            base_path = self._scan_state.target
+        results: List[DocumentAnalysisResult] = []
+        try:
+            for meta in self._scan_state.document_candidates:
+                result = self._analyze_single_document(meta, analyzer, archive_reader, base_path)
+                if result:
+                    results.append(result)
+        finally:
+            if archive_reader:
+                archive_reader.close()
+        self._scan_state.document_results = results
+
+    def _analyze_single_document(
+        self,
+        meta: FileMetadata,
+        analyzer: DocumentAnalyzer,
+        archive_reader: Optional[zipfile.ZipFile],
+        base_path: Optional[Path],
+    ) -> DocumentAnalysisResult:
+        suffix = Path(meta.path).suffix or ".txt"
+        temp_path: Optional[Path] = None
+        try:
+            source_path: Optional[Path] = None
+            if base_path:
+                candidate = self._resolve_document_filesystem_path(meta.path, base_path)
+                if candidate and candidate.exists():
+                    source_path = candidate
+            if source_path is None:
+                payload = self._read_document_from_archive(meta, archive_reader)
+                if payload is None:
+                    return DocumentAnalysisResult(
+                        file_name=Path(meta.path).name,
+                        file_type=suffix.lower(),
+                        success=False,
+                        error_message="Document contents unavailable in scan archive.",
+                    )
+                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+                temp_file.write(payload)
+                temp_file.flush()
+                temp_file.close()
+                temp_path = Path(temp_file.name)
+                source_path = temp_path
+            return analyzer.analyze_document(source_path)
+        except Exception as exc:
+            return DocumentAnalysisResult(
+                file_name=Path(meta.path).name,
+                file_type=suffix.lower(),
+                success=False,
+                error_message=str(exc),
+            )
+        finally:
+            if temp_path and temp_path.exists():
+                try:
+                    temp_path.unlink()
+                except OSError:
+                    pass
+
+    def _read_document_from_archive(
+        self,
+        meta: FileMetadata,
+        archive_reader: Optional[zipfile.ZipFile],
+    ) -> Optional[bytes]:
+        if archive_reader is None:
+            return None
+        for candidate in self._document_archive_candidates(meta.path):
+            try:
+                return archive_reader.read(candidate)
+            except KeyError:
+                continue
+        return None
+
+    def _document_archive_candidates(self, stored_path: str) -> List[str]:
+        normalized = stored_path.replace("\\", "/")
+        candidates = [normalized]
+        stripped = normalized.lstrip("./")
+        if stripped and stripped not in candidates:
+            candidates.append(stripped)
+        if "/" in stripped:
+            _, tail = stripped.split("/", 1)
+            if tail and tail not in candidates:
+                candidates.append(tail)
+        return candidates
+
+    def _resolve_document_filesystem_path(self, stored_path: str, base_path: Path) -> Optional[Path]:
+        normalized = stored_path.replace("\\", "/").lstrip("./")
+        relative = Path(normalized)
+        if not relative.parts:
+            return None
+        if relative.parts[0] == base_path.name and len(relative.parts) > 1:
+            relative = Path(*relative.parts[1:])
+        return base_path / relative
+
+    def _format_document_analysis(self) -> str:
+        if not self._scan_state.document_results:
+            return "No document analysis available."
+        sections: List[str] = []
+        for result in self._scan_state.document_results:
+            lines: List[str] = []
+            lines.append("=" * 60)
+            lines.append(f"{result.file_name}")
+            lines.append("=" * 60)
+            if not result.success:
+                lines.append(f"❌ Unable to analyze file: {result.error_message or 'Unknown error.'}")
+                sections.append("\n".join(lines))
+                continue
+            metadata = result.metadata
+            if metadata:
+                lines.append(
+                    f"Words: {metadata.word_count} • Paragraphs: {metadata.paragraph_count} • "
+                    f"Lines: {metadata.line_count}"
+                )
+                lines.append(f"Estimated read time: {metadata.reading_time_minutes:.1f} minutes")
+                if metadata.heading_count:
+                    heading_preview = ", ".join(metadata.headings[:3]) if metadata.headings else ""
+                    if heading_preview:
+                        lines.append(f"Headings ({metadata.heading_count}): {heading_preview}")
+                    else:
+                        lines.append(f"Headings detected: {metadata.heading_count}")
+                if metadata.code_blocks or metadata.links or metadata.images:
+                    lines.append(
+                        f"Code blocks: {metadata.code_blocks} • Links: {metadata.links} • Images: {metadata.images}"
+                    )
+            if result.summary:
+                lines.append("")
+                lines.append("Summary:")
+                lines.append(result.summary.strip())
+            if result.keywords:
+                lines.append("")
+                lines.append("Keywords:")
+                keyword_list = ", ".join(word for word, _ in result.keywords[:10])
+                lines.append(keyword_list)
+            if result.error_message and result.success:
+                lines.append("")
+                lines.append(f"Warnings: {result.error_message}")
+            sections.append("\n".join(lines))
+        return "\n\n".join(sections)
 
     def _export_scan_report(self) -> Path:
         if self._scan_state.parse_result is None or self._scan_state.archive is None:
@@ -1485,6 +1880,7 @@ class PortfolioTextualApp(App):
                     "mime_type": meta.mime_type,
                     "created_at": meta.created_at.isoformat(),
                     "modified_at": meta.modified_at.isoformat(),
+                    "media_info": getattr(meta, "media_info", None),
                 }
                 for meta in result.files
             ],
@@ -1758,7 +2154,37 @@ class PortfolioTextualApp(App):
     def _show_consent_dialog(self) -> None:
         has_required = self._consent_state.record is not None
         has_external = self._has_external_consent()
-        self.push_screen(ConsentScreen(has_required, has_external))
+        screen = ConsentScreen(has_required, has_external)
+        self._consent_screen = screen
+        self.push_screen(screen)
+
+    def on_consent_screen_closed(self) -> None:
+        self._consent_screen = None
+
+    def _set_consent_dialog_busy(self, busy: bool) -> None:
+        screen = self._consent_screen
+        if not screen:
+            return
+        try:
+            screen.set_busy(busy)
+        except Exception:
+            pass
+
+    def _update_consent_dialog_state(
+        self,
+        *,
+        message: Optional[str] = None,
+        tone: str = "info",
+    ) -> None:
+        screen = self._consent_screen
+        if not screen:
+            return
+        try:
+            has_required = self._consent_state.record is not None
+            has_external = self._has_external_consent()
+            screen.update_state(has_required, has_external, message=message, tone=tone)
+        except Exception:
+            pass
 
     def _show_preferences_dialog(self) -> None:
         self._load_preferences()
@@ -1852,6 +2278,7 @@ class PortfolioTextualApp(App):
         self._scan_state.parse_result = None
         self._scan_state.archive = None
         self._scan_state.languages = []
+        self._scan_state.scan_timings = []
         self._scan_state.has_media_files = False
         self._scan_state.git_repos = []
         self._scan_state.git_analysis = []
@@ -1859,7 +2286,11 @@ class PortfolioTextualApp(App):
         self._scan_state.pdf_candidates = []
         self._scan_state.pdf_results = []
         self._scan_state.pdf_summaries = []
+        self._scan_state.document_candidates = []
+        self._scan_state.document_results = []
         self._scan_state.relevant_only = True
+        self._scan_state.project_id = None
+        self._scan_state.cached_files = {}
         self._close_scan_results_screen()
         self._ai_state.last_analysis = None
 
@@ -1882,30 +2313,49 @@ class PortfolioTextualApp(App):
     async def _handle_toggle_required(self) -> None:
         if not self._session_state.session:
             self._show_status("Sign in to manage consent.", "error")
+            self._update_consent_dialog_state(message="Sign in to manage consent.", tone="error")
+            self._set_consent_dialog_busy(False)
+            return
+        if not await self._ensure_session_token_fresh():
+            self._update_consent_dialog_state(message="Session expired. Please sign in again.", tone="error")
+            self._set_consent_dialog_busy(False)
             return
         self._show_status("Updating required consent…", "info")
+        self._update_consent_dialog_state(message="Updating required consent…", tone="info")
         try:
             message = await asyncio.to_thread(self._toggle_required_consent_sync)
         except ConsentError as exc:
             self._show_status(f"Consent error: {exc}", "error")
+            self._update_consent_dialog_state(message=f"Consent error: {exc}", tone="error")
         except Exception as exc:  # pragma: no cover - defensive fallback
             self._show_status(f"Unexpected consent error: {exc}", "error")
+            self._update_consent_dialog_state(message=f"Unexpected consent error: {exc}", tone="error")
         else:
             self._show_status(message, "success")
+            self._update_consent_dialog_state(message=message, tone="success")
         finally:
             self._after_consent_update()
 
     async def _handle_toggle_external(self) -> None:
         if not self._session_state.session:
             self._show_status("Sign in to manage consent.", "error")
+            self._update_consent_dialog_state(message="Sign in to manage consent.", tone="error")
+            self._set_consent_dialog_busy(False)
+            return
+        if not await self._ensure_session_token_fresh():
+            self._update_consent_dialog_state(message="Session expired. Please sign in again.", tone="error")
+            self._set_consent_dialog_busy(False)
             return
         self._show_status("Updating external services consent…", "info")
+        self._update_consent_dialog_state(message="Updating external services consent…", tone="info")
         try:
             message = await asyncio.to_thread(self._toggle_external_consent_sync)
         except Exception as exc:  # pragma: no cover - defensive fallback
             self._show_status(f"Unexpected consent error: {exc}", "error")
+            self._update_consent_dialog_state(message=f"Unexpected consent error: {exc}", tone="error")
         else:
             self._show_status(message, "success")
+            self._update_consent_dialog_state(message=message, tone="success")
         finally:
             self._after_consent_update()
 
@@ -1943,6 +2393,8 @@ class PortfolioTextualApp(App):
         self._refresh_consent_state()
         self._update_session_status()
         self._refresh_current_detail()
+        self._update_consent_dialog_state()
+        self._set_consent_dialog_busy(False)
 
     async def _handle_preferences_action(self, action: str, payload: Dict[str, Any]) -> None:
         if not self._session_state.session:
@@ -2200,9 +2652,11 @@ class PortfolioTextualApp(App):
             self._show_privacy_notice()
             return
         if event.action == "toggle_required":
+            self._set_consent_dialog_busy(True)
             asyncio.create_task(self._handle_toggle_required())
             return
         if event.action == "toggle_external":
+            self._set_consent_dialog_busy(True)
             asyncio.create_task(self._handle_toggle_external())
 
     def on_preferences_event(self, event: PreferencesEvent) -> None:
@@ -2211,14 +2665,52 @@ class PortfolioTextualApp(App):
 
     # --- Session, consent, and preferences helpers ---
 
-    def _load_session(self) -> None:
+    async def _load_session(self) -> None:
         session = self._session_service.load_session(self._session_state.session_path)
         self._session_state.session = session
-        if session:
-            self._session_state.last_email = session.email
-            # Restore consent persistence with the loaded session
-            consent_storage.set_session_token(session.access_token)
-            consent_storage.load_user_consents(session.user_id, session.access_token)
+        if not session:
+            return
+        await self._ensure_session_token_fresh()
+        session = self._session_state.session
+        if not session:
+            return
+        self._session_state.last_email = session.email
+        # Restore consent persistence with the loaded session
+        consent_storage.set_session_token(session.access_token)
+        consent_storage.load_user_consents(session.user_id, session.access_token)
+
+    async def _ensure_session_token_fresh(self, *, force_refresh: bool = False) -> bool:
+        session = self._session_state.session
+        if not session:
+            return False
+        if not session.refresh_token:
+            return bool(session.access_token)
+        if not force_refresh and not self._session_service.needs_refresh(session):
+            return True
+        refresh_token = session.refresh_token
+        try:
+            auth = self._get_auth()
+        except AuthError as exc:
+            self._session_state.auth_error = str(exc)
+            self._show_status(f"Unable to refresh session: {exc}", "error")
+            return False
+        try:
+            refreshed = await asyncio.to_thread(auth.refresh_session, refresh_token)
+        except AuthError as exc:
+            self._session_state.auth_error = str(exc)
+            self._logout()
+            self._show_status("Session expired. Please sign in again.", "warning")
+            return False
+        except Exception as exc:
+            self._show_status(f"Unable to refresh session: {exc}", "warning")
+            return False
+
+        self._session_state.session = refreshed
+        self._session_state.last_email = refreshed.email
+        consent_storage.set_session_token(refreshed.access_token)
+        consent_storage.load_user_consents(refreshed.user_id, refreshed.access_token)
+        self._persist_session()
+        return True
 
     def _refresh_consent_state(self) -> None:
         self._consent_state.record = None
@@ -2260,6 +2752,94 @@ class PortfolioTextualApp(App):
         if profile_name is None and isinstance(config, dict):
             profile_name = config.get("current_profile")
         return self._preferences_service.preferences_from_config(config, profile_name)
+
+    def _render_scan_progress(
+        self,
+        completed_steps: Sequence[tuple[str, float]],
+        current_step: tuple[str, float] | None,
+    ) -> str:
+        lines = ["[b]Run Portfolio Scan[/b]", "", "[b]Current step[/b]"]
+        if current_step:
+            step, elapsed = current_step
+            lines.append(f"• {step} ({elapsed:.1f}s elapsed)")
+        else:
+            lines.append("• Initializing scan…")
+
+        if completed_steps:
+            lines.append("")
+            lines.append("[b]Completed[/b]")
+            for step, duration in completed_steps[-4:]:
+                lines.append(f"• {step} ({duration:.1f}s)")
+
+        lines.append("")
+        lines.append("Large directories may take a minute. Press Ctrl+C to cancel safely.")
+        return "\n".join(lines)
+
+    def _render_progress_label(
+        self,
+        current_step: tuple[str, float] | None,
+        file_progress: Dict[str, object] | None,
+    ) -> str:
+        if current_step:
+            step, elapsed = current_step
+            if file_progress and self._is_parsing_step(step):
+                total = int(file_progress.get("total") or 0)
+                processed = int(file_progress.get("processed") or 0)
+                if total > 0:
+                    ratio = max(0.0, min(1.0, processed / total))
+                    if ratio >= 1.0:
+                        return f"{step} — 100% complete"
+                    eta_suffix = ""
+                    elapsed_progress = float(file_progress.get("elapsed") or 0.0)
+                    if processed > 0 and processed < total and elapsed_progress > 0.0:
+                        remaining = total - processed
+                        eta_seconds = remaining * (elapsed_progress / processed)
+                        if eta_seconds > 0:
+                            eta_suffix = f" — ETA {self._format_eta_duration(eta_seconds)}"
+                    return f"{step} — {ratio * 100:.0f}% complete{eta_suffix}"
+            return f"{step} ({elapsed:.1f}s elapsed)"
+        return "Preparing scan…"
+
+    @staticmethod
+    def _is_parsing_step(step: str) -> bool:
+        return "parsing files" in step.lower()
+
+    @staticmethod
+    def _format_eta_duration(seconds: float) -> str:
+        if not math.isfinite(seconds):
+            return "--"
+        seconds = max(0.0, seconds)
+        if seconds < 1:
+            return "<1s"
+        minutes, secs = divmod(int(round(seconds)), 60)
+        if minutes >= 60:
+            hours, minutes = divmod(minutes, 60)
+            return f"{hours}h {minutes:02d}m"
+        if minutes:
+            return f"{minutes}m {secs:02d}s"
+        return f"{secs}s"
+
+    def _progress_ratio(
+        self,
+        completed_steps: Sequence[tuple[str, float]],
+        current_step: tuple[str, float] | None,
+        file_progress: Dict[str, object] | None,
+    ) -> float:
+        base_total = len(self.SCAN_PROGRESS_STEPS) or 1
+        total_slots = max(base_total, len(completed_steps) + (1 if current_step else 0), 1)
+        completed_count = min(len(completed_steps), total_slots)
+        ratio = completed_count / total_slots
+        if current_step:
+            in_progress = 0.5
+            if file_progress and self._is_parsing_step(current_step[0]):
+                total = int(file_progress.get("total") or 0)
+                processed = int(file_progress.get("processed") or 0)
+                if total > 0:
+                    in_progress = max(0.0, min(1.0, processed / total))
+            ratio += in_progress / total_slots
+        if not current_step and completed_count >= total_slots:
+            return 1.0
+        return max(0.0, min(1.0, ratio))
 
     def _render_account_detail(self) -> str:
         lines = ["[b]Account[/b]"]
@@ -2391,9 +2971,12 @@ class PortfolioTextualApp(App):
                 f"• Target: {target}",
                 f"• Relevant files only: {'Yes' if self._scan_state.relevant_only else 'No'}",
                 f"• Files processed: {files_processed}",
-                f"• Issues: {issues_count}",
             ]
         )
+        skipped = summary.get("files_skipped")
+        if skipped:
+            lines.append(f"• Cached skips: {skipped}")
+        lines.append(f"• Issues: {issues_count}")
         if filtered is not None and self._scan_state.relevant_only:
             lines.append(f"• Filtered out: {filtered}")
         lines.extend(
@@ -2793,19 +3376,21 @@ class PortfolioTextualApp(App):
             project_name = f"Scan_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             project_path = "Unknown"
         
+        session = self._session_state.session
+        if not session:
+            return
+
         try:
-            await asyncio.to_thread(
+            project_record = await asyncio.to_thread(
                 projects_service.save_scan,
-                self._session_state.session.user_id,
+                session.user_id,
                 project_name,
                 project_path,
-                scan_data
+                scan_data,
             )
-            self._debug_log(f"Scan saved to database: {project_name}")
         except Exception as exc:
             # Log but don't fail - user still has local export
             self._debug_log(f"Failed to save scan to database: {exc}")
-    
     async def _save_resume_to_database(self, resume_item: ResumeItem) -> None:
         """Persist generated resume items for signed-in users."""
         if not self._session_state.session:
@@ -2814,6 +3399,7 @@ class PortfolioTextualApp(App):
             resume_service = self._get_resume_storage_service()
         except ResumeStorageError:
             return
+
         metadata = self._collect_resume_metadata()
         target_path = self._scan_state.target
         try:
@@ -2842,22 +3428,29 @@ class PortfolioTextualApp(App):
                     languages.append(str(name))
             elif entry:
                 languages.append(str(entry))
+
         metadata: Dict[str, Any] = {}
         if languages:
             metadata["languages"] = languages
+
         metadata["code_file_count"] = self._scan_state.code_file_count
         metadata["git_repo_count"] = len(self._scan_state.git_repos)
+
         if self._scan_state.target:
             metadata["target_path"] = str(self._scan_state.target)
+
         if self._scan_state.skills_analysis_result:
             metadata["skills"] = [
-                getattr(skill, "name", str(skill)) for skill in self._scan_state.skills_analysis_result[:8]
+                getattr(skill, "name", str(skill))
+                for skill in self._scan_state.skills_analysis_result[:8]
             ]
+
         metrics = self._scan_state.contribution_metrics
         if metrics:
             metadata["total_commits"] = getattr(metrics, "total_commits", None)
             metadata["total_contributors"] = getattr(metrics, "total_contributors", None)
             metadata["project_type"] = getattr(metrics, "project_type", None)
+
         return {key: value for key, value in metadata.items() if value not in (None, [], {})}
 
     @staticmethod
@@ -2871,9 +3464,106 @@ class PortfolioTextualApp(App):
         self._update_session_status()
         self._show_status("Session expired — press Ctrl+L to sign in again.", "warning")
 
+    # ----------------------------
+    # main branch: project caching
+    # ----------------------------
+
+    async def _save_project_scan(
+        self,
+        project_name: str,
+        scan_data: Dict[str, Any],
+        project_record: Dict[str, Any],
+        projects_service: ProjectsService,
+        session: Session,
+    ) -> None:
+        """Save project scan results and cached file metadata."""
+        return  # (This return was already present in your screenshot; keep it)
+
+        project_id = project_record.get("id")
+        if project_id:
+            self._scan_state.project_id = project_id
+        self._debug_log(f"Scan saved to database: {project_name}")
+
+        if not project_id:
+            return
+
+        cached_records = self._build_cached_file_records(scan_data)
+        if not cached_records:
+            return
+
+        try:
+            await asyncio.to_thread(
+                projects_service.upsert_cached_files,
+                session.user_id,
+                project_id,
+                cached_records,
+            )
+
+            previous_paths = set(self._scan_state.cached_files.keys())
+            current_paths = {
+                entry["relative_path"]
+                for entry in cached_records
+                if entry.get("relative_path")
+            }
+            stale_paths = sorted(previous_paths - current_paths)
+
+            if stale_paths:
+                await asyncio.to_thread(
+                    projects_service.delete_cached_files,
+                    session.user_id,
+                    project_id,
+                    stale_paths,
+                )
+
+            self._scan_state.cached_files = {
+                entry["relative_path"]: entry
+                for entry in cached_records
+                if entry.get("relative_path")
+            }
+
+        except ProjectsServiceError as exc:
+            self._debug_log(f"Failed to update cached file metadata: {exc}")
+
+    def _build_cached_file_records(self, scan_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        files = scan_data.get("files") or []
+        records: List[Dict[str, Any]] = []
+        if not files:
+            return records
+
+        timestamp = datetime.now(timezone.utc).isoformat()
+
+        for entry in files:
+            path = entry.get("path")
+            modified = entry.get("modified_at")
+            if not path or not modified:
+                continue
+
+            media_info = entry.get("media_info")
+            metadata: Dict[str, Any] = {}
+            if media_info:
+                metadata["media_info"] = media_info
+
+            records.append(
+                {
+                    "relative_path": path,
+                    "size_bytes": entry.get("size_bytes"),
+                    "mime_type": entry.get("mime_type"),
+                    "metadata": metadata,
+                    "last_seen_modified_at": modified,
+                    "last_scanned_at": timestamp,
+                }
+            )
+
+        return records
+
 
 def main() -> None:
-    PortfolioTextualApp().run()
+    try:
+        PortfolioTextualApp().run()
+    except KeyboardInterrupt:
+        # Ensure Ctrl+C exits cleanly without dumping a traceback to the terminal.
+        print("\nScan interrupted by user. Exiting…")
+        raise SystemExit(130) from None
 
 
 if __name__ == "__main__":

@@ -48,6 +48,7 @@ class FakeSession:
     user_id: str
     email: str
     access_token: str = "token"
+    refresh_token: str = "refresh"
 
 
 class FakeAuth:

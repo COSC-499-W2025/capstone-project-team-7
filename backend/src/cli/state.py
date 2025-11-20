@@ -41,6 +41,9 @@ class ScanState:
     archive: Optional[Path] = None
     parse_result: Optional[ParseResult] = None
     relevant_only: bool = True
+    project_id: Optional[str] = None
+    cached_files: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    scan_timings: List[tuple[str, float]] = field(default_factory=list)
     languages: List[Dict[str, Any]] = field(default_factory=list)
     git_repos: List[Path] = field(default_factory=list)
     git_analysis: List[Dict[str, Any]] = field(default_factory=list)
@@ -49,6 +52,8 @@ class ScanState:
     pdf_candidates: List[FileMetadata] = field(default_factory=list)
     pdf_results: List[Any] = field(default_factory=list)
     pdf_summaries: List[Any] = field(default_factory=list)
+    document_candidates: List[FileMetadata] = field(default_factory=list)
+    document_results: List[Any] = field(default_factory=list)
     code_file_count: int = 0
     code_analysis_result: Optional[Any] = None
     code_analysis_error: Optional[str] = None

@@ -56,6 +56,28 @@ Header, Footer {
     min-height: 6;
 }
 
+.scan-progress {
+    height: 2;
+    margin-top: 1;
+}
+
+.scan-progress.hidden {
+    display: none;
+}
+
+.scan-progress-label {
+    color: #94a3b8;
+    margin-top: 0;
+}
+
+.scan-progress-label.hidden {
+    display: none;
+}
+
+.scan-progress .progress-label {
+    display: none;
+}
+
 .status {
     margin-top: 1;
     padding: 0 2;
@@ -117,6 +139,22 @@ ScanConfigScreen {
     color: #e5e7eb;
 }
 
+.dialog-message.info {
+    color: #94a3b8;
+}
+
+.dialog-message.success {
+    color: #4ade80;
+}
+
+.dialog-message.warning {
+    color: #facc15;
+}
+
+.dialog-message.error {
+    color: #fda4af;
+}
+
 .dialog-buttons {
     padding-top: 1;
 }
@@ -132,6 +170,7 @@ ScanConfigScreen {
 .consent-actions Button {
     margin-left: 0;
     margin-top: 1;
+    width: 100%;
 }
 
 .consent-actions Button:first-child {
@@ -143,55 +182,78 @@ ScanConfigScreen {
     max-width: 80;
 }
 
+.pref-columns {
+    width: 100%;
+}
+
 .pref-column {
     width: 1fr;
+    padding-bottom: 1;
 }
 
 .pref-column-left {
-    padding-right: 1;
+    padding-right: 2;
 }
 
 .pref-column-right {
-    padding-left: 1;
+    padding-left: 2;
 }
 
 #pref-profile-list {
-    height: 16;
+    height: 8;
+    min-height: 8;
     border: round $primary;
     margin-bottom: 1;
 }
 
 .pref-column-left Button {
     margin-top: 1;
+    width: 100%;
 }
 
 .pref-column-left Button:first-child {
     margin-top: 0;
 }
 
-.pref-column-right Checkbox {
+.pref-column-right .switch-row {
     margin-top: 1;
 }
 
-.group-title {
-    text-style: bold;
-    margin-bottom: 1;
+.switch-row Switch {
+    margin-right: 1;
 }
 
-.dialog-message.info {
-    color: $text;
+.group-subtitle {
+    margin-top: 1;
+    color: #9ca3af;
+    text-style: italic;
 }
 
-.dialog-message.warning {
-    color: #facc15;
+.field-group {
+    width: 100%;
+    margin-top: 1;
 }
 
-.dialog-message.error {
-    color: #fda4af;
+.field-label {
+    color: #94a3b8;
 }
 
-.dialog-message.success {
-    color: #4ade80;
+.pref-divider {
+    height: 1;
+    margin-top: 1;
+}
+
+.pref-actions-row {
+    margin-top: 1;
+}
+
+.pref-action-button {
+    width: 1fr;
+    margin-left: 1;
+}
+
+.pref-action-button:first-child {
+    margin-left: 0;
 }
 
 #notice-log {

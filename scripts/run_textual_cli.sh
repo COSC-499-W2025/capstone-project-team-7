@@ -29,7 +29,7 @@ fi
 if [ ! -f "$STAMP_FILE" ] || [ "$REQ_FILE" -nt "$STAMP_FILE" ]; then
   echo "Installing backend dependencies (including PDF analysis extras)..."
   "$PYTHON_BIN" -m pip install --upgrade pip
-  "$PYTHON_BIN" -m pip install -r "$REQ_FILE"
+  "$PYTHON_BIN" -m pip install -r "$REQ_FILE" 
   touch "$STAMP_FILE"
 fi
 

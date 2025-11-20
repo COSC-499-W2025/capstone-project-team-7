@@ -158,3 +158,140 @@ class ProjectsService:
             
         except Exception as exc:
             raise ProjectsServiceError(f"Failed to delete project: {exc}") from exc
+
+    def get_project_by_name(self, user_id: str, project_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Fetch an existing project row by name.
+
+        Returns the project record or None if not found.
+        """
+        try:
+            response = (
+                self.client.table("projects")
+                .select("*")
+                .eq("user_id", user_id)
+                .eq("project_name", project_name)
+                .limit(1)
+                .execute()
+            )
+        except Exception as exc:
+            raise ProjectsServiceError(f"Failed to load project: {exc}") from exc
+
+        data = response.data or []
+        return data[0] if data else None
+
+    # --- Cached file metadata helpers -------------------------------------------------
+
+    def get_cached_files(self, user_id: str, project_id: str) -> Dict[str, Dict[str, Any]]:
+        """
+        Return cached metadata for previously scanned files.
+
+        The payload is a mapping of relative_path -> metadata dict so callers can
+        decide whether a file needs to be reprocessed.
+        """
+        try:
+            response = (
+                self.client.table("scan_files")
+                .select(
+                    "relative_path, size_bytes, mime_type, sha256, metadata,"
+                    " last_seen_modified_at, last_scanned_at"
+                )
+                .eq("owner", user_id)
+                .eq("project_id", project_id)
+                .execute()
+            )
+        except Exception as exc:
+            raise ProjectsServiceError(f"Failed to load cached files: {exc}") from exc
+
+        cached: Dict[str, Dict[str, Any]] = {}
+        for row in response.data or []:
+            path = row.get("relative_path")
+            if not path:
+                continue
+            normalized = str(path).replace("\\", "/")
+            cached[normalized] = {
+                "size_bytes": row.get("size_bytes"),
+                "mime_type": row.get("mime_type"),
+                "sha256": row.get("sha256"),
+                "metadata": row.get("metadata") or {},
+                "last_seen_modified_at": row.get("last_seen_modified_at"),
+                "last_scanned_at": row.get("last_scanned_at"),
+            }
+        return cached
+
+    def upsert_cached_files(
+        self,
+        user_id: str,
+        project_id: str,
+        files: List[Dict[str, Any]],
+    ) -> None:
+        """
+        Persist cached metadata for all files included in a scan.
+
+        Args:
+            user_id: Owner of the project
+            project_id: Project identifier
+            files: List of dictionaries with keys:
+                - relative_path (str)
+                - size_bytes (int)
+                - mime_type (str)
+                - sha256 (str | None)
+                - metadata (dict)
+                - last_seen_modified_at (datetime ISO string)
+                - last_scanned_at (datetime ISO string)
+        """
+        if not files:
+            return
+
+        payload = []
+        for entry in files:
+            path = entry.get("relative_path")
+            modified = entry.get("last_seen_modified_at")
+            scanned = entry.get("last_scanned_at")
+            if not path or not modified or not scanned:
+                continue
+            payload.append(
+                {
+                    "owner": user_id,
+                    "project_id": project_id,
+                    "relative_path": path,
+                    "size_bytes": entry.get("size_bytes"),
+                    "mime_type": entry.get("mime_type"),
+                    "sha256": entry.get("sha256"),
+                    "metadata": entry.get("metadata") or {},
+                    "last_seen_modified_at": modified,
+                    "last_scanned_at": scanned,
+                }
+            )
+
+        if not payload:
+            return
+
+        try:
+            self.client.table("scan_files").upsert(
+                payload,
+                on_conflict="project_id,relative_path",
+            ).execute()
+        except Exception as exc:
+            raise ProjectsServiceError(f"Failed to upsert cached files: {exc}") from exc
+
+    def delete_cached_files(
+        self,
+        user_id: str,
+        project_id: str,
+        relative_paths: List[str],
+    ) -> None:
+        """Delete cached file rows for a project."""
+        if not relative_paths:
+            return
+        try:
+            (
+                self.client.table("scan_files")
+                .delete()
+                .eq("owner", user_id)
+                .eq("project_id", project_id)
+                .in_("relative_path", relative_paths)
+                .execute()
+            )
+        except Exception as exc:
+            raise ProjectsServiceError(f"Failed to delete cached files: {exc}") from exc

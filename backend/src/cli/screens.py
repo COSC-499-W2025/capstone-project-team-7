@@ -12,13 +12,13 @@ from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widgets import (
     Button,
-    Checkbox,
     Input,
     Label,
     ListItem,
     ListView,
     Log,
     Static,
+    Switch,
 )
 
 try:
@@ -59,7 +59,11 @@ class ScanConfigScreen(ModalScreen[None]):
                 classes="dialog-subtitle",
             ),
             Input(value=self._default_path, placeholder="/path/to/project", id="scan-path"),
-            Checkbox("Relevant files only", value=self._default_relevant, id="scan-relevant"),
+            Horizontal(
+                Switch(value=self._default_relevant, id="scan-relevant"),
+                Label("Relevant files only"),
+                classes="switch-row",
+            ),
             Static("", id="scan-message", classes="dialog-message"),
             Horizontal(
                 Button("Cancel", id="cancel"),
@@ -78,7 +82,7 @@ class ScanConfigScreen(ModalScreen[None]):
         if not path_value:
             self.query_one("#scan-message", Static).update("Provide a file system path before running the scan.")
             return
-        checkbox = self.query_one("#scan-relevant", Checkbox)
+        checkbox = self.query_one("#scan-relevant", Switch)
         target = Path(path_value).expanduser()
         dispatch_message(self, ScanParametersChosen(target, bool(checkbox.value)))
         self.dismiss(None)
@@ -333,19 +337,14 @@ class ConsentScreen(ModalScreen[None]):
         self._has_external = has_external
 
     def compose(self) -> ComposeResult:
-        required_label = "Withdraw required consent" if self._has_required else "Grant required consent"
-        external_label = "Disable external services" if self._has_external else "Enable external services"
-        status_lines = []
-        status_lines.append(f"Required consent: {'granted' if self._has_required else 'missing'}")
-        status_lines.append(f"External services: {'enabled' if self._has_external else 'disabled'}")
-
         yield Vertical(
             Static("Manage consent", classes="dialog-title"),
-            Static("\n".join(status_lines), classes="dialog-subtitle"),
+            Static(self._status_text(), id="consent-status", classes="dialog-subtitle"),
+            Static("", id="consent-message", classes="dialog-message consent-message"),
             Vertical(
-                Button("Review notice", id="consent-review"),
-                Button(required_label, id="consent-required", variant="primary"),
-                Button(external_label, id="consent-external"),
+                Button("Review privacy notice", id="consent-review", variant="primary"),
+                Button(self._required_button_label(), id="consent-required", variant="primary"),
+                Button(self._external_button_label(), id="consent-external", variant="primary"),
                 classes="consent-actions",
             ),
             Horizontal(
@@ -368,12 +367,69 @@ class ConsentScreen(ModalScreen[None]):
             self.dismiss(None)
             return
         dispatch_message(self, ConsentAction(action))
-        if action != "review":
-            self.dismiss(None)
 
     def on_key(self, event: Key) -> None:  # pragma: no cover - keyboard shortcut
         if event.key == "escape":
             self.dismiss(None)
+
+    def update_state(
+        self,
+        has_required: bool,
+        has_external: bool,
+        *,
+        message: Optional[str] = None,
+        tone: str = "info",
+    ) -> None:
+        self._has_required = has_required
+        self._has_external = has_external
+        status_widget = self.query_one("#consent-status", Static)
+        status_widget.update(self._status_text())
+        self._update_button_labels()
+        if message is not None:
+            self._set_message(message, tone=tone)
+
+    def set_busy(self, busy: bool) -> None:
+        for button_id in ("consent-review", "consent-required", "consent-external"):
+            try:
+                button = self.query_one(f"#{button_id}", Button)
+            except Exception:  # pragma: no cover - defensive fallback
+                continue
+            button.disabled = busy
+
+    def dismiss(self, result: Optional[object] = None) -> None:  # pragma: no cover - UI callback
+        super().dismiss(result)
+        callback = getattr(self.app, "on_consent_screen_closed", None)
+        if callable(callback):
+            callback()
+
+    def _status_text(self) -> str:
+        lines = [
+            f"Required consent: {'granted' if self._has_required else 'missing'}",
+            f"External services: {'enabled' if self._has_external else 'disabled'}",
+        ]
+        return "\n".join(lines)
+
+    def _required_button_label(self) -> str:
+        return "Withdraw required consent" if self._has_required else "Grant required consent"
+
+    def _external_button_label(self) -> str:
+        return "Disable external services" if self._has_external else "Enable external services"
+
+    def _update_button_labels(self) -> None:
+        try:
+            required_button = self.query_one("#consent-required", Button)
+            external_button = self.query_one("#consent-external", Button)
+        except Exception:  # pragma: no cover - defensive fallback
+            return
+        required_button.label = self._required_button_label()
+        external_button.label = self._external_button_label()
+
+    def _set_message(self, text: str, *, tone: str) -> None:
+        message_widget = self.query_one("#consent-message", Static)
+        message_widget.update(text)
+        for class_name in ("info", "success", "warning", "error"):
+            message_widget.remove_class(class_name)
+        message_widget.add_class(tone)
 
 
 class NoticeScreen(ModalScreen[None]):
@@ -443,6 +499,7 @@ class PreferencesScreen(ModalScreen[None]):
                 Vertical(
                     Static("Profiles", classes="group-title"),
                     ListView(*profile_items, id="pref-profile-list"),
+                    Static("Profile actions", classes="group-subtitle"),
                     Button("Set as active", id="pref-set-active"),
                     Button("Create new profile", id="pref-new-profile"),
                     Button("Delete profile", id="pref-delete-profile"),
@@ -455,19 +512,28 @@ class PreferencesScreen(ModalScreen[None]):
                     Input(placeholder="Extensions (comma separated)", id="pref-extensions"),
                     Input(placeholder="Exclude directories (comma separated)", id="pref-excludes"),
                     Static("General settings", classes="group-title"),
-                    Input(placeholder="Max file size (MB)", id="pref-max-size"),
-                    Checkbox("Follow symbolic links", id="pref-follow-symlinks"),
+                    Horizontal(
+                        Switch(id="pref-follow-symlinks"),
+                        Label("Follow symbolic links"),
+                        classes="switch-row",
+                    ),
+                    Vertical(
+                        Static("Max file size (MB)", classes="field-label"),
+                        Input(placeholder="Enter a limit (blank = unlimited)", id="pref-max-size"),
+                        classes="field-group",
+                    ),
                     classes="pref-column pref-column-right",
                 ),
+                classes="pref-columns",
             ),
             Static("", id="pref-message", classes="dialog-message"),
+            Static("", classes="pref-divider"),
             Horizontal(
-                Button("Back", id="pref-cancel"),
-                Button("Save profile", id="pref-save-profile", variant="primary"),
-                Button("Save settings", id="pref-save-settings"),
-                classes="dialog-buttons",
+                Button("Back", id="pref-cancel", variant="primary", classes="pref-action-button"),
+                Button("Save profile", id="pref-save-profile", variant="primary", classes="pref-action-button"),
+                Button("Save settings", id="pref-save-settings", variant="primary", classes="pref-action-button"),
+                classes="pref-actions-row",
             ),
-            classes="dialog preferences-dialog",
         )
 
     def on_mount(self, _: Mount) -> None:  # pragma: no cover - focus wiring
@@ -591,7 +657,7 @@ class PreferencesScreen(ModalScreen[None]):
 
     def _collect_settings(self) -> Optional[Dict[str, Any]]:
         size_input = self.query_one("#pref-max-size", Input)
-        follow_checkbox = self.query_one("#pref-follow-symlinks", Checkbox)
+        follow_switch = self.query_one("#pref-follow-symlinks", Switch)
 
         value = size_input.value.strip()
         if value and not value.isdigit():
@@ -602,15 +668,15 @@ class PreferencesScreen(ModalScreen[None]):
         max_size = int(value) if value else None
         return {
             "max_file_size_mb": max_size,
-            "follow_symlinks": bool(follow_checkbox.value),
+            "follow_symlinks": bool(follow_switch.value),
         }
 
     def _apply_general_settings(self) -> None:
         size_input = self.query_one("#pref-max-size", Input)
-        follow_checkbox = self.query_one("#pref-follow-symlinks", Checkbox)
+        follow_switch = self.query_one("#pref-follow-symlinks", Switch)
         max_size = self._summary.get("max_file_size_mb")
         size_input.value = str(max_size) if max_size is not None else ""
-        follow_checkbox.value = bool(self._summary.get("follow_symlinks"))
+        follow_switch.value = bool(self._summary.get("follow_symlinks"))
 
     def _sync_profile_selection(self, preferred: Optional[str]) -> None:
         list_view = self.query_one("#pref-profile-list", ListView)
