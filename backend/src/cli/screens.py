@@ -1731,8 +1731,121 @@ class ProjectViewerScreen(ModalScreen[None]):
         return "\n".join(lines)
         
     def _render_pdf_analysis(self) -> str:
-        """Render PDF analysis - stub."""
-        return "PDF analysis rendering coming soon..."
+        """Render PDF analysis tab."""
+        pdf_data = self.scan_data.get("pdf_analysis", {})
+        
+        if not pdf_data:
+            return "No PDF analysis data available.\n\nPDFs must be analyzed during the scan for data to appear here."
+        
+        lines: List[str] = ["[b]PDF Document Analysis[/b]\n"]
+        
+        # Summary stats
+        total_pdfs = pdf_data.get("total_pdfs", 0)
+        successful = pdf_data.get("successful", 0)
+        
+        lines.append("[b]Summary:[/b]")
+        lines.append(f"  • Total PDFs: {total_pdfs}")
+        lines.append(f"  • Successfully analyzed: {successful}")
+        
+        if total_pdfs > 0 and successful < total_pdfs:
+            failed = total_pdfs - successful
+            lines.append(f"  • Failed to analyze: {failed}")
+        
+        lines.append("")
+        
+        # Individual PDF summaries
+        summaries = pdf_data.get("summaries", [])
+        if not summaries:
+            lines.append("No PDF summaries available.")
+            return "\n".join(lines)
+        
+        # Display each PDF
+        for idx, summary in enumerate(summaries, 1):
+            if idx > 1:
+                lines.append("")  # Spacing between PDFs
+            
+            file_name = summary.get("file_name", "Unknown")
+            success = summary.get("success", False)
+            
+            lines.append("=" * 60)
+            lines.append(f"[b]📄 {idx}. {file_name}[/b]")
+            lines.append("=" * 60)
+            
+            if not success:
+                error = summary.get("error", "Unknown error")
+                lines.append(f"❌ Failed to analyze: {error}")
+                continue
+            
+            # Summary text
+            summary_text = summary.get("summary")
+            if summary_text:
+                lines.append("")
+                lines.append("[b]Summary:[/b]")
+                # Wrap long summary text
+                if len(summary_text) > 200:
+                    lines.append(f"  {summary_text[:197]}...")
+                    lines.append("  [i](Full summary truncated for display)[/i]")
+                else:
+                    lines.append(f"  {summary_text}")
+            
+            # Statistics
+            statistics = summary.get("statistics", {})
+            if statistics and any(statistics.values()):
+                lines.append("")
+                lines.append("[b]📊 Statistics:[/b]")
+                
+                words = statistics.get("total_words", 0)
+                sentences = statistics.get("total_sentences", 0)
+                unique = statistics.get("unique_words", 0)
+                avg_len = statistics.get("avg_sentence_length", 0)
+                
+                if words:
+                    lines.append(f"  • Total words: {words:,}")
+                if sentences:
+                    lines.append(f"  • Total sentences: {sentences}")
+                if unique:
+                    lines.append(f"  • Unique words: {unique:,}")
+                if isinstance(avg_len, (int, float)) and avg_len > 0:
+                    lines.append(f"  • Avg sentence length: {avg_len:.1f} words")
+            
+            # Keywords
+            keywords = summary.get("keywords", [])
+            if keywords:
+                lines.append("")
+                lines.append("[b]🔑 Top Keywords:[/b]")
+                keyword_strs = []
+                
+                for kw in keywords[:15]:  # Show top 15 keywords
+                    if isinstance(kw, dict):
+                        word = kw.get("word", "")
+                        count = kw.get("count", 0)
+                        if word:
+                            keyword_strs.append(f"{word} ({count})")
+                    elif isinstance(kw, (list, tuple)) and len(kw) == 2:
+                        keyword_strs.append(f"{kw[0]} ({kw[1]})")
+                
+                if keyword_strs:
+                    # Display keywords in a compact format
+                    lines.append(f"  {', '.join(keyword_strs)}")
+                    if len(keywords) > 15:
+                        lines.append(f"  ... +{len(keywords) - 15} more keywords")
+            
+            # Key points
+            key_points = summary.get("key_points", [])
+            if key_points:
+                lines.append("")
+                lines.append("[b]💡 Key Points:[/b]")
+                for point_idx, point in enumerate(key_points[:7], 1):
+                    # Truncate very long points
+                    point_str = str(point)
+                    if len(point_str) > 100:
+                        point_str = point_str[:97] + "..."
+                    lines.append(f"  {point_idx}. {point_str}")
+                
+                if len(key_points) > 7:
+                    lines.append(f"  ... +{len(key_points) - 7} more points")
+        
+        return "\n".join(lines)
     
     def _render_media_analysis(self) -> str:
         """Render media analysis tab."""
