@@ -518,4 +518,7 @@ using (((bucket_id = 'artifacts'::text) AND (split_part(name, '/'::text, 1) = (a
 with check (((bucket_id = 'artifacts'::text) AND (split_part(name, '/'::text, 1) = (auth.uid())::text)));
 
 
+-- Track when users clear stored insights without touching shared files.
+alter table if exists public.projects
+  add column if not exists insights_deleted_at timestamptz;
 

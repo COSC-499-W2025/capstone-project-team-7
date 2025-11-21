@@ -1,22 +1,29 @@
 from __future__ import annotations
 
 import asyncio
+import atexit
 import json
 import math
 import threading
+import traceback
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures.thread import _worker, _threads_queues
 from datetime import datetime, timezone
 from pathlib import Path
 import shutil
 import sys
 import tempfile
 import time
-from typing import Optional, Dict, Any, List, Sequence
+from typing import Optional, Dict, Any, List, Sequence, Type
+import os
+import weakref
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
 from textual.events import Mount
+from textual.driver import Driver
 from textual.widgets import Footer, Header, Label, ListItem, ListView, ProgressBar, Static
 
 from .message_utils import dispatch_message
@@ -82,6 +89,7 @@ from .screens import (
     ScanResultsScreen,
     ProjectSelected,       
     ProjectDeleted,         
+    ProjectInsightsCleared,
     ProjectsScreen,       
     ProjectViewerScreen,
     ResumeDeleted,
@@ -120,10 +128,69 @@ MEDIA_EXTENSIONS = tuple(
 )
 
 
+def _maybe_patch_threading_timer() -> None:
+    """Log Timer creation stacks when TEXTUAL_CLI_DEBUG_TIMERS is set."""
+
+    timer_log_target = os.environ.get("TEXTUAL_CLI_DEBUG_TIMERS")
+    if not timer_log_target:
+        return
+
+    timer_log_path = Path(timer_log_target).expanduser()
+    timer_log_path.parent.mkdir(parents=True, exist_ok=True)
+    timer_log_path.write_text("", encoding="utf-8")
+
+    original_init = threading.Timer.__init__
+
+    def logging_init(self, interval, function, args=None, kwargs=None):  # type: ignore[override]
+        original_init(self, interval, function, args, kwargs)
+        stack = "".join(traceback.format_stack(limit=16))
+        payload = (
+            f"{datetime.now(timezone.utc).isoformat()} | Timer(name={self.name}, "
+            f"daemon={self.daemon}, interval={interval})\n{stack}\n"
+        )
+        with timer_log_path.open("a", encoding="utf-8") as timer_log:
+            timer_log.write(payload)
+
+    threading.Timer.__init__ = logging_init  # type: ignore[assignment]
+
+
+_maybe_patch_threading_timer()
+
+
+class DaemonThreadPoolExecutor(ThreadPoolExecutor):
+    """ThreadPoolExecutor variant that marks worker threads daemon."""
+
+    def _adjust_thread_count(self) -> None:  # pragma: no cover - thread spawning
+        if self._idle_semaphore.acquire(timeout=0):
+            return
+
+        def weakref_cb(_, q=self._work_queue):
+            q.put(None)
+
+        num_threads = len(self._threads)
+        if num_threads < self._max_workers:
+            thread_name = "%s_%d" % (self._thread_name_prefix or self, num_threads)
+            t = threading.Thread(
+                name=thread_name,
+                target=_worker,
+                args=(
+                    weakref.ref(self, weakref_cb),
+                    self._work_queue,
+                    self._initializer,
+                    self._initargs,
+                ),
+            )
+            t.daemon = True
+            t.start()
+            self._threads.add(t)
+            _threads_queues[t] = self._work_queue
+
+
 class PortfolioTextualApp(App):
     """Minimal Textual app placeholder for future CLI dashboard."""
 
-    CSS_PATH = "textual_app.tcss"
+    CSS_PATH = Path(__file__).with_name("textual_app.tcss")
+    CSS_AUTO_RELOAD = False
     MENU_ITEMS = [
         ("Account", "Sign in to Supabase or sign out of the current session."),
         ("Run Portfolio Scan", "Prepare an archive or directory and run the portfolio scan workflow."),
@@ -167,7 +234,14 @@ class PortfolioTextualApp(App):
         self._projects_service: Optional[ProjectsService] = None
         self._resume_storage_service: Optional[ResumeStorageService] = None
         self._media_analyzer: Optional[MediaAnalyzer] = None
-
+        try:
+            self._document_analyzer = DocumentAnalyzer()
+            self._document_analysis_error: Optional[str] = None
+        except Exception as exc:  # pragma: no cover - optional dependency issues
+            self._document_analyzer = None
+            self._document_analysis_error = str(exc)
+        self._preferences_screen: Optional[PreferencesScreen] = None
+        self._consent_screen: Optional[ConsentScreen] = None
         self._scan_results_screen: Optional[ScanResultsScreen] = None
         self._init_resume_storage_service()
         self._init_media_analyzer()
@@ -177,6 +251,9 @@ class PortfolioTextualApp(App):
         self._scan_progress_bar: Optional[ProgressBar] = None
         self._scan_progress_label: Optional[Static] = None
         self._debug_log("PortfolioTextualApp initialized")
+        self._worker_pool: Optional[ThreadPoolExecutor] = None
+        self._thread_debug_enabled = bool(os.getenv("TEXTUAL_CLI_DEBUG_THREADS"))
+        atexit.register(self._shutdown_worker_pool)
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -207,6 +284,7 @@ class PortfolioTextualApp(App):
         yield Footer()
 
     async def on_mount(self, event: Mount) -> None:
+        self._configure_worker_pool()
         await self._load_session()
         self._refresh_consent_state()
         self._load_preferences()
@@ -239,6 +317,9 @@ class PortfolioTextualApp(App):
 
     def exit(self, result: object | None = None, return_code: int = 0, message: object | None = None) -> None:  # pragma: no cover - Textual shutdown hook
         self._cleanup_async_tasks()
+        self._shutdown_worker_pool()
+        consent_storage.stop_authenticated_client_auto_refresh()
+        self._log_active_threads("app.exit")
         super().exit(result, return_code=return_code, message=message)  # type: ignore[arg-type]
 
     async def action_quit(self) -> None:
@@ -2247,6 +2328,73 @@ class PortfolioTextualApp(App):
             self._cancel_task(self._ai_state.task, "AI analysis")
             self._ai_state.task = None
 
+    def _configure_worker_pool(self) -> None:
+        if self._worker_pool is not None:
+            return
+        self._debug_log("Configuring shared worker pool…")
+        self._worker_pool = DaemonThreadPoolExecutor(
+            thread_name_prefix="portfolio-cli",
+            max_workers=8,
+        )
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if loop and self._worker_pool:
+            loop.set_default_executor(self._worker_pool)
+
+    def _shutdown_worker_pool(self) -> None:
+        executor = self._worker_pool
+        if not executor:
+            return
+        self._worker_pool = None
+        try:
+            executor.shutdown(wait=False, cancel_futures=True)
+        except Exception:
+            pass
+        self._log_active_threads("worker_pool.shutdown")
+
+    def _log_active_threads(self, label: str) -> None:
+        try:
+            frames = {}
+            try:
+                frames = sys._current_frames()
+            except Exception:
+                pass
+            entries: list[str] = []
+            for thread in threading.enumerate():
+                target = getattr(thread, "_target", None)
+                target_name = getattr(target, "__qualname__", None) or getattr(target, "__name__", None)
+                if not target_name and target:
+                    target_name = repr(target)
+                info = (
+                    f"{thread.name}(daemon={thread.daemon},alive={thread.is_alive()},"
+                    f"ident={thread.ident},target={target_name})"
+                )
+                entries.append(info)
+                if self._thread_debug_enabled and thread.ident and thread.ident in frames:
+                    stack = "".join(traceback.format_stack(frames[thread.ident]))
+                    print(f"[thread-dump:{label}:{thread.name}]\n{stack}", file=sys.stderr)
+                    for line in stack.rstrip().splitlines():
+                        self._debug_log(f"[stack:{label}:{thread.name}] {line}")
+            self._debug_log(f"Threads ({label}): {', '.join(entries)}")
+            if self._thread_debug_enabled:
+                print(f"[thread-dump:{label}] {', '.join(entries)}", file=sys.stderr)
+        except Exception:
+            pass
+
+    def get_driver_class(self) -> Type["Driver"]:
+        driver_cls = super().get_driver_class()
+        try:
+            from textual.drivers.linux_driver import LinuxDriver  # type: ignore
+        except Exception:
+            return driver_cls
+        if issubclass(driver_cls, LinuxDriver):
+            from .daemon_linux_driver import DaemonLinuxDriver
+
+            return DaemonLinuxDriver
+        return driver_cls
+
     def _logout(self) -> None:
         if not self._session_state.session:
             return
@@ -3366,6 +3514,39 @@ class PortfolioTextualApp(App):
         else:
             self._show_status("Failed to delete resume.", "error")
         
+    async def on_project_insights_cleared(self, message: ProjectInsightsCleared) -> None:
+        """Handle deletion of stored insights without removing shared files."""
+        message.stop()
+
+        if not self._session_state.session:
+            self._show_status("Sign in required.", "error")
+            return
+
+        project_id = message.project_id
+        self._show_status("Clearing stored insights…", "info")
+
+        try:
+            projects_service = self._get_projects_service()
+            success = await asyncio.to_thread(
+                projects_service.delete_project_insights,
+                self._session_state.session.user_id,
+                project_id,
+            )
+        except ProjectsServiceError as exc:
+            self._show_status(f"Failed to clear insights: {exc}", "error")
+            return
+        except Exception as exc:
+            self._show_status(f"Unexpected error clearing insights: {exc}", "error")
+            return
+
+        if success:
+            self._show_status(
+                "Insights deleted. Shared uploads remain intact.",
+                "success",
+            )
+            await self._load_and_show_projects()
+        else:
+            self._show_status("No insights were deleted.", "warning")
         
     async def _save_scan_to_database(self, scan_data: Dict[str, Any]) -> None:
         """Save the scan to the projects database."""
