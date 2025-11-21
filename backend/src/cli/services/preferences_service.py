@@ -25,7 +25,7 @@ class PreferencesService:
             "scan_profiles": {
                 "sample": {
                     "description": "Scan common code and doc file types.",
-                    "extensions": [".py", ".md", ".json", ".txt"],
+                    "extensions": [".py", ".md", ".json", ".txt", ".pdf", ".doc", ".docx"],
                     "exclude_dirs": ["__pycache__", "node_modules", ".git"],
                 }
             },
