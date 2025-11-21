@@ -28,6 +28,8 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_ANON_KEY")
 
 _supabase_client = None
+_authenticated_client: Optional[Client] = None
+_authenticated_client_token: Optional[str] = None
 if SUPABASE_AVAILABLE and SUPABASE_URL and SUPABASE_KEY:
     try:
         from supabase.client import create_client as _create_client
@@ -83,19 +85,39 @@ def _get_authenticated_client(access_token: Optional[str] = None):
         return None
     
     token = access_token or _active_access_token
+    global _authenticated_client, _authenticated_client_token
+    if token and _authenticated_client and _authenticated_client_token == token:
+        return _authenticated_client
+
+    client = _supabase_client
     if token:
-        # Create a new client instance and set the auth token
         try:
             from supabase.client import create_client as _create_client
-            authenticated_client = _create_client(SUPABASE_URL, SUPABASE_KEY)
-            # Set the user's access token using the documented API
-            # This ensures the Authorization header is properly set for PostgREST requests
-            authenticated_client.auth.set_session(token, token)
-            return authenticated_client
+            client = _create_client(SUPABASE_URL, SUPABASE_KEY)
+            client.auth.set_session(token, token)
+            _authenticated_client = client
+            _authenticated_client_token = token
+            return client
         except Exception:
             pass
-    
-    return _supabase_client
+
+    return client
+
+
+def stop_authenticated_client_auto_refresh() -> None:
+    """Cancel any pending auto-refresh timers to avoid dangling threads."""
+
+    if not _authenticated_client:
+        return
+
+    auth_client = getattr(_authenticated_client, "auth", None)
+    timer = getattr(auth_client, "_refresh_token_timer", None)
+    if timer:
+        try:
+            timer.cancel()
+        except Exception:
+            pass
+        setattr(auth_client, "_refresh_token_timer", None)
 
 # Versioned Privacy Notice (single source of truth)
 # - This is what users see when deciding on consent.

@@ -111,6 +111,35 @@ MEDIA_EXTENSIONS = tuple(
 )
 
 
+def _maybe_patch_threading_timer() -> None:
+    """Log Timer creation stacks when TEXTUAL_CLI_DEBUG_TIMERS is set."""
+
+    timer_log_target = os.environ.get("TEXTUAL_CLI_DEBUG_TIMERS")
+    if not timer_log_target:
+        return
+
+    timer_log_path = Path(timer_log_target).expanduser()
+    timer_log_path.parent.mkdir(parents=True, exist_ok=True)
+    timer_log_path.write_text("", encoding="utf-8")
+
+    original_init = threading.Timer.__init__
+
+    def logging_init(self, interval, function, args=None, kwargs=None):  # type: ignore[override]
+        original_init(self, interval, function, args, kwargs)
+        stack = "".join(traceback.format_stack(limit=16))
+        payload = (
+            f"{datetime.now(timezone.utc).isoformat()} | Timer(name={self.name}, "
+            f"daemon={self.daemon}, interval={interval})\n{stack}\n"
+        )
+        with timer_log_path.open("a", encoding="utf-8") as timer_log:
+            timer_log.write(payload)
+
+    threading.Timer.__init__ = logging_init  # type: ignore[assignment]
+
+
+_maybe_patch_threading_timer()
+
+
 class DaemonThreadPoolExecutor(ThreadPoolExecutor):
     """ThreadPoolExecutor variant that marks worker threads daemon."""
 
@@ -267,6 +296,7 @@ class PortfolioTextualApp(App):
     def exit(self, result: object | None = None, return_code: int = 0, message: object | None = None) -> None:  # pragma: no cover - Textual shutdown hook
         self._cleanup_async_tasks()
         self._shutdown_worker_pool()
+        consent_storage.stop_authenticated_client_auto_refresh()
         self._log_active_threads("app.exit")
         super().exit(result, return_code=return_code, message=message)  # type: ignore[arg-type]
 
