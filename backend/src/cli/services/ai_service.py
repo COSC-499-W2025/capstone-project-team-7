@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import sys
 from typing import Any, Dict, List, Optional, Sequence
 
 class AIDependencyError(RuntimeError):
@@ -15,7 +16,10 @@ class AIProviderError(RuntimeError):
     """Raised when the AI provider returns an error."""
 
 
-@dataclass(slots=True)
+_DATACLASS_KWARGS = {"slots": True} if sys.version_info >= (3, 10) else {}
+
+
+@dataclass(**_DATACLASS_KWARGS)
 class AIClientConfig:
     temperature: float
     max_tokens: int

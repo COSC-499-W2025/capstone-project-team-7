@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+import sys
 from pathlib import Path
 import time
 from typing import Callable, Dict, List, Optional, Tuple, TypeVar
@@ -16,7 +17,10 @@ T = TypeVar("T")
 
 _DOCUMENT_EXTENSIONS = {".txt", ".md", ".markdown", ".rst", ".log"}
 
-@dataclass(slots=True)
+_DATACLASS_KWARGS = {"slots": True} if sys.version_info >= (3, 10) else {}
+
+
+@dataclass(**_DATACLASS_KWARGS)
 class ScanRunResult:
     """Artifacts returned after a successful scan."""
 

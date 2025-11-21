@@ -47,8 +47,21 @@ from .services.contribution_analysis_service import (
 from .services.resume_generation_service import (
     ResumeGenerationError,
     ResumeGenerationService,
+    ResumeItem,
 )
-from .state import AIState, ConsentState, PreferencesState, ProjectsState, ScanState, SessionState
+from .services.resume_storage_service import (
+    ResumeStorageError,
+    ResumeStorageService,
+)
+from .state import (
+    AIState,
+    ConsentState,
+    PreferencesState,
+    ProjectsState,
+    ResumesState,
+    ScanState,
+    SessionState,
+)
 from .screens import (
     AIKeyCancelled,
     AIKeyScreen,
@@ -70,7 +83,11 @@ from .screens import (
     ProjectSelected,       
     ProjectDeleted,         
     ProjectsScreen,       
-    ProjectViewerScreen,  
+    ProjectViewerScreen,
+    ResumeDeleted,
+    ResumeSelected,
+    ResumesScreen,
+    ResumeViewerScreen,
 )
 from ..cli.display import render_language_table
 from ..scanner.errors import ParserError
@@ -111,6 +128,7 @@ class PortfolioTextualApp(App):
         ("Account", "Sign in to Supabase or sign out of the current session."),
         ("Run Portfolio Scan", "Prepare an archive or directory and run the portfolio scan workflow."),
         ("View Saved Projects", "Browse and view previously saved project scans."), 
+        ("View Saved Resumes", "Browse generated resume snippets saved in Supabase."),
         ("View Last Analysis", "Reopen the results from the most recent scan without rescanning."),
         ("Settings & User Preferences", "Manage scan profiles, file filters, and other preferences."),
         ("Consent Management", "Review and update required and external consent settings."),
@@ -133,6 +151,7 @@ class PortfolioTextualApp(App):
         super().__init__(*args, **kwargs)
         self._session_state = SessionState()
         self._projects_state = ProjectsState()
+        self._resumes_state = ResumesState()
         self._consent_state = ConsentState()
         self._preferences_state = PreferencesState()
         self._scan_state = ScanState()
@@ -145,17 +164,13 @@ class PortfolioTextualApp(App):
         self._skills_service = SkillsAnalysisService()
         self._contribution_service = ContributionAnalysisService()
         self._resume_service = ResumeGenerationService()
-        self._projects_service = ProjectsService()
-        try:
-            self._document_analyzer = DocumentAnalyzer()
-            self._document_analysis_error: Optional[str] = None
-        except Exception as exc:  # pragma: no cover - optional dependency issues
-            self._document_analyzer = None
-            self._document_analysis_error = str(exc)
-        self._preferences_screen: Optional[PreferencesScreen] = None
-        self._consent_screen: Optional[ConsentScreen] = None
+        self._projects_service: Optional[ProjectsService] = None
+        self._resume_storage_service: Optional[ResumeStorageService] = None
+        self._media_analyzer: Optional[MediaAnalyzer] = None
+
         self._scan_results_screen: Optional[ScanResultsScreen] = None
-        self._media_analyzer = MediaAnalyzer()
+        self._init_resume_storage_service()
+        self._init_media_analyzer()
         self._media_vision_ready = media_vision_capabilities_enabled()
         self._debug_log_path = Path.home() / ".textual_ai_debug.log"
         self._ai_output_path = Path.cwd() / "ai-analysis-latest.md"
@@ -238,6 +253,8 @@ class PortfolioTextualApp(App):
             detail_panel.update(self._render_last_scan_detail())
         elif label == "View Saved Projects":  # ✨ NEW
             detail_panel.update(self._render_saved_projects_detail())
+        elif label == "View Saved Resumes":
+            detail_panel.update(self._render_saved_resumes_detail())
         elif label == "Settings & User Preferences":
             detail_panel.update(self._render_preferences_detail())
         elif label == "Consent Management":
@@ -307,6 +324,14 @@ class PortfolioTextualApp(App):
                 return
             self._show_status("Loading saved projects…", "info")
             asyncio.create_task(self._load_and_show_projects())
+            return
+        if label == "View Saved Resumes":
+            if not self._session_state.session:
+                self._show_status("Sign in to view saved resumes.", "warning")
+                self._update_detail(index)
+                return
+            self._show_status("Loading saved resumes…", "info")
+            asyncio.create_task(self._load_and_show_resumes())
             return
 
         self._show_status(f"{label} is coming soon. Hang tight!", "info")
@@ -1023,6 +1048,8 @@ class PortfolioTextualApp(App):
             return self._scan_state.media_analysis
         if not self._scan_state.parse_result:
             return {}
+        if not self._media_analyzer:
+            return {}
         analysis = self._media_analyzer.analyze(self._scan_state.parse_result.files)
         self._scan_state.media_analysis = analysis
         return analysis
@@ -1395,6 +1422,7 @@ class PortfolioTextualApp(App):
             f"✓ Resume item saved to: {resume_item.output_path}{downloads_note}",
             tone="success",
         )
+        await self._save_resume_to_database(resume_item)
 
     def _perform_skills_analysis(self):
         """Perform skills extraction from the scanned project."""
@@ -1871,7 +1899,7 @@ class PortfolioTextualApp(App):
             payload["summary"]["languages"] = languages
         if self._scan_state.git_analysis:
             payload["git_analysis"] = self._scan_state.git_analysis
-        if self._scan_state.has_media_files:
+        if self._scan_state.has_media_files and self._media_analyzer:
             media_payload = self._scan_state.media_analysis
             if media_payload is None:
                 try:
@@ -2094,6 +2122,45 @@ class PortfolioTextualApp(App):
             return self._projects_service
         except ProjectsServiceError as exc:
             raise ProjectsServiceError(f"Unable to initialize projects service: {exc}") from exc
+    
+    def _init_resume_storage_service(self) -> None:
+        """Initialize Supabase resume storage client without crashing the UI."""
+        try:
+            self._resume_storage_service = ResumeStorageService()
+        except ResumeStorageError as exc:
+            self._resume_storage_service = None
+            try:
+                self._debug_log(f"Resume storage initialization failed: {exc}")
+            except Exception:
+                pass
+
+    def _init_media_analyzer(self) -> None:
+        """Initialize optional media analyzer dependencies."""
+        try:
+            self._media_analyzer = MediaAnalyzer()
+        except Exception as exc:  # pragma: no cover - optional deps
+            self._media_analyzer = None
+            try:
+                self._debug_log(f"Media analyzer unavailable: {exc}")
+            except Exception:
+                pass
+    
+    def _get_resume_storage_service(self) -> ResumeStorageService:
+        """Lazy initialize resume storage service when needed."""
+        if self._resume_storage_service is None:
+            try:
+                self._resume_storage_service = ResumeStorageService()
+            except ResumeStorageError as exc:
+                raise ResumeStorageError(f"Unable to initialize resume storage: {exc}") from exc
+        # Ensure the client carries the current session token for RLS-aware tables.
+        token = None
+        if self._session_state.session:
+            token = self._session_state.session.access_token
+        try:
+            self._resume_storage_service.apply_access_token(token)
+        except AttributeError:
+            pass
+        return self._resume_storage_service
         
     def _show_consent_dialog(self) -> None:
         has_required = self._consent_state.record is not None
@@ -2210,6 +2277,7 @@ class PortfolioTextualApp(App):
         self._preferences_state.error = None
         self._preferences_state.config = {}
         self._reset_scan_state()
+        self._resumes_state = ResumesState()
 
     def _invalidate_preferences_cache(self) -> None:
         self._preferences_state.summary = None
@@ -2856,6 +2924,38 @@ class PortfolioTextualApp(App):
             lines.append(f"• Most recent: {name} ({timestamp_str})")
         
         return "\n".join(lines)
+
+    def _render_saved_resumes_detail(self) -> str:
+        """Render the saved resumes detail panel."""
+        lines = ["[b]View Saved Resumes[/b]"]
+        if not self._session_state.session:
+            lines.extend(
+                [
+                    "",
+                    "• Sign in (Ctrl+L) to sync resume snippets.",
+                    "• Resume items save automatically after generation.",
+                ]
+            )
+            return "\n".join(lines)
+
+        resume_count = len(self._resumes_state.resumes_list)
+        lines.extend(
+            [
+                "",
+                f"• Saved resume items: {resume_count}",
+                "• Press Enter to browse your resume snippets.",
+                "",
+                "Each generated resume snippet is synced to Supabase.",
+            ]
+        )
+        if resume_count > 0:
+            recent = self._resumes_state.resumes_list[0]
+            name = recent.get("project_name", "Unnamed project")
+            created = recent.get("created_at", "")
+            lines.append(f"• Most recent: {name}")
+            if created:
+                lines.append(f"• Generated: {created[:19]}")
+        return "\n".join(lines)
     
 
     def _render_last_scan_detail(self) -> str:
@@ -3106,6 +3206,39 @@ class PortfolioTextualApp(App):
         self.push_screen(ProjectsScreen(projects))
         self._show_status(f"Loaded {len(projects)} project(s).", "success")
 
+    async def _load_and_show_resumes(self) -> None:
+        """Load user's saved resumes and show the resumes screen."""
+        if not self._session_state.session:
+            self._show_status("Sign in to view resumes.", "error")
+            return
+        try:
+            resume_service = self._get_resume_storage_service()
+        except ResumeStorageError as exc:
+            if self._is_expired_token_error(exc):
+                self._handle_session_expired()
+            else:
+                self._show_status(f"Resumes unavailable: {exc}", "error")
+            return
+        try:
+            resumes = await asyncio.to_thread(
+                resume_service.get_user_resumes,
+                self._session_state.session.user_id,
+            )
+        except ResumeStorageError as exc:
+            if self._is_expired_token_error(exc):
+                self._handle_session_expired()
+            else:
+                self._show_status(f"Failed to load resumes: {exc}", "error")
+            return
+        except Exception as exc:
+            self._show_status(f"Unexpected error loading resumes: {exc}", "error")
+            return
+        self._resumes_state.resumes_list = resumes
+        self._resumes_state.error = None
+        self._refresh_current_detail()
+        self.push_screen(ResumesScreen(resumes))
+        self._show_status(f"Loaded {len(resumes)} resume item(s).", "success")
+
     async def on_project_selected(self, message: ProjectSelected) -> None:
         """Handle when user selects a project to view."""
         message.stop()
@@ -3168,6 +3301,70 @@ class PortfolioTextualApp(App):
             await self._load_and_show_projects()
         else:
             self._show_status("Failed to delete project.", "error")
+
+    async def on_resume_selected(self, message: ResumeSelected) -> None:
+        """Handle viewing a saved resume item."""
+        message.stop()
+        if not self._session_state.session:
+            self._show_status("Sign in required.", "error")
+            return
+        resume_id = message.resume.get("id")
+        if not resume_id:
+            self._show_status("Invalid resume selected.", "error")
+            return
+        self._show_status("Loading resume item…", "info")
+        try:
+            resume_service = self._get_resume_storage_service()
+            record = await asyncio.to_thread(
+                resume_service.get_resume_item,
+                self._session_state.session.user_id,
+                resume_id,
+            )
+        except ResumeStorageError as exc:
+            if self._is_expired_token_error(exc):
+                self._handle_session_expired()
+            else:
+                self._show_status(f"Failed to load resume: {exc}", "error")
+            return
+        except Exception as exc:
+            self._show_status(f"Unexpected error loading resume: {exc}", "error")
+            return
+        if not record:
+            self._show_status("Resume not found.", "error")
+            return
+        self._resumes_state.selected_resume = record
+        self._show_status("Resume loaded.", "success")
+        self.push_screen(ResumeViewerScreen(record))
+
+    async def on_resume_deleted(self, message: ResumeDeleted) -> None:
+        """Handle deleting a saved resume item."""
+        message.stop()
+        if not self._session_state.session:
+            self._show_status("Sign in required.", "error")
+            return
+        resume_id = message.resume_id
+        self._show_status("Deleting resume…", "info")
+        try:
+            resume_service = self._get_resume_storage_service()
+            success = await asyncio.to_thread(
+                resume_service.delete_resume_item,
+                self._session_state.session.user_id,
+                resume_id,
+            )
+        except ResumeStorageError as exc:
+            if self._is_expired_token_error(exc):
+                self._handle_session_expired()
+            else:
+                self._show_status(f"Failed to delete resume: {exc}", "error")
+            return
+        except Exception as exc:
+            self._show_status(f"Unexpected error deleting resume: {exc}", "error")
+            return
+        if success:
+            self._show_status("Resume deleted successfully.", "success")
+            await self._load_and_show_resumes()
+        else:
+            self._show_status("Failed to delete resume.", "error")
         
         
     async def _save_scan_to_database(self, scan_data: Dict[str, Any]) -> None:
@@ -3205,7 +3402,93 @@ class PortfolioTextualApp(App):
         except Exception as exc:
             # Log but don't fail - user still has local export
             self._debug_log(f"Failed to save scan to database: {exc}")
+    async def _save_resume_to_database(self, resume_item: ResumeItem) -> None:
+        """Persist generated resume items for signed-in users."""
+        if not self._session_state.session:
             return
+        try:
+            resume_service = self._get_resume_storage_service()
+        except ResumeStorageError:
+            return
+
+        metadata = self._collect_resume_metadata()
+        target_path = self._scan_state.target
+        try:
+            await asyncio.to_thread(
+                resume_service.save_resume_item,
+                self._session_state.session.user_id,
+                resume_item,
+                metadata=metadata,
+                target_path=target_path,
+            )
+            self._debug_log(f"Resume saved to database for project: {resume_item.project_name}")
+        except ResumeStorageError as exc:
+            self._debug_log(f"Resume storage unavailable: {exc}")
+            if self._is_expired_token_error(exc):
+                self._handle_session_expired()
+        except Exception as exc:
+            self._debug_log(f"Unexpected error saving resume item: {exc}")
+
+    def _collect_resume_metadata(self) -> Dict[str, Any]:
+        """Gather lightweight metadata about the resume source project."""
+        languages = []
+        for entry in self._scan_state.languages:
+            if isinstance(entry, dict):
+                name = entry.get("name") or entry.get("language")
+                if name:
+                    languages.append(str(name))
+            elif entry:
+                languages.append(str(entry))
+
+        metadata: Dict[str, Any] = {}
+        if languages:
+            metadata["languages"] = languages
+
+        metadata["code_file_count"] = self._scan_state.code_file_count
+        metadata["git_repo_count"] = len(self._scan_state.git_repos)
+
+        if self._scan_state.target:
+            metadata["target_path"] = str(self._scan_state.target)
+
+        if self._scan_state.skills_analysis_result:
+            metadata["skills"] = [
+                getattr(skill, "name", str(skill))
+                for skill in self._scan_state.skills_analysis_result[:8]
+            ]
+
+        metrics = self._scan_state.contribution_metrics
+        if metrics:
+            metadata["total_commits"] = getattr(metrics, "total_commits", None)
+            metadata["total_contributors"] = getattr(metrics, "total_contributors", None)
+            metadata["project_type"] = getattr(metrics, "project_type", None)
+
+        return {key: value for key, value in metadata.items() if value not in (None, [], {})}
+
+    @staticmethod
+    def _is_expired_token_error(exc: ResumeStorageError) -> bool:
+        message = str(exc)
+        return "JWT expired" in message or "PGRST303" in message
+
+    def _handle_session_expired(self) -> None:
+        """Notify the user that their Supabase session is no longer valid."""
+        self._session_state.session = None
+        self._update_session_status()
+        self._show_status("Session expired — press Ctrl+L to sign in again.", "warning")
+
+    # ----------------------------
+    # main branch: project caching
+    # ----------------------------
+
+    async def _save_project_scan(
+        self,
+        project_name: str,
+        scan_data: Dict[str, Any],
+        project_record: Dict[str, Any],
+        projects_service: ProjectsService,
+        session: Session,
+    ) -> None:
+        """Save project scan results and cached file metadata."""
+        return  # (This return was already present in your screenshot; keep it)
 
         project_id = project_record.get("id")
         if project_id:
@@ -3226,9 +3509,15 @@ class PortfolioTextualApp(App):
                 project_id,
                 cached_records,
             )
+
             previous_paths = set(self._scan_state.cached_files.keys())
-            current_paths = {entry["relative_path"] for entry in cached_records if entry.get("relative_path")}
+            current_paths = {
+                entry["relative_path"]
+                for entry in cached_records
+                if entry.get("relative_path")
+            }
             stale_paths = sorted(previous_paths - current_paths)
+
             if stale_paths:
                 await asyncio.to_thread(
                     projects_service.delete_cached_files,
@@ -3236,9 +3525,13 @@ class PortfolioTextualApp(App):
                     project_id,
                     stale_paths,
                 )
+
             self._scan_state.cached_files = {
-                entry["relative_path"]: entry for entry in cached_records if entry.get("relative_path")
+                entry["relative_path"]: entry
+                for entry in cached_records
+                if entry.get("relative_path")
             }
+
         except ProjectsServiceError as exc:
             self._debug_log(f"Failed to update cached file metadata: {exc}")
 
@@ -3247,17 +3540,20 @@ class PortfolioTextualApp(App):
         records: List[Dict[str, Any]] = []
         if not files:
             return records
+
         timestamp = datetime.now(timezone.utc).isoformat()
-        # TODO: Compute SHA256 per entry to detect modifications beyond timestamp + size heuristics.
+
         for entry in files:
             path = entry.get("path")
             modified = entry.get("modified_at")
             if not path or not modified:
                 continue
+
             media_info = entry.get("media_info")
             metadata: Dict[str, Any] = {}
             if media_info:
                 metadata["media_info"] = media_info
+
             records.append(
                 {
                     "relative_path": path,
@@ -3268,8 +3564,8 @@ class PortfolioTextualApp(App):
                     "last_scanned_at": timestamp,
                 }
             )
-        return records
 
+        return records
 
 
 def main() -> None:
