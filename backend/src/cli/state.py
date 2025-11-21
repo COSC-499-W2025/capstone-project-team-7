@@ -81,3 +81,11 @@ class ProjectsState:
     projects_list: List[Dict[str, Any]] = field(default_factory=list)
     selected_project: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
+
+
+@dataclass
+class ResumesState:
+    """State for managing saved resumes."""
+    resumes_list: List[Dict[str, Any]] = field(default_factory=list)
+    selected_resume: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None

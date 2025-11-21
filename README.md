@@ -49,6 +49,13 @@ You can also run it directly if your environment is already configured:
 python -m src.cli.textual_app
 ```
 
+Press `q` to exit at any time.
+
+## Resume Sync & Management
+
+- When you generate a resume snippet from the Textual UI, the Markdown file is written locally **and** stored in Supabase (`public.resume_items`).
+- Select **“View Saved Resumes”** in the main menu to browse synced items. Use `Enter`/`👁 View Resume` to preview and `Delete`/`🗑 Delete` to remove entries (removal also deletes the row in Supabase thanks to RLS policies).
+- If Supabase credentials are missing or your session expires, the UI prompts you to reauthenticate (Ctrl+L).
 Press `q` (or `Ctrl+C`) to exit at any time.
 
 ### AI Analysis Tips

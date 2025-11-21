@@ -959,6 +959,21 @@ class ProjectInsightsCleared(Message):
         self.project_id = project_id
 
 
+class ResumeSelected(Message):
+    """Message sent when user wants to view a saved resume."""
+
+    def __init__(self, resume: Dict[str, Any]) -> None:
+        super().__init__()
+        self.resume = resume
+
+
+class ResumeDeleted(Message):
+    """Message sent when user deletes a saved resume."""
+
+    def __init__(self, resume_id: str) -> None:
+        super().__init__()
+        self.resume_id = resume_id
+
 class ProjectsScreen(ModalScreen[None]):
     """Screen for browsing saved project scans."""
     
@@ -1219,6 +1234,91 @@ class ProjectsScreen(ModalScreen[None]):
         """Handle keyboard shortcuts."""
         if event.key == "escape":
             self.dismiss(None)
+
+
+class ResumeViewerScreen(ModalScreen[None]):
+    """Modal screen that shows the full saved resume markdown."""
+
+    CSS = """
+    ResumeViewerScreen {
+        align: center middle;
+    }
+
+    #resume-viewer-dialog {
+        width: 90;
+        height: 34;
+        border: thick $background 80%;
+        background: $surface;
+        padding: 1 2;
+    }
+
+    #resume-viewer-title {
+        width: 100%;
+        content-align: center middle;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+
+    #resume-viewer-meta {
+        width: 100%;
+        content-align: center middle;
+        margin-bottom: 1;
+    }
+
+    #resume-viewer-content {
+        width: 100%;
+        height: 24;
+        border: solid $primary;
+        padding: 1;
+        margin-bottom: 1;
+    }
+
+    #resume-viewer-buttons {
+        width: 100%;
+        height: auto;
+        align: center middle;
+    }
+
+    Button {
+        margin: 0 1;
+        min-width: 12;
+    }
+    """
+
+    def __init__(self, resume: Dict[str, Any]) -> None:
+        super().__init__()
+        self.resume = resume
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="resume-viewer-dialog"):
+            yield Static("📄 Resume Snippet", id="resume-viewer-title")
+            yield Static(self._metadata_text(), id="resume-viewer-meta")
+            with ScrollableContainer(id="resume-viewer-content"):
+                yield Static(
+                    self.resume.get("content", "No content found."),
+                    id="resume-viewer-body",
+                    markup=False,
+                )
+            with Horizontal(id="resume-viewer-buttons"):
+                yield Button("Close", id="resume-viewer-close")
+
+    def _metadata_text(self) -> str:
+        name = self.resume.get("project_name", "Unnamed project")
+        start = self.resume.get("start_date", "Unknown start")
+        end = self.resume.get("end_date")
+        date_span = start if not end else f"{start} – {end}"
+        created = self.resume.get("created_at", "")
+        if created:
+            created = created[:19]
+        return f"[b]{name}[/b]\n{date_span}\nSaved: {created}"
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "resume-viewer-close":
+            self.dismiss(None)
+
+    def on_key(self, event: Key) -> None:
+        if event.key == "escape":
+            self.dismiss(None)
     
     def _set_status(self, message: str, tone: str = "info") -> None:
         """Update status message."""
@@ -1230,6 +1330,216 @@ class ProjectsScreen(ModalScreen[None]):
             status.add_class(f"status-{tone}")
         except:
             pass
+
+
+class ResumesScreen(ModalScreen[None]):
+    """Screen for browsing saved resume snippets."""
+
+    CSS = """
+    ResumesScreen {
+        align: center middle;
+    }
+
+    #resumes-dialog {
+        width: 88;
+        height: 32;
+        border: thick $background 80%;
+        background: $surface;
+        padding: 1 2;
+    }
+
+    #resumes-title {
+        width: 100%;
+        content-align: center middle;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+
+    #resumes-help {
+        width: 100%;
+        content-align: center middle;
+        color: $text-muted;
+        margin-bottom: 1;
+    }
+
+    #resumes-list {
+        width: 100%;
+        height: 12;
+        border: solid $primary;
+        margin-bottom: 1;
+    }
+
+    .resume-item {
+        padding: 0 1;
+    }
+
+    #resumes-detail {
+        width: 100%;
+        height: 7;
+        border: solid $primary;
+        padding: 1;
+        margin-bottom: 1;
+    }
+
+    #resumes-buttons {
+        width: 100%;
+        height: auto;
+        align: center middle;
+        padding: 0 1;
+        margin-bottom: 1;
+    }
+
+    Button {
+        margin: 0 1;
+        min-width: 12;
+    }
+
+    #resumes-status {
+        width: 100%;
+        height: auto;
+        content-align: center middle;
+        margin-top: 1;
+        padding: 0 1;
+    }
+
+    .status-info { color: $text; }
+    .status-error { color: $error; }
+    .status-success { color: $success; }
+    """
+
+    def __init__(self, resumes: List[Dict[str, Any]]) -> None:
+        super().__init__()
+        self.resumes = resumes
+        self.selected_resume: Optional[Dict[str, Any]] = None
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="resumes-dialog"):
+            yield Static("📝 Saved Resume Items", id="resumes-title")
+            yield Static(
+                "↑↓ navigate • Enter view • Del delete • Tab buttons • Esc close",
+                id="resumes-help",
+            )
+
+            if not self.resumes:
+                yield Static(
+                    "No saved resume items yet.\n\nGenerate a resume snippet to sync it to Supabase.",
+                    id="resumes-detail",
+                )
+            else:
+                items = [
+                    ListItem(Label(self._format_resume_item(resume), classes="resume-item"))
+                    for resume in self.resumes
+                ]
+                yield ListView(*items, id="resumes-list")
+                yield Static("Select a resume to preview its metadata.", id="resumes-detail")
+
+            with Horizontal(id="resumes-buttons"):
+                if self.resumes:
+                    yield Button("👁 View Resume", id="resume-view-btn", variant="primary")
+                    yield Button("🗑 Delete", id="resume-delete-btn", variant="error")
+                yield Button("✖ Close", id="resume-close-btn")
+
+            yield Static("", id="resumes-status", classes="status-info")
+
+    def on_mount(self) -> None:
+        if self.resumes:
+            try:
+                list_view = self.query_one("#resumes-list", ListView)
+                list_view.focus()
+                self.selected_resume = self.resumes[0]
+                self._update_detail(self.selected_resume)
+            except Exception:
+                pass
+
+    def _format_resume_item(self, resume: Dict[str, Any]) -> str:
+        name = resume.get("project_name", "Unnamed project")
+        created = resume.get("created_at", "")
+        if created:
+            try:
+                from datetime import datetime
+
+                dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
+                created = dt.strftime("%Y-%m-%d %H:%M")
+            except Exception:
+                created = created[:16]
+        else:
+            created = "Unknown time"
+        date_span = resume.get("start_date", "Unknown start")
+        end = resume.get("end_date")
+        if end:
+            date_span = f"{date_span} – {end}"
+        return f"{name} • {date_span} • {created}"
+
+    def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
+        if event.control.id == "resumes-list":
+            index = event.control.index or 0
+            if 0 <= index < len(self.resumes):
+                self.selected_resume = self.resumes[index]
+                self._update_detail(self.selected_resume)
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        if event.control.id == "resumes-list" and self.selected_resume:
+            dispatch_message(self, ResumeSelected(self.selected_resume))
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        button_id = event.button.id
+        if button_id == "resume-close-btn":
+            self.dismiss(None)
+        elif button_id == "resume-view-btn":
+            if self.selected_resume:
+                dispatch_message(self, ResumeSelected(self.selected_resume))
+            else:
+                self._set_status("Please select a resume first", "error")
+        elif button_id == "resume-delete-btn":
+            if not self._trigger_delete():
+                self._set_status("Please select a resume first", "error")
+    
+    def on_key(self, event: Key) -> None:
+        if event.key == "escape":
+            self.dismiss(None)
+        elif event.key in {"delete", "backspace"}:
+            if not self._trigger_delete():
+                self._set_status("Please select a resume first", "error")
+
+    def _update_detail(self, resume: Dict[str, Any]) -> None:
+        try:
+            detail = self.query_one("#resumes-detail", Static)
+            name = resume.get("project_name", "Unnamed project")
+            created = resume.get("created_at", "Unknown")
+            start = resume.get("start_date", "Unknown start")
+            end = resume.get("end_date", "")
+            date_span = start if not end else f"{start} – {end}"
+            metadata = resume.get("metadata") or {}
+            languages = metadata.get("languages") or []
+            skills = metadata.get("skills") or []
+            langs_str = ", ".join(languages[:5]) if languages else "None"
+            skills_str = ", ".join(skills[:5]) if skills else "None"
+            text = (
+                f"[b]{name}[/b]\n"
+                f"Generated: {created[:19]}\n"
+                f"Timeline: {date_span}\n"
+                f"Languages: {langs_str}\n"
+                f"Skills: {skills_str}"
+            )
+            detail.update(text)
+        except Exception:
+            pass
+
+    def _set_status(self, message: str, tone: str = "info") -> None:
+        try:
+            status = self.query_one("#resumes-status", Static)
+            status.update(message)
+            for t in ("info", "error", "success"):
+                status.remove_class(f"status-{t}")
+            status.add_class(f"status-{tone}")
+        except Exception:
+            pass
+
+    def _trigger_delete(self) -> bool:
+        if self.selected_resume and self.selected_resume.get("id"):
+            dispatch_message(self, ResumeDeleted(self.selected_resume["id"]))
+            return True
+        return False
 
 
 class ProjectViewerScreen(ModalScreen[None]):
@@ -1359,9 +1669,10 @@ class ProjectViewerScreen(ModalScreen[None]):
                     button.variant = "primary"
                 else:
                     button.variant = "default"
-            except:
+            except Exception:
                 pass
-    
+
+
     def _update_content(self) -> None:
         """Update content based on current tab."""
         try:
