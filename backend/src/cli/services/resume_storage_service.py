@@ -1,7 +1,7 @@
 """Persist generated resume snippets to Supabase."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path as _Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 import os
@@ -82,7 +82,7 @@ class ResumeStorageService:
             "bullets": list(resume_item.bullets),
             "metadata": self._sanitize_metadata(metadata),
             "source_path": self._path_to_str(target_path) or self._path_to_str(resume_item.output_path),
-            "created_at": datetime.now().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }
 
         try:

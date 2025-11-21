@@ -164,26 +164,13 @@ class PortfolioTextualApp(App):
         self._skills_service = SkillsAnalysisService()
         self._contribution_service = ContributionAnalysisService()
         self._resume_service = ResumeGenerationService()
-        self._projects_service = ProjectsService()
-        try:
-# Resume storage service (from your branch)
-try:
-    self._resume_storage_service: Optional[ResumeStorageService] = ResumeStorageService()
-except ResumeStorageError:
-    self._resume_storage_service = None
-
-# Document analyzer (from main)
-try:
-    self._document_analyzer = DocumentAnalyzer()
-    self._document_analysis_error: Optional[str] = None
-except Exception as exc:
-    self._document_analyzer = None
-    self._document_analysis_error = str(exc)
-    self._preferences_screen = None
-    self._consent_screen = InternalConsentScreen()
+        self._projects_service: Optional[ProjectsService] = None
+        self._resume_storage_service: Optional[ResumeStorageService] = None
+        self._media_analyzer: Optional[MediaAnalyzer] = None
 
         self._scan_results_screen: Optional[ScanResultsScreen] = None
-        self._media_analyzer = MediaAnalyzer()
+        self._init_resume_storage_service()
+        self._init_media_analyzer()
         self._media_vision_ready = media_vision_capabilities_enabled()
         self._debug_log_path = Path.home() / ".textual_ai_debug.log"
         self._ai_output_path = Path.cwd() / "ai-analysis-latest.md"
@@ -1061,6 +1048,8 @@ except Exception as exc:
             return self._scan_state.media_analysis
         if not self._scan_state.parse_result:
             return {}
+        if not self._media_analyzer:
+            return {}
         analysis = self._media_analyzer.analyze(self._scan_state.parse_result.files)
         self._scan_state.media_analysis = analysis
         return analysis
@@ -1910,7 +1899,7 @@ except Exception as exc:
             payload["summary"]["languages"] = languages
         if self._scan_state.git_analysis:
             payload["git_analysis"] = self._scan_state.git_analysis
-        if self._scan_state.has_media_files:
+        if self._scan_state.has_media_files and self._media_analyzer:
             media_payload = self._scan_state.media_analysis
             if media_payload is None:
                 try:
@@ -2133,6 +2122,28 @@ except Exception as exc:
             return self._projects_service
         except ProjectsServiceError as exc:
             raise ProjectsServiceError(f"Unable to initialize projects service: {exc}") from exc
+    
+    def _init_resume_storage_service(self) -> None:
+        """Initialize Supabase resume storage client without crashing the UI."""
+        try:
+            self._resume_storage_service = ResumeStorageService()
+        except ResumeStorageError as exc:
+            self._resume_storage_service = None
+            try:
+                self._debug_log(f"Resume storage initialization failed: {exc}")
+            except Exception:
+                pass
+
+    def _init_media_analyzer(self) -> None:
+        """Initialize optional media analyzer dependencies."""
+        try:
+            self._media_analyzer = MediaAnalyzer()
+        except Exception as exc:  # pragma: no cover - optional deps
+            self._media_analyzer = None
+            try:
+                self._debug_log(f"Media analyzer unavailable: {exc}")
+            except Exception:
+                pass
     
     def _get_resume_storage_service(self) -> ResumeStorageService:
         """Lazy initialize resume storage service when needed."""
