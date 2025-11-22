@@ -2,6 +2,27 @@
 
 ## Week 12 (November 17th - 23rd)
 
+
+**Joaquin:** 
+
+
+**Jacob:** 
+
+
+**Vlad:** 
+
+
+**Aaron:** 
+
+**Om:** 
+
+**Samarth:**
+
+<p align="center">
+  <img src="./charts/w12burnup.png" alt="Week 5 Burnup Chart width="400"/>
+</p>
+
+
 ## Reading Break (November 10 - 16)
 
 **Om:** This period focused on completing **Project Analysis** deliverables from the WBS. I was able to successfully implement a comprehensive **Skills Extraction System** that analyzes code to identify 50+ technical skills across 5 categories (OOP, Data Structures, Algorithms, Design Patterns, Best Practices) with evidence-based proficiency scoring. This directly addresses **Insights and Summaries** requirement by providing detailed analytics and narrative summaries for portfolio generation.
