@@ -31,7 +31,7 @@ class LLMClient:
     DEFAULT_MODEL = "gpt-4o-mini"
     
     DEFAULT_TEMPERATURE = 0.7
-    DEFAULT_MAX_TOKENS = 1000
+    DEFAULT_MAX_TOKENS = 4000
     
     def __init__(
         self, 
@@ -148,24 +148,21 @@ class LLMClient:
             
             raise LLMError("Unexpected response from API")
             
-        except openai.AuthenticationError as e:
-            self.logger.error(f"Authentication failed: {e}")
-            raise InvalidAPIKeyError("Invalid API key. Please verify your OpenAI API key is correct.")
-        except openai.RateLimitError as e:
-            self.logger.error(f"Rate limit during verification: {e}")
-            raise LLMError(f"Rate limit exceeded. Please check your API quota and try again: {str(e)}")
-        except openai.APIConnectionError as e:
-            self.logger.error(f"Connection error during verification: {e}")
-            raise LLMError(f"Connection error. Please check your internet connection and try again: {str(e)}")
-        except openai.Timeout as e:
-            self.logger.error(f"Timeout during verification: {e}")
-            raise LLMError(f"Request timed out. Please check your internet connection and try again: {str(e)}")
-        except openai.APIError as e:
-            self.logger.error(f"API error during verification: {e}")
-            raise LLMError(f"OpenAI API error. The service may be temporarily unavailable. Please try again later: {str(e)}")
         except Exception as e:
-            self.logger.error(f"Unexpected error during verification: {e}")
-            raise LLMError(f"Verification failed: {str(e)}")
+            error_msg = str(e).lower()
+            self.logger.error(f"Verification error: {e}")
+            
+            # Check error message content to determine error type
+            if "authentication" in error_msg or "api key" in error_msg or "unauthorized" in error_msg:
+                raise InvalidAPIKeyError("Invalid API key. Please verify your OpenAI API key is correct.")
+            elif "rate limit" in error_msg or "quota" in error_msg:
+                raise LLMError(f"Rate limit exceeded. Please check your API quota and try again: {str(e)}")
+            elif "connection" in error_msg or "network" in error_msg:
+                raise LLMError(f"Connection error. Please check your internet connection and try again: {str(e)}")
+            elif "timeout" in error_msg:
+                raise LLMError(f"Request timed out. Please check your internet connection and try again: {str(e)}")
+            else:
+                raise LLMError(f"Verification failed: {str(e)}")
     
     def is_configured(self) -> bool:
         """
@@ -238,18 +235,20 @@ class LLMClient:
             
             raise LLMError("Empty response from API")
             
-        except openai.AuthenticationError as e:
-            raise InvalidAPIKeyError("Invalid API key. Please verify your OpenAI API key is correct.")
-        except openai.RateLimitError as e:
-            raise LLMError(f"Rate limit exceeded. Please wait a moment and try again, or check your API quota: {str(e)}")
-        except openai.APIConnectionError as e:
-            raise LLMError(f"Connection error. Please check your internet connection and try again: {str(e)}")
-        except openai.Timeout as e:
-            raise LLMError(f"Request timed out. Please check your internet connection and try again: {str(e)}")
-        except openai.APIError as e:
-            raise LLMError(f"OpenAI API error. The service may be temporarily unavailable. Please try again later: {str(e)}")
         except Exception as e:
-            raise LLMError(f"LLM call failed: {str(e)}")
+            error_msg = str(e).lower()
+            
+            # Check error message content to determine error type
+            if "authentication" in error_msg or "api key" in error_msg or "unauthorized" in error_msg:
+                raise InvalidAPIKeyError("Invalid API key. Please verify your OpenAI API key is correct.")
+            elif "rate limit" in error_msg or "quota" in error_msg:
+                raise LLMError(f"Rate limit exceeded. Please wait a moment and try again, or check your API quota: {str(e)}")
+            elif "connection" in error_msg or "network" in error_msg:
+                raise LLMError(f"Connection error. Please check your internet connection and try again: {str(e)}")
+            elif "timeout" in error_msg:
+                raise LLMError(f"Request timed out. Please check your internet connection and try again: {str(e)}")
+            else:
+                raise LLMError(f"LLM call failed: {str(e)}")
     
     def chunk_and_summarize(self, text: str, file_type: str = "", 
                            chunk_size: int = 2000, overlap: int = 100) -> Dict[str, Any]:
@@ -354,26 +353,23 @@ class LLMClient:
             else:
                 content_to_analyze = content
             
-            prompt = f"""Analyze this {file_type} file and provide a structured summary.
+            prompt = f"""Analyze this {file_type} file and provide a brief structured summary.
 
-            File: {file_path}
+File: {file_path}
 
-            Content:
-            {content_to_analyze}
+Content:
+{content_to_analyze}
 
-            Provide your analysis in the following format:
+Provide a concise analysis (max 100 words total) in this format:
 
-            SUMMARY:
-            [Concise 80-150 word summary of what this file does]
+SUMMARY: [2-3 sentences on what this file does]
 
-            KEY FUNCTIONALITY:
-            [Main features and purpose of this file]
+KEY FUNCTIONALITY: [3-4 bullet points of main features]
 
-            NOTABLE PATTERNS:
-            [Any interesting techniques, patterns, or approaches used]"""
+NOTABLE PATTERNS: [1-2 notable techniques or patterns used]"""
 
             messages = [{"role": "user", "content": prompt}]
-            response = self._make_llm_call(messages, max_tokens=500, temperature=0.6)
+            response = self._make_llm_call(messages, max_tokens=150, temperature=0.6)
             
             return {
                 "file_path": file_path,
@@ -505,11 +501,47 @@ class LLMClient:
             self.logger.error(f"Feedback generation failed: {e}")
             raise LLMError(f"Failed to generate feedback: {str(e)}")
     
+    async def _summarize_file_batch(self, files_batch: List[tuple], base_path) -> List[Dict[str, str]]:
+        """Process a batch of files in parallel.
+        
+        Args:
+            files_batch: List of (file_path, full_path, file_type) tuples
+            base_path: Base path for file reading
+            
+        Returns:
+            List of file summary results
+        """
+        import asyncio
+        
+        async def analyze_single_file(file_info):
+            file_path, full_path, file_type = file_info
+            try:
+                content = full_path.read_text(encoding='utf-8', errors='ignore')
+                # Run the synchronous summarize in thread pool
+                loop = asyncio.get_event_loop()
+                summary_result = await loop.run_in_executor(
+                    None,
+                    self.summarize_tagged_file,
+                    file_path,
+                    content,
+                    file_type
+                )
+                self.logger.info(f"Summarized: {file_path}")
+                return summary_result
+            except Exception as e:
+                self.logger.error(f"Error analyzing {file_path}: {e}")
+                return None
+        
+        # Process batch in parallel
+        results = await asyncio.gather(*[analyze_single_file(f) for f in files_batch])
+        return [r for r in results if r is not None]
+    
     def summarize_scan_with_ai(self, scan_summary: Dict[str, Any], 
                                relevant_files: List[Dict[str, Any]],
                                scan_base_path: str,
                                max_file_size_mb: int = 10,
-                               project_dirs: Optional[List[str]] = None) -> Dict[str, Any]:
+                               project_dirs: Optional[List[str]] = None,
+                               progress_callback: Optional[Any] = None) -> Dict[str, Any]:
         """
         Comprehensive AI analysis workflow for CLI integration.
         
@@ -520,6 +552,7 @@ class LLMClient:
             max_file_size_mb: Maximum file size in MB to process (default: 10MB)
             project_dirs: Optional list of project directory paths (e.g., Git repo roots).
                          If provided, files are grouped by project and analyzed separately.
+            progress_callback: Optional callback function for progress updates
             
         Returns:
             Dict containing:
@@ -540,19 +573,32 @@ class LLMClient:
             
             self.logger.info("Starting LLM analysis")
             
+            if progress_callback:
+                progress_callback(f"Initializing analysis for {len(relevant_files)} files…")
+            
             if project_dirs:
+                self.logger.info(f"Multi-project mode: {len(project_dirs)} projects")
+                if progress_callback:
+                    progress_callback(f"Multi-project mode: analyzing {len(project_dirs)} projects…")
                 return self._analyze_multiple_projects(
                     scan_summary=scan_summary,
                     relevant_files=relevant_files,
                     scan_base_path=scan_base_path,
                     project_dirs=project_dirs,
-                    max_file_size_mb=max_file_size_mb
+                    max_file_size_mb=max_file_size_mb,
+                    progress_callback=progress_callback,
                 )
+            
+            import asyncio
             
             max_file_size_bytes = max_file_size_mb * 1024 * 1024
             file_summaries = []
             skipped_files = []
             
+            total_files = len(relevant_files)
+            
+            # Prepare files for batch processing
+            files_to_analyze = []
             for file_meta in relevant_files:
                 file_path = file_meta.get('path', '')
                 if not file_path:
@@ -577,19 +623,36 @@ class LLMClient:
                     self.logger.info(f"Skipping non-text file: {file_path}")
                     continue
                 
+                if full_path.exists() and full_path.is_file():
+                    file_type = full_path.suffix or 'unknown'
+                    files_to_analyze.append((file_path, full_path, file_type))
+            
+            # Process files in batches of 5 for parallel execution
+            BATCH_SIZE = 5
+            processed_count = 0
+            
+            for i in range(0, len(files_to_analyze), BATCH_SIZE):
+                batch = files_to_analyze[i:i + BATCH_SIZE]
+                batch_num = (i // BATCH_SIZE) + 1
+                total_batches = (len(files_to_analyze) + BATCH_SIZE - 1) // BATCH_SIZE
+                
+                if progress_callback:
+                    progress_callback(f"Single-project: Batch {batch_num}/{total_batches} ({len(batch)} files)…")
+                
                 try:
-                    if full_path.exists() and full_path.is_file():
-                        content = full_path.read_text(encoding='utf-8', errors='ignore')
-                        file_type = full_path.suffix or 'unknown'
-                        
-                        summary_result = self.summarize_tagged_file(file_path, content, file_type)
-                        file_summaries.append(summary_result)
-                        self.logger.info(f"Summarized: {file_path}")
-                    else:
-                        self.logger.warning(f"File not found: {full_path}")
+                    # Process batch in parallel
+                    batch_results = asyncio.run(self._summarize_file_batch(batch, scan_base_path))
+                    file_summaries.extend(batch_results)
+                    processed_count += len(batch_results)
+                    
+                    if progress_callback:
+                        progress_callback(f"Single-project: Completed {processed_count}/{len(files_to_analyze)} files…")
                 except Exception as e:
-                    self.logger.error(f"Error reading/summarizing {file_path}: {e}")
+                    self.logger.error(f"Error processing batch: {e}")
                     continue
+            
+            if progress_callback:
+                progress_callback("Generating project insights…")
             
             project_analysis = self.analyze_project(
                 local_analysis=scan_summary,
@@ -616,7 +679,8 @@ class LLMClient:
                                    relevant_files: List[Dict[str, Any]],
                                    scan_base_path: str,
                                    project_dirs: List[str],
-                                   max_file_size_mb: int = 10) -> Dict[str, Any]:
+                                   max_file_size_mb: int = 10,
+                                   progress_callback: Optional[Any] = None) -> Dict[str, Any]:
         """
         Analyze multiple projects separately (e.g., multiple Git repos in one scan).
         
@@ -626,6 +690,7 @@ class LLMClient:
             scan_base_path: Base path for file reading
             project_dirs: List of project root directories (e.g., Git repo paths)
             max_file_size_mb: Max file size to process
+            progress_callback: Optional callback for progress updates
             
         Returns:
             Dict with per-project analyses and overall summary
@@ -634,6 +699,9 @@ class LLMClient:
         
         self.logger.info(f"Analyzing {len(project_dirs)} separate projects")
         
+        if progress_callback:
+            progress_callback(f"Grouping files across {len(project_dirs)} projects…")
+        
         max_file_size_bytes = max_file_size_mb * 1024 * 1024
         base_path = Path(scan_base_path)
         
@@ -641,17 +709,32 @@ class LLMClient:
         project_dirs_normalized = []
         for proj_dir in project_dirs:
             proj_path = Path(proj_dir)
+            
             try:
-                if proj_path.is_absolute():
-                    rel_path = proj_path.relative_to(base_path)
-                else:
-                    rel_path = proj_path
-                project_dirs_normalized.append(str(rel_path))
+                # Make paths relative to base_path
+                rel_path = proj_path.relative_to(base_path)
+                normalized = str(rel_path)
+                project_dirs_normalized.append(normalized)
+                self.logger.info(f"Normalized project path: {proj_dir} -> {normalized}")
             except ValueError:
-                project_dirs_normalized.append(str(proj_path))
+                # Not relative to base_path, skip
+                self.logger.warning(f"Project path {proj_dir} is not under base_path {base_path}, skipping")
+                continue
         
         files_by_project = {proj: [] for proj in project_dirs_normalized}
         files_by_project['_unassigned'] = [] 
+        
+        self.logger.info(f"Starting file grouping. Projects: {project_dirs_normalized}")
+        self.logger.info(f"Sample file paths (first 5): {[f.get('path', '') for f in relevant_files[:5]]}")
+        
+        import os
+        debug_log_path = os.path.expanduser("~/.textual_ai_debug.log")
+        with open(debug_log_path, "a") as f:
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+            f.write(f"{timestamp} | [LLM Client] Projects normalized: {project_dirs_normalized}\n")
+            f.write(f"{timestamp} | [LLM Client] Sample files: {[f.get('path', '') for f in relevant_files[:5]]}\n")
+            f.write(f"{timestamp} | [LLM Client] Total files to group: {len(relevant_files)}\n")
         
         for file_meta in relevant_files:
             file_path = file_meta.get('path', '')
@@ -660,7 +743,14 @@ class LLMClient:
             
             assigned = False
             for proj_dir in project_dirs_normalized:
-                if file_path.startswith(proj_dir + '/') or file_path.startswith(proj_dir + '\\'):
+                # Special case: "." means this is the root project (project path == base path)
+                # In this case, all files belong to this project
+                if proj_dir == ".":
+                    files_by_project[proj_dir].append(file_meta)
+                    assigned = True
+                    break
+                # Check if file path starts with project directory
+                elif file_path.startswith(proj_dir + '/') or file_path.startswith(proj_dir + '\\'):
                     files_by_project[proj_dir].append(file_meta)
                     assigned = True
                     break
@@ -668,10 +758,22 @@ class LLMClient:
             if not assigned:
                 files_by_project['_unassigned'].append(file_meta)
         
+        # Log file grouping results
+        for proj_dir, proj_files in files_by_project.items():
+            self.logger.info(f"Project '{proj_dir}': {len(proj_files)} files")
+        
+        with open(debug_log_path, "a") as f:
+            timestamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+            for proj_dir, proj_files in files_by_project.items():
+                f.write(f"{timestamp} | [LLM Client] Project '{proj_dir}': {len(proj_files)} files\n")
+        
         project_analyses = []
         all_file_summaries = []
         all_skipped_files = []
         unassigned_analysis = None  # Track unassigned files separately
+        
+        project_index = 0
+        total_projects = len([p for p in files_by_project.keys() if p != '_unassigned' and files_by_project[p]])
         
         for proj_dir, proj_files in files_by_project.items():
             if proj_dir == '_unassigned':
@@ -685,17 +787,24 @@ class LLMClient:
                 self.logger.info(f"Skipping empty project: {proj_name}")
                 continue
             
+            if proj_dir != '_unassigned':
+                project_index += 1
+                if progress_callback:
+                    progress_callback(f"Multi-project [{project_index}/{total_projects}]: {proj_name}…")
+            
             self.logger.info(f"Analyzing project '{proj_name}' ({len(proj_files)} files)")
             
-            # Analyze files for this project
+            # Prepare files for batch processing
             file_summaries = []
             skipped_files = []
+            files_to_analyze = []
             
             for file_meta in proj_files:
                 file_path = file_meta.get('path', '')
                 full_path = base_path / file_path
                 
                 if not full_path.exists() or not full_path.is_file():
+                    self.logger.warning(f"File not found: {full_path}")
                     continue
                 
                 file_size = full_path.stat().st_size
@@ -707,20 +816,44 @@ class LLMClient:
                     })
                     continue
                 
+                # Skip lock files and other non-essential files
+                if any(skip in file_path.lower() for skip in ['package-lock.json', 'yarn.lock', 'poetry.lock', '.lock']):
+                    self.logger.info(f"[{proj_name}] Skipping lock file: {file_path}")
+                    continue
+                
                 mime_type = file_meta.get('mime_type', '')
                 if not (mime_type.startswith('text/') or 
                        mime_type in ['application/json', 'application/xml', 'application/javascript']):
                     continue
                 
+                file_type = full_path.suffix or 'unknown'
+                files_to_analyze.append((file_path, full_path, file_type))
+            
+            # Process files in batches of 5 for parallel execution
+            import asyncio
+            BATCH_SIZE = 5
+            processed_count = 0
+            
+            for i in range(0, len(files_to_analyze), BATCH_SIZE):
+                batch = files_to_analyze[i:i + BATCH_SIZE]
+                batch_num = (i // BATCH_SIZE) + 1
+                total_batches = (len(files_to_analyze) + BATCH_SIZE - 1) // BATCH_SIZE
+                
+                if progress_callback:
+                    if proj_dir != '_unassigned':
+                        progress_callback(f"Project {project_index}/{total_projects} - Batch {batch_num}/{total_batches} ({len(batch)} files)…")
+                    else:
+                        progress_callback(f"[{proj_name}] Batch {batch_num}/{total_batches} ({len(batch)} files)…")
+                
                 try:
-                    content = full_path.read_text(encoding='utf-8', errors='ignore')
-                    file_type = full_path.suffix or 'unknown'
+                    batch_results = asyncio.run(self._summarize_file_batch(batch, base_path))
+                    file_summaries.extend(batch_results)
+                    processed_count += len(batch_results)
                     
-                    summary_result = self.summarize_tagged_file(file_path, content, file_type)
-                    file_summaries.append(summary_result)
-                    self.logger.info(f"[{proj_name}] Summarized: {file_path}")
+                    if progress_callback:
+                        progress_callback(f"[{proj_name}] Completed {processed_count}/{len(files_to_analyze)} files…")
                 except Exception as e:
-                    self.logger.error(f"[{proj_name}] Error analyzing {file_path}: {e}")
+                    self.logger.error(f"[{proj_name}] Error processing batch: {e}")
                     continue
             
             project_summary = {

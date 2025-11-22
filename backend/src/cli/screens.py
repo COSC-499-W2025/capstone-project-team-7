@@ -205,7 +205,7 @@ class LoginScreen(ModalScreen[None]):
 
 
 class AIKeyScreen(ModalScreen[None]):
-    """Modal dialog for collecting AI configuration."""
+    """Modal dialog for collecting AI API key."""
 
     def __init__(self, default_key: str = "") -> None:
         super().__init__()
@@ -213,9 +213,9 @@ class AIKeyScreen(ModalScreen[None]):
 
     def compose(self) -> ComposeResult:
         yield Vertical(
-            Static("Configure AI Analysis", classes="dialog-title"),
+            Static("Enter OpenAI API Key", classes="dialog-title"),
             Static(
-                "Your OpenAI key and settings stay in-memory for this session only.",
+                "Your API key is saved locally. Temperature and max tokens can be configured in Settings.",
                 classes="dialog-subtitle",
             ),
             Input(
@@ -223,11 +223,6 @@ class AIKeyScreen(ModalScreen[None]):
                 placeholder="sk-...",
                 password=True,
                 id="ai-key-input",
-            ),
-            Horizontal(
-                Input(placeholder="Temperature (0.0-2.0, default 0.7)", id="ai-temp-input"),
-                Input(placeholder="Max tokens (default 1000)", id="ai-tokens-input"),
-                classes="ai-config-row",
             ),
             Static("", id="ai-key-message", classes="dialog-message"),
             Horizontal(
@@ -243,50 +238,26 @@ class AIKeyScreen(ModalScreen[None]):
 
     def _submit(self) -> None:
         key_input = self.query_one("#ai-key-input", Input)
-        temp_input = self.query_one("#ai-temp-input", Input)
-        tokens_input = self.query_one("#ai-tokens-input", Input)
         api_key = key_input.value.strip()
         if not api_key:
             self.query_one("#ai-key-message", Static).update("Enter an API key to continue.")
             return
-        temperature: Optional[float] = None
-        tokens: Optional[int] = None
-        temp_value = temp_input.value.strip()
-        if temp_value:
-            try:
-                parsed = float(temp_value)
-                if 0.0 <= parsed <= 2.0:
-                    temperature = parsed
-                else:
-                    raise ValueError
-            except ValueError:
-                self.query_one("#ai-key-message", Static).update("Temperature must be between 0.0 and 2.0.")
-                return
-        tokens_value = tokens_input.value.strip()
-        if tokens_value:
-            try:
-                parsed_tokens = int(tokens_value)
-                if parsed_tokens > 0:
-                    tokens = parsed_tokens
-                else:
-                    raise ValueError
-            except ValueError:
-                self.query_one("#ai-key-message", Static).update("Max tokens must be a positive integer.")
-                return
+        
+        # Temperature and max_tokens will be loaded from saved config
         handler_called = False
         try:
             debug_log = getattr(self.app, "_debug_log", None)
             if callable(debug_log):
                 masked = f"{api_key[:4]}..." if api_key else "None"
-                debug_log(f"AIKeyScreen submitting masked_key={masked} temp={temperature} tokens={tokens}")
+                debug_log(f"AIKeyScreen submitting masked_key={masked}")
             request_handler = getattr(self.app, "request_ai_key_verification", None)
             if callable(request_handler):
-                request_handler(api_key, temperature, tokens)
+                request_handler(api_key, None, None)
                 handler_called = True
         except Exception:
             pass
         if not handler_called:
-            dispatch_message(self.app, AIKeySubmitted(api_key, temperature, tokens))
+            dispatch_message(self.app, AIKeySubmitted(api_key, None, None))
         self.dismiss(None)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -522,6 +493,17 @@ class PreferencesScreen(ModalScreen[None]):
                         Input(placeholder="Enter a limit (blank = unlimited)", id="pref-max-size"),
                         classes="field-group",
                     ),
+                    Static("AI Analysis settings", classes="group-title"),
+                    Vertical(
+                        Static("Temperature (0.0-2.0, default 0.7)", classes="field-label"),
+                        Input(placeholder="0.7", id="pref-ai-temperature"),
+                        classes="field-group",
+                    ),
+                    Vertical(
+                        Static("Max tokens (default 2000)", classes="field-label"),
+                        Input(placeholder="2000", id="pref-ai-max-tokens"),
+                        classes="field-group",
+                    ),
                     classes="pref-column pref-column-right",
                 ),
                 classes="pref-columns",
@@ -658,6 +640,8 @@ class PreferencesScreen(ModalScreen[None]):
     def _collect_settings(self) -> Optional[Dict[str, Any]]:
         size_input = self.query_one("#pref-max-size", Input)
         follow_switch = self.query_one("#pref-follow-symlinks", Switch)
+        temp_input = self.query_one("#pref-ai-temperature", Input)
+        tokens_input = self.query_one("#pref-ai-max-tokens", Input)
 
         value = size_input.value.strip()
         if value and not value.isdigit():
@@ -666,17 +650,63 @@ class PreferencesScreen(ModalScreen[None]):
             return None
 
         max_size = int(value) if value else None
+        
+        # Validate AI temperature
+        temperature = None
+        temp_value = temp_input.value.strip()
+        if temp_value:
+            try:
+                parsed = float(temp_value)
+                if 0.0 <= parsed <= 2.0:
+                    temperature = parsed
+                else:
+                    self._set_message("Temperature must be between 0.0 and 2.0.", tone="error")
+                    temp_input.focus()
+                    return None
+            except ValueError:
+                self._set_message("Temperature must be a number between 0.0 and 2.0.", tone="error")
+                temp_input.focus()
+                return None
+        
+        # Validate AI max tokens
+        max_tokens = None
+        tokens_value = tokens_input.value.strip()
+        if tokens_value:
+            try:
+                parsed_tokens = int(tokens_value)
+                if parsed_tokens > 0:
+                    max_tokens = parsed_tokens
+                else:
+                    self._set_message("Max tokens must be a positive integer.", tone="error")
+                    tokens_input.focus()
+                    return None
+            except ValueError:
+                self._set_message("Max tokens must be a positive integer.", tone="error")
+                tokens_input.focus()
+                return None
+        
         return {
             "max_file_size_mb": max_size,
             "follow_symlinks": bool(follow_switch.value),
+            "ai_temperature": temperature,
+            "ai_max_tokens": max_tokens,
         }
 
     def _apply_general_settings(self) -> None:
         size_input = self.query_one("#pref-max-size", Input)
         follow_switch = self.query_one("#pref-follow-symlinks", Switch)
+        temp_input = self.query_one("#pref-ai-temperature", Input)
+        tokens_input = self.query_one("#pref-ai-max-tokens", Input)
+        
         max_size = self._summary.get("max_file_size_mb")
         size_input.value = str(max_size) if max_size is not None else ""
         follow_switch.value = bool(self._summary.get("follow_symlinks"))
+        
+        # Load AI settings from config file
+        ai_temperature = self._summary.get("ai_temperature")
+        ai_max_tokens = self._summary.get("ai_max_tokens")
+        temp_input.value = str(ai_temperature) if ai_temperature is not None else ""
+        tokens_input.value = str(ai_max_tokens) if ai_max_tokens is not None else ""
 
     def _sync_profile_selection(self, preferred: Optional[str]) -> None:
         list_view = self.query_one("#pref-profile-list", ListView)
@@ -2291,4 +2321,95 @@ class ProjectViewerScreen(ModalScreen[None]):
     def on_key(self, event: Key) -> None:
         """Handle keyboard shortcuts."""
         if event.key == "escape":
+            self.dismiss(None)
+
+
+class AIResultsScreen(ModalScreen[None]):
+    """Full-screen modal showing AI analysis results."""
+
+    def __init__(self, analysis_text: str) -> None:
+        super().__init__()
+        self._analysis_text = analysis_text
+        self._supports_rich_markup = TextLog is not None
+
+    def compose(self) -> ComposeResult:
+        if TextLog:
+            log_widget = TextLog(
+                highlight=False,
+                markup=True,
+                wrap=True,
+                id="ai-results-log",
+            )
+        else:
+            log_widget = Log(highlight=False, id="ai-results-log")
+        
+        yield Vertical(
+            Static("AI Analysis Results", classes="dialog-title"),
+            Vertical(
+                ScrollableContainer(
+                    log_widget,
+                    id="ai-results-output",
+                    classes="ai-results-output",
+                ),
+                Horizontal(
+                    Button("Close", id="ai-close-btn", variant="primary"),
+                    classes="ai-results-buttons",
+                ),
+                classes="ai-results-body",
+            ),
+            classes="dialog ai-results-dialog",
+        )
+
+    def on_mount(self, _: Mount) -> None:
+        """Display the AI analysis when screen mounts."""
+        log = self.query_one("#ai-results-log", Log)
+        lines = self._analysis_text.splitlines() or ["No AI analysis available."]
+        for line in lines:
+            self._write_line(log, line or " ")
+
+    def _write_line(self, log: Log, text: str) -> None:
+        """Write a line to the log widget."""
+        for chunk in self._prepare_line(text):
+            writer = getattr(log, "write_line", None)
+            if callable(writer):
+                writer(chunk)
+            else:
+                log.write(chunk)
+                log.write("\n")
+
+    def _prepare_line(self, text: str) -> List[str]:
+        """Prepare text line for display."""
+        if self._supports_rich_markup:
+            return [text]
+        plain = self._strip_markup(text)
+        return self._wrap_plain(plain)
+
+    @staticmethod
+    def _strip_markup(text: str) -> str:
+        """Remove rich markup from text."""
+        if not text:
+            return ""
+        return re.sub(r"\[/?[^\]]+\]", "", text)
+
+    @staticmethod
+    def _wrap_plain(text: str, width: int = 92) -> List[str]:
+        """Wrap plain text to specified width."""
+        if not text:
+            return [""]
+        wrapped = textwrap.wrap(
+            text,
+            width=width,
+            break_long_words=False,
+            break_on_hyphens=False,
+        )
+        return wrapped or [text]
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button press."""
+        if event.button.id == "ai-close-btn":
+            self.dismiss(None)
+    
+    def on_key(self, event: Key) -> None:
+        """Handle keyboard shortcuts."""
+        if event.key == "escape" or event.key == "q":
             self.dismiss(None)
