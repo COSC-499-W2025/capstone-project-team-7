@@ -1,9 +1,13 @@
 # Capstone Team 7 Logs
 
 ## Week 12 (November 17th - 23rd)
+This week the team continued strengthening the analysis stack and polishing the user-facing workflow. Major work landed in resume/skills tooling, contribution metrics, and data persistence, while the Textual UI gained cleaner project-level insights and is now actively integrating AI-driven analysis. Several backend hygiene improvements—duplicate detection, stale insight cleanup, and more stable storage—helped improve reliability. Overall, the platform moved from isolated services toward a cohesive, persistent, and visual analysis experience that ties together skills extraction, resume generation, project metrics, and upcoming AI analysis in the TUI.
 
 
-**Joaquin:** 
+**Joaquin:** This week I focused on making the TUI scan flow smoother and more reliable. I streamlined the configuration dialog, improved progress feedback, and added archive caching to speed up repeated scans. I also cleaned up the preferences layout to make the UI clearer across terminals. On the backend, I strengthened Supabase session handling with full refresh-token support and integrated incremental-scanning data so the UI reflects cached results more accurately.
+Most of my remaining time went into reviewing teammates’ PRs and helping align the new analysis, metrics, resume, and AI workflows. For **[#145](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/145)** and **[#151](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/151)**, both the duplicate-scanner logic and stale-insight cleanup were solid and helped stabilize repeat scans. For **[#136](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/136)**, the skills analysis service was clean, well-documented, and fully tested. For **[#139](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/139)**, the feature was strong overall, though I flagged duplicated state-update blocks that could cause inconsistent rendering. For **[#140](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/140)**, the contribution metrics pipeline integrated smoothly with good test coverage. For **[#144](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/144)**, I highlighted three fixes around project detection patterns, Git timestamp performance, and basename-collision issues, but the rest of the extractor was excellent. For **[#146](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/146)**, the resume-generation flow was clean and user-friendly, with Supabase persistence being a good next step. For **[#150](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/150)**, I recommended adding timezone-aware timestamps and cleaning merge artifacts in `textual_app.py`. For **[#152](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/152)**, the new Skills + Contributions tabs noticeably improved the project viewer UX. And for **[#153](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/153)**, the expanded AI workflow and cleaner UI logic were solid, though I suggested securing API-key persistence, fixing archive-prefix stripping, unifying exception names, and removing unsafe `asyncio.run` usage.
+
+Next week, I plan to continue merging these improvements into the unified workflow, refine remaining UX edges, and help stabilize the new AI analysis path now that most of the session, caching, and dispatch issues are resolved.
 
 
 **Jacob:** 
@@ -17,6 +21,22 @@
 **Om:** 
 
 **Samarth:**
+
+## Reflection
+
+### What went well
+- The UI and session updates integrated smoothly: layout and responsiveness were easy to iterate on, refresh-token support fit cleanly into the async session flow, and the incremental scan cache plugged naturally into the parser loop.
+
+### Challenges
+- Fine-tuning layout spacing without Textual’s gap utilities, fully tracing token-refresh behavior across all consent paths, and ensuring the new caching layer remained backward-compatible for offline users.
+
+## **Next Steps**
+- Finalize and merge the AI analysis integration into the Textual UI.  
+- Ensure schemas are consistent across resume, skills, metrics, and project storage.  
+- Expand authorization/role protections around Supabase-backed endpoints.  
+- Add regression tests for duplicate scanning and stale-insight cleanup.  
+- Begin unifying metrics, skills, and project health into a single dashboard view.  
+- Improve documentation for new services and workflows to support onboarding.  
 
 <p align="center">
   <img src="./charts/w12burnup.png" alt="Week 5 Burnup Chart width="400"/>
