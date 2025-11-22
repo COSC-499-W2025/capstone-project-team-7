@@ -73,6 +73,7 @@ from .screens import (
     AIKeyCancelled,
     AIKeyScreen,
     AIKeySubmitted,
+    AIResultsScreen,
     ConsentAction,
     ConsentScreen,
     LoginCancelled,
@@ -200,6 +201,7 @@ class PortfolioTextualApp(App):
         ("Settings & User Preferences", "Manage scan profiles, file filters, and other preferences."),
         ("Consent Management", "Review and update required and external consent settings."),
         ("AI-Powered Analysis", "Trigger AI-based analysis for recent scan results (requires consent)."),
+        ("View Last AI Analysis", "View the results from the most recent AI analysis."),
         ("Exit", "Quit the Textual interface."),
     ]
     BINDINGS = [
@@ -248,12 +250,14 @@ class PortfolioTextualApp(App):
         self._media_vision_ready = media_vision_capabilities_enabled()
         self._debug_log_path = Path.home() / ".textual_ai_debug.log"
         self._ai_output_path = Path.cwd() / "ai-analysis-latest.md"
+        self._ai_config_path = Path.home() / ".portfolio_cli_ai_config.json"
         self._scan_progress_bar: Optional[ProgressBar] = None
         self._scan_progress_label: Optional[Static] = None
         self._debug_log("PortfolioTextualApp initialized")
         self._worker_pool: Optional[ThreadPoolExecutor] = None
         self._thread_debug_enabled = bool(os.getenv("TEXTUAL_CLI_DEBUG_THREADS"))
         atexit.register(self._shutdown_worker_pool)
+        self._load_ai_config()
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -361,6 +365,10 @@ class PortfolioTextualApp(App):
             return
         if label == "AI-Powered Analysis":
             self._handle_ai_analysis_selection()
+            return
+        
+        if label == "View Last AI Analysis":
+            asyncio.create_task(self._view_saved_ai_analysis())
             return
 
         if label == "Run Portfolio Scan":
@@ -2594,6 +2602,11 @@ class PortfolioTextualApp(App):
             return
 
         self._show_status("Updating preferences…", "info")
+        
+        # Extract AI settings if present (these are saved locally, not to Supabase)
+        ai_temperature = payload.pop("ai_temperature", None)
+        ai_max_tokens = payload.pop("ai_max_tokens", None)
+        
         try:
             success, message = await asyncio.to_thread(
                 self._preferences_service.execute_action,
@@ -2610,6 +2623,28 @@ class PortfolioTextualApp(App):
             self._invalidate_preferences_cache()
             self._load_preferences()
             self._refresh_current_detail()
+            
+            # Save AI settings to local config file
+            if ai_temperature is not None or ai_max_tokens is not None:
+                try:
+                    import json
+                    config = {}
+                    if self._ai_config_path.exists():
+                        with open(self._ai_config_path, 'r') as f:
+                            config = json.load(f)
+                    
+                    if ai_temperature is not None:
+                        config['temperature'] = ai_temperature
+                    if ai_max_tokens is not None:
+                        config['max_tokens'] = ai_max_tokens
+                    
+                    with open(self._ai_config_path, 'w') as f:
+                        json.dump(config, f, indent=2)
+                    
+                    self._debug_log(f"Saved AI settings to config: temp={ai_temperature}, tokens={ai_max_tokens}")
+                except Exception as e:
+                    self._debug_log(f"Failed to save AI settings: {e}")
+            
             self._show_status(message or "Preferences updated.", "success")
             self._update_preferences_screen(message or "Preferences updated.", tone="success")
         else:
@@ -2677,7 +2712,22 @@ class PortfolioTextualApp(App):
             self._ai_state.pending_analysis = False
             self._show_status("API key required for AI analysis.", "error")
             return
-        self._debug_log(f"_verify_ai_key start masked={api_key[:4] + '...' if api_key else 'None'} pending={self._ai_state.pending_analysis}")
+        
+        # Load temperature and max_tokens from saved config if not provided
+        if temperature is None or max_tokens is None:
+            try:
+                if self._ai_config_path.exists():
+                    import json
+                    with open(self._ai_config_path, 'r') as f:
+                        config = json.load(f)
+                        if temperature is None:
+                            temperature = config.get('temperature')
+                        if max_tokens is None:
+                            max_tokens = config.get('max_tokens')
+            except Exception as e:
+                self._debug_log(f"Failed to load AI config for defaults: {e}")
+        
+        self._debug_log(f"_verify_ai_key start masked={api_key[:4] + '...' if api_key else 'None'} temp={temperature} tokens={max_tokens} pending={self._ai_state.pending_analysis}")
         self._show_status("Verifying AI API key…", "info")
 
         try:
@@ -2713,6 +2763,10 @@ class PortfolioTextualApp(App):
 
         self._ai_state.client = client
         self._ai_state.api_key = api_key
+        
+        # Save AI config locally for future sessions
+        self._save_ai_config(api_key, client_config.temperature, client_config.max_tokens)
+        
         self._show_status(
             f"API key verified • temp {client_config.temperature} • max tokens {client_config.max_tokens}",
             "success",
@@ -2735,15 +2789,96 @@ class PortfolioTextualApp(App):
         Returns True if the file was written.
         """
         try:
-            content = formatted_text.strip() or "[b]AI-Powered Analysis[/b]\n\nNo AI insights were returned."
-            raw_dump = json.dumps(raw_result, indent=2, default=str)
-            payload = f"{content}\n\n---\n\nRaw AI payload:\n{raw_dump}\n"
-            self._ai_output_path.write_text(payload, encoding="utf-8")
+            content = formatted_text.strip() or "# AI-Powered Analysis\n\nNo AI insights were returned."
+            
+            # Convert Rich markup to Markdown
+            content = self._convert_rich_to_markdown(content)
+            
+            self._ai_output_path.write_text(content, encoding="utf-8")
             self._debug_log(f"AI analysis written to {self._ai_output_path}")
             return True
         except Exception as exc:
             self._debug_log(f"Failed to persist AI analysis: {exc}")
             return False
+    
+    def _convert_rich_to_markdown(self, text: str) -> str:
+        """Convert Rich text markup to Markdown format.
+        
+        Args:
+            text: Text with Rich markup tags like [b], [i], etc.
+            
+        Returns:
+            Text with Markdown formatting
+        """
+        import re
+        
+        # Replace [b]...[/b] with **...**
+        text = re.sub(r'\[b\](.*?)\[/b\]', r'**\1**', text)
+        
+        # Replace [i]...[/i] with *...*
+        text = re.sub(r'\[i\](.*?)\[/i\]', r'*\1*', text)
+        
+        # Replace [u]...[/u] with underline (Markdown doesn't have native underline, use bold+italic)
+        text = re.sub(r'\[u\](.*?)\[/u\]', r'***\1***', text)
+        
+        # Replace standalone [b] or [/b] that might be unclosed
+        text = text.replace('[b]', '**').replace('[/b]', '**')
+        text = text.replace('[i]', '*').replace('[/i]', '*')
+        text = text.replace('[u]', '***').replace('[/u]', '***')
+        
+        return text
+    
+    def _load_ai_config(self) -> None:
+        """Load saved AI configuration (API key, temperature, max_tokens) from local file."""
+        try:
+            if not self._ai_config_path.exists():
+                return
+            
+            import json
+            config = json.loads(self._ai_config_path.read_text(encoding="utf-8"))
+            api_key = config.get("api_key")
+            
+            if api_key:
+                self._ai_state.api_key = api_key
+                # Silently create client with saved key
+                try:
+                    from .services.ai_service import AIService
+                    self._ai_state.client, _ = self._ai_service.verify_client(
+                        api_key,
+                        temperature=config.get("temperature"),
+                        max_tokens=config.get("max_tokens")
+                    )
+                    self._debug_log("AI client initialized from saved config")
+                except Exception:
+                    # If verification fails, just clear it
+                    self._ai_state.api_key = None
+                    self._ai_state.client = None
+        except Exception as exc:
+            self._debug_log(f"Failed to load AI config: {exc}")
+    
+    def _save_ai_config(self, api_key: str, temperature: Optional[float] = None, max_tokens: Optional[int] = None) -> None:
+        """Save AI configuration (API key, temperature, max_tokens) to local file."""
+        try:
+            import json
+            config = {"api_key": api_key}
+            if temperature is not None:
+                config["temperature"] = temperature
+            if max_tokens is not None:
+                config["max_tokens"] = max_tokens
+            
+            self._ai_config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+            self._debug_log(f"AI config saved to {self._ai_config_path}")
+        except Exception as exc:
+            self._debug_log(f"Failed to save AI config: {exc}")
+    
+    def _clear_ai_config(self) -> None:
+        """Clear saved AI configuration from local file."""
+        try:
+            if self._ai_config_path.exists():
+                self._ai_config_path.unlink()
+                self._debug_log("AI config cleared")
+        except Exception as exc:
+            self._debug_log(f"Failed to clear AI config: {exc}")
 
     def _clear_session(self) -> None:
         self._session_service.clear_session(self._session_state.session_path)
@@ -2935,6 +3070,18 @@ class PortfolioTextualApp(App):
         self._preferences_state.profiles = profiles
         self._preferences_state.config = config
         self._preferences_state.error = error
+        
+        # Load AI settings from local config file and inject into summary
+        if summary:
+            try:
+                import json
+                if self._ai_config_path.exists():
+                    with open(self._ai_config_path, 'r') as f:
+                        ai_config = json.load(f)
+                        summary['ai_temperature'] = ai_config.get('temperature')
+                        summary['ai_max_tokens'] = ai_config.get('max_tokens')
+            except Exception as e:
+                self._debug_log(f"Failed to load AI settings for preferences: {e}")
 
     def _current_scan_preferences(self) -> ScanPreferences:
         config = self._preferences_state.config or self._preferences_service.default_structure()
@@ -3281,23 +3428,83 @@ class PortfolioTextualApp(App):
             return
         self._ai_state.pending_analysis = False
         detail_panel = self.query_one("#detail", Static)
+        progress_bar = self._scan_progress_bar
+        if progress_bar:
+            progress_bar.display = True
+            progress_bar.update(progress=0)
+        progress_label = self._scan_progress_label
+        if progress_label:
+            progress_label.remove_class("hidden")
+            progress_label.update("Initializing AI analysis…")
         detail_panel.update("[b]AI-Powered Analysis[/b]\n\nPreparing AI insights…")
         self._show_status("Preparing AI analysis…", "info")
         self._ai_state.task = asyncio.create_task(self._run_ai_analysis())
 
     async def _run_ai_analysis(self) -> None:
         detail_panel = self.query_one("#detail", Static)
+        progress_bar = self._scan_progress_bar
+        progress_label = self._scan_progress_label
+        ai_progress_state = {"current_step": "Initializing…"}
+        progress_lock = threading.Lock()
+
+        self._debug_log("[AI Analysis] Starting AI analysis workflow")
 
         if not self._ai_state.client or not self._scan_state.parse_result:
+            self._debug_log("[AI Analysis] Missing prerequisites - client or parse_result is None")
             self._surface_error(
                 "AI-Powered Analysis",
                 "A recent scan and a verified API key are required.",
                 "Run a portfolio scan, grant external consent, then provide your OpenAI API key.",
             )
             self._ai_state.task = None
+            if progress_bar:
+                progress_bar.display = False
+            if progress_label:
+                progress_label.add_class("hidden")
             return
 
+        # Log scan state for debugging
+        files_count = len(self._scan_state.parse_result.files) if self._scan_state.parse_result.files else 0
+        git_repos_count = len(self._scan_state.git_repos) if self._scan_state.git_repos else 0
+        self._debug_log(f"[AI Analysis] Files in scan: {files_count}, Git repos: {git_repos_count}")
+        if self._scan_state.git_repos:
+            self._debug_log(f"[AI Analysis] Git repo paths: {self._scan_state.git_repos}")
+        if self._scan_state.target:
+            self._debug_log(f"[AI Analysis] Target path: {self._scan_state.target}")
+        if self._scan_state.archive:
+            self._debug_log(f"[AI Analysis] Archive path: {self._scan_state.archive}")
+
+        # Progress update callback
+        def _update_progress(message: str) -> None:
+            with progress_lock:
+                ai_progress_state["current_step"] = message
+            self._debug_log(f"[AI Analysis Progress] {message}")
+
+        # Background task to update UI
+        progress_stop = asyncio.Event()
+        async def _progress_heartbeat() -> None:
+            try:
+                step_count = 0
+                while not progress_stop.is_set():
+                    step_count += 1
+                    with progress_lock:
+                        current_message = ai_progress_state["current_step"]
+                    try:
+                        if progress_label:
+                            progress_label.update(current_message)
+                        if progress_bar:
+                            # Pulse the progress bar
+                            progress_bar.update(progress=(step_count % 100))
+                    except Exception as e:
+                        self._debug_log(f"[AI Analysis] Progress update error: {e}")
+                    await asyncio.sleep(0.5)
+            except Exception as e:
+                self._debug_log(f"[AI Analysis] Heartbeat error: {e}")
+
+        heartbeat_task = asyncio.create_task(_progress_heartbeat())
+
         try:
+            self._debug_log("[AI Analysis] Calling execute_analysis...")
             result = await asyncio.to_thread(
                 self._ai_service.execute_analysis,
                 self._ai_state.client,
@@ -3306,12 +3513,16 @@ class PortfolioTextualApp(App):
                 target_path=str(self._scan_state.target) if self._scan_state.target else None,
                 archive_path=str(self._scan_state.archive) if self._scan_state.archive else None,
                 git_repos=self._scan_state.git_repos,
+                progress_callback=_update_progress,
             )
+            self._debug_log(f"[AI Analysis] Analysis completed, result keys: {list(result.keys()) if result else 'None'}")
         except asyncio.CancelledError:
+            self._debug_log("[AI Analysis] Analysis cancelled by user")
             self._show_status("AI analysis cancelled.", "info")
             detail_panel.update(self._render_ai_detail())
             raise
         except InvalidAIKeyError as exc:
+            self._debug_log(f"[AI Analysis] Invalid API key error: {exc}")
             self._ai_state.client = None
             self._ai_state.api_key = None
             self._surface_error(
@@ -3320,18 +3531,23 @@ class PortfolioTextualApp(App):
                 "Copy a fresh key from OpenAI and try again.",
             )
         except AIDependencyError as exc:
+            self._debug_log(f"[AI Analysis] Dependency error: {exc}")
             self._surface_error(
                 "AI-Powered Analysis",
                 f"Unavailable: {exc}",
                 "Ensure the optional AI dependencies are installed (see backend/requirements.txt).",
             )
         except AIProviderError as exc:
+            self._debug_log(f"[AI Analysis] Provider error: {exc}")
             self._surface_error(
                 "AI-Powered Analysis",
                 f"AI service error: {exc}",
                 "Retry in a few minutes or reduce the input size.",
             )
         except Exception as exc:
+            self._debug_log(f"[AI Analysis] Unexpected error: {exc.__class__.__name__}: {exc}")
+            import traceback
+            self._debug_log(f"[AI Analysis] Traceback: {traceback.format_exc()}")
             self._surface_error(
                 "AI-Powered Analysis",
                 f"Unexpected error ({exc.__class__.__name__}): {exc}",
@@ -3352,8 +3568,46 @@ class PortfolioTextualApp(App):
             if saved:
                 message = f"{message} Saved to {self._ai_output_path.name}."
             self._show_status(message, "success")
+            
+            # Show AI results in full-screen modal
+            await self._show_ai_results(rendered)
         finally:
+            progress_stop.set()
+            await heartbeat_task
+            if progress_bar:
+                progress_bar.update(progress=0)
+                progress_bar.display = False
+            if progress_label:
+                progress_label.add_class("hidden")
+                progress_label.update("")
             self._ai_state.task = None
+    
+    async def _show_ai_results(self, analysis_text: str) -> None:
+        """Show AI analysis results in a full-screen modal."""
+        try:
+            screen = AIResultsScreen(analysis_text)
+            await self.push_screen(screen)
+        except Exception as exc:
+            self._debug_log(f"Failed to show AI results screen: {exc}")
+            self._show_status("Could not display AI results.", "error")
+    
+    async def _view_saved_ai_analysis(self) -> None:
+        """Load and display the saved AI analysis from disk."""
+        if not self._ai_output_path.exists():
+            self._show_status("No saved AI analysis found. Run AI analysis first.", "warning")
+            return
+        
+        try:
+            content = self._ai_output_path.read_text(encoding="utf-8")
+            if not content.strip():
+                self._show_status("Saved AI analysis is empty.", "warning")
+                return
+            
+            await self._show_ai_results(content)
+            self._show_status("Showing saved AI analysis.", "success")
+        except Exception as exc:
+            self._debug_log(f"Failed to load saved AI analysis: {exc}")
+            self._show_status(f"Could not load AI analysis: {exc}", "error")
             
     # --- Projects helpers ---
 
