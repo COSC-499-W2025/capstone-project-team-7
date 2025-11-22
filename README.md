@@ -64,3 +64,16 @@ Press `q` (or `Ctrl+C`) to exit at any time.
 - Provide your OpenAI key when prompted. Temperature and max-token inputs are optional; defaults are 0.7 / 1000.
 - Every successful AI run now saves the formatted output (plus the raw JSON payload) to `ai-analysis-latest.md` in the repo root so you can read or share the report outside the Textual UI.
 - The scan results dialog now includes **Analyze documents** whenever Markdown, text, or log files are detected, letting you review summaries, headings, and keyword insights alongside the existing PDF panel.
+
+
+## Docker usage
+
+cp .env.example .env   # once
+docker compose run --rm cli
+
+## Manual setup (optional)
+
+./scripts/setup.sh
+bash scripts/run_textual_cli.sh
+
+- Manual setup may require Python 3.12 and a Rust toolchain for the tiktoken dependency.
