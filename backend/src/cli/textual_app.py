@@ -847,12 +847,13 @@ class PortfolioTextualApp(App):
         actions.append(("export", "Export JSON report"))
 
         if self._scan_state.pdf_candidates:
-          label = (
-            "View PDF summaries"
-            if self._scan_state.pdf_summaries
-            else "Analyze PDF files"
-           )
-          actions.append(("pdf", label))
+            label = (
+                "View PDF summaries"
+                if self._scan_state.pdf_summaries
+                else "Analyze PDF files"
+            )
+            actions.append(("pdf", label))
+            self._debug_log(f"Added PDF action: {label}")
 
         if self._scan_state.document_candidates:
             actions.append(("documents", "Document analysis"))
@@ -1712,17 +1713,25 @@ class PortfolioTextualApp(App):
         for summary in self._scan_state.pdf_summaries:
             lines: List[str] = []
             lines.append("=" * 60)
-            lines.append(f"📄 {summary.file_name}")
+            # Handle both dict and object formats
+            file_name = summary.get('file_name', 'Unknown') if isinstance(summary, dict) else getattr(summary, 'file_name', 'Unknown')
+            lines.append(f"📄 {file_name}")
             lines.append("=" * 60)
-            if not summary.success:
-                lines.append(f"❌ Unable to summarize file: {summary.error_message or 'Unknown error.'}")
+            
+            success = summary.get('success', False) if isinstance(summary, dict) else getattr(summary, 'success', False)
+            if not success:
+                error_msg = summary.get('error_message') if isinstance(summary, dict) else getattr(summary, 'error_message', None)
+                lines.append(f"❌ Unable to summarize file: {error_msg or 'Unknown error.'}")
                 sections.append("\n".join(lines))
                 continue
+            
             lines.append("")
             lines.append("Summary")
-            lines.append(f"  {summary.summary_text}")
-            if summary.statistics:
-                stats = summary.statistics
+            summary_text = summary.get('summary_text', '') if isinstance(summary, dict) else getattr(summary, 'summary_text', '')
+            lines.append(f"  {summary_text}")
+            
+            stats = summary.get('statistics', {}) if isinstance(summary, dict) else getattr(summary, 'statistics', {})
+            if stats:
                 lines.append("")
                 lines.append("📊 STATISTICS")
                 lines.append(f"  Words: {stats.get('total_words', 0):,}")
@@ -1731,17 +1740,21 @@ class PortfolioTextualApp(App):
                 avg_len = stats.get("avg_sentence_length")
                 if isinstance(avg_len, (int, float)):
                     lines.append(f"  Avg sentence length: {avg_len:.1f} words")
-            if summary.keywords:
+            
+            keywords = summary.get('keywords', []) if isinstance(summary, dict) else getattr(summary, 'keywords', [])
+            if keywords:
                 keywords_preview = ", ".join(
-                    f"{word} ({count})" for word, count in summary.keywords[:10]
+                    f"{word} ({count})" for word, count in keywords[:10]
                 )
                 lines.append("")
                 lines.append("🔑 TOP KEYWORDS")
                 lines.append(f"  {keywords_preview}")
-            if summary.key_points:
+            
+            key_points = summary.get('key_points', []) if isinstance(summary, dict) else getattr(summary, 'key_points', [])
+            if key_points:
                 lines.append("")
                 lines.append("💡 KEY POINTS")
-                for idx, point in enumerate(summary.key_points[:5], start=1):
+                for idx, point in enumerate(key_points[:5], start=1):
                     snippet = point if len(point) <= 120 else point[:117] + "..."
                     lines.append(f"  {idx}. {snippet}")
             sections.append("\n".join(lines))
@@ -1991,25 +2004,45 @@ class PortfolioTextualApp(App):
             if media_payload:
                 payload["media_analysis"] = media_payload
         if self._scan_state.pdf_summaries:
+            # Handle both dict and object formats for pdf_summaries
+            successful_count = 0
+            summaries_data = []
+            
+            for summary in self._scan_state.pdf_summaries:
+                if isinstance(summary, dict):
+                    if summary.get('success', False):
+                        successful_count += 1
+                    summaries_data.append({
+                        "file_name": summary.get('file_name', 'Unknown'),
+                        "success": summary.get('success', False),
+                        "summary": summary.get('summary_text') if summary.get('success') else None,
+                        "keywords": [
+                            {"word": word, "count": count} for word, count in summary.get('keywords', [])
+                        ] if summary.get('success') else [],
+                        "statistics": summary.get('statistics', {}) if summary.get('success') else {},
+                        "key_points": summary.get('key_points', []) if summary.get('success') else [],
+                        "error": summary.get('error_message') if not summary.get('success') else None,
+                    })
+                else:
+                    # Handle object format
+                    if getattr(summary, 'success', False):
+                        successful_count += 1
+                    summaries_data.append({
+                        "file_name": getattr(summary, 'file_name', 'Unknown'),
+                        "success": getattr(summary, 'success', False),
+                        "summary": getattr(summary, 'summary_text', None) if getattr(summary, 'success', False) else None,
+                        "keywords": [
+                            {"word": word, "count": count} for word, count in getattr(summary, 'keywords', [])
+                        ] if getattr(summary, 'success', False) else [],
+                        "statistics": getattr(summary, 'statistics', {}) if getattr(summary, 'success', False) else {},
+                        "key_points": getattr(summary, 'key_points', []) if getattr(summary, 'success', False) else [],
+                        "error": getattr(summary, 'error_message', None) if not getattr(summary, 'success', False) else None,
+                    })
+            
             payload["pdf_analysis"] = {
                 "total_pdfs": len(self._scan_state.pdf_summaries),
-                "successful": len([summary for summary in self._scan_state.pdf_summaries if summary.success]),
-                "summaries": [
-                    {
-                        "file_name": summary.file_name,
-                        "success": summary.success,
-                        "summary": summary.summary_text if summary.success else None,
-                        "keywords": [
-                            {"word": word, "count": count} for word, count in summary.keywords
-                        ]
-                        if summary.success
-                        else [],
-                        "statistics": summary.statistics if summary.success else {},
-                        "key_points": summary.key_points if summary.success else [],
-                        "error": summary.error_message if not summary.success else None,
-                    }
-                    for summary in self._scan_state.pdf_summaries
-                ],
+                "successful": successful_count,
+                "summaries": summaries_data,
             }
             
         # ✨ CODE ANALYSIS ✨

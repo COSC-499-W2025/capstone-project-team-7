@@ -1111,6 +1111,10 @@ class ProjectsScreen(ModalScreen[None]):
             badges.append("📄")
         if project.get("has_media_analysis"):
             badges.append("🎨")
+        if project.get("has_skills_analysis"): 
+            badges.append("🎯")
+        if project.get("has_contribution_metrics"): 
+            badges.append("📊")
         
         badge_str = " ".join(badges) if badges else ""
         
@@ -1570,6 +1574,14 @@ class ProjectViewerScreen(ModalScreen[None]):
         height: auto;
         align: center middle;
         margin-bottom: 1;
+        overflow-x: auto;      
+        overflow-y: hidden;         
+        align: left middle;         
+    }
+    
+    #viewer-tabs Button {
+        padding: 0 2;           
+        margin: 0 1
     }
     
     #viewer-content {
@@ -1613,6 +1625,10 @@ class ProjectViewerScreen(ModalScreen[None]):
             self.available_tabs.append("pdf")
         if self.scan_data.get("media_analysis"):
             self.available_tabs.append("media")
+        if self.scan_data.get("skills_analysis"):  
+            self.available_tabs.append("skills")
+        if self.scan_data.get("contribution_metrics"): 
+            self.available_tabs.append("contributions")
     
     def compose(self):
         project_name = self.project.get("project_name", "Project")
@@ -1631,7 +1647,10 @@ class ProjectViewerScreen(ModalScreen[None]):
                     yield Button("PDF Analysis", id="tab-pdf")
                 if "media" in self.available_tabs:
                     yield Button("Media Analysis", id="tab-media")
-            
+                if "skills" in self.available_tabs:
+                    yield Button("Skills", id="tab-skills")
+                if "contributions" in self.available_tabs:
+                    yield Button("Contributions", id="tab-contributions")
             # Content area
             yield Static(self._render_overview(), id="viewer-content")
             
@@ -1688,6 +1707,11 @@ class ProjectViewerScreen(ModalScreen[None]):
                 content.update(self._render_pdf_analysis())
             elif self.current_tab == "media":
                 content.update(self._render_media_analysis())
+            elif self.current_tab == "skills":  
+                content.update(self._render_skills_analysis())
+            elif self.current_tab == "contributions":  
+                content.update(self._render_contributions_analysis())
+
         except Exception:
             pass
     
@@ -1869,8 +1893,9 @@ class ProjectViewerScreen(ModalScreen[None]):
             lines.append(f"  • 🟡 Medium complexity (5-10) may need review")
         
         return "\n".join(lines)
-                
-        
+    
+    
+    
     
     def _render_git_analysis(self) -> str:
         """Render git analysis tab."""
@@ -1938,9 +1963,218 @@ class ProjectViewerScreen(ModalScreen[None]):
         
         return "\n".join(lines)
     
+    def _render_skills_analysis(self) -> str:
+        """Render skills analysis tab."""
+        skills_data = self.scan_data.get("skills_analysis", {})
+        if not skills_data:
+            return "No skills analysis data available."
+        
+        lines: List[str] = ["[b]Skills Analysis[/b]\n"]
+        
+        # Check if analysis was successful
+        if not skills_data.get("success"):
+            status = skills_data.get("status", "unknown")
+            message = skills_data.get("message", "Analysis failed")
+            error = skills_data.get("error")
+            
+            lines.append(f"Status: {status}")
+            lines.append(f"Message: {message}")
+            if error:
+                lines.append(f"Error: {error}")
+            return "\n".join(lines)
+        
+        # Display skills by category
+        skills_by_category = skills_data.get("skills_by_category", {})
+        if skills_by_category:
+            for category, skills in skills_by_category.items():
+                if skills:
+                    lines.append(f"\n[b]{category}:[/b]")
+                    for skill in skills[:10]:  # Show top 10 per category
+                        if isinstance(skill, dict):
+                            name = skill.get("name", "Unknown")
+                            proficiency = skill.get("proficiency", "Unknown")
+                            lines.append(f"  • {name} ({proficiency})")
+                        else:
+                            lines.append(f"  • {skill}")
+                    
+                    if len(skills) > 10:
+                        lines.append(f"  ... +{len(skills) - 10} more skills")
+        
+        # Summary statistics
+        total_skills = skills_data.get("total_skills", 0)
+        if total_skills:
+            lines.append(f"\n[b]Total Skills Detected:[/b] {total_skills}")
+        
+        return "\n".join(lines)
+
+    def _render_contributions_analysis(self) -> str:
+        """Render contribution metrics tab."""
+        contrib_data = self.scan_data.get("contribution_metrics", {})
+        if not contrib_data:
+            return "No contribution metrics available."
+        
+        lines: List[str] = ["[b]Contribution Analysis[/b]\n"]
+        
+        # Overall metrics
+        lines.append("[b]Overall Metrics:[/b]")
+        
+        total_commits = contrib_data.get("total_commits", 0)
+        total_contributors = contrib_data.get("total_contributors", 0)
+        total_lines = contrib_data.get("total_lines_of_code", 0)
+        
+        lines.append(f"  • Total commits: {total_commits}")
+        lines.append(f"  • Total contributors: {total_contributors}")
+        lines.append(f"  • Total lines of code: {total_lines:,}")
+        lines.append("")
+        
+        # Top contributors
+        contributors = contrib_data.get("contributors", [])
+        if contributors:
+            lines.append("[b]Top Contributors:[/b]")
+            for idx, contributor in enumerate(contributors[:5], 1):
+                name = contributor.get("name", "Unknown")
+                commits = contributor.get("commits", 0)
+                lines_added = contributor.get("lines_added", 0)
+                lines_deleted = contributor.get("lines_deleted", 0)
+                
+                lines.append(f"\n  {idx}. {name}")
+                lines.append(f"     • Commits: {commits}")
+                lines.append(f"     • Lines added: {lines_added:,}")
+                lines.append(f"     • Lines deleted: {lines_deleted:,}")
+            
+            if len(contributors) > 5:
+                lines.append(f"\n  ... +{len(contributors) - 5} more contributors")
+        
+        # Activity timeline
+        timeline = contrib_data.get("activity_timeline", [])
+        if timeline:
+            lines.append("\n[b]Recent Activity:[/b]")
+            for month_data in timeline[:6]:
+                month = month_data.get("month", "Unknown")
+                commits = month_data.get("commits", 0)
+                lines.append(f"  • {month}: {commits} commits")
+            
+            if len(timeline) > 6:
+                lines.append(f"  ... +{len(timeline) - 6} more months")
+        
+        return "\n".join(lines)
+        
     def _render_pdf_analysis(self) -> str:
-        """Render PDF analysis - stub."""
-        return "PDF analysis rendering coming soon..."
+        """Render PDF analysis tab."""
+        pdf_data = self.scan_data.get("pdf_analysis", {})
+        
+        if not pdf_data:
+            return "No PDF analysis data available.\n\nPDFs must be analyzed during the scan for data to appear here."
+        
+        lines: List[str] = ["[b]PDF Document Analysis[/b]\n"]
+        
+        # Summary stats
+        total_pdfs = pdf_data.get("total_pdfs", 0)
+        successful = pdf_data.get("successful", 0)
+        
+        lines.append("[b]Summary:[/b]")
+        lines.append(f"  • Total PDFs: {total_pdfs}")
+        lines.append(f"  • Successfully analyzed: {successful}")
+        
+        if total_pdfs > 0 and successful < total_pdfs:
+            failed = total_pdfs - successful
+            lines.append(f"  • Failed to analyze: {failed}")
+        
+        lines.append("")
+        
+        # Individual PDF summaries
+        summaries = pdf_data.get("summaries", [])
+        if not summaries:
+            lines.append("No PDF summaries available.")
+            return "\n".join(lines)
+        
+        # Display each PDF
+        for idx, summary in enumerate(summaries, 1):
+            if idx > 1:
+                lines.append("")  # Spacing between PDFs
+            
+            file_name = summary.get("file_name", "Unknown")
+            success = summary.get("success", False)
+            
+            lines.append("=" * 60)
+            lines.append(f"[b]📄 {idx}. {file_name}[/b]")
+            lines.append("=" * 60)
+            
+            if not success:
+                error = summary.get("error", "Unknown error")
+                lines.append(f"❌ Failed to analyze: {error}")
+                continue
+            
+            # Summary text
+            summary_text = summary.get("summary")
+            if summary_text:
+                lines.append("")
+                lines.append("[b]Summary:[/b]")
+                # Wrap long summary text
+                if len(summary_text) > 200:
+                    lines.append(f"  {summary_text[:197]}...")
+                    lines.append("  [i](Full summary truncated for display)[/i]")
+                else:
+                    lines.append(f"  {summary_text}")
+            
+            # Statistics
+            statistics = summary.get("statistics", {})
+            if statistics and any(statistics.values()):
+                lines.append("")
+                lines.append("[b]📊 Statistics:[/b]")
+                
+                words = statistics.get("total_words", 0)
+                sentences = statistics.get("total_sentences", 0)
+                unique = statistics.get("unique_words", 0)
+                avg_len = statistics.get("avg_sentence_length", 0)
+                
+                if words:
+                    lines.append(f"  • Total words: {words:,}")
+                if sentences:
+                    lines.append(f"  • Total sentences: {sentences}")
+                if unique:
+                    lines.append(f"  • Unique words: {unique:,}")
+                if isinstance(avg_len, (int, float)) and avg_len > 0:
+                    lines.append(f"  • Avg sentence length: {avg_len:.1f} words")
+            
+            # Keywords
+            keywords = summary.get("keywords", [])
+            if keywords:
+                lines.append("")
+                lines.append("[b]🔑 Top Keywords:[/b]")
+                keyword_strs = []
+                
+                for kw in keywords[:15]:  # Show top 15 keywords
+                    if isinstance(kw, dict):
+                        word = kw.get("word", "")
+                        count = kw.get("count", 0)
+                        if word:
+                            keyword_strs.append(f"{word} ({count})")
+                    elif isinstance(kw, (list, tuple)) and len(kw) == 2:
+                        keyword_strs.append(f"{kw[0]} ({kw[1]})")
+                
+                if keyword_strs:
+                    # Display keywords in a compact format
+                    lines.append(f"  {', '.join(keyword_strs)}")
+                    if len(keywords) > 15:
+                        lines.append(f"  ... +{len(keywords) - 15} more keywords")
+            
+            # Key points
+            key_points = summary.get("key_points", [])
+            if key_points:
+                lines.append("")
+                lines.append("[b]💡 Key Points:[/b]")
+                for point_idx, point in enumerate(key_points[:7], 1):
+                    # Truncate very long points
+                    point_str = str(point)
+                    if len(point_str) > 100:
+                        point_str = point_str[:97] + "..."
+                    lines.append(f"  {point_idx}. {point_str}")
+                
+                if len(key_points) > 7:
+                    lines.append(f"  ... +{len(key_points) - 7} more points")
+        
+        return "\n".join(lines)
     
     def _render_media_analysis(self) -> str:
         """Render media analysis tab."""
