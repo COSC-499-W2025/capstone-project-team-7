@@ -1,12 +1,13 @@
+version: "3.9"
+
 services:
-  backend:
-    build: ./backend
-    container_name: backend
+  cli:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     working_dir: /app
-    command: python src/main.py
-    volumes:
-      - ./backend/src:/app/src
-    ports:
-      - "8000:8000"
-    environment:
-      - ENV=development
+    env_file:
+      - .env
+    command: ["python", "-m", "src.cli.textual_app"]
+    tty: true
+    stdin_open: true
