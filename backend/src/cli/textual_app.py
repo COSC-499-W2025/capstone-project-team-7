@@ -34,7 +34,7 @@ from .services.ai_service import (
     AIService,
     AIDependencyError,
     AIProviderError,
-    InvalidAIKeyError,
+    InvalidAPIKeyError,
 )
 from .services.scan_service import ScanService
 from .services.session_service import SessionService
@@ -2738,7 +2738,7 @@ class PortfolioTextualApp(App):
                 max_tokens,
             )
             self._debug_log("verify_client returned successfully")
-        except InvalidAIKeyError as exc:
+        except InvalidAPIKeyError as exc:
             self._ai_state.client = None
             self._ai_state.api_key = None
             self._ai_state.pending_analysis = False
@@ -3521,7 +3521,7 @@ class PortfolioTextualApp(App):
             self._show_status("AI analysis cancelled.", "info")
             detail_panel.update(self._render_ai_detail())
             raise
-        except InvalidAIKeyError as exc:
+        except InvalidAPIKeyError as exc:
             self._debug_log(f"[AI Analysis] Invalid API key error: {exc}")
             self._ai_state.client = None
             self._ai_state.api_key = None

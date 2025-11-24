@@ -8,7 +8,7 @@ class AIDependencyError(RuntimeError):
     """Raised when optional AI dependencies are missing."""
 
 
-class InvalidAIKeyError(RuntimeError):
+class InvalidAPIKeyError(RuntimeError):
     """Raised when the provided API key is invalid."""
 
 
@@ -35,12 +35,12 @@ class AIService:
         max_tokens: Optional[int],
     ) -> tuple[Any, AIClientConfig]:
         try:
-            from ...analyzer.llm.client import LLMClient, InvalidAPIKeyError as ClientInvalidKey, LLMError
+            from ...analyzer.llm.client import LLMClient, InvalidAPIKeyError, LLMError
         except Exception as exc:  # pragma: no cover - optional dependency missing
             raise AIDependencyError(str(exc)) from exc
 
         if not api_key:
-            raise InvalidAIKeyError("API key required.")
+            raise InvalidAPIKeyError("API key required.")
 
         def _create_client() -> LLMClient:
             client = LLMClient(
@@ -53,8 +53,8 @@ class AIService:
 
         try:
             client = _create_client()
-        except ClientInvalidKey as exc:
-            raise InvalidAIKeyError(str(exc)) from exc
+        except InvalidAPIKeyError:
+            raise
         except LLMError as exc:
             raise AIProviderError(str(exc)) from exc
         except Exception as exc:

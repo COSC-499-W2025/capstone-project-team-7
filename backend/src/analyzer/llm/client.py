@@ -1,7 +1,10 @@
 # LLM Client Module
 # Handles integration with OpenAI API for analysis tasks
 
+import asyncio
 import logging
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, Dict, List, Any
 import openai
 from openai import OpenAI
@@ -501,6 +504,42 @@ NOTABLE PATTERNS: [1-2 notable techniques or patterns used]"""
             self.logger.error(f"Feedback generation failed: {e}")
             raise LLMError(f"Failed to generate feedback: {str(e)}")
     
+    def _run_async_in_thread(self, coro):
+        """Run an async coroutine in a dedicated thread with its own event loop.
+        
+        This prevents conflicts with existing event loops and is safe to call
+        from synchronous code.
+        
+        Args:
+            coro: The coroutine to run
+            
+        Returns:
+            The result of the coroutine
+        """
+        result = None
+        exception = None
+        
+        def run_in_thread():
+            nonlocal result, exception
+            try:
+                # Create a new event loop for this thread
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    result = loop.run_until_complete(coro)
+                finally:
+                    loop.close()
+            except Exception as e:
+                exception = e
+        
+        thread = threading.Thread(target=run_in_thread)
+        thread.start()
+        thread.join()
+        
+        if exception:
+            raise exception
+        return result
+    
     async def _summarize_file_batch(self, files_batch: List[tuple], base_path) -> List[Dict[str, str]]:
         """Process a batch of files in parallel.
         
@@ -511,7 +550,6 @@ NOTABLE PATTERNS: [1-2 notable techniques or patterns used]"""
         Returns:
             List of file summary results
         """
-        import asyncio
         
         async def analyze_single_file(file_info):
             file_path, full_path, file_type = file_info
@@ -589,8 +627,6 @@ NOTABLE PATTERNS: [1-2 notable techniques or patterns used]"""
                     progress_callback=progress_callback,
                 )
             
-            import asyncio
-            
             max_file_size_bytes = max_file_size_mb * 1024 * 1024
             file_summaries = []
             skipped_files = []
@@ -640,8 +676,10 @@ NOTABLE PATTERNS: [1-2 notable techniques or patterns used]"""
                     progress_callback(f"Single-project: Batch {batch_num}/{total_batches} ({len(batch)} files)…")
                 
                 try:
-                    # Process batch in parallel
-                    batch_results = asyncio.run(self._summarize_file_batch(batch, scan_base_path))
+                    # Process batch in parallel using dedicated thread
+                    batch_results = self._run_async_in_thread(
+                        self._summarize_file_batch(batch, scan_base_path)
+                    )
                     file_summaries.extend(batch_results)
                     processed_count += len(batch_results)
                     
@@ -830,7 +868,6 @@ NOTABLE PATTERNS: [1-2 notable techniques or patterns used]"""
                 files_to_analyze.append((file_path, full_path, file_type))
             
             # Process files in batches of 5 for parallel execution
-            import asyncio
             BATCH_SIZE = 5
             processed_count = 0
             
@@ -846,7 +883,10 @@ NOTABLE PATTERNS: [1-2 notable techniques or patterns used]"""
                         progress_callback(f"[{proj_name}] Batch {batch_num}/{total_batches} ({len(batch)} files)…")
                 
                 try:
-                    batch_results = asyncio.run(self._summarize_file_batch(batch, base_path))
+                    # Process batch in parallel using dedicated thread
+                    batch_results = self._run_async_in_thread(
+                        self._summarize_file_batch(batch, base_path)
+                    )
                     file_summaries.extend(batch_results)
                     processed_count += len(batch_results)
                     
