@@ -1,3 +1,8 @@
+# Week 12: November 17 - November 23
+This week I focused on containerizing the backend to make the system fully reproducible **[*133](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/154). I created the Dockerfile and docker-compose service, resolved macOS specific Docker issues, and ensured the Textual TUI runs cleanly inside a container. I also optimized the Docker image size by using the python:3.12-slim base image and disabling pip caching, which reduced unnecessary layer bloat. After testing the full flow (docker compose run --rm cli), I updated the documentation so the team can run the CLI with a single command.
+
+<img width="1086" height="637" alt="Screenshot 2025-11-23 at 9 28 54 PM" src="https://github.com/user-attachments/assets/3820a0b4-a594-40dc-b079-48bf4f94cd78" />
+
 # Week 10: November 3 - November 9
 
 This week I focused on improving our Git analysis module by adding a classification system that identifies whether a repository represents an individual, collaborative, or unknown project. The logic determines project type based on the number of contributors found in the Git commit history and integrates seamlessly into the existing analyze_git_repo() function.
