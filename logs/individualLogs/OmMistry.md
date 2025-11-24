@@ -28,6 +28,8 @@ Issues resolved include: [#143](https://github.com/COSC-499-W2025/capstone-proje
 
 [PR #144 - Multi project Detection](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/144)
 
+![Tasks Completed](./assets/omistry_Week12.png)
+
 ![Github Issues board](./assets/Github_Issues_Week12.png)
 
 ![PR Screenshot](./assets/PR_Week12_OM.png)
@@ -162,7 +164,7 @@ Key functionality added:
 
 ![Tests Passed](./assets/omistry_tests_Week8.png)
 
-![Tasks Completed](./assets/omistry_Week8.png)
+c
 
 ## Week 7: October 13 - October 19
 
