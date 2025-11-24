@@ -202,6 +202,8 @@ class PortfolioTextualApp(App):
         ("Consent Management", "Review and update required and external consent settings."),
         ("AI-Powered Analysis", "Trigger AI-based analysis for recent scan results (requires consent)."),
         ("View Last AI Analysis", "View the results from the most recent AI analysis."),
+        ("AI Auto-Suggestion", "Let AI suggest and apply code improvements automatically."), 
+
         ("Exit", "Quit the Textual interface."),
     ]
     BINDINGS = [
