@@ -17,7 +17,15 @@ Next week, I plan to continue merging these improvements into the unified workfl
 **Vlad:** 
 
 
-**Aaron:** 
+**Aaron:** This week I worked on implementing a complete project management system that allows users to save, view, and manage their code analysis sessions. I built a robust ```ProjectService class``` that handles all CRUD operations through a modular architecture, ensuring clean separation between the application logic and database layer. The service captures and persists all analysis data from JSON reports to the database, preserving complete analysis sessions including code analysis and other local insights for future retrieval. I created two key interface components in ```screens.py```: a ```ProjectsScreen``` that displays all saved projects in an organized view, and a ```ProjectViewerScreen``` that enables users to dive into individual projects to examine their local analysis details like code analysis results. To ensure reliability, I developed 5 comprehensive unit tests covering all ProjectService functionality including edge cases and error handling. I also reviewed Joaquin's pr for stopping the hanging when a user tries to quit.
+
+**[#139](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/139)**: This PR was made by me and implements the project storage as I discussed earlier. It allows users to save their projects after exporting a JSON report, and allows them to view them in chronological order along with all the specified analysis
+
+**[#152](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/152)**: This PR was also made by me with some help from Om, it adds the skills, contribution metrics, and pdf analysis to the saved information associated to a project and lets users view the analysis of these new metrics
+
+**[#151](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/151)**: This PR was made by Joaquin and deals with the user not being able to quit due too the thread beinga non-daemon. I reviewed it and it was implemented amazingly by Joaquin.
+
+Next week, I will work on adding all the local analyisis functions to the AI analysis that Samarth has implemented. It will mirror how the local analysis looks, but use prompting and OpenAI API to provide users analysis. I also will improve on some of the local analysis functionality our team has implemented so far to ensure they work perfectly and provide real meaningful information for the user. I will also try to refactor any long files to ensure our project is not to heavy.
 
 **Om:** This week I implemented contribution metrics system supporting both Git and non-Git projects. I built activity classification engine, enhanced skills extractor with contribution patterns, and integrated everything into the Textual CLI with auto-extraction and export functionality. I also made sure to add enough tests to cover different edge cases. I also spent sometime helping out Aaron on a bug in the PDF analysis that was integrated earlier in the TUI. For some reason, the PDF analysis seem to have not been functioning and/or showing up even when there would be PDF files in the directory provided. This had to do with the TUI configuration for the PDF anslysis which was ignoring the existing PDF files. Rest of my time this week went into reflcting my teammates work and their PRs. 
 
