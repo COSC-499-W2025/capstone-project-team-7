@@ -1,5 +1,44 @@
 # Om Mistry (@OM200401)
 
+## Week 12: November 17 - November 23
+
+This week, I implemented a comprehensive contribution metrics system that analyzes both Git and non-Git projects. The feature extracts individual contributor data, activity breakdowns, and project timelines to provide insights into development patterns.
+
+**Key Accomplishments:**
+
+1. **Contribution Analyzer Module**: Built pattern-based file classification system categorizing code, tests, docs, design, and config files. Implemented dual-mode analysis supporting Git commit history and file metadata fallback for non-Git projects.
+
+2. **Skills Enhancement**: Extended the skills extractor to detect "Sustained Contribution" patterns from contributor activity, identifying developers with 7+ active days across a project timeline.
+
+3. **Git Analysis Enhancement**: Modified `git_repo.py` to track per-contributor metrics including first/last commit dates and active days calculation using author-specific git log filtering.
+
+4. **CLI Integration**: Created `ContributionAnalysisService` with three-tier display formatting (narrative, summary, detailed breakdown) and integrated into Textual UI with auto-extraction during scans.
+
+5. **Comprehensive Testing**: Wrote 24 tests (16 Git + 8 non-Git scenarios) achieving 100% pass rate.
+
+**Challenges & Learning:**
+Initially struggled with making Git analysis optional—the system raised errors for non-Git projects. Resolved by implementing graceful fallback logic that detects project type automatically. Learned importance of defensive programming when dealing with optional data sources.
+
+**Impact:**
+Users can now analyze any project folder (Git or not) and get meaningful contribution insights without external APIs. All processing remains local, maintaining privacy-first principles.
+
+Issues resolved include: [#143](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/143), [#56](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/56), [#46](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/46) and [#45](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/45)
+
+[PR #140 - Contribution Metrics](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/140)
+
+[PR #144 - Multi project Detection](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/144)
+
+![Github Issues board]()
+
+![PR Screenshot]()
+
+**Next Week Priorities**
+
+- Clean up and refactor Supabase connections and tables
+- Make sure no breaks or bugs internally and system is ready for presentation
+- Finish any minor remaining integrations that come up in the process
+
+
 ## Reading Break
 
 ### Task Breakdown
