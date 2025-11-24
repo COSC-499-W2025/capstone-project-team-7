@@ -43,7 +43,13 @@ Next week, I will work on adding all the local analyisis functions to the AI ana
 My entire next week will go into testing and trying to break our system so as to be able to find any bugs that may or may not currently exist. I also have some ideas regarding certain existing features which will enhance our existing system that I would like to discuss and implement with my team. I will also look into cleaning up our existing documentation to see if it can be refined and old information can be removed.
 
 
-**Samarth:**
+**Samarth:** This week I worked on significantly enhancing the AI analysis functionality to integrate seamlessly with the new TUI. I implemented persistent configuration through a ~/.portfolio_cli_ai_config.json file that automatically stores API keys and AI settings across sessions, eliminating the need for repeated entry. I extended the Settings dialog to include AI configuration options like temperature and max_tokens, and added auto-initialization of the AI client on startup using saved credentials. Also to improve the user experience, I built a dedicated AIResultsScreen, a full-screen modal component for viewing analysis results, and added a "View Last AI Analysis" menu option for easy access to previous results saved in the ai-analysis-latest.md file. On top of that, I improved the analysis performance by implementing parallel batch file processing using asyncio with 5 concurrent files, complete with real-time progress tracking and detailed status messages. I also fixed several critical bugs including a path normalization issue in multi-project mode, corrected archive path handling for proper file grouping, and improved error handling with generic exception parsing for better SDK compatibility. I also reviewed Vlads PR this week which was focused on creating a working docker image for the app.
+
+**[#153](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/153):** This PR was made by me and implements the analysis enhancements & performance optimizations I made this week, its a large PR covering the various changes and fixes throughout the AI analysis module.
+
+**[#154](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/154):** This PR was made by Vlad that I reviewed. It is a concise and to the point implementation. The docker image size was coming up to 2 GBs due to the large Pytorch library. Removing pip caching was a good addition to help reduce the load.
+
+Next week, my plan is to work on improving the AI analysis further and get it ready for the final presentation. We are also going to decide on some more features to add as part of the AI output, with an integration of the local analysis results. So next week I will try to figure out how I can add all the different local analysis segments into AI efficiently and get those results with the current portolio/project overview.
 
 ## Reflection
 

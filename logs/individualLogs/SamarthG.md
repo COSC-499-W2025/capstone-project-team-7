@@ -1,5 +1,32 @@
 # Samarth Grover (@Samarth-G)
 
+## Week 12:
+This week I worked on major improvements to the AI analysis capabilities, making it a fully integrated feature in the TUI. The work centered on persistent configuration, batch processing performance, and a polished results viewing experience. All of this shipped through **PR #153 – ‘AI analysis work on the tui’**.
+
+The biggest addition was automatic API key management through a new ~/.portfolio_cli_ai_config.json file. Instead of re-entering credentials every session, the AI client now initializes automatically on startup with saved settings. I integrated temperature and max_tokens configuration directly into the Settings dialog, giving users control over analysis behavior without touching config files manually.
+
+Results viewing got a complete overhaul with the new AIResultsScreen, a dedicated full-screen modal for browsing analysis output. The new "View Last AI Analysis" menu option lets you review previous results without re-running expensive API calls, which made the workflow much less wasteful.
+
+Performance improved dramatically through parallel batch processing. File analysis now runs 5 concurrent requests using asyncio, with real-time progress tracking showing detailed status messages and a visual progress indicator. Long analysis runs no longer feel frozen, and the speedup on larger portfolios with multiple projects was immediately noticeable.
+
+Finally, I fixed critical bugs in the multi-project analysis mode. Path normalization was broken across project boundaries, causing files to be grouped incorrectly. Archive path handling got corrected to match the new caching logic, and error handling became more robust with generic exception parsing for better SDK compatibility.
+
+### Reflection
+
+**What went well:**  
+The persistent config layer fit cleanly into the existing startup flow, and Textual's modal system made the results viewer straightforward to implement. Asyncio batch processing was easier than expected to bolt onto the existing analysis pipeline, and the progress tracking hooks integrated nicely without blocking the UI thread.
+
+**What didn’t go well:**  
+Handling SDK exceptions generically required more defensive parsing than anticipated, since error structures varied across different failure modes. Testing the result output format was frustrating as I had to rerun the entire workflow with the local scan and AI analysis each time, which wasted a lot of time and took much longer than it should have.
+
+### Next Steps
+- Improve the AI analysis component and prepare it for the final presentation.
+- Decide on additional features to include in the AI output, integrating results from the local analysis.
+- Determine an efficient method to combine all local analysis segments into the AI workflow.
+- Ensure the integrated results align cleanly with the current portfolio/project overview.
+
+![Week 12 Image](./assets/SamarthG-W12.png)
+
 ## Week 10: November 3 - November 9
 
 This week I enhanced the AI analysis system with multi-project support and configurable LLM parameters. I started by expanding `summarize_scan_with_ai()` to accept a project_dirs parameter, enabling the system to handle portfolios containing multiple independent projects rather than treating everything as a single codebase. <br> Next, I implemented `_analyze_multiple_projects()`, which intelligently organizes files by their respective projects, performs targeted per-project analysis, and handles any unassigned files separately to ensure comprehensive coverage of the entire portfolio. <br> After which, I built `_generate_portfolio_summary()` to produce high-level portfolio insights when multiple projects are detected, highlighting overall technical strengths, breadth of skills across projects, and noting any loose files that exist outside the main project structures. <br> On top of that, I added configurable LLM parameters including temperature and max tokens, implementing CLI prompts with validation to give users control over analysis behavior while maintaining consistency across all LLM calls. <br> Finally, I switched the default model to gpt-4o-mini for improved cost-efficiency and ensured all new parameters are properly validated and consistently applied throughout the analysis pipeline. These enhancements enable the tool to provide more coherent, context-aware results for complex portfolios while giving users flexibility in how their code is analyzed.
