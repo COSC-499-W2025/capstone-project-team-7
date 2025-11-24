@@ -19,7 +19,20 @@ Next week, I plan to continue merging these improvements into the unified workfl
 
 **Aaron:** 
 
-**Om:** 
+**Om:** This week I implemented contribution metrics system supporting both Git and non-Git projects. I built activity classification engine, enhanced skills extractor with contribution patterns, and integrated everything into the Textual CLI with auto-extraction and export functionality. I also made sure to add enough tests to cover different edge cases. I also spent sometime helping out Aaron on a bug in the PDF analysis that was integrated earlier in the TUI. For some reason, the PDF analysis seem to have not been functioning and/or showing up even when there would be PDF files in the directory provided. This had to do with the TUI configuration for the PDF anslysis which was ignoring the existing PDF files. Rest of my time this week went into reflcting my teammates work and their PRs. 
+
+**[#145](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/145):** I realised there were a few critical issues like `missing offline fallback`, `path normalisationn bug` and `duplicate code` and asked for some changes to fix these issues. I also provided some recommendations which you can take a look in my PR Review.
+
+**[#146](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/146):** This PR was well made with well structured implentation and planning, I did add some recommendations and enhancements to be woked on in the future but everything else was fine.
+
+**[#150](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/150):** While adding my review I noticed Jacob had already made changes based on Joaquin's review and had done a good job with the fixes.
+
+**[#151](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/151):** Joaquin did a great job with this PR with tests that covered all the edge cases and a great implementation for the threading fixes.
+
+**[#152](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/151):** Great addition to the thoughtfullness and the upgrade on the UX considerations by Aaron.
+
+My entire next week will go into testing and trying to break our system so as to be able to find any bugs that may or may not currently exist. I also have some ideas regarding certain existing features which will enhance our existing system that I would like to discuss and implement with my team. I will also look into cleaning up our existing documentation to see if it can be refined and old information can be removed.
+
 
 **Samarth:**
 
