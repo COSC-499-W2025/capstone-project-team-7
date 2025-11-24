@@ -1,5 +1,18 @@
 
 # Jacob Damery
+## Week 12 (Nov 16 – 23)
+
+This week was split into two major pushes: first solidifying the resume-generation flow inside the CLI, and then extending it so generated resumes persist in Supabase with a full management UI.
+
+Early in the week I focused on the local experience—polishing the resume-generation service, wiring it into the scan results dialog, capping bullet counts, formatting output, and ensuring users could instantly preview the Markdown. Once that workflow felt smooth, I shifted to persistence. I added the `resume_items` table and migration, built a `ResumeStorageService`, and wired up Supabase so every generated resume stores metadata, markdown content, and timestamps. The Textual UI gained a new **“View Saved Resumes”** modal with keyboard shortcuts, metadata preview, and delete support (which removes the row from Supabase). I also updated documentation (`README` + `systemArchitecture`) and added a dedicated test file (`tests/cli/test_resume_storage_service.py`) to cover the new service.
+
+### Reflection
+
+**What went well:**  
+Building the flow locally first helped validate the UX before introducing Supabase, and the storage integration fit cleanly thanks to the new service layer and RLS token handling. Textual made the modal straightforward, and the dedicated test suite increased confidence in the changes.
+
+**What didn’t go well:**  
+Getting the modal footer to render consistently required several CSS adjustments, and review-driven conflicts led to a longer rebase than expected.
 
 ## Week 10 (November 3rd – 9th)
 
