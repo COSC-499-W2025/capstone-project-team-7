@@ -1,5 +1,51 @@
 # Aaron Banerjee (@aaronbanerjee123)
 
+## Week 12: November 17 - November 23
+
+This week, I implemented a comprehensive contribution metrics system that analyzes both Git and non-Git projects. The feature extracts individual contributor data, activity breakdowns, and project timelines to provide insights into development patterns.
+
+This week I implemented the backend database connection to our project through implementing the "View saved projects" feature. This feature allows users to view their saved projects after exporting a JSON report. It allows users to view them in chronological order based on when they scanned the project, and lets them view all their key metrics and analysis in a tab format. 
+
+**Key Accomplishments:**
+
+1. **Projects Service**: Built a class called ProjectService that implements full functionality to add, delete, and edit projects saved to the database. Implemented in modular format to allow use in ```textual_app.py``` easily
+
+2. **Project saving**: Implemented project saving by saving all analysis stored in the JSON report to the database so users can view it in the future
+
+4. **ProjectViewerScreen**: Created the ```ProjectViewerScreen``` class in ```screens.py``` to allow users to interact with saved projects with full CRUD functionality
+
+5. **Comprehensive Testing**: Wrote 5 comprehensive tests to ensure ProjectService works
+
+**Challenges & Learning:**
+Initially struggled with making Git analysis optional—the system raised errors for non-Git projects. Resolved by implementing graceful fallback logic that detects project type automatically. Learned importance of defensive programming when dealing with optional data sources.
+
+I struggled with implementing the project saving to the application due to needing to understand the entire flow and how our services interact with the the main ```textual_app.py``` file and also how ```screens.py``` works with the main file. Resolved this by taking time to understand how the flow of the application with the TUI and how to add screens. Learned the flow of how to add new UI screens now and can use these skills moving forward. 
+
+**Impact:**
+Users can now analyze any project folder (Git or not) and get meaningful contribution insights without external APIs. All processing remains local, maintaining privacy-first principles.
+
+Users are now able to save their projects along with all their saved analysis in the JSON report and view them in the "View Saved Projects" tab. They can now also view the saved projects in chronolgoical order and perform full CRUD functions on the saved projects like adding, deletion, and editing of saved projects.
+
+
+Issues resolved include:[#60](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/60), [#48](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/48),
+[#148](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/148) and [#55](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/55)
+
+[PR #139 - Project Storage](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/139)
+
+[PR #152 - Implement new metrics view project screen #152](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/152)
+
+<img width="1504" height="159" alt="image" src="https://github.com/user-attachments/assets/bec484a6-ad50-466a-a50c-58e6510823bd" />
+
+<img width="1362" height="734" alt="image" src="https://github.com/user-attachments/assets/a0c5204e-a727-47a0-b340-eb76561ab953" />
+
+
+
+**Next Week Priorities**
+
+- Add local analysis functionality into the AI component by adding all the types of analysis from local to the AI part
+- Ensure no bugs are present from PR's and current TUI flow
+- Finish minor refactoring and improve local analysis further
+
 ## Week 10: November 4 - November 9
 
 *This week, I integrated the code quality analysis system into our interactive CLI application (app.py), making code analysis accessible through the same workflow as PDF, Git, and Media analysis. The integration follows the established pattern used by other analysis types, offering users code quality analysis after scanning a project and providing a dedicated menu option to view detailed results. I implemented state management for analysis results using self._code_analysis_result and created two core methods: _analyze_code_from_scan() which initializes the CodeAnalyzer with user preferences and runs analysis on the target directory, and _handle_code_analysis_option() which displays results by reusing the existing display_analysis_results() function from code_cli.py. The integration respects user configuration settings, pulling max file size limits from their profile and excluding standard directories like node_modules and .git. I added detection logic that checks parse_zip results for code files (checking 18 different extensions including .py, .js, .ts, .tsx, .java, .cpp, .go, .rs, .rb, .php, .cs, and more), and only offers analysis when code files are present and dependencies are available. The feature includes comprehensive error handling with graceful degradation - if tree-sitter dependencies are missing, it provides clear installation instructions and continues with other CLI features. I also ensured the analysis offer appears at the correct point in the workflow (after PDF analysis but before the "Scan completed successfully" message) so users actually see the prompt before the menu appears.*
