@@ -14,6 +14,11 @@ Building the flow locally first helped validate the UX before introducing Supaba
 **What didn’t go well:**  
 Getting the modal footer to render consistently required several CSS adjustments, and review-driven conflicts led to a longer rebase than expected.
 
+
+**Next up:** Start exploring **Issue #49 – “Retrieve previously generated portfolio information.”** That will likely build on the existing Supabase sync/design pattern to pull past scan artifacts back into the CLI UI
+
+<img width="1072" height="630" alt="Screenshot 2025-11-23 at 9 06 11 PM" src="https://github.com/user-attachments/assets/3e308636-69bf-4e3f-ad97-a2669b355299" />
+
 ## Week 10 (November 3rd – 9th)
 
 I expanded our local media analyzer so every modality—images, video frames, and now audio—produces meaningful insights entirely offline. A new PyTorch helper loads TorchVision’s ResNet for visual labels and Torchaudio + Librosa for wav2vec2 transcription, BPM estimation, spectral centroid, and heuristic genre tags. Those labels, summaries, tempo stats, and transcript excerpts now flow through the scanner, MediaAnalyzer, CLI tables, and JSON output, giving reviewers immediate context without calling external APIs.
