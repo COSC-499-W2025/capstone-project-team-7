@@ -28,9 +28,9 @@ Issues resolved include: [#143](https://github.com/COSC-499-W2025/capstone-proje
 
 [PR #144 - Multi project Detection](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/144)
 
-![Github Issues board]()
+![Github Issues board](./assets/Github_Issues_Week12.png)
 
-![PR Screenshot]()
+![PR Screenshot](./assets/PR_Week12_OM.png)
 
 **Next Week Priorities**
 
