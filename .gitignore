@@ -30,3 +30,4 @@ backend/.deps-installed
 backend/textual_app/.venv_textual
 textual-ui.stderr
 ai-analysis-latest.md
+resume_item.md
