@@ -104,6 +104,7 @@ class ProjectContributionMetrics:
     overall_activity_breakdown: ActivityBreakdown = field(default_factory=ActivityBreakdown)
     commit_frequency: float = 0.0  # Avg commits per day
     languages_detected: Set[str] = field(default_factory=set)
+    timeline: List[Dict[str, Any]] = field(default_factory=list)
     
     @property
     def primary_contributor(self) -> Optional[ContributorMetrics]:
@@ -224,6 +225,7 @@ class ContributionAnalyzer:
             project_type=git_analysis.get('project_type', 'unknown'),
             total_commits=git_analysis.get('commit_count', 0),
         )
+        metrics.timeline = git_analysis.get('timeline', []) or []
         
         # Extract date range and duration
         date_range = git_analysis.get('date_range')
@@ -549,6 +551,7 @@ class ContributionAnalyzer:
             "project_end_date": metrics.project_end_date,
             "commit_frequency": metrics.commit_frequency,
             "languages_detected": list(metrics.languages_detected),
+            "timeline": list(metrics.timeline),
             "overall_activity_breakdown": {
                 "lines": {
                     "code": metrics.overall_activity_breakdown.code_lines,

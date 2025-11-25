@@ -15,10 +15,17 @@ import pytest
 from pathlib import Path
 from datetime import datetime
 import sys
+import types
 
 # Add backend/src to path
 backend_src_path = Path(__file__).parent.parent / "backend" / "src"
 sys.path.insert(0, str(backend_src_path))
+
+# Stub pypdf dependency to avoid optional install requirement in test env
+if "pypdf" not in sys.modules:  # pragma: no cover - test harness shim
+    errors_module = types.SimpleNamespace(PdfReadError=Exception)
+    sys.modules["pypdf"] = types.SimpleNamespace(PdfReader=lambda *args, **kwargs: None, errors=errors_module)
+    sys.modules["pypdf.errors"] = errors_module
 
 # Direct import to avoid __init__.py issues
 from backend.src.local_analysis.contribution_analyzer import (
@@ -241,6 +248,16 @@ class TestContributionAnalysis:
         
         # 150 commits / 365 days ≈ 0.41 commits/day
         assert 0.40 <= metrics.commit_frequency <= 0.42
+
+    def test_export_includes_timeline(self, sample_git_analysis):
+        analyzer = ContributionAnalyzer()
+        metrics = analyzer.analyze_contributions(git_analysis=sample_git_analysis)
+
+        exported = analyzer.export_to_dict(metrics)
+
+        assert exported["timeline"] == sample_git_analysis["timeline"]
+        assert "languages_detected" in exported
+        assert isinstance(exported["languages_detected"], list)
     
     def test_activity_breakdown_from_code_analysis(self, sample_git_analysis, sample_code_analysis):
         analyzer = ContributionAnalyzer()

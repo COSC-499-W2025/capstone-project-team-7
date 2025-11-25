@@ -463,6 +463,60 @@ class PortfolioTextualApp(App):
 
         self._start_ai_analysis()
 
+    def _handle_skill_progress_summary(self) -> None:
+        """
+        Generate a skill progression summary on demand (no UI wiring yet).
+        """
+        if self._scan_state.skills_progress and self._scan_state.skills_progress.get("timeline"):
+            timeline = self._scan_state.skills_progress.get("timeline") or []
+        else:
+            try:
+                skills_progress = self._skills_service.build_skill_progression(
+                    contribution_metrics=self._scan_state.contribution_metrics
+                )
+            except Exception as exc:  # pragma: no cover - defensive
+                self._show_status(f"Cannot build skills timeline: {exc}", "error")
+                return
+            if not skills_progress:
+                self._show_status("No skill progression timeline available.", "warning")
+                return
+            self._scan_state.skills_progress = skills_progress
+            timeline = skills_progress.get("timeline", [])
+
+        if not timeline:
+            self._show_status("No skill progression timeline available.", "warning")
+            return
+
+        client = self._ai_state.client
+        if client is None:
+            self._show_status("AI client not configured. Provide an API key first.", "warning")
+            return
+
+        def _call_model(prompt: str) -> str:
+            return client._make_llm_call(  # type: ignore[attr-defined]
+                messages=[{"role": "user", "content": prompt}],
+                model=client.DEFAULT_MODEL if hasattr(client, "DEFAULT_MODEL") else None,
+                max_tokens=800,
+                temperature=0.2,
+            )
+
+        try:
+            summary = self._skills_service.summarize_skill_progression(timeline, _call_model)
+        except Exception as exc:
+            self._show_status(f"Skill progress summary failed: {exc}", "error")
+            return
+
+        # Store results in state for future UI rendering/export
+        if not self._scan_state.skills_progress:
+            self._scan_state.skills_progress = {}
+        self._scan_state.skills_progress["summary"] = {
+            "narrative": summary.narrative,
+            "milestones": summary.milestones,
+            "strengths": summary.strengths,
+            "gaps": summary.gaps,
+        }
+        self._show_status("Skill progress summary ready.", "success")
+
     def _show_status(self, message: str, tone: str, *, log_to_stderr: bool = True) -> None:
         if log_to_stderr:
             try:
@@ -2156,6 +2210,23 @@ class PortfolioTextualApp(App):
                 "success": True,
                 **skills_data
             }
+            # Build and attach skill progression timeline if available
+            try:
+                if self._scan_state.skills_progress:
+                    skills_progress = self._scan_state.skills_progress
+                else:
+                    skills_progress = self._skills_service.build_skill_progression(
+                        contribution_metrics=self._scan_state.contribution_metrics
+                    )
+                    if skills_progress:
+                        self._scan_state.skills_progress = skills_progress
+                if skills_progress:
+                    payload["skills_progress"] = skills_progress
+            except Exception as exc:  # pragma: no cover - defensive
+                try:
+                    self._debug_log(f"Skill progression build failed: {exc}")
+                except Exception:
+                    pass
         elif self._scan_state.code_file_count > 0:
             # Code files detected but skills not extracted
             payload["skills_analysis"] = {
@@ -3781,6 +3852,11 @@ class PortfolioTextualApp(App):
             return
         
         self._projects_state.selected_project = full_project
+        try:
+            scan_data = full_project.get("scan_data") or {}
+            self._scan_state.skills_progress = scan_data.get("skills_progress")
+        except Exception:
+            pass
         self._show_status("Project loaded.", "success")
         self.push_screen(ProjectViewerScreen(full_project))
 
