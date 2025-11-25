@@ -3,6 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 import sys
 from typing import Any, Dict, List, Optional, Sequence
+from pathlib import Path
+from datetime import datetime
+from typing import Callable, Optional, List, Dict, Any
+import difflib
 
 class AIDependencyError(RuntimeError):
     """Raised when optional AI dependencies are missing."""
@@ -282,3 +286,183 @@ class AIService:
                 snippet = snippet[:117] + "..."
             parts.append(f"Preview: {snippet}")
         return "\n".join(f"- {text}" for text in parts) if parts else ""
+    def execute_auto_suggestion(
+    self,
+    selected_files: List[str],
+    output_dir: str,
+    base_path: Path,
+    parse_result: ParseResult,
+    progress_callback: Callable[[str, Optional[int]], None]
+) -> Dict[str, Any]:
+        """
+        Execute AI auto-suggestion workflow.
+        
+        Args:
+            selected_files: List of file paths to improve
+            output_dir: Directory to save improved files
+            base_path: Base directory of scanned project
+            parse_result: Parse result with file metadata
+            progress_callback: Function to update progress (message, percent)
+        
+        Returns:
+            Dict with:
+            - output_dir: Path to output directory
+            - total_files: Total files processed
+            - successful: Number of successfully improved files
+            - failed: Number of failed files
+            - results: List of dicts with file results
+        """
+        
+        self.logger.info(f"Starting auto-suggestion for {len(selected_files)} files")
+        progress_callback("Initializing auto-suggestion...", 0)
+        
+        # Create timestamped output directory
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_path = Path(output_dir) / f"improved_{timestamp}"
+        output_path.mkdir(parents=True, exist_ok=True)
+        
+        self.logger.info(f"Created output directory: {output_path}")
+        progress_callback(f"Created output directory: {output_path.name}", 5)
+        
+        # Track results
+        results = []
+        successful = 0
+        failed = 0
+        
+        # Create file metadata lookup
+        file_metadata = {f.path: f for f in parse_result.files}
+        
+        # Process each selected file
+        total = len(selected_files)
+        for idx, file_path in enumerate(selected_files):
+            progress_percent = int(10 + (idx / total) * 80)  # 10% to 90%
+            progress_callback(f"Processing {file_path}...", progress_percent)
+            
+            try:
+                # Get file metadata
+                meta = file_metadata.get(file_path)
+                if not meta:
+                    self.logger.warning(f"File metadata not found: {file_path}")
+                    results.append({
+                        "file_path": file_path,
+                        "success": False,
+                        "error": "File metadata not found"
+                    })
+                    failed += 1
+                    continue
+                
+                # Read original file content
+                full_path = Path(base_path) / file_path
+                
+                if not full_path.exists():
+                    self.logger.warning(f"File not found: {full_path}")
+                    results.append({
+                        "file_path": file_path,
+                        "success": False,
+                        "error": "File not found on disk"
+                    })
+                    failed += 1
+                    continue
+                
+                try:
+                    original_content = full_path.read_text(encoding='utf-8')
+                except UnicodeDecodeError:
+                    # Try other encodings
+                    try:
+                        original_content = full_path.read_text(encoding='latin-1')
+                    except Exception as e:
+                        self.logger.error(f"Failed to read {file_path}: {e}")
+                        results.append({
+                            "file_path": file_path,
+                            "success": False,
+                            "error": f"Failed to read file: {str(e)}"
+                        })
+                        failed += 1
+                        continue
+                
+                # Get file type
+                file_type = meta.mime_type or "text/plain"
+                
+                # Generate improvements via LLM
+                self.logger.info(f"Generating improvements for {file_path}")
+                improvement_result = self._llm_client.generate_and_apply_improvements(
+                    file_path,
+                    original_content,
+                    file_type
+                )
+                
+                if not improvement_result.get("success"):
+                    error = improvement_result.get("error", "Unknown error")
+                    self.logger.error(f"Failed to improve {file_path}: {error}")
+                    results.append({
+                        "file_path": file_path,
+                        "success": False,
+                        "error": error
+                    })
+                    failed += 1
+                    continue
+                
+                # Save improved file
+                improved_content = improvement_result.get("improved_code", original_content)
+                output_file = output_path / file_path
+                output_file.parent.mkdir(parents=True, exist_ok=True)
+                output_file.write_text(improved_content, encoding='utf-8')
+                
+                # Generate diff
+                diff = self._generate_diff(
+                    original_content,
+                    improved_content,
+                    file_path
+                )
+                
+                # Count changed lines
+                lines_changed = sum(1 for line in diff.split('\n') if line.startswith('+') or line.startswith('-'))
+                
+                # Record success
+                results.append({
+                    "file_path": file_path,
+                    "success": True,
+                    "suggestions": improvement_result.get("suggestions", []),
+                    "diff": diff,
+                    "lines_changed": lines_changed,
+                    "output_file": str(output_file)
+                })
+                successful += 1
+                
+                self.logger.info(f"Successfully improved {file_path}")
+            
+            except Exception as e:
+                self.logger.error(f"Error processing {file_path}: {e}")
+                results.append({
+                    "file_path": file_path,
+                    "success": False,
+                    "error": str(e)
+                })
+                failed += 1
+        
+        progress_callback("Auto-suggestion complete!", 100)
+        
+        return {
+            "output_dir": str(output_path),
+            "total_files": total,
+            "successful": successful,
+            "failed": failed,
+            "results": results
+        }
+
+
+    def _generate_diff(self, original: str, improved: str, filename: str) -> str:
+        """Generate unified diff between original and improved content."""
+        
+        original_lines = original.splitlines(keepends=True)
+        improved_lines = improved.splitlines(keepends=True)
+        
+        diff = difflib.unified_diff(
+            original_lines,
+            improved_lines,
+            fromfile=f"a/{filename}",
+            tofile=f"b/{filename}",
+            lineterm=''
+        )
+        
+        return ''.join(diff)
