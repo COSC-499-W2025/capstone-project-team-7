@@ -24,7 +24,7 @@ class ProjectsService:
     """Manage project scan storage in Supabase."""
     
     def __init__(self, supabase_url: Optional[str] = None, supabase_key: Optional[str] = None):
-        if not SUPABASE_AVAILABLE:
+        if not SUPABASE_AVAILABLE and not callable(create_client):
             raise ProjectsServiceError("Supabase client not available. Install supabase-py.")
         
         # Initialize Supabase client
