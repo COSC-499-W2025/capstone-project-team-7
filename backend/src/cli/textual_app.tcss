@@ -276,12 +276,14 @@ ScanConfigScreen {
 .scan-results-body {
     height: 1fr;
     width: 100%;
+    overflow: hidden;
 }
 
 .scan-results-log-panel {
     width: 1fr;
     height: 1fr;
     padding: 0 1 0 0;
+    overflow: hidden;
 }
 
 .scan-results-context {
@@ -292,11 +294,12 @@ ScanConfigScreen {
 
 .scan-results-output {
     height: 1fr;
-    min-height: 12;
+    min-height: 10;
     border: tall #242832;
     padding: 0 1;
     background: #0f1115;
     overflow-x: auto;
+    overflow-y: auto;
 }
 
 .scan-results-output > #scan-results-log,
@@ -324,13 +327,14 @@ ScanConfigScreen {
 }
 
 .scan-actions-panel {
-    width: 26;
-    min-width: 22;
-    max-width: 32;
+    width: 28;
+    min-width: 24;
+    max-width: 34;
     height: 1fr;
     border-left: tall #242832;
     padding: 0 1;
     background: #111318;
+    overflow: hidden;
 }
 
 .scan-actions-title {
@@ -346,17 +350,20 @@ ScanConfigScreen {
     padding: 0;
     background: transparent;
     overflow-y: auto;
+    scrollbar-gutter: stable;
 }
 
 .scan-actions-list {
     width: 100%;
     padding: 0;
+    height: auto;
 }
 
 .scan-actions-list Button {
     width: 100%;
     margin-top: 0;
-    margin-bottom: 0;
+    margin-bottom: 1;
+    min-height: 3;
 }
 
 .ai-results-dialog {
