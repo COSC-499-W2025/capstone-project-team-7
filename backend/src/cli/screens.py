@@ -2640,8 +2640,6 @@ class AIResultsScreen(ModalScreen[None]):
         context_name = "Key Files" if is_single_project else f"{name} - Key Files"
         self.display_output("\n".join(lines), context=context_name)
 
-    def _display_skipped_files(self) -> None:        self.display_output("\n".join(lines), context=name)
-
     def _display_skipped_files(self) -> None:
         """Display skipped files."""
         skipped_files = self._structured_data.get("skipped_files", [])
