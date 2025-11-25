@@ -12,6 +12,8 @@ try:
 except ImportError:
     SUPABASE_AVAILABLE = False
     Client = None  # type: ignore
+    def create_client(*args, **kwargs):  # type: ignore
+        raise ImportError("supabase-py is not installed")
 
 
 class ProjectsServiceError(Exception):
@@ -22,7 +24,7 @@ class ProjectsService:
     """Manage project scan storage in Supabase."""
     
     def __init__(self, supabase_url: Optional[str] = None, supabase_key: Optional[str] = None):
-        if not SUPABASE_AVAILABLE:
+        if not SUPABASE_AVAILABLE and not callable(create_client):
             raise ProjectsServiceError("Supabase client not available. Install supabase-py.")
         
         # Initialize Supabase client
@@ -92,6 +94,7 @@ class ProjectsService:
                     else None
                 ),
                 "project_end_date": scan_data.get("contribution_metrics", {}).get("project_end_date"),
+                "has_skills_progress": bool(scan_data.get("skills_progress")),
             }
             
             # Upsert (insert or update if exists)
@@ -121,7 +124,7 @@ class ProjectsService:
                 "total_files, total_lines, languages, "
                 "has_media_analysis, has_pdf_analysis, has_code_analysis, has_git_analysis, "
                 "has_contribution_metrics, contribution_score, user_commit_share, total_commits, "
-                "primary_contributor, project_end_date, "
+                "primary_contributor, project_end_date, has_skills_progress, "
                 "created_at"
             ).eq("user_id", user_id).order("scan_timestamp", desc=True).execute()
             
@@ -193,6 +196,7 @@ class ProjectsService:
                 "has_pdf_analysis": False,
                 "has_code_analysis": False,
                 "has_git_analysis": False,
+                "has_skills_progress": False,
                 "insights_deleted_at": timestamp,
             }
             response = (

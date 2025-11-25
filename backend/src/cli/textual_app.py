@@ -490,7 +490,7 @@ class PortfolioTextualApp(App):
             return
 
         self._start_ai_analysis()
-    
+
     def _handle_auto_suggestion_selection(self) -> None:
         if not self._session_state.session:
             self._show_status("Sign in to use AI Auto-Suggestion.", "warning")
@@ -498,7 +498,7 @@ class PortfolioTextualApp(App):
         if not self._consent_state.record:
             self._show_status("Grant required consent before using AI auto-suggestion.", "warning")
             return
-    
+
         if not self._has_external_consent():
             self._show_status("Enable external services consent to use AI auto-suggestion.", "warning")
             return
@@ -605,7 +605,7 @@ class PortfolioTextualApp(App):
             '.pdf',
             '.docx',
         }
-        
+
         # Check if file is in our supported list
         if extension in code_extensions or extension in document_extensions:
             return False  # Include it
@@ -709,8 +709,6 @@ class PortfolioTextualApp(App):
         }
         
         return type_map.get(extension, 'Text')
-     
-        
     def _show_status(self, message: str, tone: str, *, log_to_stderr: bool = True) -> None:
         if log_to_stderr:
             try:
@@ -2726,6 +2724,23 @@ class PortfolioTextualApp(App):
                 "paragraph_summary": paragraph_summary,
                 **skills_data
             }
+            # Build and attach skill progression timeline if available
+            try:
+                if self._scan_state.skills_progress:
+                    skills_progress = self._scan_state.skills_progress
+                else:
+                    skills_progress = self._skills_service.build_skill_progression(
+                        contribution_metrics=self._scan_state.contribution_metrics
+                    )
+                    if skills_progress:
+                        self._scan_state.skills_progress = skills_progress
+                if skills_progress:
+                    payload["skills_progress"] = skills_progress
+            except Exception as exc:  # pragma: no cover - defensive
+                try:
+                    self._debug_log(f"Skill progression build failed: {exc}")
+                except Exception:
+                    pass
         elif self._scan_state.code_file_count > 0:
             # Code files detected but skills not extracted
             payload["skills_analysis"] = {
@@ -4777,6 +4792,11 @@ class PortfolioTextualApp(App):
             self._debug_log(f"Could not derive contribution ranking for project {project_id}: {exc}")
         
         self._projects_state.selected_project = full_project
+        try:
+            scan_data = full_project.get("scan_data") or {}
+            self._scan_state.skills_progress = scan_data.get("skills_progress")
+        except Exception:
+            pass
         self._show_status("Project loaded.", "success")
         self.push_screen(ProjectViewerScreen(full_project))
 
