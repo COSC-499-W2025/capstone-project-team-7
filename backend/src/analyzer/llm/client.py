@@ -9,7 +9,8 @@ from typing import Optional, Dict, List, Any
 import openai
 from openai import OpenAI
 import tiktoken
-
+from pathlib import Path
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -1024,3 +1025,231 @@ PORTFOLIO COHERENCE:
         except Exception as e:
             self.logger.error(f"Portfolio summary generation failed: {e}")
             raise LLMError(f"Failed to generate portfolio summary: {str(e)}")
+        
+        
+    def generate_and_apply_improvements(
+    self,
+    file_path: str,
+    content: str,
+    file_type: str
+) -> Dict[str, Any]:
+        """
+        Generate AI-suggested improvements for text-based files.
+        
+        Handles:
+        - Code files (Python, JavaScript, etc.)
+        - PDFs (extracts text first)
+        - Word documents (extracts text first)
+        
+        Args:
+            file_path: Path to the file
+            content: File content as string
+            file_type: MIME type or file extension
+        
+        Returns:
+            Dict with:
+            - success: bool
+            - suggestions: List of improvement dicts
+            - improved_code: str (improved content)
+            - original_code: str (original content)
+            - error: str (if failed)
+        """
+        if not self.is_configured():
+            raise LLMError("LLM client is not configured")
+        
+        try:
+            token_count = self._count_tokens(content)
+            self.logger.info(f"Generating improvements for {file_path} ({token_count} tokens)")
+            
+            # Truncate if too large
+            if token_count > 3000:
+                try:
+                    import tiktoken
+                    encoding = tiktoken.encoding_for_model(self.DEFAULT_MODEL)
+                    tokens = encoding.encode(content)
+                    truncated_tokens = tokens[:3000]
+                    content = encoding.decode(truncated_tokens)
+                    self.logger.warning(f"Truncated {file_path} from {token_count} to 3000 tokens")
+                except Exception:
+                    # Fallback: truncate by characters
+                    content = content[:12000]
+            
+            # Determine file category and appropriate improvements
+            improvement_focus = self._get_improvement_focus(file_path, file_type)
+            
+            # Build adaptive prompt
+            prompt = f"""You are an expert code and document reviewer. Analyze this file and suggest improvements.
+
+    File: {file_path}
+
+    Original Content:
+    ```
+    {content}
+    ```
+
+    {improvement_focus}
+
+    Format your response as JSON:
+    {{
+    "suggestions": [
+        {{
+        "type": "documentation|refactoring|clarity|consistency|best-practices",
+        "description": "Brief description of the improvement",
+        "line_range": "Lines affected (e.g., '10-15' or 'general')"
+        }}
+    ],
+    "improved_code": "The complete improved content here"
+    }}
+
+    CRITICAL: Return ONLY valid JSON. No markdown code blocks, no extra text, ONLY the JSON object."""
+
+            messages = [{"role": "user", "content": prompt}]
+            
+            # Call OpenAI API
+            response = self._make_llm_call(
+                messages, 
+                max_tokens=2500,
+                temperature=0.3
+            )
+            
+            # Parse JSON response
+            try:
+                response_text = response.strip()
+                # Strip markdown code blocks if present
+                if response_text.startswith('```json'):
+                    response_text = response_text[7:]
+                if response_text.startswith('```'):
+                    response_text = response_text[3:]
+                if response_text.endswith('```'):
+                    response_text = response_text[:-3]
+                response_text = response_text.strip()
+                
+                result = json.loads(response_text)
+                
+                return {
+                    "success": True,
+                    "suggestions": result.get("suggestions", []),
+                    "improved_code": result.get("improved_code", content),
+                    "original_code": content
+                }
+                
+            except json.JSONDecodeError as e:
+                self.logger.error(f"Failed to parse JSON: {e}")
+                self.logger.error(f"Response: {response[:500]}")
+                
+                return {
+                    "success": False,
+                    "error": f"Failed to parse AI response: {str(e)}",
+                    "raw_response": response[:500]
+                }
+            
+        except Exception as e:
+            self.logger.error(f"Failed to generate improvements: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+
+    def _get_improvement_focus(self, file_path: str, file_type: str) -> str:
+        """
+        Get appropriate improvement instructions based on file type.
+        
+        Returns different guidance for:
+        - Programming code
+        - PDF documents
+        - Word documents
+        """
+        extension = Path(file_path).suffix.lower()
+        filename = Path(file_path).name.lower()
+        
+        # PDF files
+        if extension == '.pdf':
+            return """Focus on DOCUMENT IMPROVEMENTS:
+    - Improve document structure and organization
+    - Enhance clarity and readability
+    - Fix grammar and spelling errors
+    - Improve formatting and layout suggestions
+    - Add missing sections or context
+    - Ensure consistent style"""
+        
+        # Word documents
+        elif extension == '.docx':
+            return """Focus on DOCUMENT IMPROVEMENTS:
+    - Improve document structure and organization
+    - Enhance clarity and readability
+    - Fix grammar and spelling errors
+    - Improve formatting and layout suggestions
+    - Add missing sections or context
+    - Ensure consistent style and tone"""
+        
+        # Programming languages
+        code_extensions = {
+            '.py', '.js', '.jsx', '.ts', '.tsx', '.java', '.cpp', '.c', 
+            '.cs', '.rb', '.go', '.rs', '.php', '.swift', '.kt', '.scala'
+        }
+        
+        if extension in code_extensions:
+            return """Focus on CODE IMPROVEMENTS:
+    - Add clear comments and docstrings
+    - Improve variable and function names for clarity
+    - Add error handling and input validation
+    - Follow language-specific best practices
+    - Improve code structure and readability
+    - Add type hints where applicable
+    - Remove code duplication"""
+        
+        # Web files
+        web_extensions = {'.html', '.css', '.scss', '.sass'}
+        
+        if extension in web_extensions:
+            return """Focus on WEB FILE IMPROVEMENTS:
+    - Add helpful comments
+    - Improve naming conventions
+    - Follow modern best practices
+    - Improve accessibility
+    - Optimize structure
+    - Add documentation comments"""
+        
+        # Configuration files
+        config_extensions = {'.json', '.yaml', '.yml', '.toml', '.ini', '.env'}
+        
+        if extension in config_extensions:
+            return """Focus on CONFIGURATION IMPROVEMENTS:
+    - Add helpful comments explaining each setting
+    - Organize settings into logical groups
+    - Add default values and examples
+    - Improve key names for clarity
+    - Add validation comments
+    - Document required vs optional settings"""
+        
+        # Documentation files
+        doc_extensions = {'.md', '.txt', '.rst'}
+        
+        if extension in doc_extensions:
+            return """Focus on DOCUMENTATION IMPROVEMENTS:
+    - Improve clarity and readability
+    - Add missing sections (installation, usage, examples)
+    - Fix grammar and spelling
+    - Add code examples where helpful
+    - Improve formatting and structure
+    - Add links and references"""
+        
+        # SQL files
+        elif extension == '.sql':
+            return """Focus on SQL IMPROVEMENTS:
+    - Add comments explaining queries
+    - Improve query structure and formatting
+    - Optimize query performance
+    - Add error handling
+    - Use consistent naming conventions
+    - Add documentation for complex logic"""
+        
+        else:
+            # Generic text file
+            return """Focus on TEXT FILE IMPROVEMENTS:
+    - Improve clarity and readability
+    - Fix grammar and spelling
+    - Add helpful comments or explanations
+    - Improve formatting and structure
+    - Ensure consistency"""
