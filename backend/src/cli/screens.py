@@ -1446,6 +1446,11 @@ class ResumesScreen(ModalScreen[None]):
         self.resumes = resumes
         self.selected_resume: Optional[Dict[str, Any]] = None
 
+    def on_unmount(self) -> None:
+        handler = getattr(self.app, "on_resumes_screen_closed", None)
+        if callable(handler):
+            handler()
+
     def compose(self) -> ComposeResult:
         with Vertical(id="resumes-dialog"):
             yield Static("📝 Saved Resume Items", id="resumes-title")
@@ -1454,23 +1459,20 @@ class ResumesScreen(ModalScreen[None]):
                 id="resumes-help",
             )
 
-            if not self.resumes:
-                yield Static(
-                    "No saved resume items yet.\n\nGenerate a resume snippet to sync it to Supabase.",
-                    id="resumes-detail",
-                )
-            else:
-                items = [
+            items = (
+                [
                     ListItem(Label(self._format_resume_item(resume), classes="resume-item"))
                     for resume in self.resumes
                 ]
-                yield ListView(*items, id="resumes-list")
-                yield Static("Select a resume to preview its metadata.", id="resumes-detail")
+                if self.resumes
+                else [ListItem(Label("No saved resume items yet.", classes="resume-item"))]
+            )
+            yield ListView(*items, id="resumes-list")
+            yield Static("Select a resume to preview its metadata.", id="resumes-detail")
 
             with Horizontal(id="resumes-buttons"):
-                if self.resumes:
-                    yield Button("👁 View Resume", id="resume-view-btn", variant="primary")
-                    yield Button("🗑 Delete", id="resume-delete-btn", variant="error")
+                yield Button("👁 View Resume", id="resume-view-btn", variant="primary", disabled=not bool(self.resumes))
+                yield Button("🗑 Delete", id="resume-delete-btn", variant="error", disabled=not bool(self.resumes))
                 yield Button("✖ Close", id="resume-close-btn")
 
             yield Static("", id="resumes-status", classes="status-info")
@@ -1482,6 +1484,12 @@ class ResumesScreen(ModalScreen[None]):
                 list_view.focus()
                 self.selected_resume = self.resumes[0]
                 self._update_detail(self.selected_resume)
+            except Exception:
+                pass
+        else:
+            try:
+                detail = self.query_one("#resumes-detail", Static)
+                detail.update("No saved resume items yet.\n\nGenerate a resume snippet to sync it to Supabase.")
             except Exception:
                 pass
 
@@ -1574,6 +1582,40 @@ class ResumesScreen(ModalScreen[None]):
             dispatch_message(self, ResumeDeleted(self.selected_resume["id"]))
             return True
         return False
+
+    def refresh_resumes(self, resumes: List[Dict[str, Any]]) -> None:
+        """Update the list in-place after deletions without stacking modals."""
+        self.resumes = resumes
+        try:
+            list_view = self.query_one("#resumes-list", ListView)
+            try:
+                list_view.clear()
+            except AttributeError:
+                for child in list(list_view.children):
+                    child.remove()
+            if self.resumes:
+                items = [
+                    ListItem(Label(self._format_resume_item(resume), classes="resume-item"))
+                    for resume in self.resumes
+                ]
+                for item in items:
+                    list_view.append(item)
+                list_view.index = 0
+                self.selected_resume = self.resumes[0]
+                self._update_detail(self.selected_resume)
+            else:
+                list_view.append(ListItem(Label("No saved resume items yet.", classes="resume-item")))
+                self.selected_resume = None
+                detail = self.query_one("#resumes-detail", Static)
+                detail.update("No saved resume items yet.\n\nGenerate a resume snippet to sync it to Supabase.")
+            # Toggle buttons
+            view_btn = self.query_one("#resume-view-btn", Button)
+            delete_btn = self.query_one("#resume-delete-btn", Button)
+            has_items = bool(self.resumes)
+            view_btn.disabled = not has_items
+            delete_btn.disabled = not has_items
+        except Exception:
+            pass
 
 
 class ProjectViewerScreen(ModalScreen[None]):

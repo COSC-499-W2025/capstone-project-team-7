@@ -245,6 +245,7 @@ class PortfolioTextualApp(App):
         self._preferences_screen: Optional[PreferencesScreen] = None
         self._consent_screen: Optional[ConsentScreen] = None
         self._scan_results_screen: Optional[ScanResultsScreen] = None
+        self._resumes_screen: Optional[ResumesScreen] = None
         self._init_resume_storage_service()
         self._init_media_analyzer()
         self._media_vision_ready = media_vision_capabilities_enabled()
@@ -752,6 +753,7 @@ class PortfolioTextualApp(App):
         self._scan_state.contribution_analysis_error = None
         self._scan_state.resume_item_path = None
         self._scan_state.resume_item_content = None
+        self._scan_state.resume_item = None
         
         # Detect projects within scanned directory
         try:
@@ -1469,6 +1471,9 @@ class PortfolioTextualApp(App):
                 except Exception:
                     pass
 
+        await self._ensure_document_analysis_ready()
+        await self._ensure_pdf_summaries_ready()
+
         try:
             resume_item = await asyncio.to_thread(
                 self._resume_service.generate_resume_item,
@@ -1478,6 +1483,10 @@ class PortfolioTextualApp(App):
                 code_analysis_result=self._scan_state.code_analysis_result,
                 contribution_metrics=self._scan_state.contribution_metrics,
                 git_analysis=git_analysis,
+                detected_projects=self._scan_state.detected_projects,
+                skills=self._scan_state.skills_analysis_result,
+                document_results=self._scan_state.document_results,
+                pdf_summaries=self._scan_state.pdf_summaries,
                 output_path=self._scan_state.resume_item_path,
                 ai_client=self._ai_state.client,
             )
@@ -1494,6 +1503,7 @@ class PortfolioTextualApp(App):
 
         self._scan_state.resume_item_path = resume_item.output_path
         self._scan_state.resume_item_content = resume_item.to_markdown()
+        self._scan_state.resume_item = resume_item
 
         downloads_note = ""
         downloads_path = Path.home() / "Downloads" / resume_item.output_path.name
@@ -1507,7 +1517,8 @@ class PortfolioTextualApp(App):
             except Exception:
                 pass
 
-        screen.display_output(resume_item.to_markdown(), context="Resume item")
+        context_label = "Resume item (AI-assisted)" if getattr(resume_item, "ai_generated", False) else "Resume item"
+        screen.display_output(resume_item.to_markdown(), context=context_label)
         screen.set_message(
             f"✓ Resume item saved to: {resume_item.output_path}{downloads_note}",
             tone="success",
@@ -1768,6 +1779,21 @@ class PortfolioTextualApp(App):
             sections.append("\n".join(lines))
         return "\n\n".join(sections).strip()
 
+    async def _ensure_pdf_summaries_ready(self) -> None:
+        if self._scan_state.pdf_summaries:
+            return
+        if not PDF_AVAILABLE:
+            return
+        if not self._scan_state.pdf_candidates:
+            return
+        try:
+            await asyncio.to_thread(self._analyze_pdfs_sync)
+        except Exception as exc:  # pragma: no cover - best-effort logging
+            try:
+                self._debug_log(f"PDF analysis prep failed: {exc}")
+            except Exception:
+                pass
+
     def _analyze_documents_sync(self) -> None:
         analyzer = self._document_analyzer
         if analyzer is None:
@@ -1913,6 +1939,21 @@ class PortfolioTextualApp(App):
                 lines.append(f"Warnings: {result.error_message}")
             sections.append("\n".join(lines))
         return "\n\n".join(sections)
+
+    async def _ensure_document_analysis_ready(self) -> None:
+        if self._scan_state.document_results:
+            return
+        if not self._scan_state.document_candidates:
+            return
+        if self._document_analyzer is None:
+            return
+        try:
+            await asyncio.to_thread(self._analyze_documents_sync)
+        except Exception as exc:  # pragma: no cover - best-effort logging
+            try:
+                self._debug_log(f"Document analysis prep failed: {exc}")
+            except Exception:
+                pass
 
     def _export_scan_report(self) -> Path:
         if self._scan_state.parse_result is None or self._scan_state.archive is None:
@@ -2340,6 +2381,9 @@ class PortfolioTextualApp(App):
     def on_scan_results_screen_closed(self) -> None:
         self._scan_results_screen = None
 
+    def on_resumes_screen_closed(self) -> None:
+        self._resumes_screen = None
+
     def _cancel_task(self, task: Optional[asyncio.Task], label: str) -> None:
         """Cancel a pending asyncio task and surface any unexpected errors."""
         if not task:
@@ -2499,6 +2543,16 @@ class PortfolioTextualApp(App):
             return
         screen = self._scan_results_screen
         self._scan_results_screen = None
+        try:
+            screen.dismiss(None)
+        except Exception:  # pragma: no cover - defensive cleanup
+            pass
+
+    def _close_resumes_screen(self) -> None:
+        if self._resumes_screen is None:
+            return
+        screen = self._resumes_screen
+        self._resumes_screen = None
         try:
             screen.dismiss(None)
         except Exception:  # pragma: no cover - defensive cleanup
@@ -2744,21 +2798,25 @@ class PortfolioTextualApp(App):
             self._ai_state.pending_analysis = False
             self._show_status(f"Invalid API key: {exc}", "error")
             self._debug_log(f"verify_ai_key invalid_key {exc}")
+            self._update_session_status()
             return
         except AIProviderError as exc:
             self._ai_state.pending_analysis = False
             self._show_status(f"AI service error: {exc}", "error")
             self._debug_log(f"verify_ai_key provider_error {exc}")
+            self._update_session_status()
             return
         except AIDependencyError as exc:
             self._ai_state.pending_analysis = False
             self._show_status(f"AI analysis unavailable: {exc}", "error")
             self._debug_log(f"verify_ai_key dependency_error {exc}")
+            self._update_session_status()
             return
         except Exception as exc:
             self._ai_state.pending_analysis = False
             self._show_status(f"Failed to verify API key: {exc}", "error")
             self._debug_log(f"verify_ai_key unexpected_error {exc.__class__.__name__}: {exc}")
+            self._update_session_status()
             return
 
         self._ai_state.client = client
@@ -2774,6 +2832,7 @@ class PortfolioTextualApp(App):
         self._debug_log(
             f"verify_ai_key success temp={client_config.temperature} max_tokens={client_config.max_tokens}"
         )
+        self._update_session_status()
 
         if self._ai_state.pending_analysis:
             self._ai_state.pending_analysis = False
@@ -2903,8 +2962,12 @@ class PortfolioTextualApp(App):
             if external and external.get("consent_given"):
                 external_badge = "[green]External on[/green]"
 
+            ai_badge = "[#9ca3af]AI off[/#9ca3af]"
+            if self._ai_state.client:
+                ai_badge = "[green]AI ready[/green]"
+
             status_panel.update(
-                f"[b]{self._session_state.session.email}[/b] • {consent_badge} • {external_badge}  (Ctrl+L to sign out)"
+                f"[b]{self._session_state.session.email}[/b] • {consent_badge} • {external_badge} • {ai_badge}  (Ctrl+L to sign out)"
             )
         else:
             status_panel.update(
@@ -3641,8 +3704,8 @@ class PortfolioTextualApp(App):
         self.push_screen(ProjectsScreen(projects))
         self._show_status(f"Loaded {len(projects)} project(s).", "success")
 
-    async def _load_and_show_resumes(self) -> None:
-        """Load user's saved resumes and show the resumes screen."""
+    async def _load_and_show_resumes(self, *, show_modal: bool = True) -> None:
+        """Load user's saved resumes and optionally show the resumes screen."""
         if not self._session_state.session:
             self._show_status("Sign in to view resumes.", "error")
             return
@@ -3671,7 +3734,20 @@ class PortfolioTextualApp(App):
         self._resumes_state.resumes_list = resumes
         self._resumes_state.error = None
         self._refresh_current_detail()
-        self.push_screen(ResumesScreen(resumes))
+        if not show_modal:
+            return
+        if self._resumes_screen:
+            try:
+                self._resumes_screen.refresh_resumes(resumes)
+                self._show_status(f"Loaded {len(resumes)} resume item(s).", "success")
+                return
+            except Exception:
+                # Fall back to reopening the modal
+                self._close_resumes_screen()
+        self._close_resumes_screen()
+        screen = ResumesScreen(resumes)
+        self._resumes_screen = screen
+        self.push_screen(screen)
         self._show_status(f"Loaded {len(resumes)} resume item(s).", "success")
 
     async def on_project_selected(self, message: ProjectSelected) -> None:
@@ -3797,9 +3873,10 @@ class PortfolioTextualApp(App):
             return
         if success:
             self._show_status("Resume deleted successfully.", "success")
-            await self._load_and_show_resumes()
+            await self._load_and_show_resumes(show_modal=self._resumes_screen is not None)
         else:
             self._show_status("Failed to delete resume.", "error")
+
         
     async def on_project_insights_cleared(self, message: ProjectInsightsCleared) -> None:
         """Handle deletion of stored insights without removing shared files."""

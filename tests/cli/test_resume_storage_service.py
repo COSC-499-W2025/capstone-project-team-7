@@ -18,7 +18,9 @@ def resume_item(tmp_path: Path) -> ResumeItem:
         project_name="Test Project",
         start_date="Jan 2025",
         end_date="Feb 2025",
+        overview="A sample overview.",
         bullets=["Bullet one", "Bullet two"],
+        ai_generated=True,
         output_path=tmp_path / "resume_item.md",
     )
 
@@ -61,6 +63,7 @@ def test_save_resume_item_persists_record(mock_supabase_client, resume_item, mon
     assert inserted["project_name"] == "Test Project"
     assert inserted["bullets"] == ["Bullet one", "Bullet two"]
     assert inserted["metadata"]["target_path"] == "/tmp/test"
+    assert inserted["metadata"]["ai_generated"] is True
     assert inserted["source_path"] == "/project"
 
 
