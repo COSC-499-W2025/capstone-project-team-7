@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, ScrollableContainer, Vertical
-from textual.events import Key, Mount
+from textual.events import Key, Mount, Unmount
 from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widgets import (
@@ -1446,7 +1446,7 @@ class ResumesScreen(ModalScreen[None]):
         self.resumes = resumes
         self.selected_resume: Optional[Dict[str, Any]] = None
 
-    def on_unmount(self) -> None:
+    def on_unmount(self, event: Unmount) -> None:
         handler = getattr(self.app, "on_resumes_screen_closed", None)
         if callable(handler):
             handler()
