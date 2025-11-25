@@ -1921,7 +1921,17 @@ class PortfolioTextualApp(App):
             self._scan_state.target.parent if self._scan_state.target else Path.cwd()
         )
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        filename = f"scan_result_{timestamp}.json"
+
+        def _sanitize_name(name: str) -> str:
+            cleaned = "".join(ch if ch.isalnum() or ch in ("-", "_") else "-" for ch in name.strip().lower())
+            while "--" in cleaned:
+                cleaned = cleaned.replace("--", "-")
+            cleaned = cleaned.strip("-_")
+            return cleaned or "scan"
+
+        project_name = self._scan_state.target.name if self._scan_state.target else "scan"
+        safe_name = _sanitize_name(project_name)
+        filename = f"scan_{safe_name}_{timestamp}.json"
         destination = target_dir / filename
         payload = self._build_export_payload(
             self._scan_state.parse_result,
