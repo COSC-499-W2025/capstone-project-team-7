@@ -473,18 +473,37 @@ class ImprovementResultsScreen(ModalScreen[None]):
     }
     
     .improvement-results-dialog {
-        width: 100;
-        height: 45;
+        width: 120;
+        max-width: 95%;
+        height: 50;
+        max-height: 90%;
         border: thick $background 80%;
         background: $surface;
         padding: 1 2;
     }
     
-    #results-content {
+    #results-scroll {
         width: 100%;
-        height: 38;
+        height: 1fr;
+        min-height: 20;
         border: solid $primary;
         margin: 1 0;
+        overflow-y: auto;
+        overflow-x: auto;
+    }
+    
+    #results-content {
+        width: auto;
+        min-width: 100%;
+        height: auto;
+        padding: 1;
+    }
+    
+    .dialog-buttons {
+        width: 100%;
+        height: auto;
+        align: center middle;
+        padding: 1 0;
     }
     """
     
@@ -504,7 +523,7 @@ class ImprovementResultsScreen(ModalScreen[None]):
                 classes="dialog-subtitle",
             ),
             ScrollableContainer(
-                RichLog(id="results-content", wrap=True, highlight=False),
+                RichLog(id="results-content", wrap=False, highlight=False, max_lines=5000),
                 id="results-scroll"
             ),
             Horizontal(
