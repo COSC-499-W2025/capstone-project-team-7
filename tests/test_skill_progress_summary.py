@@ -84,3 +84,27 @@ def test_summarize_skill_progress_handles_embedded_json():
 
     summary = summarize_skill_progress(timeline, fake_model)
     assert summary.narrative == "n"
+
+
+def test_build_prompt_includes_evidence_fields():
+    timeline = [
+        {
+            "period_label": "2024-02",
+            "commits": 5,
+            "tests_changed": 1,
+            "skill_count": 2,
+            "evidence_count": 3,
+            "top_skills": ["Async IO", "Testing"],
+            "languages": {"Python": 2},
+            "contributors": 1,
+            "commit_messages": ["Add async worker", "Refactor test harness"],
+            "top_files": ["src/app.py", "tests/test_app.py"],
+            "activity_types": ["code", "tests"],
+            "period_languages": {"Python": 2},
+        }
+    ]
+    prompt = build_prompt(timeline)
+    assert "Add async worker" in prompt
+    assert "src/app.py" in prompt
+    assert "activity_types" in prompt
+    assert "period_languages" in prompt
