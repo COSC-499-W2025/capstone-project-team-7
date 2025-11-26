@@ -51,6 +51,9 @@ from .services.contribution_analysis_service import (
     ContributionAnalysisService,
     ContributionAnalysisError,
 )
+from .services.duplicate_detection_service import (
+    DuplicateDetectionService,
+)
 from .services.resume_generation_service import (
     ResumeGenerationError,
     ResumeGenerationService,
@@ -232,6 +235,7 @@ class PortfolioTextualApp(App):
         self._code_service = CodeAnalysisService()
         self._skills_service = SkillsAnalysisService()
         self._contribution_service = ContributionAnalysisService()
+        self._duplicate_service = DuplicateDetectionService()
         self._resume_service = ResumeGenerationService()
         self._projects_service: Optional[ProjectsService] = None
         self._resume_storage_service: Optional[ResumeStorageService] = None
@@ -751,6 +755,7 @@ class PortfolioTextualApp(App):
         self._scan_state.skills_analysis_error = None
         self._scan_state.contribution_metrics = None
         self._scan_state.contribution_analysis_error = None
+        self._scan_state.duplicate_analysis_result = None
         self._scan_state.resume_item_path = None
         self._scan_state.resume_item_content = None
         self._scan_state.resume_item = None
@@ -854,6 +859,7 @@ class PortfolioTextualApp(App):
         if self._scan_state.code_file_count > 0 or self._scan_state.git_repos:
             actions.append(("contributions", "Contribution metrics"))
         actions.append(("resume", "Generate resume item"))
+        actions.append(("duplicates", "Find duplicate files"))
         actions.append(("export", "Export JSON report"))
 
         if self._scan_state.pdf_candidates:
@@ -1066,6 +1072,10 @@ class PortfolioTextualApp(App):
                 return
             screen.display_output(self._format_media_analysis(analysis), context="Media analysis")
             screen.set_message("Media insights ready.", tone="success")
+            return
+
+        if action == "duplicates":
+            await self._handle_duplicate_detection_action(screen)
             return
 
         screen.set_message("Unsupported action.", tone="error")
@@ -1448,6 +1458,43 @@ class PortfolioTextualApp(App):
         )
         screen.display_output(full_output, context="Contribution analysis")
         screen.set_message("Contribution analysis ready.", tone="success")
+
+    async def _handle_duplicate_detection_action(self, screen: ScanResultsScreen) -> None:
+        """Handle duplicate file detection action from the scan results screen."""
+        if self._scan_state.parse_result is None:
+            screen.display_output(
+                "No scan data available. Run a scan first.", context="Duplicate detection"
+            )
+            screen.set_message("No scan data available.", tone="warning")
+            return
+
+        if self._scan_state.duplicate_analysis_result is None:
+            screen.set_message("Analyzing files for duplicates…", tone="info")
+            try:
+                result = await asyncio.to_thread(
+                    self._duplicate_service.analyze_duplicates,
+                    self._scan_state.parse_result,
+                )
+                self._scan_state.duplicate_analysis_result = result
+            except Exception as exc:
+                screen.display_output(
+                    f"Failed to analyze duplicates: {exc}", context="Duplicate detection"
+                )
+                screen.set_message("Duplicate detection failed.", tone="error")
+                return
+
+        result = self._scan_state.duplicate_analysis_result
+        output = self._duplicate_service.format_duplicate_details(result)
+        screen.display_output(output, context="Duplicate detection")
+        
+        if result.duplicate_groups:
+            screen.set_message(
+                f"Found {result.unique_files_duplicated} sets of duplicate files "
+                f"({self._duplicate_service._format_size(result.total_wasted_bytes)} wasted).",
+                tone="warning",
+            )
+        else:
+            screen.set_message("No duplicate files found.", tone="success")
 
     async def _handle_resume_generation_action(self, screen: ScanResultsScreen) -> None:
         """Generate and display a resume-ready project summary."""
