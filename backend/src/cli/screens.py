@@ -1081,7 +1081,12 @@ class ProjectsScreen(ModalScreen[None]):
         super().__init__()
         self.projects = projects
         self.selected_project: Optional[Dict[str, Any]] = None
-        self.sort_mode: str = "score"  # "score" or "recency"
+        # Track whether projects are ordered by contribution importance or scan recency
+        self.sort_mode: str = "importance"
+
+    def _sort_label(self) -> str:
+        """Return the button label that matches the active sort mode."""
+        return "Sort: recency" if self.sort_mode == "recency" else "Sort: importance"
 
     def _sorted_projects(self) -> List[Dict[str, Any]]:
         """Return projects ordered per current sort mode."""
@@ -1149,7 +1154,7 @@ class ProjectsScreen(ModalScreen[None]):
                     yield Button("View Project", id="view-btn", variant="primary")
                     yield Button("Clear insights", id="clear-insights-btn", variant="warning")
                     yield Button("Delete", id="delete-btn", variant="error")
-                    yield Button("Sort: importance", id="sort-toggle-btn", variant="default")
+                    yield Button(self._sort_label(), id="sort-toggle-btn", variant="default")
                 yield Button("Close", id="close-btn")
             
             yield Static("", id="projects-status", classes="status-info")
@@ -1322,11 +1327,10 @@ class ProjectsScreen(ModalScreen[None]):
             else:
                 self._set_status("Please select a project first", "error")
         elif button_id == "sort-toggle-btn":
-            self.sort_mode = "recency" if self.sort_mode == "score" else "score"
+            self.sort_mode = "recency" if self.sort_mode == "importance" else "importance"
             try:
                 sort_button = self.query_one("#sort-toggle-btn", Button)
-                sort_label = "Sort: recency" if self.sort_mode == "recency" else "Sort: importance"
-                sort_button.label = sort_label
+                sort_button.label = self._sort_label()
             except Exception:
                 pass
             self._refresh_list()
