@@ -146,118 +146,129 @@ class AIService:
             logger.error(f"[AI Service] Error during analysis: {exc}")
             raise AIProviderError(str(exc)) from exc
 
-    def format_analysis(self, result: Dict[str, Any]) -> str:
-        lines: List[str] = ["# AI-Powered Analysis"]
-
+    def format_analysis(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        """Format AI analysis result into structured sections with Rich markup.
+        
+        Returns a dict with:
+            - portfolio_overview: str (with Rich markup)
+            - projects: list of {name, path, overview, key_files: [{file_path, analysis, file_size, priority_score}]}
+            - supporting_files: str or None
+            - skipped_files: list of {path, reason, size_mb}
+        """
+        structured_result: Dict[str, Any] = {
+            "portfolio_overview": None,
+            "projects": [],
+            "supporting_files": None,
+            "skipped_files": []
+        }
+        
+        # Helper function to escape Rich markup in AI-generated text
+        def escape_rich_markup(text: str) -> str:
+            if not text:
+                return ""
+            # Escape square brackets that might interfere with Rich markup
+            return text.replace("[", r"\[").replace("]", r"\]")
+        
+        # Helper to calculate file priority score
+        def file_priority(f):
+            path = f.get('file_path', '').lower()
+            # Lower score = higher priority
+            if '__init__' in path:
+                return 200
+            if path.endswith('requirements.txt') or path.endswith('package.json'):
+                return 150
+            if 'test' in path or 'fixture' in path:
+                return 100
+            if path.endswith(('.py', '.js', '.ts', '.java')):
+                if 'src/' in path or 'backend/' in path:
+                    return 1
+                return 50
+            if path.endswith(('.json', '.md', '.txt')):
+                return 80
+            return 90
+        
+        # Portfolio Overview
         portfolio = result.get("portfolio_summary") or {}
         if portfolio.get("summary"):
-            lines.append("\n## Portfolio Overview")
-            lines.append(portfolio["summary"])
-
+            structured_result["portfolio_overview"] = escape_rich_markup(portfolio["summary"])
+        
+        # Projects
         projects = result.get("projects") or []
         if projects:
-            lines.append("\n## Project Insights")
             for idx, project in enumerate(projects, 1):
                 name = project.get("project_name", f"Project {idx}")
                 path = project.get("project_path") or ""
+                analysis = escape_rich_markup(project.get("analysis", "No analysis available."))
                 
-                # Only show header for multi-project analysis or non-root projects
-                if len(projects) > 1 or (path and path != "."):
-                    header = f"### {idx}. {name}"
-                    if path:
-                        header += f" ({path})"
-                    lines.append(header)
-                
-                lines.append(project.get("analysis", "No analysis available."))
-                
-                # Show key files with analysis - prioritize source files over tests
+                # Process key files for this project
                 file_summaries = project.get("file_summaries") or []
-                if file_summaries:
-                    # Filter and sort: prioritize main source files
-                    def file_priority(f):
-                        path = f.get('file_path', '').lower()
-                        # Lower score = higher priority
-                        # Skip __init__ files
-                        if '__init__' in path:
-                            return 200
-                        # Skip package/dependency files
-                        if path.endswith('requirements.txt') or path.endswith('package.json'):
-                            return 150
-                        if 'test' in path or 'fixture' in path:
-                            return 100
-                        if path.endswith(('.py', '.js', '.ts', '.java')):
-                            if 'src/' in path or 'backend/' in path:
-                                return 1
-                            return 50
-                        if path.endswith(('.json', '.md', '.txt')):
-                            return 80
-                        return 90
-                    
-                    sorted_files = sorted(file_summaries, key=file_priority)
-                    # Multi-project mode: show 3 files per project, Single-project: show 5
-                    max_files = 3 if len(projects) > 1 else 5
-                    key_files = [f for f in sorted_files if file_priority(f) < 90][:max_files]
-                    
-                    if key_files:
-                        lines.append("\n### Key Files Analyzed")
-                        for file_idx, summary in enumerate(key_files, 1):
-                            lines.append(f"#### {file_idx}. {summary.get('file_path', 'Unknown file')}")
-                            lines.append(summary.get('analysis', 'No analysis available.'))
-                            lines.append("")
-                lines.append("")
-
+                sorted_files = sorted(file_summaries, key=file_priority)
+                max_files = 3 if len(projects) > 1 else 5
+                key_files_data = []
+                
+                for f in sorted_files:
+                    priority = file_priority(f)
+                    if priority < 90 and len(key_files_data) < max_files:
+                        key_files_data.append({
+                            "file_path": f.get('file_path', 'Unknown file'),
+                            "analysis": escape_rich_markup(f.get('analysis', 'No analysis available.')),
+                            "file_size": f.get('size_bytes', 0),
+                            "priority_score": priority
+                        })
+                
+                structured_result["projects"].append({
+                    "name": name,
+                    "path": path,
+                    "overview": analysis,
+                    "key_files": key_files_data
+                })
+        
+        # Supporting Files (unassigned files)
         unassigned = result.get("unassigned_files")
-        if unassigned:
-            lines.append("## Supporting Files")
-            lines.append(unassigned.get("analysis", ""))
-
+        if unassigned and unassigned.get("analysis"):
+            structured_result["supporting_files"] = escape_rich_markup(unassigned.get("analysis", ""))
+        
+        # Handle single-project analysis without multi-project structure
         project_analysis = result.get("project_analysis") or {}
         if project_analysis and not projects:
             analysis_text = project_analysis.get("analysis")
             if analysis_text:
-                lines.append("\n## Project Insights")
-                lines.append(analysis_text)
-
-        # Only show detailed file summaries if it's a single-project analysis
+                # Create a single project entry
+                structured_result["projects"].append({
+                    "name": "Project",
+                    "path": ".",
+                    "overview": escape_rich_markup(analysis_text),
+                    "key_files": []
+                })
+        
+        # File summaries for single-project analysis
         file_summaries = result.get("file_summaries") or []
         if file_summaries and not projects:
-            lines.append("\n## Key Files Analyzed")
-            # Prioritize source files over tests
-            def file_priority(f):
-                path = f.get('file_path', '').lower()
-                # Skip __init__ files
-                if '__init__' in path:
-                    return 200
-                # Skip package/dependency files
-                if path.endswith('requirements.txt') or path.endswith('package.json'):
-                    return 150
-                if 'test' in path or 'fixture' in path:
-                    return 100
-                if path.endswith(('.py', '.js', '.ts', '.java')):
-                    if 'src/' in path or 'backend/' in path:
-                        return 1
-                    return 50
-                return 80
-            
-            sorted_summaries = sorted(file_summaries, key=file_priority)
-            key_summaries = [f for f in sorted_summaries if file_priority(f) < 90][:5]
-            
-            for idx, summary in enumerate(key_summaries, 1):
-                lines.append(f"### {idx}. {summary.get('file_path', 'Unknown file')}")
-                lines.append(summary.get("analysis", "No analysis available."))
-                lines.append("")
-
+            # If we created a project entry above, add files to it
+            if structured_result["projects"]:
+                sorted_summaries = sorted(file_summaries, key=file_priority)
+                key_files_data = []
+                for f in sorted_summaries:
+                    priority = file_priority(f)
+                    if priority < 90 and len(key_files_data) < 5:
+                        key_files_data.append({
+                            "file_path": f.get('file_path', 'Unknown file'),
+                            "analysis": escape_rich_markup(f.get('analysis', 'No analysis available.')),
+                            "file_size": f.get('size_bytes', 0),
+                            "priority_score": priority
+                        })
+                structured_result["projects"][0]["key_files"] = key_files_data
+        
+        # Skipped Files
         skipped = result.get("skipped_files") or []
-        if skipped:
-            lines.append("## Skipped Files")
-            for item in skipped:
-                path = item.get("path", "unknown")
-                reason = item.get("reason", "No reason provided.")
-                size_mb = item.get("size_mb")
-                size_txt = f" ({size_mb:.2f} MB)" if isinstance(size_mb, (int, float)) else ""
-                lines.append(f"- {path}{size_txt}: {reason}")
-
-        return "\n".join(line for line in lines if line).strip()
+        for item in skipped:
+            structured_result["skipped_files"].append({
+                "path": item.get("path", "unknown"),
+                "reason": item.get("reason", "No reason provided."),
+                "size_mb": item.get("size_mb")
+            })
+        
+        return structured_result
 
     def summarize_analysis(self, result: Dict[str, Any]) -> str:
         parts: List[str] = []

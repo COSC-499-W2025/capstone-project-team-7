@@ -780,6 +780,14 @@ class ScanResultAction(Message):
         self.action = action
 
 
+class AIResultAction(Message):
+    """Raised when the user selects an action from the AI results dialog."""
+
+    def __init__(self, action: str) -> None:
+        super().__init__()
+        self.action = action
+
+
 class ScanResultsScreen(ModalScreen[None]):
     """Modal dialog presenting post-scan actions and output."""
 
@@ -2448,14 +2456,111 @@ class ProjectViewerScreen(ModalScreen[None]):
 
 
 class AIResultsScreen(ModalScreen[None]):
-    """Full-screen modal showing AI analysis results."""
+    """Full-screen modal showing AI analysis results with clickable sections."""
 
-    def __init__(self, analysis_text: str) -> None:
+    def __init__(self, structured_data: Dict[str, Any]) -> None:
         super().__init__()
-        self._analysis_text = analysis_text
+        self._structured_data = structured_data
         self._supports_rich_markup = TextLog is not None
+        self._detail_context = "AI Analysis"
+        
+        # Build actions based on available sections
+        self._actions = self._build_actions()
+
+    def _build_actions(self) -> List[tuple[str, str]]:
+        """Build action list based on available data sections."""
+        actions = []
+        
+        if self._structured_data.get("portfolio_overview"):
+            actions.append(("overview", "Portfolio Overview"))
+        
+        projects = self._structured_data.get("projects", [])
+        is_single_project = len(projects) == 1
+        
+        for idx, project in enumerate(projects, 1):
+            action_id = f"project_{idx}"
+            
+            if is_single_project:
+                # Single project mode: use "Project Overview" without numbering
+                actions.append((action_id, "Project Overview"))
+            else:
+                # Multi-project mode: use numbering with project name
+                project_name = project.get("name", f"Project {idx}")
+                actions.append((action_id, f"{idx}. {project_name}"))
+            # Key Files subsections will be added dynamically when project is selected
+        
+        if self._structured_data.get("supporting_files"):
+            actions.append(("supporting", "Supporting Files"))
+        
+        if self._structured_data.get("skipped_files"):
+            actions.append(("skipped", "Skipped Files"))
+        
+        actions.append(("close", "Close"))
+        return actions
+
+    def _rebuild_actions_for_project(self, project_idx: int) -> None:
+        """Rebuild action buttons to include Key Files subsection for selected project."""
+        actions = []
+        
+        if self._structured_data.get("portfolio_overview"):
+            actions.append(("overview", "Portfolio Overview"))
+        
+        projects = self._structured_data.get("projects", [])
+        is_single_project = len(projects) == 1
+        
+        for idx, project in enumerate(projects, 1):
+            action_id = f"project_{idx}"
+            
+            if is_single_project:
+                actions.append((action_id, "Project Overview"))
+            else:
+                project_name = project.get("name", f"Project {idx}")
+                actions.append((action_id, f"{idx}. {project_name}"))
+            
+            # Add Key Files subsection only for the selected project
+            if idx == project_idx + 1 and project.get("key_files"):
+                key_files_action_id = f"project_{idx}_files"
+                actions.append((key_files_action_id, "  ↳ Key Files"))
+        
+        if self._structured_data.get("supporting_files"):
+            actions.append(("supporting", "Supporting Files"))
+        
+        if self._structured_data.get("skipped_files"):
+            actions.append(("skipped", "Skipped Files"))
+        
+        actions.append(("close", "Close"))
+        
+        # Update the actions list and rebuild buttons
+        self._actions = actions
+        self._update_action_buttons()
+
+    def _update_action_buttons(self) -> None:
+        """Update the sidebar action buttons based on current actions list."""
+        try:
+            container = self.query_one("#ai-actions-container", ScrollableContainer)
+            # Clear existing buttons
+            actions_list = container.query_one(".scan-actions-list", Vertical)
+            actions_list.remove()
+            
+            # Create new buttons
+            button_widgets = [
+                Button(label, id=f"ai-action-{action}") for action, label in self._actions
+            ]
+            new_actions_layout = Vertical(*button_widgets, classes="scan-actions-list")
+            container.mount(new_actions_layout)
+        except Exception:
+            pass  # Silently fail if widgets not found
 
     def compose(self) -> ComposeResult:
+        button_widgets = [
+            Button(label, id=f"ai-action-{action}") for action, label in self._actions
+        ]
+        actions_layout = (
+            Vertical(*button_widgets, classes="scan-actions-list")
+            if button_widgets
+            else Vertical(classes="scan-actions-list")
+        )
+        
         if TextLog:
             log_widget = TextLog(
                 highlight=False,
@@ -2466,32 +2571,234 @@ class AIResultsScreen(ModalScreen[None]):
         else:
             log_widget = Log(highlight=False, id="ai-results-log")
         
+        context_label = Static("", id="ai-results-context", classes="scan-results-context")
+
+        actions_panel = Vertical(
+            Static("Explore results", classes="scan-actions-title"),
+            ScrollableContainer(actions_layout, id="ai-actions-container", classes="scan-actions-container"),
+            classes="scan-actions-panel",
+        )
+        
+        log_panel = Vertical(
+            context_label,
+            Vertical(
+                log_widget,
+                id="ai-results-output",
+                classes="scan-results-output",
+            ),
+            Static("", id="ai-results-message", classes="dialog-message"),
+            classes="scan-results-log-panel",
+        )
+
         yield Vertical(
             Static("AI Analysis Results", classes="dialog-title"),
-            Vertical(
-                ScrollableContainer(
-                    log_widget,
-                    id="ai-results-output",
-                    classes="ai-results-output",
-                ),
-                Horizontal(
-                    Button("Close", id="ai-close-btn", variant="primary"),
-                    classes="ai-results-buttons",
-                ),
-                classes="ai-results-body",
+            Horizontal(
+                log_panel,
+                actions_panel,
+                classes="scan-results-body",
             ),
-            classes="dialog ai-results-dialog",
+            classes="dialog scan-results-dialog",
         )
 
     def on_mount(self, _: Mount) -> None:
-        """Display the AI analysis when screen mounts."""
-        log = self.query_one("#ai-results-log", Log)
-        lines = self._analysis_text.splitlines() or ["No AI analysis available."]
-        for line in lines:
-            self._write_line(log, line or " ")
+        """Display portfolio overview by default."""
+        if self._structured_data.get("portfolio_overview"):
+            self._show_section("overview")
+        elif self._structured_data.get("projects"):
+            self._show_section("project_1")
+        else:
+            self.display_output("[b]No AI analysis data available[/b]", context="AI Analysis")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        button_id = event.button.id or ""
+        if not button_id.startswith("ai-action-"):
+            return
+        action = button_id.replace("ai-action-", "", 1)
+        
+        # Show immediate feedback
+        self.set_message(f"Loading {action}...", tone="info")
+        
+        if action == "close":
+            self.dismiss(None)
+            return
+        
+        # Handle the action directly instead of dispatching
+        self._show_section(action)
+
+    def _show_section(self, action: str) -> None:
+        """Display the requested section."""
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[AIResultsScreen] _show_section called with action: {action}")
+        
+        if action == "overview":
+            overview = self._structured_data.get("portfolio_overview", "No overview available.")
+            logger.info(f"[AIResultsScreen] Showing overview, length: {len(overview) if overview else 0}")
+            self.display_output(
+                f"[b]Portfolio Overview[/b]\n\n{overview}",
+                context="Portfolio Overview"
+            )
+            self.set_message("Viewing Portfolio Overview", tone="success")
+        
+        elif action.startswith("project_"):
+            # Check if this is a key files action
+            if "_files" in action:
+                # Extract project index from action like "project_1_files"
+                try:
+                    project_idx = int(action.split("_")[1]) - 1
+                    projects = self._structured_data.get("projects", [])
+                    logger.info(f"[AIResultsScreen] Key Files action - idx: {project_idx}, total projects: {len(projects)}")
+                    if 0 <= project_idx < len(projects):
+                        project = projects[project_idx]
+                        project_name = project.get('name', 'Unknown')
+                        logger.info(f"[AIResultsScreen] Displaying key files for: {project_name}")
+                        self._display_key_files(project, project_idx + 1)
+                        is_single_project = len(projects) == 1
+                        display_name = "Key Files" if is_single_project else f"{project_name} - Key Files"
+                        self.set_message(f"Viewing {display_name}", tone="success")
+                    else:
+                        logger.warning(f"[AIResultsScreen] Project index out of range")
+                        self.display_output("[b]Project not found[/b]", context="Error")
+                        self.set_message("Project not found", tone="error")
+                except (ValueError, IndexError) as e:
+                    logger.error(f"[AIResultsScreen] Error parsing key files action: {e}")
+                    self.display_output("[b]Invalid project selection[/b]", context="Error")
+                    self.set_message("Invalid project selection", tone="error")
+            else:
+                # Regular project overview action
+                try:
+                    project_idx = int(action.split("_")[1]) - 1
+                    projects = self._structured_data.get("projects", [])
+                    logger.info(f"[AIResultsScreen] Project action - idx: {project_idx}, total projects: {len(projects)}")
+                    if 0 <= project_idx < len(projects):
+                        project = projects[project_idx]
+                        project_name = project.get('name', 'Unknown')
+                        logger.info(f"[AIResultsScreen] Displaying project: {project_name}")
+                        self._display_project(project, project_idx + 1)
+                        # Rebuild actions to show Key Files subsection for this project
+                        self._rebuild_actions_for_project(project_idx)
+                        # Use "Project Overview" for single project mode
+                        is_single_project = len(projects) == 1
+                        display_name = "Project Overview" if is_single_project else project_name
+                        self.set_message(f"Viewing {display_name}", tone="success")
+                    else:
+                        logger.warning(f"[AIResultsScreen] Project index out of range")
+                        self.display_output("[b]Project not found[/b]", context="Error")
+                        self.set_message("Project not found", tone="error")
+                except (ValueError, IndexError) as e:
+                    logger.error(f"[AIResultsScreen] Error parsing project action: {e}")
+                    self.display_output("[b]Invalid project selection[/b]", context="Error")
+                    self.set_message("Invalid project selection", tone="error")
+        
+        elif action == "supporting":
+            supporting = self._structured_data.get("supporting_files", "No supporting files.")
+            self.display_output(
+                f"[b]Supporting Files[/b]\n\n{supporting}",
+                context="Supporting Files"
+            )
+            self.set_message("Viewing Supporting Files", tone="success")
+        
+        elif action == "skipped":
+            self._display_skipped_files()
+            self.set_message("Viewing Skipped Files", tone="success")
+
+    def _display_project(self, project: Dict[str, Any], number: int) -> None:
+        """Display a single project's details (overview only, without key files)."""
+        lines = []
+        
+        name = project.get("name", f"Project {number}")
+        path = project.get("path", "")
+        overview = project.get("overview", "No analysis available.")
+        
+        # Determine if this is single project mode
+        projects = self._structured_data.get("projects", [])
+        is_single_project = len(projects) == 1
+        
+        # Project header
+        if is_single_project:
+            lines.append(f"[b]Project Overview[/b]")
+        else:
+            lines.append(f"[b]{number}. {name}[/b]")
+        
+        if path and path != ".":
+            lines.append(f"[i]({path})[/i]")
+        lines.append("")
+        
+        # Project overview (no key files here - they're in separate subsection)
+        lines.append(overview)
+        
+        self.display_output("\n".join(lines), context="Project Overview" if is_single_project else name)
+
+    def _display_key_files(self, project: Dict[str, Any], number: int) -> None:
+        """Display key files for a project as a separate section."""
+        lines = []
+        
+        name = project.get("name", f"Project {number}")
+        
+        # Determine if this is single project mode
+        projects = self._structured_data.get("projects", [])
+        is_single_project = len(projects) == 1
+        
+        # Section header
+        if is_single_project:
+            lines.append(f"[b]Key Files[/b]")
+        else:
+            lines.append(f"[b]{number}. {name} - Key Files[/b]")
+        lines.append("")
+        
+        # Key files section
+        key_files = project.get("key_files", [])
+        if key_files:
+            for idx, file_data in enumerate(key_files, 1):
+                file_path = file_data.get("file_path", "Unknown file")
+                analysis = file_data.get("analysis", "No analysis available.")
+                
+                lines.append(f"[b]{idx}. {file_path}[/b]")
+                lines.append(f"   {analysis}")
+                if idx < len(key_files):  # Add spacing between files
+                    lines.append("")
+        else:
+            lines.append("No key files analyzed for this project.")
+        
+        context_name = "Key Files" if is_single_project else f"{name} - Key Files"
+        self.display_output("\n".join(lines), context=context_name)
+
+    def _display_skipped_files(self) -> None:
+        """Display skipped files."""
+        skipped_files = self._structured_data.get("skipped_files", [])
+        
+        if not skipped_files:
+            self.display_output("[b]No files were skipped[/b]", context="Skipped Files")
+            return
+        
+        lines = ["[b]Skipped Files[/b]", ""]
+        for item in skipped_files:
+            path = item.get("path", "unknown")
+            reason = item.get("reason", "No reason provided.")
+            size_mb = item.get("size_mb")
+            
+            if size_mb is not None:
+                lines.append(f"• {path} ({size_mb:.2f} MB): {reason}")
+            else:
+                lines.append(f"• {path}: {reason}")
+        
+        self.display_output("\n".join(lines), context="Skipped Files")
+
+    def set_detail_context(self, title: str) -> None:
+        self._detail_context = title or "AI Analysis"
+        self._update_context_label()
+
+    def _update_context_label(self) -> None:
+        try:
+            label = self.query_one("#ai-results-context", Static)
+        except Exception:
+            return
+        label.update(self._detail_context or "AI Analysis")
+
+    def _show_log_view(self) -> Log:
+        return self.query_one("#ai-results-log", Log)
 
     def _write_line(self, log: Log, text: str) -> None:
-        """Write a line to the log widget."""
         for chunk in self._prepare_line(text):
             writer = getattr(log, "write_line", None)
             if callable(writer):
@@ -2501,7 +2808,6 @@ class AIResultsScreen(ModalScreen[None]):
                 log.write("\n")
 
     def _prepare_line(self, text: str) -> List[str]:
-        """Prepare text line for display."""
         if self._supports_rich_markup:
             return [text]
         plain = self._strip_markup(text)
@@ -2509,14 +2815,12 @@ class AIResultsScreen(ModalScreen[None]):
 
     @staticmethod
     def _strip_markup(text: str) -> str:
-        """Remove rich markup from text."""
         if not text:
             return ""
         return re.sub(r"\[/?[^\]]+\]", "", text)
 
     @staticmethod
     def _wrap_plain(text: str, width: int = 92) -> List[str]:
-        """Wrap plain text to specified width."""
         if not text:
             return [""]
         wrapped = textwrap.wrap(
@@ -2527,10 +2831,24 @@ class AIResultsScreen(ModalScreen[None]):
         )
         return wrapped or [text]
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Handle button press."""
-        if event.button.id == "ai-close-btn":
-            self.dismiss(None)
+    def display_output(self, text: str, *, context: Optional[str] = None) -> None:
+        if context:
+            self.set_detail_context(context)
+        self._update_context_label()
+        log = self._show_log_view()
+        log.clear()
+        lines = text.splitlines() or [""]
+        
+        for line in lines:
+            self._write_line(log, line or " ")
+
+    def set_message(self, text: str, tone: str = "info") -> None:
+        """Set status message."""
+        try:
+            msg = self.query_one("#ai-results-message", Static)
+            msg.update(text)
+        except Exception:
+            pass
     
     def on_key(self, event: Key) -> None:
         """Handle keyboard shortcuts."""
