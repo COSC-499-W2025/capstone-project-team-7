@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 import re
 import sys
-from typing import Any, Dict, List, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 
 from ...scanner.models import ParseResult
 
@@ -21,6 +21,12 @@ try:  # Optional import – contribution analysis is not always available
     from ...local_analysis.contribution_analyzer import ProjectContributionMetrics
 except Exception:  # pragma: no cover - optional dependency missing
     ProjectContributionMetrics = None  # type: ignore[assignment]
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from ...analyzer.project_detector import ProjectInfo
+    from ...analyzer.skills_extractor import Skill
+    from ...local_analysis.document_analyzer import DocumentAnalysisResult
+    from ...local_analysis.pdf_summarizer import DocumentSummary
 
 _DATACLASS_KWARGS = {"slots": True} if sys.version_info >= (3, 10) else {}
 
@@ -36,12 +42,17 @@ class ResumeItem:
     project_name: str
     start_date: str
     end_date: str
+    overview: str
     bullets: List[str]
     output_path: Path
+    ai_generated: bool = False
 
     def to_markdown(self) -> str:
         date_span = f"{self.start_date} – {self.end_date}" if self.end_date else self.start_date
         lines = [f"{self.project_name} — {date_span}"]
+        overview_line = self.overview.strip()
+        if overview_line:
+            lines.append(f"Overview: {overview_line}")
         for bullet in self.bullets:
             lines.append(f"- {bullet}")
         return "\n".join(lines)
@@ -59,6 +70,10 @@ class ResumeGenerationService:
         code_analysis_result: Optional[Any] = None,
         contribution_metrics: Optional[ProjectContributionMetrics] = None,
         git_analysis: Optional[Sequence[Dict[str, Any]]] = None,
+        detected_projects: Optional[Sequence["ProjectInfo"]] = None,
+        skills: Optional[Sequence["Skill"]] = None,
+        document_results: Optional[Sequence["DocumentAnalysisResult"]] = None,
+        pdf_summaries: Optional[Sequence["DocumentSummary"]] = None,
         output_path: Optional[Path] = None,
         ai_client: Optional[Any] = None,
     ) -> ResumeItem:
@@ -72,6 +87,20 @@ class ResumeGenerationService:
         code_summary = getattr(code_analysis_result, "summary", None) or {}
         code_files = self._code_file_count(code_analysis_result, parse_result)
         git_signals = self._git_signals(git_analysis, contribution_metrics)
+        project_profile = self._project_profile(project_name, detected_projects)
+        readme_summary = self._readme_summary(target_path)
+        document_summary = self._document_summary_text(document_results)
+        pdf_summary = self._pdf_summary_text(pdf_summaries)
+        project_summary_text = readme_summary or document_summary or pdf_summary
+        integration_signals = self._detect_integrations(parse_result)
+        skill_highlights = self._skill_highlights(skills)
+        overview_text = self._build_overview_text(
+            project_name=project_name,
+            project_profile=project_profile,
+            project_summary=project_summary_text,
+            languages=languages or [],
+            integration_signals=integration_signals,
+        )
 
         ai_errors: list[str] = []
         if ai_client:
@@ -89,6 +118,11 @@ class ResumeGenerationService:
                     git_signals=git_signals,
                     output_path=output_path,
                     target_path=target_path,
+                    project_profile=project_profile,
+                    project_summary=project_summary_text,
+                    integration_signals=integration_signals,
+                    skill_highlights=skill_highlights,
+                    fallback_overview=overview_text,
                 )
             except Exception as exc:  # pragma: no cover - AI fallback
                 ai_errors.append(str(exc))
@@ -97,10 +131,11 @@ class ResumeGenerationService:
             project_name=project_name,
             languages=languages or [],
             code_summary=code_summary,
-            code_files=code_files,
-            parse_result=parse_result,
             contribution_metrics=contribution_metrics,
             git_signals=git_signals,
+            project_profile=project_profile,
+            integration_signals=integration_signals,
+            skill_highlights=skill_highlights,
         )
 
         if len(bullets) < 2:
@@ -115,7 +150,9 @@ class ResumeGenerationService:
             project_name=project_name,
             start_date=date_label,
             end_date=end_date,
+            overview=overview_text,
             bullets=bullets[:4],  # Cap at four bullets
+            ai_generated=False,
             output_path=destination,
         )
 
@@ -150,6 +187,11 @@ class ResumeGenerationService:
         git_signals: Dict[str, Any],
         output_path: Optional[Path],
         target_path: Path,
+        project_profile: Dict[str, Any],
+        project_summary: Optional[str],
+        integration_signals: List[str],
+        skill_highlights: List[str],
+        fallback_overview: str,
     ) -> ResumeItem:
         prompt = self._build_ai_prompt(
             project_name=project_name,
@@ -161,6 +203,10 @@ class ResumeGenerationService:
             parse_result=parse_result,
             contribution_metrics=contribution_metrics,
             git_signals=git_signals,
+            project_profile=project_profile,
+            project_summary=project_summary,
+            integration_signals=integration_signals,
+            skill_highlights=skill_highlights,
         )
 
         invoke = getattr(ai_client, "_make_llm_call", None)
@@ -175,17 +221,13 @@ class ResumeGenerationService:
         except Exception as exc:
             raise ResumeGenerationError(f"AI resume generation failed: {exc}") from exc
 
-        bullets = [line.strip()[2:].strip() for line in ai_response.splitlines() if line.strip().startswith("- ")]
-        if len(bullets) < 2:
-            # Fallback to paragraph split if model did not use bullets
-            bullets = [line.strip() for line in ai_response.splitlines() if line.strip()][0:4]
+        overview_line, bullet_lines = self._extract_ai_sections(ai_response)
+        overview_line = overview_line or fallback_overview
+        bullets = [line.strip() for line in bullet_lines if line.strip()]
         if len(bullets) < 2:
             raise ResumeGenerationError("AI response did not contain enough bullet points.")
 
         bullets = self._sanitize_ai_bullets(bullets)
-        overview = self._project_overview_bullet(project_name, [])
-        if overview and not any(overview.split(":")[0] in b for b in bullets[:1]):
-            bullets.insert(0, overview)
         if len(bullets) < 2:
             raise ResumeGenerationError("AI resume generation produced too few bullets after sanitization.")
 
@@ -194,7 +236,9 @@ class ResumeGenerationService:
             project_name=project_name,
             start_date=start_date,
             end_date=end_date,
+            overview=overview_line,
             bullets=bullets[:4],
+            ai_generated=True,
             output_path=destination,
         )
         try:
@@ -220,6 +264,10 @@ class ResumeGenerationService:
         parse_result: ParseResult,
         contribution_metrics: Optional[ProjectContributionMetrics],
         git_signals: Dict[str, Any],
+        project_profile: Dict[str, Any],
+        project_summary: Optional[str],
+        integration_signals: List[str],
+        skill_highlights: List[str],
     ) -> str:
         lang_block = ", ".join([lang.get("language", "") for lang in languages[:5] if lang.get("language")]) or "Unknown"
         files_processed = parse_result.summary.get("files_processed", len(parse_result.files))
@@ -242,29 +290,48 @@ class ResumeGenerationService:
                     getattr(contribution_metrics, "overall_activity_breakdown", None), "percentages", {}
                 ),
             }
+        project_desc = project_summary or project_profile.get("description") or "project"
+        structure = project_profile.get("structure")
+        if structure:
+            project_desc = f"{project_desc} ({structure})"
+        integrations_text = ", ".join(integration_signals) if integration_signals else "None noted"
+        skills_text = ", ".join(skill_highlights[:5]) if skill_highlights else "Not detected"
+        summary_fact = project_summary or "Not provided"
         prompt = f"""
-You are building a concise resume snippet in Jake-resume style for a single project.
-Return Markdown exactly as:
+You are a resume-rewriter that converts scanned project data into a refined Jake-resume style entry.
+
+Follow this exact output format:
 
 {project_name} — {start_date} – {end_date}
-Overview: <1-2 sentence plain-language summary of what the project/program does>
+Overview: One concise sentence explaining what the project accomplishes.
 - Bullet 1
 - Bullet 2
 - Bullet 3 (optional)
 - Bullet 4 (optional)
 
-Rules:
-- 2–4 bullets, one line each (~90 chars), past-tense action verbs, results-focused.
-- Prioritize stack/architecture, performance or UX gains, reliability, testing/operations.
-- Keep it high-level and recruiter-friendly; avoid raw metric dumps or jargon overload.
-- Do NOT invent metrics or percentages; only use numbers present in the facts below. If none exist, stay qualitative.
-- You may humanize numbers when useful, but avoid making file counts the focal point.
-- Keep a professional tone; include outcomes (speed, stability, UX, clarity) where possible.
+Strict Rules:
+- 2–4 bullets total.
+- Each bullet is one line, ~90 characters max.
+- Use past-tense action verbs (optimized, implemented, integrated, improved).
+- Focus bullets on impact: performance, reliability, architecture, UX, stability,
+  async design, testing, data handling, developer tooling, integrations, or system design improvements.
+- You MUST translate raw scan data into senior-sounding, recruiter-friendly accomplishments. Do not repeat raw commit messages or file paths.
+- Do not explain everything the project does—summarize the user's contributions.
+- Include specific technologies ONLY when they add clarity (Next.js, Node, Supabase, Prisma, Vercel, Textual, Python, etc.)
+- Avoid filler language, run-on sentences, or generic claims.
+- Tone: concise, technical, results-oriented.
+- Output ONLY the formatted Markdown block. No commentary.
+
+Your job is to take messy, unstructured scan data and produce a polished, high-clarity resume item that reads like a senior engineer's contributions.
 
 Project facts (context only, do not echo verbatim):
+- Project summary clues: {summary_fact}
+- Project profile: {project_desc}
 - Stack/Languages: {lang_block}
-- Files processed: {files_processed}{filter_txt}; code files: {code_files}
-- Code quality: {code_quality}
+- Files processed: {files_processed}{filter_txt}; code files: ~{code_files}
+- Notable integrations/plugins: {integrations_text}
+- Highlighted skills: {skills_text}
+- Code quality hints: {code_quality}
 - Git signals: {git_signals}
 - Contribution metrics: {contrib}
 
@@ -283,121 +350,467 @@ Write the Markdown block only, no extra text.
         project_name: str,
         languages: List[Dict[str, object]],
         code_summary: Dict[str, Any],
-        code_files: int,
-        parse_result: ParseResult,
         contribution_metrics: Optional[ProjectContributionMetrics],
         git_signals: Dict[str, Any],
+        project_profile: Dict[str, Any],
+        integration_signals: List[str],
+        skill_highlights: List[str],
     ) -> List[str]:
         bullets: List[str] = []
-        meaningful_signals = bool(languages or code_summary or git_signals or contribution_metrics)
+        meaningful_signals = bool(
+            languages or code_summary or contribution_metrics or git_signals or integration_signals or skill_highlights
+        )
 
-        overview = self._project_overview_bullet(project_name, languages)
-        if overview:
-            bullets.append(overview)
+        stack_bullet = self._stack_bullet(languages, integration_signals, project_profile)
+        if stack_bullet:
+            bullets.append(stack_bullet)
 
-        commit_count = git_signals.get("commit_count")
-        contributor_count = git_signals.get("contributor_count")
-        project_type = git_signals.get("project_type")
-        if commit_count:
-            contrib_label = ""
-            if contributor_count:
-                collaborator = "solo effort" if int(contributor_count) == 1 else f"{contributor_count}-person team"
-                contrib_label = f" as a {collaborator}"
-            type_label = f" ({project_type})" if project_type else ""
-            bullets.append(
-                self._trim(
-                    f"Delivered {self._humanize_count(commit_count)} commits{contrib_label}, maintaining steady release cadence{type_label}."
-                )
-            )
+        skills_bullet = self._skills_bullet(skill_highlights)
+        if skills_bullet:
+            bullets.append(skills_bullet)
 
-        stack = self._format_stack(languages)
-        if stack or code_files:
-            scope = (
-                f"spanning {self._humanize_count(code_files)} source files"
-                if code_files
-                else "covering key components"
-            )
-            prefix = f"Built a {stack} solution" if stack else "Built the project foundation"
-            bullets.append(self._trim(f"{prefix} {scope} with a structured analysis pipeline."))
+        quality_bullet = self._quality_bullet(code_summary)
+        if quality_bullet:
+            bullets.append(quality_bullet)
 
-        maintainability = code_summary.get("avg_maintainability")
-        complexity = code_summary.get("avg_complexity")
-        if maintainability or complexity:
-            bullets.append(
-                self._trim(
-                    "Improved code quality and stability through structured analysis and refactor-ready insights."
-                )
-            )
-
-        security_issues = code_summary.get("security_issues")
-        todos = code_summary.get("todos")
-
-        if security_issues or todos:
-            findings = []
-            if security_issues is not None:
-                findings.append("security review")
-            if todos is not None:
-                findings.append("actionable follow-ups")
-            joined = " and ".join(findings) if findings else "issues"
-            bullets.append(
-                self._trim(f"Hardened reliability by surfacing {joined} and directing remediation work.")
-            )
-
-        files_processed = parse_result.summary.get("files_processed", len(parse_result.files))
-        filtered = parse_result.summary.get("filtered_out")
-        if files_processed:
-            filter_fragment = ""
-            if isinstance(filtered, int) and filtered > 0:
-                filter_fragment = f" with selective filters excluding {self._humanize_count(filtered)} artifacts"
-            bullets.append(
-                self._trim(
-                    f"Streamlined archive-based scanning{filter_fragment} to keep re-scans fast and predictable."
-                )
-            )
-
-        activity_bullet = self._activity_bullet(contribution_metrics)
-        if activity_bullet:
-            bullets.append(activity_bullet)
+        teamwork_bullet = self._team_bullet(contribution_metrics, git_signals)
+        if teamwork_bullet:
+            bullets.append(teamwork_bullet)
 
         if not bullets:
-            files_processed = parse_result.summary.get("files_processed", len(parse_result.files))
             bullets.append(
-                self._trim(
-                    f"Documented project scope across {files_processed} files to map architecture and deliverables."
-                )
+                self._trim("Documented the project narrative, stack, and differentiators for review-ready summaries.")
             )
-        else:
-            contribution_note = self._contribution_bullet(git_signals, contribution_metrics)
-            if contribution_note:
-                bullets.append(contribution_note)
+
+        if len(bullets) == 1:
+            bullets.append(
+                self._trim("Connected architecture choices to user value, emphasizing integrations over raw counts.")
+            )
 
         if not meaningful_signals:
             raise ResumeGenerationError(
                 "⚠ Insufficient project data to generate resume content\n"
-                "Suggestion: Ensure the project has commits, language signals, or code analysis."
+                "Suggestion: Ensure the project has languages, integrations, or code analysis signals."
             )
 
         return bullets
 
-    def _activity_bullet(
-        self, contribution_metrics: Optional[ProjectContributionMetrics]
+    def _build_overview_text(
+        self,
+        *,
+        project_name: str,
+        project_profile: Dict[str, Any],
+        project_summary: Optional[str],
+        languages: List[Dict[str, object]],
+        integration_signals: List[str],
+    ) -> str:
+        summary = (project_summary or "").strip()
+        sentences: List[str] = []
+        if summary:
+            sentences.append(self._ensure_sentence(self._first_sentence(summary)))
+        else:
+            descriptor = project_profile.get("description") or project_profile.get("primary_type") or "project"
+            descriptor = descriptor.replace("_", " ").replace("-", " ").strip()
+            stack = self._format_stack(languages)
+            subject = " ".join(part for part in (stack, descriptor) if part).strip()
+            if not subject:
+                subject = "project"
+            article = self._article_for(subject)
+            overview = f"{article} {subject}"
+            integration_text = self._format_integrations(integration_signals)
+            if integration_text:
+                overview += f" leveraging {integration_text}"
+            sentences.append(self._ensure_sentence(overview))
+        structure = project_profile.get("structure")
+        if structure:
+            sentences.append(self._ensure_sentence(f"Includes {structure}"))
+        overview_text = " ".join(sentences).strip()
+        if not overview_text:
+            overview_text = f"{project_name} project."
+        return overview_text
+
+    def _stack_bullet(
+        self,
+        languages: List[Dict[str, object]],
+        integration_signals: List[str],
+        project_profile: Dict[str, Any],
     ) -> Optional[str]:
-        if contribution_metrics is None:
+        stack = self._format_stack(languages)
+        integration_text = self._format_integrations(integration_signals)
+        if not stack and not integration_text:
             return None
-        breakdown = getattr(contribution_metrics, "overall_activity_breakdown", None)
-        if not breakdown or not getattr(breakdown, "total_lines", 0):
+        if stack and integration_text:
+            return self._trim(
+                f"Built and shipped with {stack} plus {integration_text}, applying the tooling directly to project features."
+            )
+        if stack:
+            primary = project_profile.get("primary_type")
+            descriptor = f"{stack} ({primary})" if primary and primary not in stack else stack
+            return self._trim(f"Built on {descriptor}, using the stack to deliver core workflows instead of boilerplate.")
+        return self._trim(f"Implemented with key integrations ({integration_text}) to ship features using real tools.")
+
+    def _skills_bullet(self, skill_highlights: List[str]) -> Optional[str]:
+        if not skill_highlights:
             return None
-        percentages = breakdown.percentages
+        listed = ", ".join(skill_highlights[:3])
+        return self._trim(f"Applied {listed} while building the solution, making the skills tangible to reviewers.")
+
+    def _quality_bullet(self, code_summary: Dict[str, Any]) -> Optional[str]:
+        focus: List[str] = []
+        if code_summary.get("avg_maintainability") is not None:
+            focus.append("maintainability reviews")
+        if code_summary.get("avg_complexity") is not None:
+            focus.append("complexity coaching")
+        if code_summary.get("security_issues"):
+            focus.append("security hardening")
+        if code_summary.get("todos"):
+            focus.append("actionable backlog triage")
+        if not focus:
+            return None
+        phrase = self._join_with_and(self._dedupe_preserve_order(focus))
+        return self._trim(f"Reinforced engineering rigor via {phrase}, emphasizing production readiness over raw output.")
+
+    def _team_bullet(
+        self,
+        contribution_metrics: Optional[ProjectContributionMetrics],
+        git_signals: Dict[str, Any],
+    ) -> Optional[str]:
+        contributors = None
+        project_type = git_signals.get("project_type")
+        if contribution_metrics:
+            contributors = getattr(contribution_metrics, "total_contributors", None)
+            project_type = project_type or getattr(contribution_metrics, "project_type", None)
+        contributors = contributors or git_signals.get("contributor_count")
+        if contributors and contributors > 1:
+            descriptor = f"{contributors}-person"
+            if project_type:
+                descriptor = f"{descriptor} {project_type}"
+            return self._trim(
+                f"Coordinated delivery with a {descriptor} team, translating research and builds into polished deliverables."
+            )
+        if (contributors == 1) or (project_type and str(project_type).lower() == "solo"):
+            return self._trim("Owned roadmap, build, and storytelling end-to-end to keep the project cohesive.")
+        if project_type:
+            return self._trim(f"Led the {project_type} initiative, shaping direction and capturing lessons for reuse.")
+        return None
+
+    def _project_profile(
+        self,
+        project_name: str,
+        detected_projects: Optional[Sequence["ProjectInfo"]],
+    ) -> Dict[str, Any]:
+        profile: Dict[str, Any] = {
+            "project_name": project_name,
+            "project_names": [],
+            "primary_type": None,
+            "description": None,
+            "structure": None,
+        }
+        if not detected_projects:
+            return profile
+
+        names: List[str] = []
+        descriptions: List[str] = []
+        types: List[str] = []
+        for entry in detected_projects:
+            name = self._safe_attr(entry, "name")
+            if name:
+                names.append(str(name))
+            desc = self._safe_attr(entry, "description")
+            if desc:
+                descriptions.append(str(desc))
+            proj_type = self._safe_attr(entry, "project_type")
+            if proj_type:
+                types.append(str(proj_type))
+        if names:
+            profile["project_names"] = names
+        if descriptions:
+            profile["description"] = descriptions[0]
+        if types:
+            profile["primary_type"] = types[0]
+        if len(names) > 1:
+            listed = ", ".join(names[:3])
+            extra = f" (+{len(names) - 3})" if len(names) > 3 else ""
+            profile["structure"] = f"{len(names)} projects ({listed}{extra})"
+        return profile
+
+    def _safe_attr(self, entry: Any, attr: str) -> Optional[Any]:
+        if entry is None:
+            return None
+        if hasattr(entry, attr):
+            return getattr(entry, attr, None)
+        if isinstance(entry, dict):
+            return entry.get(attr)
+        return None
+
+    def _readme_summary(self, target_path: Path, *, max_chars: int = 800) -> Optional[str]:
+        try:
+            base = target_path if target_path.is_dir() else target_path.parent
+        except Exception:
+            return None
+        if not base or not base.exists():
+            return None
+        for name in ("README.md", "readme.md", "README.MD", "ReadMe.md"):
+            candidate = base / name
+            if not candidate.is_file():
+                continue
+            try:
+                text = candidate.read_text(encoding="utf-8", errors="ignore")[:max_chars]
+            except OSError:
+                continue
+            cleaned_lines: List[str] = []
+            for line in text.splitlines():
+                stripped = line.strip()
+                if not stripped:
+                    if cleaned_lines:
+                        break
+                    continue
+                stripped = stripped.lstrip("#*- ").strip()
+                if stripped:
+                    cleaned_lines.append(stripped)
+                if len(" ".join(cleaned_lines)) >= max_chars:
+                    break
+            paragraph = " ".join(cleaned_lines).strip()
+            if not paragraph:
+                continue
+            paragraph = re.sub(r"\[[^\]]+\]\([^)]+\)", "", paragraph)
+            paragraph = paragraph.replace("`", "")
+            sentences = re.split(r"(?<=[.!?])\s+", paragraph)
+            for sentence in sentences:
+                cleaned = sentence.strip()
+                if len(cleaned) >= 40:
+                    return cleaned
+        return None
+
+    def _detect_integrations(self, parse_result: ParseResult) -> List[str]:
+        if not parse_result or not parse_result.files:
+            return []
+        features: List[str] = []
+        seen: set[str] = set()
+        mappings = [
+            ("dockerized tooling", {"dockerfile", "docker-compose.yml", "docker-compose.yaml"}),
+            ("Supabase workflows", {"supabase"}),
+            ("Textual CLI dashboards", {"textual"}),
+            ("command-line UX", {"/cli/", "\\cli\\"}),
+            ("Next.js/Node tooling", {"next.config", "package.json"}),
+            ("Tailwind styling", {"tailwind.config"}),
+            ("GitHub Actions CI", {".github/workflows"}),
+            ("automated testing", {"pytest.ini", "pyproject.toml", "tests/"}),
+        ]
+        for meta in parse_result.files:
+            path = str(meta.path)
+            normalized = path.replace("\\", "/").lower()
+            name = Path(path).name.lower()
+            for label, markers in mappings:
+                if label in seen:
+                    continue
+                for marker in markers:
+                    if marker in normalized or marker == name:
+                        seen.add(label)
+                        features.append(label)
+                        break
+        return features
+
+    def _skill_highlights(self, skills: Optional[Sequence["Skill"]]) -> List[str]:
         highlights: List[str] = []
-        for label in ("test", "documentation", "design"):
-            share = percentages.get(label, 0)
-            if share >= 10:
-                descriptor = "tests" if label == "test" else label
-                highlights.append(f"{descriptor} {share:.0f}%")
-        if not highlights:
+        if not skills:
+            return highlights
+        for entry in skills:
+            name = getattr(entry, "name", None)
+            if name is None and isinstance(entry, dict):
+                name = entry.get("name")
+            if not name:
+                continue
+            category = getattr(entry, "category", None)
+            if category is None and isinstance(entry, dict):
+                category = entry.get("category")
+            label = str(name)
+            if category:
+                label = f"{label} ({category})"
+            if label not in highlights:
+                highlights.append(label)
+                if len(highlights) >= 5:
+                    break
+        return highlights
+
+    def _document_summary_text(
+        self, document_results: Optional[Sequence["DocumentAnalysisResult"]]
+    ) -> Optional[str]:
+        if not document_results:
             return None
-        mix = ", ".join(highlights)
-        return self._trim(f"Documented best practices by balancing workload across {mix}.")
+        best_text: Optional[str] = None
+        best_score = float("-inf")
+        for idx, entry in enumerate(document_results):
+            if isinstance(entry, dict):
+                summary = entry.get("summary")
+                key_points = entry.get("key_points") or entry.get("key_topics") or []
+                if not summary and key_points:
+                    summary = key_points[0]
+                file_name = entry.get("file_name", "")
+            else:
+                summary = getattr(entry, "summary", None)
+                if not summary:
+                    topics = getattr(entry, "key_topics", None) or getattr(entry, "key_points", None)
+                    if topics:
+                        summary = topics[0]
+                file_name = getattr(entry, "file_name", "")
+            if not summary:
+                continue
+            normalized = summary.strip()
+            if not normalized:
+                continue
+            cleaned = self._first_sentence(normalized, max_chars=400)
+            name = (file_name or "").lower()
+            score = min(len(cleaned), 600) / 600.0
+            score += self._document_name_weight(name)
+            score += self._summary_keyword_weight(cleaned)
+            score -= idx * 0.01
+            if score > best_score:
+                best_text = cleaned
+                best_score = score
+        return best_text
+
+    def _pdf_summary_text(
+        self, pdf_summaries: Optional[Sequence["DocumentSummary"]]
+    ) -> Optional[str]:
+        if not pdf_summaries:
+            return None
+        best_text: Optional[str] = None
+        best_score = float("-inf")
+        for idx, summary in enumerate(pdf_summaries):
+            if isinstance(summary, dict):
+                if not summary.get("success"):
+                    continue
+                text = summary.get("summary_text")
+                key_points = summary.get("key_points") or []
+                file_name = summary.get("file_name", "")
+            else:
+                if not getattr(summary, "success", False):
+                    continue
+                text = getattr(summary, "summary_text", None)
+                key_points = getattr(summary, "key_points", None) or []
+                file_name = getattr(summary, "file_name", "")
+            snippet = (text or "").strip()
+            if not snippet and key_points:
+                snippet = key_points[0].strip()
+            if not snippet:
+                continue
+            cleaned = self._first_sentence(snippet, max_chars=400)
+            score = min(len(cleaned), 600) / 600.0
+            score += self._document_name_weight((file_name or "").lower())
+            score += self._summary_keyword_weight(cleaned)
+            score -= idx * 0.01
+            if score > best_score:
+                best_score = score
+                best_text = cleaned
+        return best_text
+
+    def _format_integrations(self, integrations: List[str], *, limit: int = 3) -> str:
+        if not integrations:
+            return ""
+        unique = self._dedupe_preserve_order(integrations)
+        if len(unique) <= limit:
+            return ", ".join(unique)
+        extra = len(unique) - limit
+        return ", ".join(unique[:limit]) + f", +{extra} more"
+
+    def _join_with_and(self, items: List[str]) -> str:
+        if not items:
+            return ""
+        if len(items) == 1:
+            return items[0]
+        if len(items) == 2:
+            return " and ".join(items)
+        return ", ".join(items[:-1]) + f", and {items[-1]}"
+
+    def _dedupe_preserve_order(self, values: List[str]) -> List[str]:
+        seen: set[str] = set()
+        ordered: List[str] = []
+        for value in values:
+            if value not in seen:
+                ordered.append(value)
+                seen.add(value)
+        return ordered
+
+    def _first_sentence(self, text: str, *, max_chars: int = 240) -> str:
+        cleaned = " ".join((text or "").split())
+        if not cleaned:
+            return ""
+        parts = re.split(r"(?<=[.!?])\s+", cleaned)
+        first = parts[0] if parts else cleaned
+        if len(first) > max_chars:
+            truncated = first[:max_chars].rsplit(" ", 1)[0].strip()
+            if truncated:
+                first = truncated + "…"
+        return first
+
+    def _ensure_sentence(self, text: str) -> str:
+        cleaned = text.strip()
+        if not cleaned:
+            return ""
+        if cleaned[-1] in ".!?":
+            return cleaned
+        return f"{cleaned}."
+
+    def _article_for(self, phrase: str) -> str:
+        stripped = phrase.strip().lower()
+        if not stripped:
+            return "A"
+        return "An" if stripped[0] in "aeiou" else "A"
+
+    def _document_name_weight(self, lowered_name: str) -> float:
+        if not lowered_name:
+            return 0.0
+        weight = 0.0
+        high_priority = (
+            "proposal",
+            "requirements",
+            "architecture",
+            "systemarchitecture",
+            "design",
+            "vision",
+            "strategy",
+            "analysis",
+        )
+        medium_priority = ("overview", "guide", "plan", "spec", "roadmap")
+        for token in high_priority:
+            if token in lowered_name:
+                weight += 4.0
+                break
+        for token in medium_priority:
+            if token in lowered_name:
+                weight += 2.0
+                break
+        if "readme" in lowered_name:
+            weight += 1.5
+        return weight
+
+    def _summary_keyword_weight(self, summary: str) -> float:
+        lowered = summary.lower()
+        weight = 0.0
+        positive_terms = {
+            "course": 1.0,
+            "planner": 1.0,
+            "student": 0.8,
+            "schedule": 0.8,
+            "curriculum": 0.8,
+            "research": 1.0,
+            "market": 1.0,
+            "insight": 0.8,
+            "ai": 1.5,
+            "llm": 1.5,
+            "analysis": 0.7,
+            "recommendation": 0.7,
+            "prediction": 0.7,
+        }
+        for term, value in positive_terms.items():
+            if term in lowered:
+                weight += value
+        negative_terms = ("template", "boilerplate", "starter", "example project", "minimal setup")
+        for term in negative_terms:
+            if term in lowered:
+                weight -= 3.0
+        return weight
 
     # ------------------------------------------------------------------ #
     # Metadata helpers
@@ -509,11 +922,6 @@ Write the Markdown block only, no extra text.
             return text
         return text  # avoid truncating resume bullets; keep full context
 
-    def _project_overview_bullet(self, project_name: str, languages: List[Dict[str, object]]) -> Optional[str]:
-        stack = self._format_stack(languages)
-        descriptor = f"{stack} " if stack else ""
-        return self._trim(f"{project_name}: {descriptor}project that scans and summarizes codebases for portfolio-ready insights.")
-
     def _sanitize_ai_bullets(self, bullets: List[str]) -> List[str]:
         cleaned: List[str] = []
         for bullet in bullets:
@@ -524,42 +932,25 @@ Write the Markdown block only, no extra text.
                 cleaned.append(bullet)
         return cleaned
 
-    def _contribution_bullet(
-        self, git_signals: Dict[str, Any], contribution_metrics: Optional[ProjectContributionMetrics]
-    ) -> Optional[str]:
-        contributor_count = git_signals.get("contributor_count") or (
-            getattr(contribution_metrics, "total_contributors", None) if contribution_metrics else None
-        )
-        commit_count = git_signals.get("commit_count") or (
-            getattr(contribution_metrics, "total_commits", None) if contribution_metrics else None
-        )
-        project_type = git_signals.get("project_type") or (
-            getattr(contribution_metrics, "project_type", None) if contribution_metrics else None
-        )
-        if contributor_count is None and project_type == "collaborative":
-            contributor_count = 2  # fallback when team count is missing
-
-        commit_phrase = (
-            f" and delivered {self._humanize_count(commit_count)} commits"
-            if commit_count is not None
-            else ""
-        )
-        if contributor_count and contributor_count > 1:
-            return self._trim(
-                f"Collaborated with a {contributor_count}-person team{commit_phrase} to design scanning workflows and polish outputs."
-            )
-        return self._trim(f"Led end-to-end scanning workflow{commit_phrase} to showcase project impact.")
-
-    def _humanize_count(self, value: Any) -> str:
-        try:
-            num = float(value)
-        except Exception:
-            return str(value)
-        if num >= 1_000_000:
-            return f"{num/1_000_000:.1f}M".rstrip("0").rstrip(".")
-        if num >= 1_000:
-            return f"{num/1_000:.1f}k".rstrip("0").rstrip(".")
-        return str(int(num))
+    def _extract_ai_sections(self, response: str) -> Tuple[Optional[str], List[str]]:
+        overview: Optional[str] = None
+        bullets: List[str] = []
+        extra_lines: List[str] = []
+        for raw in response.splitlines():
+            line = raw.strip()
+            if not line:
+                continue
+            lower = line.lower()
+            if lower.startswith("overview:"):
+                overview = line.split(":", 1)[1].strip()
+                continue
+            if line.startswith("- "):
+                bullets.append(line[2:].strip())
+            else:
+                extra_lines.append(line)
+        if not bullets:
+            bullets = extra_lines[:4]
+        return overview, bullets
 
     def _format_month_year(self, raw: Optional[str]) -> Optional[str]:
         if not raw:
