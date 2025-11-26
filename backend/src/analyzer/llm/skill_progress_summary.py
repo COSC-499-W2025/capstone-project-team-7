@@ -31,15 +31,47 @@ class SkillProgressSummary:
 
 def build_prompt(timeline: List[Dict[str, Any]]) -> str:
     """Create a deterministic prompt for summarizing skill progression."""
+    overall_languages = sorted(
+        {
+            lang
+            for entry in timeline or []
+            for lang in (entry.get("languages") or {}).keys()
+            if lang
+        }
+    )
+    overall_skills = []
+    seen_skills = set()
+    for entry in timeline or []:
+        for skill in entry.get("top_skills") or []:
+            if skill in seen_skills:
+                continue
+            seen_skills.add(skill)
+            overall_skills.append(skill)
+
+    total_commits = sum((entry.get("commits") or 0) for entry in timeline or [])
+    total_tests = sum((entry.get("tests_changed") or 0) for entry in timeline or [])
+    total_evidence = sum((entry.get("evidence_count") or 0) for entry in timeline or [])
+    top_period = None
+    try:
+        top_period = max(timeline or [], key=lambda e: e.get("commits") or 0).get("period_label")
+    except Exception:
+        top_period = None
+
     return (
         "You are a concise software engineering coach.\n"
         "Input: JSON array of periods with keys: period_label, commits, tests_changed, "
-        "skill_count, evidence_count, top_skills, languages.\n"
+        "skill_count, evidence_count, top_skills, languages. Also provided: overall_languages, "
+        "overall_top_skills, total_commits, total_tests_changed, total_evidence, top_period_by_commits.\n"
         "Task: Produce STRICT JSON with keys narrative (3-5 sentences), milestones (3-5 bullets), "
         "strengths (2-3 bullets), gaps (1-2 bullets). Only discuss trends that appear in the data; "
-        "call out notable skills and languages mentioned in the periods, and prefer concrete details "
-        "over generic phrasing. If contributors > 1, note that the timeline is collaborative; otherwise, "
-        "treat it as individual work. Do NOT invent periods or skills.\n"
+        "call out notable skills and languages mentioned in the periods (if any languages are present, you MUST mention the dominant ones). "
+        "Prefer concrete details (skills, languages, types of work like tests/docs/refactors) over generic phrasing. If contributors > 1, "
+        "note that the timeline is collaborative; otherwise, treat it as individual work. Do NOT invent "
+        "periods or skills.\n"
+        f"Overall languages: {overall_languages or '[]'}\n"
+        f"Overall top skills: {overall_skills or '[]'}\n"
+        f"Total commits: {total_commits}, total tests changed: {total_tests}, total evidence: {total_evidence}, "
+        f"top period by commits: {top_period}\n"
         f"Timeline:\n{json.dumps(timeline, ensure_ascii=False, indent=2)}\n"
         "Respond with JSON only."
     )

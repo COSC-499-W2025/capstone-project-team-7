@@ -93,6 +93,16 @@ def build_skill_progression(
 
     # Merge commit timeline/languages from contribution metrics, if available.
     if contribution_metrics:
+        # Build per-month language hints if present in the timeline entries
+        per_month_languages: Dict[str, Dict[str, int]] = {}
+        for month_entry in contribution_metrics.timeline or []:
+            month = month_entry.get("month")
+            if not month:
+                continue
+            langs = month_entry.get("languages") or {}
+            if isinstance(langs, dict):
+                per_month_languages[month] = {k: v for k, v in langs.items() if k}
+
         for month_entry in contribution_metrics.timeline or []:
             month = month_entry.get("month")
             if not month:
@@ -116,8 +126,9 @@ def build_skill_progression(
         if contribution_metrics.languages_detected:
             lang_counts = {lang: 1 for lang in sorted(contribution_metrics.languages_detected)}
             for period_ref in periods.values():
-                # Languages are applied uniformly; we don't have per-period language usage.
-                period_ref.languages = dict(lang_counts)
+                # Prefer per-period languages if available, else fall back to project-wide languages.
+                period_langs = per_month_languages.get(period_ref.period_label)
+                period_ref.languages = dict(period_langs) if period_langs else dict(lang_counts)
 
     timeline = [periods[key] for key in sorted(periods.keys())]
     return SkillProgression(timeline=timeline)

@@ -305,7 +305,8 @@ class ContributionAnalysisService:
         user_share = 0.0
         # Support env override for the user's git email
         if not user_email:
-            user_email = os.environ.get("PORTFOLIO_USER_EMAIL")
+            raw_email = os.environ.get("PORTFOLIO_USER_EMAIL") or os.environ.get("TEXTUAL_SKILL_PROGRESS_EMAILS") or ""
+            user_email = raw_email.split(",")[0].strip() or None
         normalized_email = (user_email or "").strip().lower()
         normalized_name = (user_name or "").strip().lower()
         if metrics.contributors:
