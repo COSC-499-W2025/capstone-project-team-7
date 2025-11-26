@@ -235,7 +235,7 @@ class AutoSuggestionConfigScreen(ModalScreen[None]):
     
     #file-list-container {
         width: 100%;
-        height: 15;
+        height: 1fr;
         border: solid $primary;
         margin: 1 0;
     }
@@ -257,13 +257,20 @@ class AutoSuggestionConfigScreen(ModalScreen[None]):
     """
     def __init__(self,available_files:List[Dict[str,Any]], base_path:Optional[Path]) -> None:
         super().__init__()
-        self.available_files = available_files[:50]
+        self.available_files = available_files
         self.base_path = base_path
         self.selected_paths = set()
         
     def compose(self) -> ComposeResult:
-        sorted_files = sorted(self.available_files,  key=lambda f: (f.get("file_type", ""), f.get("path", "")))
-        # Create list items with type badges
+        
+        def get_sort_key(f):
+                path = f.get("path", "")
+                # Get first directory component
+                parts = path.split('/')
+                first_dir = parts[0] if len(parts) > 1 else ""
+                return (first_dir, path) 
+            
+        sorted_files = sorted(self.available_files, key=get_sort_key)       
 
         file_items = []
         for idx, file_meta in enumerate(sorted_files):
@@ -473,18 +480,23 @@ class ImprovementResultsScreen(ModalScreen[None]):
     }
     
     .improvement-results-dialog {
-        width: 100;
-        height: 45;
+         width: 100%;             /* ✅ Remove width constraint */
+        height: 100%;  
         border: thick $background 80%;
         background: $surface;
         padding: 1 2;
     }
     
-    #results-content {
+    #results-scroll {
         width: 100%;
-        height: 38;
+        height: 100%;            /* ✅ Use viewport height */
         border: solid $primary;
         margin: 1 0;
+    }
+    
+    #results-content {
+        width: 100%;
+        height: auto;
     }
     """
     
@@ -504,7 +516,7 @@ class ImprovementResultsScreen(ModalScreen[None]):
                 classes="dialog-subtitle",
             ),
             ScrollableContainer(
-                RichLog(id="results-content", wrap=True, highlight=False),
+                RichLog(id="results-content", wrap=False, highlight=True),
                 id="results-scroll"
             ),
             Horizontal(
@@ -519,7 +531,8 @@ class ImprovementResultsScreen(ModalScreen[None]):
         text_log = self.query_one("#results-content", RichLog)
         for line in self._format_results().split('\n'):
             text_log.write(line)
-    
+
+   
     def _format_results(self) -> str:
         """Format results as rich text."""
         lines = []
