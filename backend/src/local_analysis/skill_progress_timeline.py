@@ -33,6 +33,10 @@ class SkillProgressPeriod:
     top_skills: List[str] = field(default_factory=list)
     languages: Dict[str, int] = field(default_factory=dict)
     contributors: int = 0
+    commit_messages: List[str] = field(default_factory=list)
+    top_files: List[str] = field(default_factory=list)
+    activity_types: List[str] = field(default_factory=list)
+    period_languages: Dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -99,7 +103,7 @@ def build_skill_progression(
             month = month_entry.get("month")
             if not month:
                 continue
-            langs = month_entry.get("languages") or {}
+            langs = month_entry.get("languages") or month_entry.get("period_languages") or {}
             if isinstance(langs, dict):
                 per_month_languages[month] = {k: v for k, v in langs.items() if k}
 
@@ -122,6 +126,23 @@ def build_skill_progression(
                 period_ref.contributors = max(
                     period_ref.contributors, getattr(contribution_metrics, "total_contributors", 0)
                 )
+            # Carry over evidence-rich fields if present
+            commit_messages = month_entry.get("messages") or month_entry.get("commit_messages") or []
+            if commit_messages:
+                period_ref.commit_messages = list(commit_messages)[:5]
+            top_files = month_entry.get("top_files") or []
+            if top_files:
+                period_ref.top_files = list(top_files)[:5]
+                activity_types: set[str] = set(period_ref.activity_types)
+                for path in period_ref.top_files:
+                    if _is_test_path(path):
+                        activity_types.add("tests")
+                    else:
+                        activity_types.add("code")
+                period_ref.activity_types = sorted(activity_types)
+            period_langs = month_entry.get("languages") or month_entry.get("period_languages")
+            if isinstance(period_langs, dict):
+                period_ref.period_languages = dict(period_langs)
 
         if contribution_metrics.languages_detected:
             lang_counts = {lang: 1 for lang in sorted(contribution_metrics.languages_detected)}
@@ -129,6 +150,7 @@ def build_skill_progression(
                 # Prefer per-period languages if available, else fall back to project-wide languages.
                 period_langs = per_month_languages.get(period_ref.period_label)
                 period_ref.languages = dict(period_langs) if period_langs else dict(lang_counts)
+                period_ref.period_languages = dict(period_langs) if period_langs else dict(lang_counts)
 
     timeline = [periods[key] for key in sorted(periods.keys())]
     return SkillProgression(timeline=timeline)

@@ -4,6 +4,7 @@ from subprocess import check_output, CalledProcessError
 from collections import Counter
 from datetime import datetime
 import re
+from pathlib import Path as _Path
 
 def _git(args, cwd: str) -> str:
     return check_output(["git", *args], cwd=cwd, text=True).strip()
@@ -20,6 +21,34 @@ def _project_type(contributors: list[dict]) -> str:  # 2025-11-06
     if not contributors:
         return "unknown"
     return "individual" if len(contributors) == 1 else "collaborative"
+
+_EXTENSION_LANGUAGE_MAP = {
+    ".py": "Python",
+    ".js": "JavaScript",
+    ".ts": "TypeScript",
+    ".tsx": "TypeScript",
+    ".jsx": "JavaScript",
+    ".go": "Go",
+    ".java": "Java",
+    ".rb": "Ruby",
+    ".rs": "Rust",
+    ".cs": "C#",
+    ".cpp": "C++",
+    ".c": "C",
+    ".h": "C",
+    ".sh": "Shell",
+    ".php": "PHP",
+    ".swift": "Swift",
+    ".kt": "Kotlin",
+    ".m": "Objective-C",
+    ".mm": "Objective-C++",
+}
+
+
+def _guess_language(path: str) -> str | None:
+    ext = _Path(path).suffix.lower()
+    return _EXTENSION_LANGUAGE_MAP.get(ext)
+
 
 def analyze_git_repo(repo_dir: str) -> dict:
     repo_dir = str(repo_dir)
@@ -135,11 +164,46 @@ def analyze_git_repo(repo_dir: str) -> dict:
 
     # ---------- timeline ----------
     try:
-        months = Counter(
-            d[:7]
-            for d in _git(["log", "--date=iso", "--pretty=%ad", "--all"], repo_dir).splitlines()
-        )
-        timeline = [{"month": m, "commits": months[m]} for m in sorted(months)]
+        raw_log = _git(
+            ["log", "--date=short", "--pretty=%ad\t%s", "--name-only", "--all"],
+            repo_dir,
+        ).splitlines()
+        commit_counts: Counter[str] = Counter()
+        month_messages: dict[str, list[str]] = {}
+        month_file_counts: dict[str, Counter[str]] = {}
+        month_languages: dict[str, Counter[str]] = {}
+        current_month = None
+        for line in raw_log:
+            if "\t" in line:
+                # Commit header
+                date_part, message = line.split("\t", 1)
+                current_month = date_part[:7]
+                commit_counts[current_month] += 1
+                month_messages.setdefault(current_month, []).append(message.strip())
+                continue
+            if not line.strip() or current_month is None:
+                continue
+            # File path line
+            path = line.strip()
+            month_file_counts.setdefault(current_month, Counter())[path] += 1
+            lang = _guess_language(path)
+            if lang:
+                month_languages.setdefault(current_month, Counter())[lang] += 1
+
+        timeline = []
+        for month in sorted(commit_counts.keys()):
+            files_counter = month_file_counts.get(month, Counter())
+            top_files = [path for path, _ in files_counter.most_common(5)]
+            languages = month_languages.get(month, Counter())
+            timeline.append(
+                {
+                    "month": month,
+                    "commits": commit_counts[month],
+                    "messages": (month_messages.get(month) or [])[:5],
+                    "top_files": top_files,
+                    "languages": dict(languages),
+                }
+            )
     except CalledProcessError:
         timeline = []
 

@@ -388,6 +388,10 @@ class SkillsAnalysisService:
                 "top_skills": period.top_skills,
                 "languages": period.languages,
                 "contributors": period.contributors,
+                "commit_messages": period.commit_messages,
+                "top_files": period.top_files,
+                "activity_types": period.activity_types,
+                "period_languages": period.period_languages,
             }
 
         return {"timeline": [_period_to_dict(p) for p in progression.timeline]}
