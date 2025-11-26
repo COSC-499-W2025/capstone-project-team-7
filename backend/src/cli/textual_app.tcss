@@ -415,13 +415,13 @@ ScanConfigScreen {
     max-width: 100%;
     max-height: 100%;
     border: none;
-    padding: 0;
+    padding: 0 1;
     overflow: hidden;
 }
 
 .skill-progress-output {
     height: 1fr;
-    min-height: 20;
+    min-height: 24;
     border: tall #242832;
     padding: 1;
     background: #0f1115;
