@@ -8,6 +8,7 @@ derives lightweight ranking signals from contribution data.
 
 import logging
 import math
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -302,6 +303,9 @@ class ContributionAnalysisService:
 
         # User share of commits
         user_share = 0.0
+        # Support env override for the user's git email
+        if not user_email:
+            user_email = os.environ.get("PORTFOLIO_USER_EMAIL")
         normalized_email = (user_email or "").strip().lower()
         normalized_name = (user_name or "").strip().lower()
         if metrics.contributors:

@@ -682,7 +682,11 @@ class PortfolioTextualApp(App):
             load_dotenv()
         except Exception:
             pass
-        raw = os.environ.get("TEXTUAL_SKILL_PROGRESS_EMAILS") or ""
+        raw = (
+            os.environ.get("PORTFOLIO_USER_EMAIL")
+            or os.environ.get("TEXTUAL_SKILL_PROGRESS_EMAILS")
+            or ""
+        )
         emails = {email.strip().lower() for email in raw.split(",") if email.strip()}
         return emails or None
 
