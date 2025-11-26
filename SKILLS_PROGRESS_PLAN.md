@@ -9,10 +9,11 @@ This log tracks incremental progress for the optional “Skills Progress” feat
 - Added LLM summarization scaffold: `skill_progress_summary.py` with prompt builder and strict JSON parsing; tests validate prompt content and response validation using a fake model.
 - Added service wrapper `SkillsAnalysisService.summarize_skill_progression` and hydrated `skills_progress` on project load (state only, no TUI). New tests cover the service wrapper.
 - Added backend-only opt-in AI action (`_handle_skill_progress_summary` in `textual_app`) that builds/uses the timeline, calls the summarizer via the configured LLM client, and stores the summary in `ScanState.skills_progress`. Tested with stubs (no TUI wiring).
+- Wired Textual scan results with a “Skill progression” action to render the timeline and (when an AI key is present) generate and persist the AI summary. Output formatting covers narrative, milestones, strengths, and gaps.
+- Added main-menu access with a dedicated modal viewer so users can open the timeline/summary without re-running scans, plus helper refactors for shared rendering/generation logic.
 - Implemented Step 1: added `skill_progress_timeline.py` with timeline DTOs and a helper that merges `SkillsExtractor.get_chronological_overview()` with `ProjectContributionMetrics` commit timelines and languages; counts test evidence via existing test patterns.
 - Extended `ProjectContributionMetrics` to carry git timelines for downstream consumers.
 - Added unit coverage (`tests/test_skill_progress_timeline.py`) with pypdf stub to keep tests lightweight.
 
 ## Next Steps
-- Wire an opt-in AI action (backend handler) to invoke the summarizer with the real LLM client when requested, store results in `ScanState.skills_progress`, and ensure failures degrade gracefully. TUI trigger/rendering remains deferred.
-- Keep AI wiring staged for later phases (AI Analysis tab, opt-in action, LLM narrative). TUI changes deferred.
+- Optional polish: richer visualization inside the AI Analysis tab (e.g., dedicated panel for timeline + summary) or shortcuts to re-run the summary from the AI modal.
