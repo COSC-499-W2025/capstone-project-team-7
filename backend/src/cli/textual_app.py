@@ -676,7 +676,7 @@ class PortfolioTextualApp(App):
         """
         Optional git author email filter for per-user timelines.
 
-        Controlled via env TEXTUAL_SKILL_PROGRESS_EMAILS (comma-separated).
+        Controlled via env PORTFOLIO_USER_EMAIL or TEXTUAL_SKILL_PROGRESS_EMAILS (comma-separated).
         """
         try:
             load_dotenv()
@@ -689,6 +689,55 @@ class PortfolioTextualApp(App):
         )
         emails = {email.strip().lower() for email in raw.split(",") if email.strip()}
         return emails or None
+
+    def _preferred_user_email(self) -> Optional[str]:
+        """Resolve the primary email used for contribution-aware scoring."""
+        session_email = None
+        try:
+            session_email = self._session_state.session.email if self._session_state.session else None
+        except Exception:
+            session_email = None
+        if session_email:
+            return session_email.strip().lower()
+
+        emails = self._author_email_filter()
+        if emails:
+            # Deterministic ordering for tests and reproducibility
+            return sorted(emails)[0]
+        return None
+
+    def _begin_progress(self, message: str):
+        """Show the shared progress bar/label for background work."""
+        bar = getattr(self, "_scan_progress_bar", None)
+        label = getattr(self, "_scan_progress_label", None)
+        if bar:
+            try:
+                bar.display = True
+                bar.update(progress=0)
+            except Exception:
+                pass
+        if label:
+            try:
+                label.remove_class("hidden")
+                label.update(message)
+            except Exception:
+                pass
+
+        def _cleanup():
+            if bar:
+                try:
+                    bar.update(progress=0)
+                    bar.display = False
+                except Exception:
+                    pass
+            if label:
+                try:
+                    label.add_class("hidden")
+                    label.update("")
+                except Exception:
+                    pass
+
+        return _cleanup
 
     @staticmethod
     def _format_skill_progress_error(exc: Exception) -> str:
@@ -1708,33 +1757,37 @@ class PortfolioTextualApp(App):
     
     async def _handle_skill_progress_action(self, screen: ScanResultsScreen) -> None:
         """Show the skill progression timeline and optional AI summary."""
-        screen.set_message("Building skill progression timeline…", tone="info")
-        timeline, summary, summary_note = await self._prepare_skill_progress()
-        if not timeline:
-            message = summary_note or "No skill progression timeline available."
-            tone = "warning"
-            if message.startswith("Skills analysis failed"):
-                tone = "error"
-            screen.display_output(message, context="Skill progression")
+        cleanup = self._begin_progress("Building skill progression timeline…")
+        try:
+            screen.set_message("Building skill progression timeline…", tone="info")
+            timeline, summary, summary_note = await self._prepare_skill_progress()
+            if not timeline:
+                message = summary_note or "No skill progression timeline available."
+                tone = "warning"
+                if message.startswith("Skills analysis failed"):
+                    tone = "error"
+                screen.display_output(message, context="Skill progression")
+                screen.set_message(message, tone=tone)
+                return
+
+            self._debug_log_timeline(timeline)
+
+            if not summary and self._ai_state.client:
+                screen.set_message("Generating AI summary…", tone="info")
+
+            output = self._format_skill_progress_output(timeline, summary, summary_note)
+            screen.display_output(output, context="Skill progression")
+
+            message = "Skill progression ready."
+            tone = "success"
+            if summary:
+                message = "Skill progression and AI summary ready."
+            elif summary_note:
+                message = f"Skill progression ready. {summary_note}"
+                tone = "warning" if summary_note.startswith("AI summary unavailable") else "info"
             screen.set_message(message, tone=tone)
-            return
-
-        self._debug_log_timeline(timeline)
-
-        if not summary and self._ai_state.client:
-            screen.set_message("Generating AI summary…", tone="info")
-
-        output = self._format_skill_progress_output(timeline, summary, summary_note)
-        screen.display_output(output, context="Skill progression")
-
-        message = "Skill progression ready."
-        tone = "success"
-        if summary:
-            message = "Skill progression and AI summary ready."
-        elif summary_note:
-            message = f"Skill progression ready. {summary_note}"
-            tone = "warning" if summary_note.startswith("AI summary unavailable") else "info"
-        screen.set_message(message, tone=tone)
+        finally:
+            cleanup()
     
     async def _handle_contribution_analysis_action(self, screen: ScanResultsScreen) -> None:
         """Handle contribution analysis action from the scan results screen."""
@@ -2580,8 +2633,7 @@ class PortfolioTextualApp(App):
             payload["contribution_metrics"] = contribution_data
 
             # Compute contribution-based ranking signals for UI and persistence
-            session = self._session_state.session
-            user_email = session.email if session else None
+            user_email = self._preferred_user_email()
             ranking = self._contribution_service.compute_contribution_score(
                 metrics_obj,
                 user_email=user_email,
@@ -4013,28 +4065,32 @@ class PortfolioTextualApp(App):
 
     async def _show_skill_progress_modal(self) -> None:
         """Open a modal with skill progression and optional AI summary."""
-        timeline, summary, summary_note = await self._prepare_skill_progress()
-        if not timeline:
-            self._show_status(summary_note or "No skill progression timeline available.", "warning")
-            return
-
-        output = self._format_skill_progress_output(timeline, summary, summary_note)
+        cleanup = self._begin_progress("Building skill progression timeline…")
         try:
-            screen = SkillProgressScreen(output)
-            self.push_screen(screen)
-        except Exception as exc:  # pragma: no cover - UI fallback
-            self._debug_log(f"Failed to open skill progression screen: {exc}")
-            self._show_status("Could not display skill progression.", "error")
-            return
+            timeline, summary, summary_note = await self._prepare_skill_progress()
+            if not timeline:
+                self._show_status(summary_note or "No skill progression timeline available.", "warning")
+                return
 
-        message = "Skill progression ready."
-        tone = "success"
-        if summary:
-            message = "Skill progression and AI summary ready."
-        elif summary_note:
-            message = f"Skill progression ready. {summary_note}"
-            tone = "warning" if summary_note.startswith("AI summary unavailable") else "info"
-        self._show_status(message, tone)
+            output = self._format_skill_progress_output(timeline, summary, summary_note)
+            try:
+                screen = SkillProgressScreen(output)
+                self.push_screen(screen)
+            except Exception as exc:  # pragma: no cover - UI fallback
+                self._debug_log(f"Failed to open skill progression screen: {exc}")
+                self._show_status("Could not display skill progression.", "error")
+                return
+
+            message = "Skill progression ready."
+            tone = "success"
+            if summary:
+                message = "Skill progression and AI summary ready."
+            elif summary_note:
+                message = f"Skill progression ready. {summary_note}"
+                tone = "warning" if summary_note.startswith("AI summary unavailable") else "info"
+            self._show_status(message, tone)
+        finally:
+            cleanup()
 
     def _render_consent_detail(self) -> str:
         lines = ["[b]Consent Management[/b]"]
@@ -4403,7 +4459,7 @@ class PortfolioTextualApp(App):
             metrics_dict = scan_data.get("contribution_metrics")
             if metrics_dict and not has_ranking:
                 metrics_obj = self._contribution_service.metrics_from_dict(metrics_dict)
-                user_email = self._session_state.session.email if self._session_state.session else None
+                user_email = self._preferred_user_email()
                 ranking = self._contribution_service.compute_contribution_score(
                     metrics_obj,
                     user_email=user_email,
