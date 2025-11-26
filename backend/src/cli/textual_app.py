@@ -1962,7 +1962,17 @@ class PortfolioTextualApp(App):
             self._scan_state.target.parent if self._scan_state.target else Path.cwd()
         )
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        filename = f"scan_result_{timestamp}.json"
+
+        def _sanitize_name(name: str) -> str:
+            cleaned = "".join(ch if ch.isalnum() or ch in ("-", "_") else "-" for ch in name.strip().lower())
+            while "--" in cleaned:
+                cleaned = cleaned.replace("--", "-")
+            cleaned = cleaned.strip("-_")
+            return cleaned or "scan"
+
+        project_name = self._scan_state.target.name if self._scan_state.target else "scan"
+        safe_name = _sanitize_name(project_name)
+        filename = f"scan_{safe_name}_{timestamp}.json"
         destination = target_dir / filename
         payload = self._build_export_payload(
             self._scan_state.parse_result,
@@ -2167,10 +2177,19 @@ class PortfolioTextualApp(App):
         
         # ✨ CONTRIBUTION METRICS ✨
         if self._scan_state.contribution_metrics:
-            contribution_data = self._contribution_service.export_data(
-                self._scan_state.contribution_metrics
-            )
+            metrics_obj = self._scan_state.contribution_metrics
+            contribution_data = self._contribution_service.export_data(metrics_obj)
             payload["contribution_metrics"] = contribution_data
+
+            # Compute contribution-based ranking signals for UI and persistence
+            session = self._session_state.session
+            user_email = session.email if session else None
+            ranking = self._contribution_service.compute_contribution_score(
+                metrics_obj,
+                user_email=user_email,
+                user_name=None,
+            )
+            payload["contribution_ranking"] = ranking
         
         return payload
     
@@ -3697,12 +3716,12 @@ class PortfolioTextualApp(App):
         except Exception as exc:
             self._show_status(f"Unexpected error loading projects: {exc}", "error")
             return
-        
-        self._projects_state.projects_list = projects
+
+        self._projects_state.projects_list = projects or []
         self._projects_state.error = None
         self._refresh_current_detail()
-        self.push_screen(ProjectsScreen(projects))
-        self._show_status(f"Loaded {len(projects)} project(s).", "success")
+        self.push_screen(ProjectsScreen(projects or []))
+        self._show_status(f"Loaded {len(projects or [])} project(s).", "success")
 
     async def _load_and_show_resumes(self, *, show_modal: bool = True) -> None:
         """Load user's saved resumes and optionally show the resumes screen."""
@@ -3779,6 +3798,23 @@ class PortfolioTextualApp(App):
         if not full_project:
             self._show_status("Project not found.", "error")
             return
+
+        # For legacy records without stored ranking, derive it from contribution metrics
+        try:
+            scan_data = full_project.get("scan_data") or {}
+            has_ranking = isinstance(scan_data.get("contribution_ranking"), dict)
+            metrics_dict = scan_data.get("contribution_metrics")
+            if metrics_dict and not has_ranking:
+                metrics_obj = self._contribution_service.metrics_from_dict(metrics_dict)
+                user_email = self._session_state.session.email if self._session_state.session else None
+                ranking = self._contribution_service.compute_contribution_score(
+                    metrics_obj,
+                    user_email=user_email,
+                )
+                scan_data["contribution_ranking"] = ranking
+                full_project["scan_data"] = scan_data
+        except Exception as exc:
+            self._debug_log(f"Could not derive contribution ranking for project {project_id}: {exc}")
         
         self._projects_state.selected_project = full_project
         self._show_status("Project loaded.", "success")

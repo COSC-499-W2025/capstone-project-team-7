@@ -82,6 +82,16 @@ class ProjectsService:
                 "has_pdf_analysis": "pdf_analysis" in scan_data,
                 "has_code_analysis": "code_analysis" in scan_data,
                 "has_git_analysis": "git_analysis" in scan_data,
+                "has_contribution_metrics": "contribution_metrics" in scan_data,
+                "contribution_score": scan_data.get("contribution_ranking", {}).get("score"),
+                "user_commit_share": scan_data.get("contribution_ranking", {}).get("user_commit_share"),
+                "total_commits": scan_data.get("contribution_metrics", {}).get("total_commits"),
+                "primary_contributor": (
+                    (scan_data.get("contribution_metrics", {}).get("primary_contributor") or {}).get("name")
+                    if isinstance(scan_data.get("contribution_metrics", {}).get("primary_contributor"), dict)
+                    else None
+                ),
+                "project_end_date": scan_data.get("contribution_metrics", {}).get("project_end_date"),
             }
             
             # Upsert (insert or update if exists)
@@ -110,6 +120,8 @@ class ProjectsService:
                 "id, project_name, project_path, scan_timestamp, "
                 "total_files, total_lines, languages, "
                 "has_media_analysis, has_pdf_analysis, has_code_analysis, has_git_analysis, "
+                "has_contribution_metrics, contribution_score, user_commit_share, total_commits, "
+                "primary_contributor, project_end_date, "
                 "created_at"
             ).eq("user_id", user_id).order("scan_timestamp", desc=True).execute()
             

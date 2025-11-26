@@ -1081,6 +1081,49 @@ class ProjectsScreen(ModalScreen[None]):
         super().__init__()
         self.projects = projects
         self.selected_project: Optional[Dict[str, Any]] = None
+        # Track whether projects are ordered by contribution importance or scan recency
+        self.sort_mode: str = "importance"
+
+    def _sort_label(self) -> str:
+        """Return the button label that matches the active sort mode."""
+        return "Sort: recency" if self.sort_mode == "recency" else "Sort: importance"
+
+    def _sorted_projects(self) -> List[Dict[str, Any]]:
+        """Return projects ordered per current sort mode."""
+        if not self.projects:
+            return []
+        if self.sort_mode == "recency":
+            return sorted(
+                self.projects,
+                key=lambda p: p.get("scan_timestamp") or "",
+                reverse=True,
+            )
+        # Default: sort by contribution score, then recency
+        return sorted(
+            self.projects,
+            key=lambda p: (
+                p.get("contribution_score") is None,
+                -(p.get("contribution_score") or 0),
+                p.get("scan_timestamp") or "",
+            ),
+        )
+
+    def _refresh_list(self) -> None:
+        """Rebuild list items after sort mode changes."""
+        if not self.projects:
+            return
+        try:
+            list_view = self.query_one("#projects-list", ListView)
+        except Exception:
+            return
+        sorted_projects = self._sorted_projects()
+        list_view.clear()
+        for proj in sorted_projects:
+            list_view.append(ListItem(Label(self._format_project_item(proj), classes="project-item")))
+        # Reset selection to first item for clarity
+        if sorted_projects:
+            self.selected_project = sorted_projects[0]
+            self._update_detail(self.selected_project)
     
     def compose(self):
         with Vertical(id="projects-dialog"):
@@ -1098,9 +1141,10 @@ class ProjectsScreen(ModalScreen[None]):
                 )
             else:
                 # Create list items
+                sorted_projects = self._sorted_projects()
                 items = [
                     ListItem(Label(self._format_project_item(proj), classes="project-item"))
-                    for proj in self.projects
+                    for proj in sorted_projects
                 ]
                 yield ListView(*items, id="projects-list")
                 yield Static("Select a project to view details", id="projects-detail")
@@ -1110,6 +1154,7 @@ class ProjectsScreen(ModalScreen[None]):
                     yield Button("View Project", id="view-btn", variant="primary")
                     yield Button("Clear insights", id="clear-insights-btn", variant="warning")
                     yield Button("Delete", id="delete-btn", variant="error")
+                    yield Button(self._sort_label(), id="sort-toggle-btn", variant="default")
                 yield Button("Close", id="close-btn")
             
             yield Static("", id="projects-status", classes="status-info")
@@ -1119,6 +1164,7 @@ class ProjectsScreen(ModalScreen[None]):
         name = project.get("project_name", "Unknown")
         timestamp = project.get("scan_timestamp", "")
         files = project.get("total_files", 0)
+        score = project.get("contribution_score")
         
         # Format timestamp
         if timestamp:
@@ -1148,7 +1194,8 @@ class ProjectsScreen(ModalScreen[None]):
         
         badge_str = " ".join(badges) if badges else ""
         
-        return f"{name} • {timestamp_str} • {files} files {badge_str}"
+        score_str = f" • ⭐ {score:.1f}" if isinstance(score, (int, float)) else ""
+        return f"{name}{score_str} • {timestamp_str} • {files} files {badge_str}"
     
     def on_mount(self) -> None:
         """Focus the list when mounted and select first item."""
@@ -1158,8 +1205,9 @@ class ProjectsScreen(ModalScreen[None]):
                 list_view.focus()
                 
                 # Auto-select first project
-                if len(self.projects) > 0:
-                    self.selected_project = self.projects[0]
+                sorted_projects = self._sorted_projects()
+                if len(sorted_projects) > 0:
+                    self.selected_project = sorted_projects[0]
                     self._update_detail(self.selected_project)
             except Exception as e:
                 pass
@@ -1191,6 +1239,9 @@ class ProjectsScreen(ModalScreen[None]):
             files = project.get("total_files", 0)
             lines = project.get("total_lines", 0)
             languages = project.get("languages", [])
+            score = project.get("contribution_score")
+            user_share = project.get("user_commit_share")
+            total_commits = project.get("total_commits")
             
             # Format timestamp
             if timestamp and timestamp != "Unknown":
@@ -1215,12 +1266,24 @@ class ProjectsScreen(ModalScreen[None]):
             else:
                 langs_str = str(languages)
             
+            ranking_lines = []
+            if isinstance(score, (int, float)):
+                ranking_lines.append(f"Score: {score:.1f}")
+            if isinstance(user_share, (int, float)):
+                ranking_lines.append(f"Your share: {user_share*100:.1f}%")
+            if total_commits is not None:
+                ranking_lines.append(f"Commits: {total_commits}")
+            ranking_text = " • ".join(ranking_lines)
+            if ranking_text:
+                ranking_text = f"\n{ranking_text}"
+
             text = (
                 f"[b]{name}[/b]\n"
                 f"Path: {path}\n"
                 f"Scanned: {timestamp}\n"
                 f"Files: {files} • Lines: {lines:,}\n"
                 f"Languages: {langs_str}"
+                f"{ranking_text}"
             )
             
             detail.update(text)
@@ -1263,6 +1326,14 @@ class ProjectsScreen(ModalScreen[None]):
                     self._set_status("Invalid project ID", "error")
             else:
                 self._set_status("Please select a project first", "error")
+        elif button_id == "sort-toggle-btn":
+            self.sort_mode = "recency" if self.sort_mode == "importance" else "importance"
+            try:
+                sort_button = self.query_one("#sort-toggle-btn", Button)
+                sort_button.label = self._sort_label()
+            except Exception:
+                pass
+            self._refresh_list()
     
     def on_key(self, event: Key) -> None:
         """Handle keyboard shortcuts."""
@@ -2086,6 +2157,16 @@ class ProjectViewerScreen(ModalScreen[None]):
             return "No contribution metrics available."
         
         lines: List[str] = ["[b]Contribution Analysis[/b]\n"]
+
+        ranking = self.scan_data.get("contribution_ranking", {})
+        if isinstance(ranking, dict) and ranking.get("score") is not None:
+            score = ranking.get("score")
+            user_share = ranking.get("user_commit_share")
+            score_line = f"Importance score: {score:.1f}"
+            if isinstance(user_share, (int, float)):
+                score_line += f" • Your share: {user_share*100:.1f}%"
+            lines.append(score_line)
+            lines.append("")
         
         # Overall metrics
         lines.append("[b]Overall Metrics:[/b]")
