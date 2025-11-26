@@ -529,12 +529,21 @@ class PortfolioTextualApp(App):
             raise RuntimeError("AI client not configured")
 
         def _call_model(prompt: str) -> str:
-            return client._make_llm_call(  # type: ignore[attr-defined]
-                messages=[{"role": "user", "content": prompt}],
-                model=client.DEFAULT_MODEL if hasattr(client, "DEFAULT_MODEL") else None,
-                max_tokens=800,
-                temperature=0.2,
-            )
+            params = {
+                "messages": [{"role": "user", "content": prompt}],
+                "model": client.DEFAULT_MODEL if hasattr(client, "DEFAULT_MODEL") else None,
+                "max_tokens": 800,
+                "temperature": 0.0,
+            }
+            # Prefer JSON mode if supported by the client
+            try:
+                return client._make_llm_call(  # type: ignore[attr-defined]
+                    **{**params, "response_format": {"type": "json_object"}}
+                )
+            except TypeError:
+                return client._make_llm_call(  # type: ignore[attr-defined]
+                    **params
+                )
 
         try:
             return self._skills_service.summarize_skill_progression(timeline, _call_model)
@@ -632,6 +641,23 @@ class PortfolioTextualApp(App):
                 summary_note = "Add an AI key to generate a narrative summary."
 
         return timeline or [], summary, summary_note
+
+    def _debug_log_timeline(self, timeline: List[Dict[str, Any]]) -> None:
+        """Emit a compact timeline snapshot for troubleshooting."""
+        try:
+            preview = [
+                {
+                    "period": entry.get("period_label") or entry.get("period"),
+                    "commits": entry.get("commits"),
+                    "tests_changed": entry.get("tests_changed"),
+                    "skills": entry.get("top_skills"),
+                    "languages": list((entry.get("languages") or {}).keys()),
+                }
+                for entry in timeline[:6]
+            ]
+            self._debug_log(f"[SkillProgress] Timeline preview: {preview}")
+        except Exception:
+            pass
 
     @staticmethod
     def _format_skill_progress_error(exc: Exception) -> str:
@@ -1653,6 +1679,8 @@ class PortfolioTextualApp(App):
             screen.set_message(message, tone=tone)
             return
 
+        self._debug_log_timeline(timeline)
+
         if not summary and self._ai_state.client:
             screen.set_message("Generating AI summary…", tone="info")
 
@@ -1819,7 +1847,17 @@ class PortfolioTextualApp(App):
         """Perform contribution metrics extraction from the scanned project."""
         # Git analysis is optional - can analyze non-Git projects too
         git_analysis = None
-        
+
+        if not self._scan_state.git_analysis and self._scan_state.git_repos:
+            # Collect git analysis eagerly so commit timelines feed contribution metrics
+            analyses: List[dict] = []
+            for repo in self._scan_state.git_repos:
+                try:
+                    analyses.append(analyze_git_repo(str(repo)))
+                except Exception as exc:
+                    analyses.append({"path": str(repo), "error": str(exc)})
+            self._scan_state.git_analysis = analyses
+
         if self._scan_state.git_analysis:
             # Use the first git repository's analysis (or combine if multiple)
             git_analysis = self._scan_state.git_analysis[0] if len(self._scan_state.git_analysis) == 1 else {

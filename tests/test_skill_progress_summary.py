@@ -55,3 +55,31 @@ def test_summarize_skill_progress_rejects_missing_keys():
         assert False, "Expected ValueError for missing keys"
     except ValueError as exc:
         assert "Missing key" in str(exc)
+
+
+def test_summarize_skill_progress_coerces_json_fences():
+    timeline = [{"period_label": "2024-01", "commits": 1, "tests_changed": 2, "skill_count": 3, "evidence_count": 4}]
+
+    def fake_model(prompt: str) -> str:
+        return """```json
+        {
+            "narrative": "ok",
+            "milestones": ["a"],
+            "strengths": ["b"],
+            "gaps": ["c"]
+        }
+        ```"""
+
+    summary = summarize_skill_progress(timeline, fake_model)
+    assert summary.narrative
+    assert summary.milestones == ["a"]
+
+
+def test_summarize_skill_progress_handles_embedded_json():
+    timeline = [{"period_label": "2024-01", "commits": 1, "tests_changed": 2, "skill_count": 3, "evidence_count": 4}]
+
+    def fake_model(prompt: str) -> str:
+        return 'Here you go: {"narrative": "n", "milestones": [], "strengths": [], "gaps": []}'
+
+    summary = summarize_skill_progress(timeline, fake_model)
+    assert summary.narrative == "n"
