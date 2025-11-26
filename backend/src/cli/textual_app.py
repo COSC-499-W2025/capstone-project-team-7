@@ -3911,6 +3911,46 @@ class PortfolioTextualApp(App):
                 return
         finally:
             self._session_state.login_task = None
+    
+    async def _handle_signup(self, email: str, password: str) -> None:
+        try:
+            if not email or not password:
+                self._show_status("Enter both email and password.", "error")
+                return
+            try:
+                auth = self._get_auth()
+            except AuthError as exc:
+                self._session_state.auth_error = str(exc)
+                self._show_status(f"Sign up unavailable: {exc}", "error")
+                return
+
+            self._show_status("Creating account…", "info")
+            try:
+                session = await asyncio.to_thread(auth.signup, email, password)
+            except AuthError as exc:
+                self._session_state.auth_error = str(exc)
+                self._show_status(f"Sign up failed: {exc}", "error")
+                return
+            except Exception as exc:
+                self._show_status(f"Unexpected sign up error: {exc}", "error")
+                return
+
+            self._session_state.session = session
+            self._session_state.last_email = session.email
+            self._session_state.auth_error = None
+            self._persist_session()
+
+            consent_storage.set_session_token(session.access_token)
+            consent_storage.load_user_consents(session.user_id, session.access_token)
+
+            self._invalidate_cached_state()
+            self._refresh_consent_state()
+            self._load_preferences()
+            self._update_session_status()
+            self._show_status(f"Account created for {session.email}", "success")
+            self._refresh_current_detail()
+        finally:
+            self._session_state.login_task = None
 
     async def _verify_ai_key(
         self,

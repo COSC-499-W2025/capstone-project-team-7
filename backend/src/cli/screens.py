@@ -8,7 +8,6 @@ from typing import Any, Dict, List, Optional
 from unittest import result
 from dataclasses import dataclass
 
-
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, ScrollableContainer, Vertical
