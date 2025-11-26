@@ -502,29 +502,25 @@ class PortfolioTextualApp(App):
         
         files = self._scan_state.parse_result.files or []
         
+        # ✅ NO FILTERING - Just add every single file
         files_info = []
         
         for meta in files:
-            mime_type = meta.mime_type or ""
-            file_path = meta.path
-            
-            if self._is_binary_file(file_path, mime_type):
-                continue
-            
             files_info.append({
-                "path":meta.path,
-                "size":meta.size_bytes,
-                "mime_type":mime_type,
-                "file_type":self._get_file_type_label(file_path,mime_type)
+                "path": meta.path,
+                "size": meta.size_bytes,
+                "mime_type": meta.mime_type or "unknown",
+                "file_type": self._get_file_type_label(meta.path, meta.mime_type or "")
             })
-            
+        
+        self._debug_log(f"[Auto-Suggestion] Showing ALL {len(files_info)} files from scan")
+        
         if not files_info:
-            self._show_status("No suitable code files found for auto-suggestion.", "warning")
+            self._show_status("No files found in scan.", "warning")
             return
             
         self.push_screen(AutoSuggestionConfigScreen(files_info, self._scan_state.target))
         
-     
     def _is_binary_file(self, file_path: str, mime_type: str) -> bool:
         """
         Check if file should be EXCLUDED from auto-suggestion.
