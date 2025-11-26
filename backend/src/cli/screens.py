@@ -296,7 +296,7 @@ class AutoSuggestionConfigScreen(ModalScreen[None]):
         for f in sorted_files:
             ftype = f.get("file_type", "Text")
             type_counts[ftype] = type_counts.get(ftype,0) + 1
-            
+
         type_summary = ", ".join([f"{count} {ftype}" for ftype,count in sorted(type_counts.items())])
 
         yield Vertical(
@@ -531,7 +531,7 @@ class ImprovementResultsScreen(ModalScreen[None]):
                 classes="dialog-subtitle",
             ),
             ScrollableContainer(
-                RichLog(id="results-content", wrap=False, highlight=False, max_lines=5000),
+                RichLog(id="results-content", wrap=False, highlight=False, markup=True, max_lines=5000),
                 id="results-scroll"
             ),
             Horizontal(
