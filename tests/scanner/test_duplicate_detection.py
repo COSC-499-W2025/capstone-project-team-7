@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,7 +28,7 @@ class TestHashCalculation:
 
     def test_calculate_file_hash_returns_md5(self):
         """Hash calculation returns a valid MD5 hex string."""
-        data = b"hello world"
+        data = io.BytesIO(b"hello world")
         result = _calculate_file_hash(data)
         
         assert isinstance(result, str)
@@ -36,21 +37,21 @@ class TestHashCalculation:
 
     def test_calculate_file_hash_same_content_same_hash(self):
         """Identical content produces identical hashes."""
-        data1 = b"test content for hashing"
-        data2 = b"test content for hashing"
+        data1 = io.BytesIO(b"test content for hashing")
+        data2 = io.BytesIO(b"test content for hashing")
         
         assert _calculate_file_hash(data1) == _calculate_file_hash(data2)
 
     def test_calculate_file_hash_different_content_different_hash(self):
         """Different content produces different hashes."""
-        data1 = b"content A"
-        data2 = b"content B"
+        data1 = io.BytesIO(b"content A")
+        data2 = io.BytesIO(b"content B")
         
         assert _calculate_file_hash(data1) != _calculate_file_hash(data2)
 
     def test_calculate_file_hash_empty_file(self):
         """Empty files produce a valid hash."""
-        data = b""
+        data = io.BytesIO(b"")
         result = _calculate_file_hash(data)
         
         assert isinstance(result, str)
@@ -58,11 +59,26 @@ class TestHashCalculation:
 
     def test_calculate_file_hash_binary_content(self):
         """Binary content is hashed correctly."""
-        data = bytes(range(256))
+        data = io.BytesIO(bytes(range(256)))
         result = _calculate_file_hash(data)
         
         assert isinstance(result, str)
         assert len(result) == 32
+
+    def test_calculate_file_hash_large_content_streaming(self):
+        """Large content is hashed correctly using streaming chunks."""
+        # Create data larger than the chunk size (8KB) to test streaming
+        large_data = b"x" * 50000  # ~50KB of data
+        data = io.BytesIO(large_data)
+        result = _calculate_file_hash(data)
+        
+        assert isinstance(result, str)
+        assert len(result) == 32
+        
+        # Verify the hash is correct by comparing with known MD5
+        import hashlib
+        expected = hashlib.md5(large_data).hexdigest()
+        assert result == expected
 
 
 class TestParserHashIntegration:

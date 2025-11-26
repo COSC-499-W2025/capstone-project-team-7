@@ -154,13 +154,21 @@ _ALLOWED_MIME_TYPES = {
 
 _MAX_MEDIA_BYTES = 20 * 1024 * 1024  # 20 MiB safeguard for media extraction.
 _MAX_HASH_BYTES = 50 * 1024 * 1024  # 50 MiB limit for hash calculation.
+_HASH_CHUNK_SIZE = 8192  # 8 KiB chunks for streaming hash calculation.
 
 logger = logging.getLogger(__name__)
 
 
-def _calculate_file_hash(data: bytes) -> str:
-    """Calculate MD5 hash of file content for duplicate detection."""
-    return hashlib.md5(data).hexdigest()
+def _calculate_file_hash(file_obj) -> str:
+    """Calculate MD5 hash of file content using chunked streaming.
+    
+    Uses chunked reading to avoid loading entire file into memory,
+    making it more scalable for larger files.
+    """
+    hasher = hashlib.md5()
+    while chunk := file_obj.read(_HASH_CHUNK_SIZE):
+        hasher.update(chunk)
+    return hasher.hexdigest()
 
 def parse_zip(
     archive_path: Path,
@@ -304,13 +312,12 @@ def _build_metadata(
     timestamp = _zip_datetime(info)
     mime_type, _ = mimetypes.guess_type(path)
     
-    # Calculate file hash for duplicate detection (skip large files)
+    # Calculate file hash for duplicate detection using streaming (skip large files)
     file_hash = None
     if info.file_size <= _MAX_HASH_BYTES:
         try:
             with archive_zip.open(info) as file_obj:
-                data = file_obj.read()
-                file_hash = _calculate_file_hash(data)
+                file_hash = _calculate_file_hash(file_obj)
         except Exception:
             pass  # Hash calculation is optional, continue without it
     
