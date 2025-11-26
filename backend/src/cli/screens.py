@@ -226,7 +226,7 @@ class AutoSuggestionConfigScreen(ModalScreen[None]):
     
     .auto-suggestion-dialog {
         width: 90;
-        height: 40;
+        height: 45;
         border: thick $background 80%;
         background: $surface;
         padding: 1 2;
@@ -235,7 +235,7 @@ class AutoSuggestionConfigScreen(ModalScreen[None]):
     
     #file-list-container {
         width: 100%;
-        height: 20;
+        height: 15;
         border: solid $primary;
         margin: 1 0;
     }
@@ -252,7 +252,7 @@ class AutoSuggestionConfigScreen(ModalScreen[None]):
         width: 100%;
         height: auto;
         align: center middle;
-        margin-top: 1;  /* ✅ Add spacing */
+        padding: 1 0;
     }
     """
     def __init__(self,available_files:List[Dict[str,Any]], base_path:Optional[Path]) -> None:
@@ -296,7 +296,9 @@ class AutoSuggestionConfigScreen(ModalScreen[None]):
             Static("AI Auto-Suggestion", classes="dialog-title"),
             Static(
                 f"Select files to improve (Space to toggle, ↑↓ to navigate)\n"
-                f"Available: {type_summary}",
+                f"Available: {type_summary}\n"
+                f"Files will be saved to the output directory you specify below.", 
+
                 classes="dialog-subtitle",
             ),
             ScrollableContainer(
@@ -310,7 +312,7 @@ class AutoSuggestionConfigScreen(ModalScreen[None]):
             ),
             Static("Output directory:", classes="label"),
             Input(
-                value=str(Path.home() / "improved"),
+                value=str(Path.home() / "improved_files"),
                 placeholder="/path/to/output",
                 id="output-dir"
             ),
@@ -415,11 +417,43 @@ class AutoSuggestionConfigScreen(ModalScreen[None]):
             self.query_one("#config-message", Static).update("Provide an output directory.")
             return
         
+        # ✅ VALIDATE PATH
+        try:
+            output_path = Path(output_dir).expanduser().resolve()
+            
+            # Check if path exists and is a file (not allowed)
+            if output_path.exists() and output_path.is_file():
+                self.query_one("#config-message", Static).update(
+                    "Output path is a file. Please specify a directory."
+                )
+                return
+            
+            # Check if parent directory exists and is writable
+            if not output_path.exists():
+                parent = output_path.parent
+                if not parent.exists():
+                    self.query_one("#config-message", Static).update(
+                        f"Parent directory does not exist: {parent}"
+                    )
+                    return
+                if not parent.is_dir():
+                    self.query_one("#config-message", Static).update(
+                        f"Parent path is not a directory: {parent}"
+                    )
+                    return
+            
+        except Exception as e:
+            self.query_one("#config-message", Static).update(
+                f"Invalid path: {str(e)}"
+            )
+            return
+    
+        
         # Dispatch message with selected files
         from .screens import dispatch_message
         dispatch_message(self, AutoSuggestionSelected(
             list(self.selected_paths), 
-            output_dir
+            str(output_path),  # ✅ Use validated path
         ))
         self.dismiss(None)
     

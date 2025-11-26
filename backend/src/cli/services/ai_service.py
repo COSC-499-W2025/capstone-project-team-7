@@ -321,10 +321,8 @@ class AIService:
         self.logger.info(f"Base path: {base_path}")
         progress_callback("Initializing auto-suggestion...", 0)
         
-        # Create timestamped output directory
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_path = Path(output_dir) / f"improved_{timestamp}"
-        output_path.mkdir(parents=True, exist_ok=True)
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok = True)
         
         self.logger.info(f"Created output directory: {output_path}")
         progress_callback(f"Created output directory: {output_path.name}", 5)
@@ -447,7 +445,7 @@ class AIService:
                 improved_content = improvement_result.get("improved_code", original_content)
                 
                 # Preserve directory structure in output
-                output_file = output_path / file_path
+                output_file = output_path / Path(file_path).name
                 output_file.parent.mkdir(parents=True, exist_ok=True)
                 
                 try:
