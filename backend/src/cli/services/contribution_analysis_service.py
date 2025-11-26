@@ -2,10 +2,13 @@
 Contribution Analysis Service
 
 Provides contribution metrics extraction for the Textual CLI application.
-Wraps the ContributionAnalyzer module and formats results for display.
+Wraps the ContributionAnalyzer module, formats results for display, and
+derives lightweight ranking signals from contribution data.
 """
 
 import logging
+import math
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Dict, Any
 
@@ -268,3 +271,152 @@ class ContributionAnalysisService:
             Dictionary representation
         """
         return self._analyzer.export_to_dict(metrics)
+
+    # --- Ranking helpers -------------------------------------------------
+
+    def compute_contribution_score(
+        self,
+        metrics: ProjectContributionMetrics,
+        *,
+        user_email: Optional[str] = None,
+        user_name: Optional[str] = None,
+        now: Optional[datetime] = None,
+    ) -> Dict[str, float]:
+        """
+        Compute a normalized contribution-based importance score for a project.
+
+        Signals (weights tuned for “commit volume first”):
+        - 50%: commit volume (log scaled)
+        - 20%: user share of commits (matches on email/name, falls back to solo projects)
+        - 15%: recency (newer end dates score higher)
+        - 10%: commit frequency (commits/day)
+        - 5% : activity mix bonus for tests/docs/design work
+        """
+        reference_now = now or datetime.now(timezone.utc)
+
+        # Commit volume (log-scaled to keep huge repos from dominating)
+        total_commits = max(0, metrics.total_commits or 0)
+        volume_score = 0.0
+        if total_commits > 0:
+            volume_score = min(1.0, math.log1p(total_commits) / math.log1p(1000))
+
+        # User share of commits
+        user_share = 0.0
+        normalized_email = (user_email or "").strip().lower()
+        normalized_name = (user_name or "").strip().lower()
+        if metrics.contributors:
+            for contributor in metrics.contributors:
+                if contributor is None:
+                    continue
+                email_match = normalized_email and contributor.email and contributor.email.lower() == normalized_email
+                name_match = normalized_name and contributor.name and contributor.name.lower() == normalized_name
+                if email_match or name_match:
+                    user_share = max(user_share, min(1.0, (contributor.commit_percentage or 0) / 100.0))
+            if user_share == 0.0 and metrics.is_solo_project:
+                # Solo projects implicitly belong to the user
+                user_share = 1.0
+        elif metrics.is_solo_project:
+            user_share = 1.0
+
+        # Recency: newer end dates score higher, decay over ~2 years
+        recency_score = 0.0
+        end_date = metrics.project_end_date
+        if end_date:
+            try:
+                parsed_end = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+                days_old = (reference_now - parsed_end).days
+                recency_score = max(0.0, 1.0 - min(days_old, 730) / 730)  # linear decay over 2 years
+            except Exception:
+                recency_score = 0.0
+
+        # Commit frequency: saturate at 5 commits/day
+        freq = max(0.0, metrics.commit_frequency or 0.0)
+        frequency_score = min(1.0, freq / 5.0)
+
+        # Activity mix bonus: reward tests/docs/design balance slightly
+        percentages = metrics.overall_activity_breakdown.percentages
+        mix_bonus = (
+            percentages.get("test", 0.0)
+            + percentages.get("documentation", 0.0)
+            + percentages.get("design", 0.0)
+        )
+        activity_mix_score = min(1.0, mix_bonus / 60.0)  # cap when 60%+ is non-core-code support work
+
+        # Weighted aggregate -> 0..100
+        score = (
+            0.50 * volume_score
+            + 0.20 * user_share
+            + 0.15 * recency_score
+            + 0.10 * frequency_score
+            + 0.05 * activity_mix_score
+        ) * 100.0
+
+        return {
+            "score": round(score, 2),
+            "user_commit_share": round(user_share, 4),
+            "components": {
+                "volume": round(volume_score, 4),
+                "user_share": round(user_share, 4),
+                "recency": round(recency_score, 4),
+                "frequency": round(frequency_score, 4),
+                "activity_mix": round(activity_mix_score, 4),
+            },
+            "total_commits": total_commits,
+        }
+
+    def metrics_from_dict(self, data: Dict[str, Any]) -> ProjectContributionMetrics:
+        """Rehydrate ProjectContributionMetrics from a serialized dictionary."""
+        breakdown = data.get("overall_activity_breakdown") or {}
+        breakdown_lines = (breakdown.get("lines") or {}) if isinstance(breakdown, dict) else {}
+        activity = ActivityBreakdown(
+            code_lines=breakdown_lines.get("code", 0) or 0,
+            test_lines=breakdown_lines.get("test", 0) or 0,
+            documentation_lines=breakdown_lines.get("documentation", 0) or 0,
+            design_lines=breakdown_lines.get("design", 0) or 0,
+            config_lines=breakdown_lines.get("config", 0) or 0,
+        )
+
+        contributors_data = data.get("contributors") or []
+        contributors = []
+        for contributor in contributors_data:
+            if not isinstance(contributor, dict):
+                continue
+            contrib_activity_lines = (
+                contributor.get("activity_breakdown", {}).get("lines", {})
+                if isinstance(contributor.get("activity_breakdown"), dict)
+                else {}
+            )
+            contrib_activity = ActivityBreakdown(
+                code_lines=contrib_activity_lines.get("code", 0) or 0,
+                test_lines=contrib_activity_lines.get("test", 0) or 0,
+                documentation_lines=contrib_activity_lines.get("documentation", 0) or 0,
+                design_lines=contrib_activity_lines.get("design", 0) or 0,
+                config_lines=contrib_activity_lines.get("config", 0) or 0,
+            )
+            contributors.append(
+                ContributorMetrics(
+                    name=contributor.get("name", "Unknown"),
+                    email=contributor.get("email"),
+                    commits=contributor.get("commits", 0) or 0,
+                    commit_percentage=contributor.get("commit_percentage", 0.0) or 0.0,
+                    first_commit_date=contributor.get("first_commit_date"),
+                    last_commit_date=contributor.get("last_commit_date"),
+                    active_days=contributor.get("active_days", 0) or 0,
+                    activity_breakdown=contrib_activity,
+                )
+            )
+
+        metrics = ProjectContributionMetrics(
+            project_path=data.get("project_path", ""),
+            project_type=data.get("project_type", "unknown"),
+            total_commits=data.get("total_commits", 0) or 0,
+            total_contributors=data.get("total_contributors", 0) or len(contributors),
+            project_duration_days=data.get("project_duration_days"),
+            project_start_date=data.get("project_start_date"),
+            project_end_date=data.get("project_end_date"),
+            contributors=contributors,
+            overall_activity_breakdown=activity,
+            commit_frequency=data.get("commit_frequency", 0.0) or 0.0,
+            languages_detected=set(data.get("languages_detected", []) or []),
+        )
+        return metrics

@@ -17,6 +17,7 @@ class FileMetadata:
     created_at: datetime
     modified_at: datetime
     media_info: Optional[MediaMetadata] = None
+    file_hash: Optional[str] = None  # MD5 hash for duplicate detection
 
 
 @dataclass(**_DATACLASS_KWARGS)

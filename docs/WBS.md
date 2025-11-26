@@ -80,6 +80,7 @@
 
 * Rank projects by contribution weight and importance.  
 * Summarize top-ranked projects for reporting.
+* Importance now combines commit volume (primary), your share of commits (Supabase email), recency, commit frequency, and supportive work (tests/docs/design) into a normalized score for UI ranking.
 
 **4.3 Chronological Data Output**
 
