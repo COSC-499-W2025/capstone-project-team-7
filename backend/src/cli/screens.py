@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from math import log
 import re
 import textwrap
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from dataclasses import dataclass
+
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, ScrollableContainer, Vertical
@@ -17,9 +20,11 @@ from textual.widgets import (
     ListItem,
     ListView,
     Log,
+    RichLog,
     Static,
     Switch,
 )
+
 
 try:
     from textual.widgets import TextLog  # type: ignore
@@ -123,13 +128,13 @@ class LoginCancelled(Message):
 
     pass
 
-
+@dataclass
 class AutoSuggestionSelected(Message):
     """Message sent when user confirms file selection"""
     selected_files: List[str]
     output_dir:str
     
-    
+@dataclass
 class AutoSuggestionCancelled(Message):
     """Message sent when user cancels auto-suggestion configuration"""
     pass
@@ -225,11 +230,12 @@ class AutoSuggestionConfigScreen(ModalScreen[None]):
         border: thick $background 80%;
         background: $surface;
         padding: 1 2;
+        overflow:hidden;
     }
     
     #file-list-container {
         width: 100%;
-        height: 22;
+        height: 20;
         border: solid $primary;
         margin: 1 0;
     }
@@ -241,12 +247,19 @@ class AutoSuggestionConfigScreen(ModalScreen[None]):
     .file-type-badge {
         color: $accent;
     }
+    
+     .dialog-buttons {
+        width: 100%;
+        height: auto;
+        align: center middle;
+        margin-top: 1;  /* ✅ Add spacing */
+    }
     """
     def __init__(self,available_files:List[Dict[str,Any]], base_path:Optional[Path]) -> None:
         super().__init__()
         self.available_files = available_files[:50]
         self.base_path = base_path
-        self.selected_parhs = set()
+        self.selected_paths = set()
         
     def compose(self) -> ComposeResult:
         sorted_files = sorted(self.available_files,  key=lambda f: (f.get("file_type", ""), f.get("path", "")))
@@ -266,7 +279,7 @@ class AutoSuggestionConfigScreen(ModalScreen[None]):
                 id=f"file-item-{idx}"
             )
             
-            item.path = path # Store path
+            item.data_path = path # Store path
             item.data_index = idx # Store index in sorted list
             item.data_type = file_type # Store file type
             file_items.append(item)
@@ -297,7 +310,7 @@ class AutoSuggestionConfigScreen(ModalScreen[None]):
             ),
             Static("Output directory:", classes="label"),
             Input(
-                Value=str(Path.home() / "improved"),
+                value=str(Path.home() / "improved"),
                 placeholder="/path/to/output",
                 id="output-dir"
             ),
@@ -418,7 +431,125 @@ class AutoSuggestionConfigScreen(ModalScreen[None]):
         
 
 
-
+class ImprovementResultsScreen(ModalScreen[None]):
+    """Modal screen showing ai-suggestion-results"""
+    CSS = """
+    ImprovementResultsScreen {
+        align: center middle;
+    }
+    
+    .improvement-results-dialog {
+        width: 100;
+        height: 45;
+        border: thick $background 80%;
+        background: $surface;
+        padding: 1 2;
+    }
+    
+    #results-content {
+        width: 100%;
+        height: 38;
+        border: solid $primary;
+        margin: 1 0;
+    }
+    """
+    
+    def __init__(self, results: Dict[str, Any]) -> None:
+        super().__init__()
+        self.results = results
+    
+    def compose(self) -> ComposeResult:
+        
+        yield Vertical(
+            Static("AI Auto-Suggestion Results", classes="dialog-title"),
+            Static(
+                f"Output: {self.results['output_dir']}\n"
+                f"Total: {self.results['total_files']} | "
+                f"Successful: {self.results['successful']} | "
+                f"Failed: {self.results['failed']}",
+                classes="dialog-subtitle",
+            ),
+            ScrollableContainer(
+                RichLog(id="results-content", wrap=True, highlight=False),
+                id="results-scroll"
+            ),
+            Horizontal(
+                Button("Close", id="close-btn", variant="primary"),
+                classes="dialog-buttons",
+            ),
+            classes="dialog improvement-results-dialog",
+        )
+    
+    def on_mount(self, event: Mount) -> None:
+        """Populate results on mount."""
+        text_log = self.query_one("#results-content", RichLog)
+        for line in self._format_results().split('\n'):
+            text_log.write(line)
+    
+    def _format_results(self) -> str:
+        """Format results as rich text."""
+        lines = []
+        
+        for result in self.results.get("results", []):
+            file_path = result.get("file_path", "unknown")
+            success = result.get("success", False)
+            
+            if success:
+                # Success case
+                lines.append(f"\n[bold green]✓ {file_path}[/bold green]")
+                
+                # Show suggestions
+                suggestions = result.get("suggestions", [])
+                if suggestions:
+                    lines.append("\n[bold cyan]✨ Improvements Applied:[/bold cyan]")
+                    for idx, suggestion in enumerate(suggestions[:5], 1):  # Show max 5
+                        stype = suggestion.get("type", "improvement")
+                        desc = suggestion.get("description", "No description")
+                        line_range = suggestion.get("line_range", "")
+                        
+                        lines.append(f"  {idx}. [{stype}] {desc}")
+                        if line_range and line_range != "general":
+                            lines.append(f"     Lines: {line_range}")
+                
+                # Show diff preview (first 15 lines)
+                diff = result.get("diff", "")
+                if diff:
+                    lines.append("\n[bold yellow]📝 Changes Preview:[/bold yellow]")
+                    diff_lines = diff.split('\n')[:15]
+                    for line in diff_lines:
+                        if line.startswith('+') and not line.startswith('+++'):
+                            lines.append(f"[green]{line}[/green]")
+                        elif line.startswith('-') and not line.startswith('---'):
+                            lines.append(f"[red]{line}[/red]")
+                        else:
+                            lines.append(line)
+                    
+                    if len(diff.split('\n')) > 15:
+                        lines.append("[dim]... (diff truncated)[/dim]")
+                
+                # Show stats
+                lines_changed = result.get("lines_changed", 0)
+                output_file = result.get("output_file", "")
+                lines.append(f"\n[cyan]📊 Lines changed:[/cyan] {lines_changed}")
+                lines.append(f"[cyan]💾 Saved to:[/cyan] {output_file}")
+                
+            else:
+                # Failure case
+                error = result.get("error", "Unknown error")
+                lines.append(f"\n[bold red]✗ {file_path}[/bold red]")
+                lines.append(f"[red]Error: {error}[/red]")
+            
+            lines.append("\n" + "─" * 80)
+        
+        return "\n".join(lines)
+    
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "close-btn":
+            self.dismiss(None)
+    
+    def on_key(self, event: Key) -> None:
+        if event.key == "escape":
+            self.dismiss(None)
 
 
 class AIKeyScreen(ModalScreen[None]):

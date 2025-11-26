@@ -11,6 +11,7 @@ from openai import OpenAI
 import tiktoken
 from pathlib import Path
 import json
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -1115,13 +1116,9 @@ PORTFOLIO COHERENCE:
             # Parse JSON response
             try:
                 response_text = response.strip()
-                # Strip markdown code blocks if present
-                if response_text.startswith('```json'):
-                    response_text = response_text[7:]
-                if response_text.startswith('```'):
-                    response_text = response_text[3:]
-                if response_text.endswith('```'):
-                    response_text = response_text[:-3]
+                 # More robust markdown stripping using regex
+                response_text = re.sub(r'^```(?:json)?\s*', '', response_text)  # Remove opening ```json or ```
+                response_text = re.sub(r'\s*```$', '', response_text)           # Remove closing ```
                 response_text = response_text.strip()
                 
                 result = json.loads(response_text)

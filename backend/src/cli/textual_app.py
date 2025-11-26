@@ -79,6 +79,7 @@ from .screens import (
     AutoSuggestionCancelled,
     ConsentAction,
     ConsentScreen,
+    ImprovementResultsScreen,
     LoginCancelled,
     LoginScreen,
     LoginSubmitted,
@@ -496,7 +497,7 @@ class PortfolioTextualApp(App):
     def _show_auto_suggestion_config(self) -> None:
         """Show screen to select files for auto suggestion"""
         if not self._scan_state.parse_result:
-            self._show_status("No scan reuslts available.", "error")
+            self._show_status("No scan results available.", "error")
             return
         
         files = self._scan_state.parse_result.files or []
@@ -517,11 +518,11 @@ class PortfolioTextualApp(App):
                 "file_type":self._get_file_type_label(file_path,mime_type)
             })
             
-            if not files_info:
-                self._show_status("No suitable code files found for auto-suggestion.", "warning")
-                return
+        if not files_info:
+            self._show_status("No suitable code files found for auto-suggestion.", "warning")
+            return
             
-            self.push_screen(AutoSuggestionConfigScreen(files_info, self._scan_state.target))
+        self.push_screen(AutoSuggestionConfigScreen(files_info, self._scan_state.target))
         
      
     def _is_binary_file(self, file_path: str, mime_type: str) -> bool:
@@ -596,7 +597,102 @@ class PortfolioTextualApp(App):
         # Everything else is excluded
         return True
         
-     
+    def _get_file_type_label(self, file_path: str, mime_type: str) -> str:
+        """
+        Get a friendly display label for the file type.
+        
+        Args:
+            file_path: Path to the file
+            mime_type: MIME type of the file
+            
+        Returns:
+            Human-readable file type label
+        """
+        from pathlib import Path
+        
+        extension = Path(file_path).suffix.lower()
+        filename = Path(file_path).name.lower()
+        
+        # Special filenames
+        if filename in ('dockerfile', 'makefile', 'rakefile', 'gemfile'):
+            return filename.title()
+        if filename.startswith('.env'):
+            return "Environment Config"
+        if filename in ('readme.md', 'readme.txt', 'readme'):
+            return "README"
+        
+        # Map extensions to friendly names
+        type_map = {
+            # Python
+            '.py': 'Python',
+            
+            # JavaScript/TypeScript
+            '.js': 'JavaScript',
+            '.jsx': 'React JSX',
+            '.ts': 'TypeScript',
+            '.tsx': 'React TSX',
+            
+            # Java
+            '.java': 'Java',
+            
+            # C/C++
+            '.c': 'C',
+            '.cpp': 'C++',
+            '.cc': 'C++',
+            '.cxx': 'C++',
+            '.h': 'C Header',
+            '.hpp': 'C++ Header',
+            
+            # C#
+            '.cs': 'C#',
+            
+            # Other languages
+            '.go': 'Go',
+            '.rs': 'Rust',
+            '.rb': 'Ruby',
+            '.php': 'PHP',
+            '.swift': 'Swift',
+            '.kt': 'Kotlin',
+            '.kts': 'Kotlin Script',
+            '.scala': 'Scala',
+            '.r': 'R',
+            
+            # Shell
+            '.sh': 'Shell Script',
+            '.bash': 'Bash Script',
+            '.zsh': 'Zsh Script',
+            
+            # Web
+            '.html': 'HTML',
+            '.htm': 'HTML',
+            '.css': 'CSS',
+            '.scss': 'SCSS',
+            '.sass': 'Sass',
+            '.less': 'Less',
+            
+            # Config/Data
+            '.json': 'JSON Config',
+            '.yaml': 'YAML Config',
+            '.yml': 'YAML Config',
+            '.toml': 'TOML Config',
+            '.xml': 'XML',
+            '.ini': 'INI Config',
+            '.env': 'Environment Config',
+            
+            # Database
+            '.sql': 'SQL',
+            
+            # Documentation
+            '.md': 'Markdown',
+            '.txt': 'Text',
+            '.rst': 'reStructuredText',
+            
+            # Documents
+            '.pdf': 'PDF',
+            '.docx': 'Word Document',
+        }
+        
+        return type_map.get(extension, 'Text')
      
         
     def _show_status(self, message: str, tone: str, *, log_to_stderr: bool = True) -> None:
@@ -2924,7 +3020,10 @@ class PortfolioTextualApp(App):
         self._debug_log(
             f"verify_ai_key success temp={client_config.temperature} max_tokens={client_config.max_tokens}"
         )
-
+        if self._ai_state.pending_auto_suggestion:
+            self._debug_log("API key verified, continuing with auto-suggestion")
+            self._ai_state.pending_auto_suggestion = False
+            self._show_auto_suggestion_config()
         if self._ai_state.pending_analysis:
             self._ai_state.pending_analysis = False
             self._start_ai_analysis()
@@ -3591,64 +3690,32 @@ class PortfolioTextualApp(App):
         self._ai_state.task = asyncio.create_task(self._run_ai_analysis())
         
         
-    async def _run_auto_suggestion(self,selected_files: List[str],output_dir:str) -> None:
+    async def _run_auto_suggestion(self, selected_files: List[str], output_dir: str) -> None:
         """
         Run AI auto-suggestion workflow.
         
         Steps:
-        1. Show progress UI
-        2. Call ai_service to generate improvements
+        1. Show status message
+        2. Call ai_service to generate improvements in background
         3. Show results screen
         """
         self._show_status("Generating AI suggestions…", "info")
-        # Get progress widgets
-        try:
-            progress_bar = self.query_one("#analysis-progress", ProgressBar)
-            progress_label = self.query_one("#progress-label", Static)
-            progress_bar.update(total=100)
-            progress_bar.styles.display = "block"
-            progress_label.styles.display = "block"
-        except Exception:
-            pass
         
-        # Create progress state
-        progress_state = {
-            "message": "Starting auto-suggestion...",
-            "progress": 0,
-        }
-        progress_lock = threading.Lock()
-        progress_stop = threading.Event()
-        
-        def update_progress(message: str, progress: int = None):
-            """Update progress state (thread-safe)."""
-            with progress_lock:
-                progress_state["message"] = message
-                if progress is not None:
-                    progress_state["progress"] = progress
-        
-        # Start heartbeat task to update UI
-        async def progress_heartbeat():
-            """Update UI every 0.5 seconds."""
-            while not progress_stop.is_set():
-                try:
-                    with progress_lock:
-                        msg = progress_state["message"]
-                        prog = progress_state["progress"]
-                    
-                    progress_label.update(msg)
-                    progress_bar.update(progress=prog)
-                    
-                    await asyncio.sleep(0.5)
-                except Exception:
-                    break
-        
-        heartbeat_task = asyncio.create_task(progress_heartbeat())
+        # Create progress callback for status updates
+        def update_progress(message: str, progress: Optional[int] = None):
+            """Update status bar with progress message."""
+            # Just update the status bar - no progress bar needed
+            try:
+                self._show_status(message, "info", log_to_stderr=False)
+            except Exception:
+                pass
         
         try:
             # Run in background thread
             result = await asyncio.get_event_loop().run_in_executor(
                 None,
                 self._ai_service.execute_auto_suggestion,
+                self._ai_state.client,
                 selected_files,
                 output_dir,
                 self._scan_state.target,
@@ -3656,44 +3723,24 @@ class PortfolioTextualApp(App):
                 update_progress
             )
             
-            # Stop heartbeat
-            progress_stop.set()
-            await heartbeat_task
-            
-            # Hide progress UI
-            progress_bar.styles.display = "none"
-            progress_label.styles.display = "none"
-            
             # Show results
             if result.get("successful", 0) > 0:
                 self._show_status(
-                    f"Generated suggestions for {result['successful']} files!", 
+                    f"✓ Generated suggestions for {result['successful']} files!", 
                     "success"
                 )
                 
                 # Show results screen
-                from .screens import ImprovementResultsScreen
                 self.push_screen(ImprovementResultsScreen(result))
             else:
                 self._show_status(
-                    f"Failed to generate suggestions: {result.get('error', 'Unknown error')}", 
+                    f"✗ Failed to generate suggestions: {result.get('error', 'Unknown error')}", 
                     "error"
                 )
         
         except Exception as e:
-            # Stop heartbeat
-            progress_stop.set()
-            await heartbeat_task
-            
-            # Hide progress UI
-            try:
-                progress_bar.styles.display = "none"
-                progress_label.styles.display = "none"
-            except Exception:
-                pass
-            
-            self.logger.error(f"Auto-suggestion failed: {e}")
-            self._show_status(f"Auto-suggestion failed: {str(e)}", "error")
+            self._debug_log(f"Auto-suggestion failed: {e}")
+            self._show_status(f"✗ Auto-suggestion failed: {str(e)}", "error")
 
     async def _run_ai_analysis(self) -> None:
         detail_panel = self.query_one("#detail", Static)
