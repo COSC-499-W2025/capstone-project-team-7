@@ -4,6 +4,7 @@ import re
 import textwrap
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from unittest import result
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, ScrollableContainer, Vertical
@@ -119,6 +120,15 @@ class LoginSubmitted(Message):
         self.password = password
 
 
+class SignupSubmitted(Message):
+    """Raised when the user submits credentials to create a Supabase account."""
+
+    def __init__(self, email: str, password: str) -> None:
+        super().__init__()
+        self.email = email
+        self.password = password
+
+
 class LoginCancelled(Message):
     """Raised when the login dialog is dismissed without submitting."""
 
@@ -149,13 +159,14 @@ class LoginScreen(ModalScreen[None]):
 
     def compose(self) -> ComposeResult:
         yield Vertical(
-            Static("Sign in to Supabase", classes="dialog-title"),
+            Static("Sign in or create an account", classes="dialog-title"),
             Input(value=self._default_email, placeholder="name@example.com", id="login-email"),
             Input(password=True, placeholder="Password", id="login-password"),
             Static("", id="login-message", classes="dialog-message"),
             Horizontal(
                 Button("Cancel", id="login-cancel"),
-                Button("Sign In", id="login-submit", variant="primary"),
+                Button("Log In", id="login-submit", variant="primary"),
+                Button("Create Account", id="signup-submit"),
                 classes="dialog-buttons",
             ),
             classes="dialog",
@@ -179,17 +190,26 @@ class LoginScreen(ModalScreen[None]):
             return None
         return email, password
 
-    def _submit(self) -> None:
+    def _handle_submit(self, message_type) -> None:
         result = self._validate()
         if not result:
             return
         email, password = result
-        dispatch_message(self, LoginSubmitted(email, password))
+        dispatch_message(self, message_type(email, password))
         self.dismiss(None)
+
+    def _submit(self) -> None:
+        self._handle_submit(LoginSubmitted)
+
+    def _submit_signup(self) -> None:
+        self._handle_submit(SignupSubmitted)
+
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "login-submit":
             self._submit()
+        elif event.button.id == "signup-submit":
+            self._submit_signup()
         elif event.button.id == "login-cancel":
             dispatch_message(self, LoginCancelled())
             self.dismiss(None)
