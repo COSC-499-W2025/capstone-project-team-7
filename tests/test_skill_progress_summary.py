@@ -21,6 +21,7 @@ def test_build_prompt_contains_timeline_json():
     prompt = build_prompt(timeline)
     assert "period_label" in prompt
     assert "Testing" in prompt
+    assert "contributors" in prompt
     assert "JSON" in prompt
 
 

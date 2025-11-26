@@ -30,9 +30,10 @@ def _make_metrics() -> ProjectContributionMetrics:
         overall_activity_breakdown=ActivityBreakdown(),
     )
     metrics.timeline = [
-        {"month": "2024-01", "commits": 4},
-        {"month": "2024-02", "commits": 6},
+        {"month": "2024-01", "commits": 4, "contributors": [{"email": "me@example.com", "commits": 4}]},
+        {"month": "2024-02", "commits": 6, "contributors": [{"email": "me@example.com", "commits": 6}]},
     ]
+    metrics.total_contributors = 2
     metrics.languages_detected = {"Python", "JavaScript"}
     return metrics
 
@@ -69,6 +70,7 @@ def test_build_skill_progression_merges_skills_and_commits():
     assert jan.evidence_count == 3
     assert jan.top_skills == ["Testing", "API Design"]
     assert set(jan.languages.keys()) == {"JavaScript", "Python"}
+    assert jan.contributors == 2
 
     assert feb.period_label == "2024-02"
     assert feb.commits == 6
@@ -102,7 +104,7 @@ def test_skills_service_builds_progression(monkeypatch):
     ]
     monkeypatch.setattr(service, "get_chronological_overview", lambda: chronological)
 
-    result = service.build_skill_progression(contribution_metrics=None)
+    result = service.build_skill_progression(contribution_metrics=None, author_emails={"me@example.com"})
 
     assert result is not None
     assert "timeline" in result

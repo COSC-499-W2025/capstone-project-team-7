@@ -18,6 +18,11 @@ import time
 from typing import Optional, Dict, Any, List, Sequence, Type
 import os
 import weakref
+try:
+    from dotenv import load_dotenv
+except Exception:  # pragma: no cover - optional dependency
+    def load_dotenv(*args, **kwargs):  # type: ignore
+        return False
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -510,7 +515,8 @@ class PortfolioTextualApp(App):
             return timeline or []
 
         skills_progress = self._skills_service.build_skill_progression(
-            contribution_metrics=self._scan_state.contribution_metrics
+            contribution_metrics=self._scan_state.contribution_metrics,
+            author_emails=self._author_email_filter(),
         )
         if not skills_progress:
             return None
@@ -615,7 +621,8 @@ class PortfolioTextualApp(App):
                     self._scan_state.contribution_analysis_error = str(exc)
 
             skills_progress = self._skills_service.build_skill_progression(
-                contribution_metrics=self._scan_state.contribution_metrics
+                contribution_metrics=self._scan_state.contribution_metrics,
+                author_emails=self._author_email_filter(),
             )
             if skills_progress:
                 self._scan_state.skills_progress = skills_progress
@@ -652,12 +659,27 @@ class PortfolioTextualApp(App):
                     "tests_changed": entry.get("tests_changed"),
                     "skills": entry.get("top_skills"),
                     "languages": list((entry.get("languages") or {}).keys()),
+                    "contributors": entry.get("contributors"),
                 }
                 for entry in timeline[:6]
             ]
             self._debug_log(f"[SkillProgress] Timeline preview: {preview}")
         except Exception:
             pass
+
+    def _author_email_filter(self) -> Optional[set[str]]:
+        """
+        Optional git author email filter for per-user timelines.
+
+        Controlled via env TEXTUAL_SKILL_PROGRESS_EMAILS (comma-separated).
+        """
+        try:
+            load_dotenv()
+        except Exception:
+            pass
+        raw = os.environ.get("TEXTUAL_SKILL_PROGRESS_EMAILS") or ""
+        emails = {email.strip().lower() for email in raw.split(",") if email.strip()}
+        return emails or None
 
     @staticmethod
     def _format_skill_progress_error(exc: Exception) -> str:
@@ -681,9 +703,12 @@ class PortfolioTextualApp(App):
             skill_count = entry.get("skill_count", 0) or 0
             evidence_count = entry.get("evidence_count", 0) or 0
             tests_changed = entry.get("tests_changed", 0) or 0
+            contributors = entry.get("contributors")
             lines.append(
                 f"{period} — {commits} commits, {skill_count} skills, {evidence_count} evidence, {tests_changed} tests touched"
             )
+            if contributors:
+                lines.append(f"  • Contributors in period: {contributors}")
             top_skills = entry.get("top_skills") or []
             if top_skills:
                 lines.append(f"  • Top skills: {', '.join(top_skills)}")
@@ -3801,12 +3826,14 @@ class PortfolioTextualApp(App):
 
         lines.append("")
         if timeline:
-            lines.append(f"• Timeline periods: {len(timeline)}")
+                lines.append(f"• Timeline periods: {len(timeline)}")
         if summary and isinstance(summary, dict):
             narrative = str(summary.get("narrative", "")).strip()
             if narrative:
                 preview = narrative[:90] + ("…" if len(narrative) > 90 else "")
                 lines.append(f"• AI summary: {preview}")
+        if self._author_email_filter():
+            lines.append("• Filtering git activity to your author emails.")
         if note:
             lines.append(f"• {note}")
 
