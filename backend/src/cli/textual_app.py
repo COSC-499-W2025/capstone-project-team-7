@@ -1757,37 +1757,33 @@ class PortfolioTextualApp(App):
     
     async def _handle_skill_progress_action(self, screen: ScanResultsScreen) -> None:
         """Show the skill progression timeline and optional AI summary."""
-        cleanup = self._begin_progress("Building skill progression timeline…")
-        try:
-            screen.set_message("Building skill progression timeline…", tone="info")
-            timeline, summary, summary_note = await self._prepare_skill_progress()
-            if not timeline:
-                message = summary_note or "No skill progression timeline available."
-                tone = "warning"
-                if message.startswith("Skills analysis failed"):
-                    tone = "error"
-                screen.display_output(message, context="Skill progression")
-                screen.set_message(message, tone=tone)
-                return
-
-            self._debug_log_timeline(timeline)
-
-            if not summary and self._ai_state.client:
-                screen.set_message("Generating AI summary…", tone="info")
-
-            output = self._format_skill_progress_output(timeline, summary, summary_note)
-            screen.display_output(output, context="Skill progression")
-
-            message = "Skill progression ready."
-            tone = "success"
-            if summary:
-                message = "Skill progression and AI summary ready."
-            elif summary_note:
-                message = f"Skill progression ready. {summary_note}"
-                tone = "warning" if summary_note.startswith("AI summary unavailable") else "info"
+        screen.set_message("Building skill progression timeline…", tone="info")
+        timeline, summary, summary_note = await self._prepare_skill_progress()
+        if not timeline:
+            message = summary_note or "No skill progression timeline available."
+            tone = "warning"
+            if message.startswith("Skills analysis failed"):
+                tone = "error"
+            screen.display_output(message, context="Skill progression")
             screen.set_message(message, tone=tone)
-        finally:
-            cleanup()
+            return
+
+        self._debug_log_timeline(timeline)
+
+        if not summary and self._ai_state.client:
+            screen.set_message("Generating AI summary…", tone="info")
+
+        output = self._format_skill_progress_output(timeline, summary, summary_note)
+        screen.display_output(output, context="Skill progression")
+
+        message = "Skill progression ready."
+        tone = "success"
+        if summary:
+            message = "Skill progression and AI summary ready."
+        elif summary_note:
+            message = f"Skill progression ready. {summary_note}"
+            tone = "warning" if summary_note.startswith("AI summary unavailable") else "info"
+        screen.set_message(message, tone=tone)
     
     async def _handle_contribution_analysis_action(self, screen: ScanResultsScreen) -> None:
         """Handle contribution analysis action from the scan results screen."""
@@ -2026,7 +2022,17 @@ class PortfolioTextualApp(App):
                     for f in files if hasattr(f, 'success') and f.success
                 ]
             }
-        
+        else:
+            # Fallback to languages derived from the scan summary when code analysis wasn't run
+            fallback_languages: Dict[str, int] = {}
+            for entry in self._scan_state.languages or []:
+                lang = entry.get("language") if isinstance(entry, dict) else None
+                if not lang:
+                    continue
+                fallback_languages[lang] = entry.get("files") or entry.get("count") or 1
+            if fallback_languages:
+                code_analysis_dict = {"languages": fallback_languages, "file_details": []}
+
         return self._contribution_service.analyze_contributions(
             git_analysis=git_analysis,
             code_analysis=code_analysis_dict,
@@ -4065,32 +4071,28 @@ class PortfolioTextualApp(App):
 
     async def _show_skill_progress_modal(self) -> None:
         """Open a modal with skill progression and optional AI summary."""
-        cleanup = self._begin_progress("Building skill progression timeline…")
+        timeline, summary, summary_note = await self._prepare_skill_progress()
+        if not timeline:
+            self._show_status(summary_note or "No skill progression timeline available.", "warning")
+            return
+
+        output = self._format_skill_progress_output(timeline, summary, summary_note)
         try:
-            timeline, summary, summary_note = await self._prepare_skill_progress()
-            if not timeline:
-                self._show_status(summary_note or "No skill progression timeline available.", "warning")
-                return
+            screen = SkillProgressScreen(output)
+            self.push_screen(screen)
+        except Exception as exc:  # pragma: no cover - UI fallback
+            self._debug_log(f"Failed to open skill progression screen: {exc}")
+            self._show_status("Could not display skill progression.", "error")
+            return
 
-            output = self._format_skill_progress_output(timeline, summary, summary_note)
-            try:
-                screen = SkillProgressScreen(output)
-                self.push_screen(screen)
-            except Exception as exc:  # pragma: no cover - UI fallback
-                self._debug_log(f"Failed to open skill progression screen: {exc}")
-                self._show_status("Could not display skill progression.", "error")
-                return
-
-            message = "Skill progression ready."
-            tone = "success"
-            if summary:
-                message = "Skill progression and AI summary ready."
-            elif summary_note:
-                message = f"Skill progression ready. {summary_note}"
-                tone = "warning" if summary_note.startswith("AI summary unavailable") else "info"
-            self._show_status(message, tone)
-        finally:
-            cleanup()
+        message = "Skill progression ready."
+        tone = "success"
+        if summary:
+            message = "Skill progression and AI summary ready."
+        elif summary_note:
+            message = f"Skill progression ready. {summary_note}"
+            tone = "warning" if summary_note.startswith("AI summary unavailable") else "info"
+        self._show_status(message, tone)
 
     def _render_consent_detail(self) -> str:
         lines = ["[b]Consent Management[/b]"]
