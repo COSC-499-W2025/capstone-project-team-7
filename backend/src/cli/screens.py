@@ -3385,3 +3385,87 @@ class AIResultsScreen(ModalScreen[None]):
         """Handle keyboard shortcuts."""
         if event.key == "escape" or event.key == "q":
             self.dismiss(None)
+
+
+class SkillProgressScreen(ModalScreen[None]):
+    """Modal showing skill progression timeline and optional AI summary."""
+
+    def __init__(self, content: str) -> None:
+        super().__init__()
+        self._content = content
+        self._supports_rich_markup = TextLog is not None
+
+    def compose(self) -> ComposeResult:
+        if TextLog:
+            log_widget = TextLog(
+                highlight=False,
+                markup=True,
+                wrap=True,
+                id="skill-progress-log",
+            )
+        else:
+            log_widget = Log(highlight=False, id="skill-progress-log")
+
+        yield Vertical(
+            Static("Skill progression", classes="dialog-title"),
+            Vertical(
+                ScrollableContainer(
+                    log_widget,
+                    id="skill-progress-output",
+                    classes="skill-progress-output",
+                ),
+                Horizontal(
+                    Button("Close", id="skill-progress-close", variant="primary"),
+                    classes="dialog-buttons",
+                ),
+                classes="dialog-body",
+            ),
+            classes="dialog skill-progress-dialog",
+        )
+
+    def on_mount(self, _: Mount) -> None:
+        log = self.query_one("#skill-progress-log", Log)
+        lines = self._content.splitlines() or ["No skill progression available."]
+        for line in lines:
+            self._write_line(log, line or " ")
+
+    def _write_line(self, log: Log, text: str) -> None:
+        for chunk in self._prepare_line(text):
+            writer = getattr(log, "write_line", None)
+            if callable(writer):
+                writer(chunk)
+            else:
+                log.write(chunk)
+                log.write("\n")
+
+    def _prepare_line(self, text: str) -> List[str]:
+        if self._supports_rich_markup:
+            return [text]
+        plain = self._strip_markup(text)
+        return self._wrap_plain(plain)
+
+    @staticmethod
+    def _strip_markup(text: str) -> str:
+        if not text:
+            return ""
+        return re.sub(r"\[/?[^\]]+\]", "", text)
+
+    @staticmethod
+    def _wrap_plain(text: str, width: int = 92) -> List[str]:
+        if not text:
+            return [""]
+        wrapped = textwrap.wrap(
+            text,
+            width=width,
+            break_long_words=False,
+            break_on_hyphens=False,
+        )
+        return wrapped or [text]
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "skill-progress-close":
+            self.dismiss(None)
+
+    def on_key(self, event: Key) -> None:
+        if event.key == "escape" or event.key == "q":
+            self.dismiss(None)

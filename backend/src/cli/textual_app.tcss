@@ -408,3 +408,29 @@ ScanConfigScreen {
 .ai-results-buttons Button {
     min-width: 20;
 }
+
+.skill-progress-dialog {
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
+    border: none;
+    padding: 0;
+    overflow: hidden;
+}
+
+.skill-progress-output {
+    height: 1fr;
+    min-height: 20;
+    border: tall #242832;
+    padding: 1;
+    background: #0f1115;
+    overflow-y: auto;
+}
+
+#skill-progress-log {
+    height: 1fr;
+    width: 100%;
+    border: none;
+    background: transparent;
+}
