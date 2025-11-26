@@ -32,6 +32,7 @@ class SkillProgressPeriod:
     evidence_count: int = 0
     top_skills: List[str] = field(default_factory=list)
     languages: Dict[str, int] = field(default_factory=dict)
+    contributors: int = 0
 
 
 @dataclass
@@ -49,6 +50,8 @@ def _is_test_path(path: str) -> bool:
 def build_skill_progression(
     chronological_overview: List[Dict[str, Any]],
     contribution_metrics: Optional[ProjectContributionMetrics] = None,
+    *,
+    author_emails: Optional[set[str]] = None,
 ) -> SkillProgression:
     """
     Build a month-level skill progression timeline.
@@ -56,6 +59,7 @@ def build_skill_progression(
     Args:
         chronological_overview: Output from SkillsExtractor.get_chronological_overview().
         contribution_metrics: ProjectContributionMetrics (optional) for commit counts and languages.
+        author_emails: Optional set of author emails to filter git activity to a single contributor.
 
     Returns:
         SkillProgression with one period per month label found in the inputs.
@@ -94,7 +98,20 @@ def build_skill_progression(
             if not month:
                 continue
             period_ref = periods.setdefault(month, SkillProgressPeriod(period_label=month))
-            period_ref.commits = month_entry.get("commits", period_ref.commits)
+            if author_emails:
+                # Filter commit counts to specified authors when provided
+                author_commits = sum(
+                    contrib.get("commits", 0)
+                    for contrib in month_entry.get("contributors", [])
+                    if contrib.get("email") and contrib.get("email") in author_emails
+                )
+                period_ref.commits = author_commits
+                period_ref.contributors = 1 if author_commits > 0 else 0
+            else:
+                period_ref.commits = month_entry.get("commits", period_ref.commits)
+                period_ref.contributors = max(
+                    period_ref.contributors, getattr(contribution_metrics, "total_contributors", 0)
+                )
 
         if contribution_metrics.languages_detected:
             lang_counts = {lang: 1 for lang in sorted(contribution_metrics.languages_detected)}

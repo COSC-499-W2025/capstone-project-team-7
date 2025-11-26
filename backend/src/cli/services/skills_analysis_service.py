@@ -360,12 +360,14 @@ class SkillsAnalysisService:
     def build_skill_progression(
         self,
         contribution_metrics: Optional[Any] = None,
+        author_emails: Optional[set[str]] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Build a month-level skill progression timeline using existing analyses.
 
         Args:
             contribution_metrics: Optional ProjectContributionMetrics for commits/languages.
+            author_emails: Optional set of author emails to filter git activity to a single contributor.
 
         Returns:
             Dict with timeline entries or None if no chronological data is available.
@@ -374,7 +376,7 @@ class SkillsAnalysisService:
         if not chronological:
             return None
 
-        progression = build_skill_progression(chronological, contribution_metrics)
+        progression = build_skill_progression(chronological, contribution_metrics, author_emails=author_emails)
 
         def _period_to_dict(period):
             return {
@@ -385,6 +387,7 @@ class SkillsAnalysisService:
                 "evidence_count": period.evidence_count,
                 "top_skills": period.top_skills,
                 "languages": period.languages,
+                "contributors": period.contributors,
             }
 
         return {"timeline": [_period_to_dict(p) for p in progression.timeline]}

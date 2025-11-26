@@ -37,7 +37,9 @@ def build_prompt(timeline: List[Dict[str, Any]]) -> str:
         "skill_count, evidence_count, top_skills, languages.\n"
         "Task: Produce STRICT JSON with keys narrative (3-5 sentences), milestones (3-5 bullets), "
         "strengths (2-3 bullets), gaps (1-2 bullets). Only discuss trends that appear in the data; "
-        "call out notable skills and languages mentioned in the periods. Do NOT invent periods or skills.\n"
+        "call out notable skills and languages mentioned in the periods, and prefer concrete details "
+        "over generic phrasing. If contributors > 1, note that the timeline is collaborative; otherwise, "
+        "treat it as individual work. Do NOT invent periods or skills.\n"
         f"Timeline:\n{json.dumps(timeline, ensure_ascii=False, indent=2)}\n"
         "Respond with JSON only."
     )
