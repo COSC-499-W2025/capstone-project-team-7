@@ -16,6 +16,7 @@ import re
 import ast
 import tempfile
 from pathlib import Path
+import os
 
 
 class _ModelCaller(Protocol):
@@ -116,6 +117,8 @@ def summarize_skill_progress(
         text = (value or "")[: limit + 1]
         return text if len(text) <= limit else text[:limit] + "…"
 
+    dump_paths = _dump_raw_response(raw)
+
     try:
         parsed = _coerce_json_response(raw)
         _validate_grounding(timeline, parsed)
@@ -124,9 +127,12 @@ def summarize_skill_progress(
         try:
             debug_path = Path(tempfile.gettempdir()) / "skill_summary_raw.txt"
             debug_path.write_text(str(raw), encoding="utf-8")
+            if str(debug_path) not in dump_paths:
+                dump_paths.append(str(debug_path))
         except Exception:
             pass
-        raise ValueError(f"{exc} | raw_snippet={snippet}") from exc
+        locations = f" | raw_dumped={','.join(dump_paths)}" if dump_paths else ""
+        raise ValueError(f"{exc} | raw_snippet={snippet}{locations}") from exc
 
     for key in ("narrative", "milestones", "strengths", "gaps"):
         if key not in parsed:
@@ -177,6 +183,29 @@ def _coerce_json_response(raw: str) -> Dict[str, Any]:
         raise ValueError("Model did not return valid JSON")
 
     return _try_snippet_from_brackets(candidate)
+
+
+def _dump_raw_response(raw: Any) -> List[str]:
+    """Persist raw model response to configured debug paths for troubleshooting."""
+    targets: List[str] = []
+    env_paths = os.environ.get("SKILL_SUMMARY_DEBUG_PATH", "")
+    for part in env_paths.split(","):
+        target = part.strip()
+        if target:
+            targets.append(target)
+    # Always attempt a default temp file for convenience
+    targets.append(str(Path(tempfile.gettempdir()) / "skill_summary_raw.txt"))
+
+    written: List[str] = []
+    for target in targets:
+        try:
+            path_obj = Path(target)
+            path_obj.parent.mkdir(parents=True, exist_ok=True)
+            path_obj.write_text(str(raw), encoding="utf-8")
+            written.append(str(path_obj))
+        except Exception:
+            continue
+    return written
 
 
 _KNOWN_LANGUAGES = {

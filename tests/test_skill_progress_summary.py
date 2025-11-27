@@ -235,3 +235,18 @@ def test_summarize_skill_progress_wraps_call_model_error():
     with pytest.raises(ValueError) as err:
         summarize_skill_progress(timeline, fake_model)
     assert "Model call failed" in str(err.value)
+
+
+def test_summarize_skill_progress_dumps_raw(monkeypatch, tmp_path):
+    timeline = [{"period_label": "2024-07", "commits": 1, "tests_changed": 0, "skill_count": 1, "evidence_count": 1}]
+    target = tmp_path / "raw.txt"
+    monkeypatch.setenv("SKILL_SUMMARY_DEBUG_PATH", str(target))
+
+    def fake_model(prompt: str) -> str:
+        return "still not json"
+
+    with pytest.raises(ValueError):
+        summarize_skill_progress(timeline, fake_model)
+
+    assert target.exists()
+    assert "still not json" in target.read_text()
