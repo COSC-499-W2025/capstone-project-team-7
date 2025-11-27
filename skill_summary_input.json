@@ -1,0 +1,34 @@
+{
+  "timeline": [
+    {
+      "period_label": "2024-11",
+      "commits": 5,
+      "tests_changed": 2,
+      "skill_count": 3,
+      "evidence_count": 4,
+      "top_skills": [
+        "Testing"
+      ],
+      "languages": {
+        "Python": 5
+      },
+      "period_languages": {
+        "Python": 5
+      },
+      "contributors": 1,
+      "commit_messages": [
+        "Add tests"
+      ],
+      "top_files": [
+        "tests/test_app.py"
+      ],
+      "activity_types": [
+        "tests"
+      ]
+    }
+  ],
+  "missing_fields_report": [
+    "All evidence fields present"
+  ],
+  "prompt_preview": "You are a precise software engineering coach who ONLY reports facts from the input data.\n\nINPUT DATA FIELDS:\n  - overall_languages: languages that appeared in changed files\n  - overall_top_skills: skills detected across all periods\n  - totals: commits, tests_changed, evidence_count, top_period_by_commits\n  - timeline: JSON array where EACH period contains:\n      * period_label: the month (e.g., '2025-10')\n      * commits: number of commits in that period\n      * tests_changed: number of test files modified\n      * skill_count, evidence_count: skill metrics\n      * top_skills: specific skills detected\n      * commit_messages: ACTUAL commit messages from that period\n      * top_files: ACTUAL files modified in that period\n      * activity_types: inferred activities (e.g., 'tests', 'ai', 'refactor')\n      * period_languages: languages of files CHANGED in that period with counts\n\nTASK: Produce STRICT JSON with keys:\n  - narrative (3-5 sentences): factual summary of what happened\n  - milestones (3-5 bullets): specific achievements with evidence\n  - strengths (2-3 bullets): demonstrated capabilities\n  - gaps (1-2 bullets): areas for improvement\n\nGROUNDING RULES (VIOLATIONS WILL BE REJECTED):\n  1. ONLY reference data that appears in the input. No fabrication.\n  2. If commits > 0, you MUST NOT say 'no commits' or 'zero activity'.\n  3. NEVER invent numbers. Only use: commits, tests_changed, skill_count, evidence_count.\n  4. NEVER invent language instance counts (e.g., '435 Python instances' is FORBIDDEN).\n  5. ONLY mention languages from period_languages. Do not guess or add others.\n  6. ONLY mention files from top_files. Do not invent file names or paths.\n  7. ONLY mention activities from activity_types or commit_messages. No fabrication.\n  8. Do NOT claim 'updated README' or 'documentation changes' unless 'docs' is in activity_types.\n  9. FORBIDDEN phrases unless backed by specific data:\n     - 'significant growth', 'strong emphasis', 'substantial activity'\n     - 'dominant..."
+}

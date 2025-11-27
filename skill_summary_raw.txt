@@ -1,17 +1,1 @@
-{
-  "narrative": "The project has seen a steady focus on documentation and testing across the observed periods. In October 2025, notable skills such as Asynchronous Programming and Automated Testing were highlighted, alongside significant contributions in Python, Shell, TypeScript, and JavaScript. November 2025 further expanded the skill set with Abstraction and Authentication & Authorization, while also increasing the volume of tests changed. The project remains in its early stages, with no commits recorded yet, indicating a focus on foundational work.",
-  "milestones": [
-    "In October 2025, 76 tests were changed, showcasing a commitment to improving test coverage.",
-    "November 2025 saw a significant increase in skill count to 34, with top skills including Abstraction and Authentication & Authorization.",
-    "The top files in November included 'backend/src/cli/textual_app.py' and 'backend/src/cli/screens.py', indicating active development in the backend.",
-    "The commit messages from October reflect the addition of CLI tools and improvements to LLM routes, demonstrating a focus on enhancing functionality."
-  ],
-  "strengths": [
-    "Strong emphasis on Automated Testing and Code Documentation across multiple periods.",
-    "Diverse skill set development, with a notable increase in skills from 19 in October to 34 in November.",
-    "Active engagement with Python, which was the dominant language in November with 435 instances."
-  ],
-  "gaps": [
-    "No commits have been recorded yet, indicating a lack of code contributions despite active testing and documentation efforts."
-  ]
-}
+{"narrative": "In 2024-11, there were 5 commits with 2 tests changed. Python was used.", "milestones": ["Added tests in tests/test_app.py"], "strengths": ["Testing discipline"], "gaps": ["Could expand language diversity"]}
