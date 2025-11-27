@@ -744,7 +744,15 @@ class PortfolioTextualApp(App):
         """User-facing error string for failed AI summaries."""
         message = str(exc).strip()
         if "valid JSON" in message:
-            return "AI summary unavailable: the response was not valid JSON. Please retry."
+            # Surface a short raw snippet when available for debugging malformed outputs.
+            snippet = ""
+            if "raw_snippet=" in message:
+                try:
+                    snippet = message.split("raw_snippet=", 1)[1].strip()
+                except Exception:
+                    snippet = ""
+            detail = f" Debug hint: {snippet}" if snippet else ""
+            return f"AI summary unavailable: the response was not valid JSON.{detail} Please retry."
         return f"AI summary unavailable: {message or 'unexpected error'}"
 
     def _format_skill_progress_output(
