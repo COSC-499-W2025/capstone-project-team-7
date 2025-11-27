@@ -152,11 +152,14 @@ def _coerce_json_response(raw: str) -> Dict[str, Any]:
         raise ValueError("Model returned no content")
 
     # Strip markdown code fences like ```json ... ```
-    fence_match = re.search(r"```(?:json)?\\s*(.*?)```", str(raw), flags=re.DOTALL | re.IGNORECASE)
+    fence_match = re.search(r"```(?:json)?\s*(.*?)```", str(raw), flags=re.DOTALL | re.IGNORECASE)
     if fence_match:
         candidate = fence_match.group(1)
     else:
         candidate = str(raw).strip()
+
+    # Remove control characters that can break JSON parsing
+    candidate = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", candidate)
 
     # Direct JSON parse
     try:
@@ -165,6 +168,7 @@ def _coerce_json_response(raw: str) -> Dict[str, Any]:
         pass
 
     def _try_snippet_from_brackets(text: str) -> Dict[str, Any]:
+        parse_errors: list[str] = []
         # Attempt to extract either object {} or array [] payloads.
         for opener, closer in (("{", "}"), ("[", "]")):
             start = text.find(opener)
@@ -173,14 +177,17 @@ def _coerce_json_response(raw: str) -> Dict[str, Any]:
                 snippet = text[start : end + 1]
                 try:
                     return json.loads(snippet)
-                except Exception:
+                except Exception as exc:
+                    parse_errors.append(str(exc))
                     try:
                         literal_obj = ast.literal_eval(snippet)
                         if isinstance(literal_obj, (dict, list)):
                             return literal_obj  # type: ignore[return-value]
-                    except Exception:
+                    except Exception as exc2:
+                        parse_errors.append(str(exc2))
                         continue
-        raise ValueError("Model did not return valid JSON")
+        detail = f" Details: {' | '.join(parse_errors)}" if parse_errors else ""
+        raise ValueError(f"Model did not return valid JSON.{detail}")
 
     return _try_snippet_from_brackets(candidate)
 
