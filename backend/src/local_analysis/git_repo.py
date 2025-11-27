@@ -221,13 +221,13 @@ def analyze_git_repo(repo_dir: str) -> dict:
         timeline = []
         for month in sorted(commit_counts.keys()):
             files_counter = month_file_counts.get(month, Counter())
-            top_files = [path for path, _ in files_counter.most_common(5)]
+            top_files = [path for path, _ in files_counter.most_common(10)]  # Increased from 5
             languages = month_languages.get(month, Counter())
             timeline.append(
                 {
                     "month": month,
                     "commits": commit_counts[month],
-                    "messages": (month_messages.get(month) or [])[:5],
+                    "messages": (month_messages.get(month) or [])[:15],  # Increased from 5
                     "top_files": top_files,
                     "languages": dict(languages),
                 }

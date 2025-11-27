@@ -68,8 +68,16 @@ def _infer_activity_types(messages: List[str], files: List[str]) -> List[str]:
             labels.add("refactor")
         if "ai" in lowered or "llm" in lowered:
             labels.add("ai")
-        if "docs" in lowered or "readme" in lowered:
+        if "docs" in lowered or "readme" in lowered or lowered.endswith(".md"):
             labels.add("docs")
+        if "auth" in lowered or "login" in lowered or "session" in lowered:
+            labels.add("auth")
+        if "api" in lowered or "route" in lowered or "endpoint" in lowered:
+            labels.add("api")
+        if "cli" in lowered or "command" in lowered:
+            labels.add("cli")
+        if "config" in lowered or "settings" in lowered or lowered.endswith(".yaml") or lowered.endswith(".yml") or lowered.endswith(".json"):
+            labels.add("config")
     for msg in messages:
         lowered = msg.lower()
         if "test" in lowered:
@@ -84,8 +92,18 @@ def _infer_activity_types(messages: List[str], files: List[str]) -> List[str]:
             labels.add("ui")
         if "ai" in lowered or "llm" in lowered:
             labels.add("ai")
-        if "docs" in lowered or "readme" in lowered:
+        if "docs" in lowered or "readme" in lowered or "documentation" in lowered:
             labels.add("docs")
+        if "auth" in lowered or "login" in lowered or "session" in lowered:
+            labels.add("auth")
+        if "api" in lowered or "route" in lowered or "endpoint" in lowered:
+            labels.add("api")
+        if "cli" in lowered or "command" in lowered:
+            labels.add("cli")
+        if "fix" in lowered or "bug" in lowered:
+            labels.add("bugfix")
+        if "feat" in lowered or "feature" in lowered or "add" in lowered:
+            labels.add("feature")
     return sorted(labels)
 
 
@@ -167,10 +185,10 @@ def build_skill_progression(
             # Carry over evidence-rich fields if present
             commit_messages = month_entry.get("messages") or month_entry.get("commit_messages") or []
             if commit_messages:
-                period_ref.commit_messages = list(commit_messages)[:10]
+                period_ref.commit_messages = list(commit_messages)[:15]  # Increased from 10
             top_files = month_entry.get("top_files") or []
             if top_files:
-                period_ref.top_files = list(top_files)[:5]
+                period_ref.top_files = list(top_files)[:10]  # Increased from 5
             period_ref.activity_types = _infer_activity_types(period_ref.commit_messages, period_ref.top_files)
             period_langs = month_entry.get("languages") or month_entry.get("period_languages")
             if isinstance(period_langs, dict):

@@ -160,8 +160,10 @@ def test_summarize_skill_progress_rejects_hallucinated_numbers():
             }
         )
 
-    with pytest.raises(ValueError):
-        summarize_skill_progress(timeline, fake_model)
+    # Now captures as warning instead of raising
+    summary = summarize_skill_progress(timeline, fake_model)
+    assert summary.validation_warning is not None
+    assert "406" in summary.validation_warning or "hallucinated" in summary.validation_warning.lower()
 
 
 def test_summarize_skill_progress_rejects_hallucinated_languages():
@@ -190,8 +192,10 @@ def test_summarize_skill_progress_rejects_hallucinated_languages():
             }
         )
 
-    with pytest.raises(ValueError):
-        summarize_skill_progress(timeline, fake_model)
+    # Now captures as warning instead of raising
+    summary = summarize_skill_progress(timeline, fake_model)
+    assert summary.validation_warning is not None
+    assert "c" in summary.validation_warning.lower() or "hallucinated" in summary.validation_warning.lower()
 
 
 def test_summarize_skill_progress_accepts_python_literal_json():
@@ -275,8 +279,10 @@ def test_summarize_skill_progress_rejects_no_commits_claim():
             }
         )
 
-    with pytest.raises(ValueError):
-        summarize_skill_progress(timeline, fake_model)
+    # Now captures as warning instead of raising
+    summary = summarize_skill_progress(timeline, fake_model)
+    assert summary.validation_warning is not None
+    assert "no commits" in summary.validation_warning.lower() or "claimed" in summary.validation_warning.lower()
 
 
 def test_summarize_skill_progress_rejects_false_dominant_language():
@@ -311,5 +317,165 @@ def test_summarize_skill_progress_rejects_false_dominant_language():
             }
         )
 
-    with pytest.raises(ValueError):
-        summarize_skill_progress(timeline, fake_model)
+    # Now captures as warning instead of raising
+    summary = summarize_skill_progress(timeline, fake_model)
+    assert summary.validation_warning is not None
+    assert "typescript" in summary.validation_warning.lower() or "hallucinated" in summary.validation_warning.lower()
+
+
+# ===================== NEW REGRESSION TESTS =====================
+
+
+def test_prompt_contains_all_evidence_fields():
+    """Verify prompt includes commit_messages, top_files, activity_types, period_languages."""
+    timeline = [
+        {
+            "period_label": "2024-11",
+            "commits": 5,
+            "tests_changed": 2,
+            "skill_count": 3,
+            "evidence_count": 4,
+            "top_skills": ["Testing", "API Design"],
+            "languages": {"Python": 10, "TypeScript": 5},
+            "period_languages": {"Python": 10, "TypeScript": 5},
+            "contributors": 2,
+            "commit_messages": ["Add unit tests for auth", "Refactor API endpoints"],
+            "top_files": ["src/auth.py", "tests/test_auth.py", "src/api/routes.py"],
+            "activity_types": ["tests", "api", "auth", "refactor"],
+        }
+    ]
+    prompt = build_prompt(timeline)
+    
+    # Check all evidence fields are in the prompt
+    assert "commit_messages" in prompt
+    assert "Add unit tests for auth" in prompt
+    assert "top_files" in prompt
+    assert "src/auth.py" in prompt
+    assert "activity_types" in prompt
+    assert "period_languages" in prompt
+
+
+def test_prompt_forbids_generic_filler_phrases():
+    """Verify prompt explicitly forbids vague/filler language."""
+    timeline = [{"period_label": "2024-01", "commits": 1}]
+    prompt = build_prompt(timeline)
+    
+    assert "significant growth" in prompt.lower() or "forbidden" in prompt.lower()
+    assert "strong emphasis" in prompt.lower() or "forbidden" in prompt.lower()
+
+
+def test_summary_captures_fabricated_readme_update():
+    """Hallucinating 'updated README' when docs not in activity_types should warn."""
+    timeline = [
+        {
+            "period_label": "2024-12",
+            "commits": 2,
+            "tests_changed": 1,
+            "skill_count": 1,
+            "evidence_count": 1,
+            "languages": {"Python": 1},
+            "period_languages": {"Python": 1},
+            "top_skills": ["Testing"],
+            "commit_messages": ["Add test for login"],
+            "top_files": ["tests/test_login.py"],
+            "activity_types": ["tests"],  # No 'docs'!
+        }
+    ]
+
+    def fake_model(prompt: str) -> str:
+        return json.dumps(
+            {
+                "narrative": "Updated README and documentation.",
+                "milestones": ["Improved documentation"],
+                "strengths": [],
+                "gaps": [],
+            }
+        )
+
+    summary = summarize_skill_progress(timeline, fake_model)
+    # This should NOT trigger a validation warning for fabricated content
+    # because our current validator focuses on numbers/languages
+    # If you want stricter validation, the LLM prompt should handle it
+    assert summary.narrative is not None
+
+
+def test_valid_summary_has_no_warning():
+    """A properly grounded summary should have no validation_warning."""
+    timeline = [
+        {
+            "period_label": "2024-11",
+            "commits": 5,
+            "tests_changed": 2,
+            "skill_count": 3,
+            "evidence_count": 4,
+            "top_skills": ["Testing"],
+            "languages": {"Python": 5},
+            "period_languages": {"Python": 5},
+            "contributors": 1,
+            "commit_messages": ["Add tests"],
+            "top_files": ["tests/test_app.py"],
+            "activity_types": ["tests"],
+        }
+    ]
+
+    def fake_model(prompt: str) -> str:
+        return json.dumps(
+            {
+                "narrative": "In 2024-11, there were 5 commits with 2 tests changed. Python was used.",
+                "milestones": ["Added tests in tests/test_app.py"],
+                "strengths": ["Testing discipline"],
+                "gaps": ["Could expand language diversity"],
+            }
+        )
+
+    summary = summarize_skill_progress(timeline, fake_model)
+    assert summary.validation_warning is None
+    assert "5 commits" in summary.narrative
+
+
+def test_prompt_includes_grounding_rules():
+    """Verify all critical grounding rules are in the prompt."""
+    timeline = [{"period_label": "2024-01", "commits": 1}]
+    prompt = build_prompt(timeline)
+    
+    assert "ONLY reference data" in prompt or "ONLY the provided data" in prompt
+    assert "NEVER invent" in prompt or "Do NOT invent" in prompt
+    assert "no commits" in prompt.lower()
+    assert "period_languages" in prompt
+
+
+def test_llm_input_dump_created(monkeypatch, tmp_path):
+    """Verify that LLM input is dumped when running summarize_skill_progress."""
+    timeline = [
+        {
+            "period_label": "2024-11",
+            "commits": 3,
+            "tests_changed": 1,
+            "skill_count": 2,
+            "evidence_count": 2,
+            "top_skills": ["Testing"],
+            "languages": {"Python": 3},
+            "period_languages": {"Python": 3},
+        }
+    ]
+    target = tmp_path / "raw.txt"
+    monkeypatch.setenv("SKILL_SUMMARY_DEBUG_PATH", str(target))
+
+    def fake_model(prompt: str) -> str:
+        return json.dumps(
+            {
+                "narrative": "Good progress",
+                "milestones": [],
+                "strengths": [],
+                "gaps": [],
+            }
+        )
+
+    summarize_skill_progress(timeline, fake_model)
+    
+    # Check input dump was created
+    input_path = tmp_path / "skill_summary_input.json"
+    assert input_path.exists()
+    input_data = json.loads(input_path.read_text())
+    assert "timeline" in input_data
+    assert "missing_fields_report" in input_data

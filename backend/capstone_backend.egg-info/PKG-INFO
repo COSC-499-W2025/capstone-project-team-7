@@ -1,0 +1,20 @@
+Metadata-Version: 2.4
+Name: capstone-backend
+Version: 0.1.0
+Summary: Backend services and CLI helpers for the capstone project.
+Requires-Python: >=3.9
+Requires-Dist: fastapi
+Requires-Dist: uvicorn
+Requires-Dist: supabase==2.0.0
+Requires-Dist: python-dotenv==1.0.0
+Requires-Dist: pydantic
+Requires-Dist: httpx==0.24.0
+Requires-Dist: openai==1.12.0
+Provides-Extra: vision
+Requires-Dist: torch>=2.1.0; extra == "vision"
+Requires-Dist: torchvision>=0.16.0; extra == "vision"
+Requires-Dist: numpy>=1.24.0; extra == "vision"
+Requires-Dist: torchaudio>=2.1.0; extra == "vision"
+Requires-Dist: librosa>=0.10.1; extra == "vision"
+Requires-Dist: soundfile>=0.12.1; extra == "vision"
+Requires-Dist: audioread>=3.0.1; extra == "vision"
