@@ -333,6 +333,13 @@ def _validate_grounding(timeline: List[Dict[str, Any]], parsed: Dict[str, Any]) 
     allowed_numbers = set()
     allowed_languages = set()
     for entry in timeline or []:
+        # Extract years from period_label (e.g., "2025-08" -> 2025)
+        period_label = entry.get("period_label") or entry.get("period") or ""
+        if isinstance(period_label, str):
+            year_match = re.match(r"(\d{4})", period_label)
+            if year_match:
+                allowed_numbers.add(int(year_match.group(1)))
+        
         for key in ("commits", "tests_changed", "skill_count", "evidence_count"):
             val = entry.get(key)
             if isinstance(val, int):

@@ -22,7 +22,8 @@ def test_build_prompt_contains_timeline_json():
     prompt = build_prompt(timeline)
     assert "period_label" in prompt
     assert "Testing" in prompt
-    assert "contributors" in prompt
+    # Prompt describes the timeline format - check for key sections
+    assert "timeline" in prompt.lower()
     assert "JSON" in prompt
 
 
@@ -129,8 +130,12 @@ def test_prompt_forbids_invented_content():
         }
     ]
     prompt = build_prompt(timeline)
-    assert "Do NOT invent periods" in prompt
-    assert "Milestones must cite concrete evidence" in prompt
+    # Check for grounding rules - the rewritten prompt has explicit rules
+    assert "GROUNDING" in prompt
+    # Check for evidence citation requirement
+    assert "evidence" in prompt.lower()
+    # Check that it forbids fabrication
+    assert "made-up" in prompt.lower() or "fabrication" in prompt.lower()
 
 
 def test_summarize_skill_progress_rejects_hallucinated_numbers():

@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Horizontal, ScrollableContainer, Vertical
 from textual.events import Key, Mount, Unmount
 from textual.message import Message
@@ -3390,6 +3391,12 @@ class AIResultsScreen(ModalScreen[None]):
 class SkillProgressScreen(ModalScreen[None]):
     """Modal showing skill progression timeline and optional AI summary."""
 
+    BINDINGS = [
+        Binding("c", "copy_summary", "Copy to clipboard"),
+        Binding("escape", "dismiss", "Close"),
+        Binding("q", "dismiss", "Close"),
+    ]
+
     def __init__(self, content: str) -> None:
         super().__init__()
         self._content = content
@@ -3407,7 +3414,7 @@ class SkillProgressScreen(ModalScreen[None]):
             log_widget = Log(highlight=False, id="skill-progress-log")
 
         yield Vertical(
-            Static("Skill progression", classes="dialog-title"),
+            Static("Skill progression (press [b]c[/b] to copy)", classes="dialog-title"),
             Vertical(
                 ScrollableContainer(
                     log_widget,
@@ -3415,6 +3422,7 @@ class SkillProgressScreen(ModalScreen[None]):
                     classes="skill-progress-output",
                 ),
                 Horizontal(
+                    Button("Copy", id="skill-progress-copy", variant="default"),
                     Button("Close", id="skill-progress-close", variant="primary"),
                     classes="dialog-buttons",
                 ),
@@ -3465,7 +3473,72 @@ class SkillProgressScreen(ModalScreen[None]):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "skill-progress-close":
             self.dismiss(None)
+        elif event.button.id == "skill-progress-copy":
+            self.action_copy_summary()
 
     def on_key(self, event: Key) -> None:
         if event.key == "escape" or event.key == "q":
             self.dismiss(None)
+
+    def action_copy_summary(self) -> None:
+        """Copy the skill progress summary to clipboard."""
+        import subprocess
+        import sys
+        
+        # Strip rich markup for clipboard
+        plain_content = self._strip_markup(self._content)
+        
+        if not plain_content:
+            self.app.notify("Nothing to copy", severity="warning")
+            return
+        
+        copied = False
+        
+        # Try platform-specific clipboard commands first (most reliable)
+        try:
+            if sys.platform == "darwin":
+                # macOS - use pbcopy
+                process = subprocess.Popen(
+                    ["pbcopy"],
+                    stdin=subprocess.PIPE,
+                    env={"LANG": "en_US.UTF-8"}
+                )
+                process.communicate(input=plain_content.encode("utf-8"))
+                if process.returncode == 0:
+                    copied = True
+            elif sys.platform.startswith("linux"):
+                # Linux - try xclip first, then xsel
+                for cmd in [["xclip", "-selection", "clipboard"], ["xsel", "--clipboard", "--input"]]:
+                    try:
+                        process = subprocess.Popen(cmd, stdin=subprocess.PIPE)
+                        process.communicate(input=plain_content.encode("utf-8"))
+                        if process.returncode == 0:
+                            copied = True
+                            break
+                    except FileNotFoundError:
+                        continue
+            elif sys.platform == "win32":
+                # Windows
+                process = subprocess.Popen(
+                    ["clip"],
+                    stdin=subprocess.PIPE,
+                    shell=True
+                )
+                process.communicate(input=plain_content.encode("utf-16"))
+                if process.returncode == 0:
+                    copied = True
+        except Exception:
+            pass
+        
+        # Fallback to Textual's copy_to_clipboard if platform method failed
+        if not copied:
+            try:
+                self.app.copy_to_clipboard(plain_content)
+                copied = True
+            except Exception:
+                pass
+        
+        if copied:
+            self.app.notify("Summary copied to clipboard!", severity="information")
+        else:
+            self.app.notify("Could not copy to clipboard", severity="warning")

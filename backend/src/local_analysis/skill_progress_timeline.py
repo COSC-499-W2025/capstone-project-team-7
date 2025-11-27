@@ -168,17 +168,17 @@ def build_skill_progression(
             if not month:
                 continue
             period_ref = periods.setdefault(month, SkillProgressPeriod(period_label=month))
+            # Note: git_repo.py provides commits at month level, not per-contributor
+            # When author_emails filter is set, we still use the month-level commits
+            # because the timeline is already filtered by author in contribution_analyzer
+            month_commits = month_entry.get("commits", 0)
             if author_emails:
-                # Filter commit counts to specified authors when provided
-                author_commits = sum(
-                    contrib.get("commits", 0)
-                    for contrib in month_entry.get("contributors", [])
-                    if contrib.get("email") and contrib.get("email") in author_emails
-                )
-                period_ref.commits = author_commits
-                period_ref.contributors = 1 if author_commits > 0 else 0
+                # Timeline from contribution_analyzer is already author-filtered,
+                # so we can use the month-level commit count directly
+                period_ref.commits = month_commits
+                period_ref.contributors = 1 if month_commits > 0 else 0
             else:
-                period_ref.commits = month_entry.get("commits", period_ref.commits)
+                period_ref.commits = month_commits if month_commits > 0 else period_ref.commits
                 period_ref.contributors = max(
                     period_ref.contributors, getattr(contribution_metrics, "total_contributors", 0)
                 )
