@@ -108,6 +108,8 @@ def summarize_skill_progress(
 
     parsed = _coerce_json_response(raw)
 
+    _validate_grounding(timeline, parsed)
+
     for key in ("narrative", "milestones", "strengths", "gaps"):
         if key not in parsed:
             raise ValueError(f"Missing key in model response: {key}")
@@ -145,3 +147,90 @@ def _coerce_json_response(raw: str) -> Dict[str, Any]:
             except Exception as exc:
                 raise ValueError(f"Model did not return valid JSON: {exc}") from exc
         raise ValueError("Model did not return valid JSON")
+
+
+_KNOWN_LANGUAGES = {
+    "python",
+    "javascript",
+    "typescript",
+    "shell",
+    "bash",
+    "go",
+    "java",
+    "ruby",
+    "rust",
+    "c#",
+    "c++",
+    "c",
+    "php",
+    "swift",
+    "kotlin",
+    "objective-c",
+    "objective-c++",
+}
+
+
+def _validate_grounding(timeline: List[Dict[str, Any]], parsed: Dict[str, Any]) -> None:
+    """Reject summaries that invent numbers or languages not present in input."""
+    allowed_numbers = set()
+    allowed_languages = set()
+    for entry in timeline or []:
+        for key in ("commits", "tests_changed", "skill_count", "evidence_count"):
+            val = entry.get(key)
+            if isinstance(val, int):
+                allowed_numbers.add(val)
+        # capture counts inside languages/period_languages
+        for lang_dict_key in ("languages", "period_languages"):
+            lang_dict = entry.get(lang_dict_key)
+            if isinstance(lang_dict, dict):
+                allowed_languages.update({k.lower() for k in lang_dict.keys()})
+                for count in lang_dict.values():
+                    if isinstance(count, int):
+                        allowed_numbers.add(count)
+        # counts of commit messages/files
+        for list_key in ("commit_messages", "top_files"):
+            lst = entry.get(list_key)
+            if isinstance(lst, list):
+                allowed_numbers.add(len(lst))
+    # Aggregate totals from timeline
+    total_commits = sum((entry.get("commits") or 0) for entry in timeline or [])
+    total_tests = sum((entry.get("tests_changed") or 0) for entry in timeline or [])
+    total_evidence = sum((entry.get("evidence_count") or 0) for entry in timeline or [])
+    allowed_numbers.update({total_commits, total_tests, total_evidence})
+
+    def _extract_numbers(text: str) -> List[int]:
+        return [int(x) for x in re.findall(r"-?\d+", text)]
+
+    def _extract_languages(text: str) -> List[str]:
+        found = []
+        for lang in _KNOWN_LANGUAGES:
+            if lang == "c":
+                if re.search(r"\bC\b", text):
+                    found.append("c")
+                continue
+            if re.search(rf"\b{re.escape(lang)}\b", text, flags=re.IGNORECASE):
+                found.append(lang.lower())
+        return found
+
+    def _validate_field(value: Any, field_name: str) -> None:
+        texts: List[str] = []
+        if isinstance(value, str):
+            texts.append(value)
+        elif isinstance(value, list):
+            texts.extend([str(x) for x in value if isinstance(x, (str, int, float))])
+        for text in texts:
+            numbers = _extract_numbers(text)
+            for num in numbers:
+                if num <= 5:  # allow small list ordinals
+                    continue
+                if num not in allowed_numbers:
+                    raise ValueError(f"Model hallucinated number {num} in {field_name}")
+            langs = _extract_languages(text)
+            for lang in langs:
+                if lang not in allowed_languages:
+                    raise ValueError(f"Model hallucinated language {lang} in {field_name}")
+
+    _validate_field(parsed.get("narrative", ""), "narrative")
+    _validate_field(parsed.get("milestones", []), "milestones")
+    _validate_field(parsed.get("strengths", []), "strengths")
+    _validate_field(parsed.get("gaps", []), "gaps")

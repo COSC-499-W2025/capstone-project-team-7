@@ -5,6 +5,7 @@ Tests for LLM skill progression summarizer.
 from pathlib import Path
 import sys
 import json
+import pytest
 
 # Add backend/src to path
 backend_src_path = Path(__file__).parent.parent / "backend" / "src"
@@ -130,3 +131,64 @@ def test_prompt_forbids_invented_content():
     prompt = build_prompt(timeline)
     assert "Do NOT invent periods" in prompt
     assert "Milestones must cite concrete evidence" in prompt
+
+
+def test_summarize_skill_progress_rejects_hallucinated_numbers():
+    timeline = [
+        {
+            "period_label": "2024-05",
+            "commits": 3,
+            "tests_changed": 1,
+            "skill_count": 1,
+            "evidence_count": 2,
+            "languages": {"Python": 1},
+            "period_languages": {"Python": 1},
+            "top_skills": ["APIs"],
+            "commit_messages": ["Add API endpoint"],
+            "top_files": ["src/api.py"],
+        }
+    ]
+
+    def fake_model(prompt: str) -> str:
+        # Invents a number not present in the input
+        return json.dumps(
+            {
+                "narrative": "Handled 406 commits.",
+                "milestones": [],
+                "strengths": [],
+                "gaps": [],
+            }
+        )
+
+    with pytest.raises(ValueError):
+        summarize_skill_progress(timeline, fake_model)
+
+
+def test_summarize_skill_progress_rejects_hallucinated_languages():
+    timeline = [
+        {
+            "period_label": "2024-06",
+            "commits": 2,
+            "tests_changed": 0,
+            "skill_count": 1,
+            "evidence_count": 1,
+            "languages": {"Python": 1},
+            "period_languages": {"Python": 1},
+            "top_skills": ["Testing"],
+            "commit_messages": ["Add tests"],
+            "top_files": ["tests/test_app.py"],
+        }
+    ]
+
+    def fake_model(prompt: str) -> str:
+        return json.dumps(
+            {
+                "narrative": "Work was done in C.",
+                "milestones": [],
+                "strengths": [],
+                "gaps": [],
+            }
+        )
+
+    with pytest.raises(ValueError):
+        summarize_skill_progress(timeline, fake_model)
