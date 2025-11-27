@@ -757,6 +757,7 @@ class PortfolioTextualApp(App):
                     snippet = ""
             detail = f" Debug hint: {snippet}" if snippet else f" Debug detail: {message}"
             return f"AI summary unavailable: the response was not valid JSON.{detail} Please retry."
+        # Default: show the underlying error with any debug markers (raw_snippet/raw_dumped)
         return f"AI summary unavailable: {message or 'unexpected error'}"
 
     def _format_skill_progress_output(
