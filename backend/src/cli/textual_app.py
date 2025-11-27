@@ -743,6 +743,10 @@ class PortfolioTextualApp(App):
     def _format_skill_progress_error(exc: Exception) -> str:
         """User-facing error string for failed AI summaries."""
         message = str(exc).strip()
+        # Grounding/validation failures should be surfaced directly
+        if "Model hallucinated" in message or "claimed no commits" in message or "dominant language" in message:
+            return f"AI summary rejected: {message}"
+
         if "valid JSON" in message or "Model did not return" in message:
             # Surface a short raw snippet when available for debugging malformed outputs.
             snippet = ""
