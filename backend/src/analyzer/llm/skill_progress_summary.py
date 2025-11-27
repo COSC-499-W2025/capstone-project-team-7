@@ -256,6 +256,17 @@ def _validate_grounding(timeline: List[Dict[str, Any]], parsed: Dict[str, Any]) 
     total_tests = sum((entry.get("tests_changed") or 0) for entry in timeline or [])
     total_evidence = sum((entry.get("evidence_count") or 0) for entry in timeline or [])
     allowed_numbers.update({total_commits, total_tests, total_evidence})
+    # Track languages per period for dominance checks
+    per_period_lang_sets: List[set[str]] = []
+    for entry in timeline or []:
+        langs = set()
+        for lang_dict_key in ("languages", "period_languages"):
+            lang_dict = entry.get(lang_dict_key)
+            if isinstance(lang_dict, dict):
+                langs.update({k.lower() for k in lang_dict.keys()})
+        if langs:
+            per_period_lang_sets.append(langs)
+    lang_intersection = set.intersection(*per_period_lang_sets) if per_period_lang_sets else set()
 
     def _extract_numbers(text: str) -> List[int]:
         return [int(x) for x in re.findall(r"-?\d+", text)]
@@ -288,6 +299,15 @@ def _validate_grounding(timeline: List[Dict[str, Any]], parsed: Dict[str, Any]) 
             for lang in langs:
                 if lang not in allowed_languages:
                     raise ValueError(f"Model hallucinated language {lang} in {field_name}")
+            if total_commits > 0 and re.search(r"\bno commits\b", text, flags=re.IGNORECASE):
+                raise ValueError("Model claimed no commits despite commit data")
+            for lang in langs:
+                if lang_intersection and lang not in lang_intersection and re.search(
+                    r"(dominant|primary|main)\s+language.*(all|across)\s+periods",
+                    text,
+                    flags=re.IGNORECASE,
+                ):
+                    raise ValueError(f"Model overstated {lang} dominance across all periods")
 
     _validate_field(parsed.get("narrative", ""), "narrative")
     _validate_field(parsed.get("milestones", []), "milestones")
