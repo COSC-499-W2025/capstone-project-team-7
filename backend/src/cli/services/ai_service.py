@@ -31,6 +31,62 @@ class AIClientConfig:
     max_tokens: int
 
 
+def _validate_and_resolve_path(
+    file_path: str, 
+    base_path: Path, 
+    output_base: Path
+) -> tuple[Path, Path]:
+    """
+    Validate and resolve a file path, handling archive prefixes.
+    
+    Returns:
+        Tuple of (output_path, read_path) - both validated and resolved
+    
+    Raises:
+        ValueError: If path is invalid or escapes directories
+    """
+    # 1. Block absolute paths
+    if Path(file_path).is_absolute():
+        raise ValueError(f"Absolute paths not allowed: {file_path}")
+    
+    # 2. Convert to Path
+    path_obj = Path(file_path)
+    
+    # 3. Block path traversal attempts
+    if '..' in path_obj.parts:
+        raise ValueError(f"Path traversal (..) not allowed: {file_path}")
+    
+    # 4. Try to find the file (handles archive prefix stripping)
+    full_read_path = base_path / path_obj
+    clean_path = path_obj  # Path to use for output structure
+    
+    # ✅ If file doesn't exist, try stripping first component (archive prefix)
+    if not full_read_path.exists() and len(path_obj.parts) > 1:
+        stripped_path = Path(*path_obj.parts[1:])
+        candidate_path = base_path / stripped_path
+        
+        if candidate_path.exists():
+            # Use the stripped path for both reading and output structure
+            full_read_path = candidate_path
+            clean_path = stripped_path
+    
+    # 5. Verify read path stays within base_path (security check)
+    try:
+        full_read_path.resolve().relative_to(base_path.resolve())
+    except ValueError:
+        raise ValueError(f"Path escapes repository: {file_path}")
+    
+    # 6. Create output path PRESERVING directory structure
+    output_file = output_base / clean_path
+    
+    # 7. Verify output stays within output_base (security check)
+    try:
+        output_file.resolve().relative_to(output_base.resolve())
+    except ValueError:
+        raise ValueError(f"Output path escapes output directory: {clean_path}")
+    
+    return output_file, full_read_path
+
 class AIService:
     """Utility helpers around the LLM client lifecycle and formatting."""
     def __init__(self):
@@ -354,42 +410,45 @@ class AIService:
                     failed += 1
                     continue
                 
-                # ✅ FIX: Better path resolution with archive prefix stripping
-                full_path = Path(base_path) / file_path
-                
-                self.logger.info(f"Original file path: {file_path}")
-                self.logger.info(f"Constructed full path: {full_path}")
-                self.logger.info(f"File exists: {full_path.exists()}")
-                
-                # If file doesn't exist, try stripping archive prefix
-                if not full_path.exists() and '/' in file_path:
-                    path_parts = file_path.split('/', 1)
-                    if len(path_parts) > 1:
-                        stripped_path = path_parts[1]
-                        full_path = Path(base_path) / stripped_path
-                        self.logger.info(f"Stripped archive prefix: {file_path} -> {stripped_path}")
-                        self.logger.info(f"New full path: {full_path}")
-                        self.logger.info(f"File exists now: {full_path.exists()}")
-                
-                # Final check if file exists
-                if not full_path.exists():
-                    self.logger.error(f"File not found after path resolution: {full_path}")
+                # 🔒 SECURITY: Validate and resolve path safely
+                try:
+                    output_file, full_read_path = _validate_and_resolve_path(
+                        file_path, 
+                        Path(base_path).resolve(), 
+                        output_path.resolve()
+                    )
+                    self.logger.info(f"Validated path: {file_path}")
+                    self.logger.info(f"Read from: {full_read_path}")
+                    self.logger.info(f"Write to: {output_file}")
+                except ValueError as path_error:
+                    self.logger.error(f"Path validation failed for {file_path}: {path_error}")
                     results.append({
                         "file_path": file_path,
                         "success": False,
-                        "error": f"File not found at {full_path}"
+                        "error": f"Invalid path: {str(path_error)}"
+                    })
+                    failed += 1
+                    continue
+                
+                # Verify file exists
+                if not full_read_path.exists():
+                    self.logger.error(f"File not found: {full_read_path}")
+                    results.append({
+                        "file_path": file_path,
+                        "success": False,
+                        "error": f"File not found at {full_read_path}"
                     })
                     failed += 1
                     continue
                 
                 # Read original file content
                 try:
-                    original_content = full_path.read_text(encoding='utf-8')
+                    original_content = full_read_path.read_text(encoding='utf-8')
                     self.logger.info(f"Successfully read file: {file_path} ({len(original_content)} chars)")
                 except UnicodeDecodeError:
                     # Try other encodings
                     try:
-                        original_content = full_path.read_text(encoding='latin-1')
+                        original_content = full_read_path.read_text(encoding='latin-1')
                         self.logger.warning(f"Read file with latin-1 encoding: {file_path}")
                     except Exception as e:
                         self.logger.error(f"Failed to read file {file_path}: {e}")
@@ -445,7 +504,7 @@ class AIService:
                 improved_content = improvement_result.get("improved_code", original_content)
                 
                 # Preserve directory structure in output
-                output_file = output_path / Path(file_path).name
+                # output_file = output_path / Path(file_path).name
                 output_file.parent.mkdir(parents=True, exist_ok=True)
                 
                 try:
