@@ -3692,31 +3692,98 @@ class PortfolioTextualApp(App):
         
         Steps:
         1. Show status message
-        2. Call ai_service to generate improvements in background
-        3. Show results screen
+        2. Call ai_service to generate improvements in background thread
+        3. Route progress updates safely back to main event loop
+        4. Show results screen
         """
         self._show_status("Generating AI suggestions…", "info")
         
-        # Create progress callback for status updates
+        # Show progress UI
+        progress_bar = self._scan_progress_bar
+        if progress_bar:
+            progress_bar.display = True
+            progress_bar.update(progress=0)
+        progress_label = self._scan_progress_label
+        if progress_label:
+            progress_label.remove_class("hidden")
+            progress_label.update("Initializing auto-suggestion…")
+        
+        # Thread-safe progress state
+        progress_state = {"current_message": "Initializing…", "current_percent": 0}
+        progress_lock = threading.Lock()
+        
+        # Progress callback that safely updates shared state
         def update_progress(message: str, progress: Optional[int] = None):
-            """Update status bar with progress message."""
-            # Just update the status bar - no progress bar needed
+            """Update progress state from worker thread (thread-safe)."""
+            timestamp = time.time()
+            self._debug_log(f"[{timestamp}] Progress: {message} ({progress}%)")
+            
+            with progress_lock:
+                progress_state["current_message"] = message
+                if progress is not None:
+                    progress_state["current_percent"] = progress
+            
+            # Force immediate UI update (for testing)
             try:
-                self._show_status(message, "info", log_to_stderr=False)
-            except Exception:
-                pass
+                self.call_from_thread(
+                    self._show_status,
+                    message,
+                    "info",
+                    True  # ✅ Log to stderr so we SEE it
+                )
+            except Exception as e:
+                self._debug_log(f"[Progress] Immediate update failed: {e}")
+        
+        # Background task to route updates to UI from main loop
+        progress_stop = asyncio.Event()
+        async def _progress_heartbeat() -> None:
+            """Periodically update UI with progress from shared state."""
+            try:
+                while not progress_stop.is_set():
+                    with progress_lock:
+                        current_message = progress_state["current_message"]
+                        current_percent = progress_state["current_percent"]
+                    try:
+                        # Route updates to main thread safely
+                        self.call_from_thread(
+                            self._show_status, 
+                            current_message, 
+                            "info", 
+                            False  # Don't spam stderr
+                        )
+                        
+                        # Update progress label
+                        if progress_label:
+                            self.call_from_thread(
+                                progress_label.update,
+                                current_message
+                            )
+                        
+                        # Update progress bar
+                        if progress_bar and current_percent > 0:
+                            self.call_from_thread(
+                                progress_bar.update,
+                                progress=current_percent
+                            )
+                            
+                    except Exception as e:
+                        self._debug_log(f"[Auto-Suggestion] Progress update error: {e}")
+                    await asyncio.sleep(0.5)
+            except Exception as e:
+                self._debug_log(f"[Auto-Suggestion] Heartbeat error: {e}")
+
+        heartbeat_task = asyncio.create_task(_progress_heartbeat())
         
         try:
             # Run in background thread
-            result = await asyncio.get_event_loop().run_in_executor(
-                None,
+            result = await asyncio.to_thread(
                 self._ai_service.execute_auto_suggestion,
                 self._ai_state.client,
                 selected_files,
                 output_dir,
                 self._scan_state.target,
                 self._scan_state.parse_result,
-                update_progress
+                update_progress  # ✅ Pass thread-safe callback
             )
             
             # Show results
@@ -3737,148 +3804,21 @@ class PortfolioTextualApp(App):
         except Exception as e:
             self._debug_log(f"Auto-suggestion failed: {e}")
             self._show_status(f"✗ Auto-suggestion failed: {str(e)}", "error")
-
-    async def _run_ai_analysis(self) -> None:
-        detail_panel = self.query_one("#detail", Static)
-        progress_bar = self._scan_progress_bar
-        progress_label = self._scan_progress_label
-        ai_progress_state = {"current_step": "Initializing…"}
-        progress_lock = threading.Lock()
-
-        self._debug_log("[AI Analysis] Starting AI analysis workflow")
-
-        if not self._ai_state.client or not self._scan_state.parse_result:
-            self._debug_log("[AI Analysis] Missing prerequisites - client or parse_result is None")
-            self._surface_error(
-                "AI-Powered Analysis",
-                "A recent scan and a verified API key are required.",
-                "Run a portfolio scan, grant external consent, then provide your OpenAI API key.",
-            )
-            self._ai_state.task = None
-            if progress_bar:
-                progress_bar.display = False
-            if progress_label:
-                progress_label.add_class("hidden")
-            return
-
-        # Log scan state for debugging
-        files_count = len(self._scan_state.parse_result.files) if self._scan_state.parse_result.files else 0
-        git_repos_count = len(self._scan_state.git_repos) if self._scan_state.git_repos else 0
-        self._debug_log(f"[AI Analysis] Files in scan: {files_count}, Git repos: {git_repos_count}")
-        if self._scan_state.git_repos:
-            self._debug_log(f"[AI Analysis] Git repo paths: {self._scan_state.git_repos}")
-        if self._scan_state.target:
-            self._debug_log(f"[AI Analysis] Target path: {self._scan_state.target}")
-        if self._scan_state.archive:
-            self._debug_log(f"[AI Analysis] Archive path: {self._scan_state.archive}")
-
-        # Progress update callback
-        def _update_progress(message: str) -> None:
-            with progress_lock:
-                ai_progress_state["current_step"] = message
-            self._debug_log(f"[AI Analysis Progress] {message}")
-
-        # Background task to update UI
-        progress_stop = asyncio.Event()
-        async def _progress_heartbeat() -> None:
-            try:
-                step_count = 0
-                while not progress_stop.is_set():
-                    step_count += 1
-                    with progress_lock:
-                        current_message = ai_progress_state["current_step"]
-                    try:
-                        if progress_label:
-                            progress_label.update(current_message)
-                        if progress_bar:
-                            # Pulse the progress bar
-                            progress_bar.update(progress=(step_count % 100))
-                    except Exception as e:
-                        self._debug_log(f"[AI Analysis] Progress update error: {e}")
-                    await asyncio.sleep(0.5)
-            except Exception as e:
-                self._debug_log(f"[AI Analysis] Heartbeat error: {e}")
-
-        heartbeat_task = asyncio.create_task(_progress_heartbeat())
-
-        try:
-            self._debug_log("[AI Analysis] Calling execute_analysis...")
-            result = await asyncio.to_thread(
-                self._ai_service.execute_analysis,
-                self._ai_state.client,
-                self._scan_state.parse_result,
-                languages=self._scan_state.languages or [],
-                target_path=str(self._scan_state.target) if self._scan_state.target else None,
-                archive_path=str(self._scan_state.archive) if self._scan_state.archive else None,
-                git_repos=self._scan_state.git_repos,
-                progress_callback=_update_progress,
-            )
-            self._debug_log(f"[AI Analysis] Analysis completed, result keys: {list(result.keys()) if result else 'None'}")
-        except asyncio.CancelledError:
-            self._debug_log("[AI Analysis] Analysis cancelled by user")
-            self._show_status("AI analysis cancelled.", "info")
-            detail_panel.update(self._render_ai_detail())
-            raise
-        except InvalidAPIKeyError as exc:
-            self._debug_log(f"[AI Analysis] Invalid API key error: {exc}")
-            self._ai_state.client = None
-            self._ai_state.api_key = None
-            self._surface_error(
-                "AI-Powered Analysis",
-                f"Invalid API key: {exc}",
-                "Copy a fresh key from OpenAI and try again.",
-            )
-        except AIDependencyError as exc:
-            self._debug_log(f"[AI Analysis] Dependency error: {exc}")
-            self._surface_error(
-                "AI-Powered Analysis",
-                f"Unavailable: {exc}",
-                "Ensure the optional AI dependencies are installed (see backend/requirements.txt).",
-            )
-        except AIProviderError as exc:
-            self._debug_log(f"[AI Analysis] Provider error: {exc}")
-            self._surface_error(
-                "AI-Powered Analysis",
-                f"AI service error: {exc}",
-                "Retry in a few minutes or reduce the input size.",
-            )
-        except Exception as exc:
-            self._debug_log(f"[AI Analysis] Unexpected error: {exc.__class__.__name__}: {exc}")
-            import traceback
-            self._debug_log(f"[AI Analysis] Traceback: {traceback.format_exc()}")
-            self._surface_error(
-                "AI-Powered Analysis",
-                f"Unexpected error ({exc.__class__.__name__}): {exc}",
-                "Check your network connection and rerun the analysis.",
-            )
-        else:
-            self._ai_state.last_analysis = result
-            rendered = self._ai_service.format_analysis(result)
-            if rendered.strip():
-                detail_panel.update(rendered)
-            else:
-                detail_panel.update("[b]AI-Powered Analysis[/b]\n\nNo AI insights were returned.")
-            saved = self._persist_ai_output(rendered, result)
-            files_count = result.get("files_analyzed_count")
-            message = "AI analysis complete."
-            if files_count:
-                message = f"AI analysis complete — {files_count} files reviewed."
-            if saved:
-                message = f"{message} Saved to {self._ai_output_path.name}."
-            self._show_status(message, "success")
-            
-            # Show AI results in full-screen modal
-            await self._show_ai_results(rendered)
         finally:
+            # Stop the heartbeat task
             progress_stop.set()
-            await heartbeat_task
+            try:
+                await heartbeat_task
+            except asyncio.CancelledError:
+                pass
+            
+            # Hide progress UI
             if progress_bar:
                 progress_bar.update(progress=0)
                 progress_bar.display = False
             if progress_label:
                 progress_label.add_class("hidden")
                 progress_label.update("")
-            self._ai_state.task = None
     
     async def _show_ai_results(self, analysis_text: str) -> None:
         """Show AI analysis results in a full-screen modal."""
