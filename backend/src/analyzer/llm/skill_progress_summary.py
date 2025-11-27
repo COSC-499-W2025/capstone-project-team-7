@@ -107,9 +107,16 @@ def summarize_skill_progress(
     prompt = build_prompt(timeline)
     raw = call_model(prompt)
 
-    parsed = _coerce_json_response(raw)
+    def _truncate(value: str, limit: int = 320) -> str:
+        text = (value or "")[: limit + 1]
+        return text if len(text) <= limit else text[:limit] + "…"
 
-    _validate_grounding(timeline, parsed)
+    try:
+        parsed = _coerce_json_response(raw)
+        _validate_grounding(timeline, parsed)
+    except ValueError as exc:
+        snippet = _truncate(str(raw))
+        raise ValueError(f"{exc} | raw_snippet={snippet}") from exc
 
     for key in ("narrative", "milestones", "strengths", "gaps"):
         if key not in parsed:
