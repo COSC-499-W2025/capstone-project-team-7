@@ -108,3 +108,25 @@ def test_build_prompt_includes_evidence_fields():
     assert "src/app.py" in prompt
     assert "activity_types" in prompt
     assert "period_languages" in prompt
+
+
+def test_prompt_forbids_invented_content():
+    timeline = [
+        {
+            "period_label": "2024-03",
+            "commits": 2,
+            "tests_changed": 0,
+            "skill_count": 1,
+            "evidence_count": 1,
+            "top_skills": ["LLM"],
+            "languages": {"Python": 1},
+            "contributors": 1,
+            "commit_messages": ["Wire LLM client"],
+            "top_files": ["backend/src/analyzer.py"],
+            "activity_types": ["ai"],
+            "period_languages": {"Python": 1},
+        }
+    ]
+    prompt = build_prompt(timeline)
+    assert "Do NOT invent periods" in prompt
+    assert "Milestones must cite concrete evidence" in prompt
