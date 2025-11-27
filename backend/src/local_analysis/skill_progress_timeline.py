@@ -51,6 +51,44 @@ def _is_test_path(path: str) -> bool:
     return bool(_TEST_REGEX.search(path))
 
 
+def _infer_activity_types(messages: List[str], files: List[str]) -> List[str]:
+    """Derive simple activity labels from commit messages and file paths."""
+    labels: set[str] = set()
+    for path in files:
+        lowered = path.lower()
+        if _is_test_path(path):
+            labels.add("tests")
+        if "migrate" in lowered or "migration" in lowered or "schema" in lowered:
+            labels.add("migrations")
+        if "ui" in lowered or "frontend" in lowered or lowered.endswith(".tcss"):
+            labels.add("ui")
+        if "async" in lowered or "concurrency" in lowered:
+            labels.add("async")
+        if "refactor" in lowered:
+            labels.add("refactor")
+        if "ai" in lowered or "llm" in lowered:
+            labels.add("ai")
+        if "docs" in lowered or "readme" in lowered:
+            labels.add("docs")
+    for msg in messages:
+        lowered = msg.lower()
+        if "test" in lowered:
+            labels.add("tests")
+        if "refactor" in lowered:
+            labels.add("refactor")
+        if "async" in lowered or "concurrency" in lowered:
+            labels.add("async")
+        if "migrate" in lowered or "migration" in lowered or "schema" in lowered:
+            labels.add("migrations")
+        if "ui" in lowered or "frontend" in lowered:
+            labels.add("ui")
+        if "ai" in lowered or "llm" in lowered:
+            labels.add("ai")
+        if "docs" in lowered or "readme" in lowered:
+            labels.add("docs")
+    return sorted(labels)
+
+
 def build_skill_progression(
     chronological_overview: List[Dict[str, Any]],
     contribution_metrics: Optional[ProjectContributionMetrics] = None,
@@ -129,28 +167,20 @@ def build_skill_progression(
             # Carry over evidence-rich fields if present
             commit_messages = month_entry.get("messages") or month_entry.get("commit_messages") or []
             if commit_messages:
-                period_ref.commit_messages = list(commit_messages)[:5]
+                period_ref.commit_messages = list(commit_messages)[:10]
             top_files = month_entry.get("top_files") or []
             if top_files:
                 period_ref.top_files = list(top_files)[:5]
-                activity_types: set[str] = set(period_ref.activity_types)
-                for path in period_ref.top_files:
-                    if _is_test_path(path):
-                        activity_types.add("tests")
-                    else:
-                        activity_types.add("code")
-                period_ref.activity_types = sorted(activity_types)
+            period_ref.activity_types = _infer_activity_types(period_ref.commit_messages, period_ref.top_files)
             period_langs = month_entry.get("languages") or month_entry.get("period_languages")
             if isinstance(period_langs, dict):
                 period_ref.period_languages = dict(period_langs)
 
-        if contribution_metrics.languages_detected:
-            lang_counts = {lang: 1 for lang in sorted(contribution_metrics.languages_detected)}
-            for period_ref in periods.values():
-                # Prefer per-period languages if available, else fall back to project-wide languages.
-                period_langs = per_month_languages.get(period_ref.period_label)
-                period_ref.languages = dict(period_langs) if period_langs else dict(lang_counts)
-                period_ref.period_languages = dict(period_langs) if period_langs else dict(lang_counts)
+        # Attach per-period languages only; do not fall back to repo-wide stats.
+        for period_ref in periods.values():
+            period_langs = per_month_languages.get(period_ref.period_label)
+            period_ref.languages = dict(period_langs) if period_langs else {}
+            period_ref.period_languages = dict(period_langs) if period_langs else {}
 
     timeline = [periods[key] for key in sorted(periods.keys())]
     return SkillProgression(timeline=timeline)

@@ -69,7 +69,8 @@ def test_build_skill_progression_merges_skills_and_commits():
     assert jan.skill_count == 2
     assert jan.evidence_count == 3
     assert jan.top_skills == ["Testing", "API Design"]
-    assert set(jan.languages.keys()) == {"JavaScript", "Python"}
+    # Languages now come only from per-period data; fallback to repo-wide stats is removed.
+    assert jan.languages == {}
     assert jan.contributors == 2
 
     assert feb.period_label == "2024-02"
@@ -109,3 +110,36 @@ def test_skills_service_builds_progression(monkeypatch):
     assert result is not None
     assert "timeline" in result
     assert result["timeline"][0]["period_label"] == "2024-01"
+
+
+def test_build_skill_progression_prefers_period_languages(monkeypatch):
+    # languages_detected should not leak into periods; only per-period languages are used.
+    metrics = _make_metrics()
+    metrics.languages_detected = {"C"}
+    metrics.timeline = [
+        {
+            "month": "2024-01",
+            "commits": 3,
+            "contributors": [{"email": "me@example.com", "commits": 3}],
+            "languages": {"Python": 2, "JavaScript": 1},
+            "messages": ["Add API handler"],
+            "top_files": ["src/api.py", "web/app.js"],
+        }
+    ]
+    chronological = [
+        {
+            "period": "2024-01",
+            "skills_exercised": ["APIs"],
+            "skill_count": 1,
+            "evidence_count": 1,
+            "details": [],
+        }
+    ]
+    progression = build_skill_progression(chronological, metrics, author_emails=None)
+    period = progression.timeline[0]
+    assert period.languages == {"Python": 2, "JavaScript": 1}
+    assert period.period_languages == {"Python": 2, "JavaScript": 1}
+    # Ensure evidence fields are wired through
+    assert period.commit_messages == ["Add API handler"]
+    assert period.top_files == ["src/api.py", "web/app.js"]
+    assert "tests" not in period.activity_types  # no test paths/messages present
