@@ -10,7 +10,7 @@ testable without hitting the network.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Protocol
+from typing import Any, Callable, Dict, List, Optional, Protocol
 import json
 import re
 import ast
@@ -31,6 +31,7 @@ class SkillProgressSummary:
     milestones: List[str] = field(default_factory=list)
     strengths: List[str] = field(default_factory=list)
     gaps: List[str] = field(default_factory=list)
+    validation_warning: Optional[str] = None
 
 
 def build_prompt(timeline: List[Dict[str, Any]]) -> str:
@@ -39,7 +40,7 @@ def build_prompt(timeline: List[Dict[str, Any]]) -> str:
         {
             lang
             for entry in timeline or []
-            for lang in (entry.get("languages") or {}).keys()
+            for lang in (entry.get("period_languages") or entry.get("languages") or {}).keys()
             if lang
         }
     )
@@ -52,6 +53,15 @@ def build_prompt(timeline: List[Dict[str, Any]]) -> str:
             seen_skills.add(skill)
             overall_skills.append(skill)
 
+    # Collect all commit messages and files for reference
+    all_commit_messages = []
+    all_top_files = []
+    all_activity_types = set()
+    for entry in timeline or []:
+        all_commit_messages.extend(entry.get("commit_messages") or [])
+        all_top_files.extend(entry.get("top_files") or [])
+        all_activity_types.update(entry.get("activity_types") or [])
+
     total_commits = sum((entry.get("commits") or 0) for entry in timeline or [])
     total_tests = sum((entry.get("tests_changed") or 0) for entry in timeline or [])
     total_evidence = sum((entry.get("evidence_count") or 0) for entry in timeline or [])
@@ -62,27 +72,48 @@ def build_prompt(timeline: List[Dict[str, Any]]) -> str:
         top_period = None
 
     return (
-        "You are a concise software engineering coach.\n"
-        "Input:\n"
-        "  - overall_languages: list of all languages observed\n"
-        "  - overall_top_skills: list of notable skills across periods\n"
+        "You are a precise software engineering coach who ONLY reports facts from the input data.\n\n"
+        "INPUT DATA FIELDS:\n"
+        "  - overall_languages: languages that appeared in changed files\n"
+        "  - overall_top_skills: skills detected across all periods\n"
         "  - totals: commits, tests_changed, evidence_count, top_period_by_commits\n"
-        "  - timeline: JSON array of periods with keys: period_label, commits, tests_changed, "
-        "skill_count, evidence_count, top_skills, languages, contributors, commit_messages, top_files, activity_types, period_languages.\n"
-        "Task: Produce STRICT JSON with keys narrative (3-5 sentences), milestones (3-5 bullets), "
-        "strengths (2-3 bullets), gaps (1-2 bullets).\n"
-        "Grounding rules (hard constraints):\n"
-        "  - Use only the provided data. Do NOT invent periods, numbers, skills, files, or languages.\n"
-        "  - Milestones must cite concrete evidence from the same period (commit_messages, top_files, top_skills, period_languages, tests_changed).\n"
-        "  - Mention dominant languages explicitly when period_languages are present; do not fabricate other languages.\n"
-        "  - Avoid vague phrases like \"significant growth\" or \"skill enhancement\" unless explicitly supported by provided evidence.\n"
-        "  - If contributors > 1, note collaboration; otherwise treat as individual.\n"
-        "  - Respond with JSON only.\n"
-        f"Overall languages: {overall_languages or '[]'}\n"
+        "  - timeline: JSON array where EACH period contains:\n"
+        "      * period_label: the month (e.g., '2025-10')\n"
+        "      * commits: number of commits in that period\n"
+        "      * tests_changed: number of test files modified\n"
+        "      * skill_count, evidence_count: skill metrics\n"
+        "      * top_skills: specific skills detected\n"
+        "      * commit_messages: ACTUAL commit messages from that period\n"
+        "      * top_files: ACTUAL files modified in that period\n"
+        "      * activity_types: inferred activities (e.g., 'tests', 'ai', 'refactor')\n"
+        "      * period_languages: languages of files CHANGED in that period with counts\n\n"
+        "TASK: Produce STRICT JSON with keys:\n"
+        "  - narrative (3-5 sentences): factual summary of what happened\n"
+        "  - milestones (3-5 bullets): specific achievements with evidence\n"
+        "  - strengths (2-3 bullets): demonstrated capabilities\n"
+        "  - gaps (1-2 bullets): areas for improvement\n\n"
+        "GROUNDING RULES (VIOLATIONS WILL BE REJECTED):\n"
+        "  1. ONLY reference data that appears in the input. No fabrication.\n"
+        "  2. If commits > 0, you MUST NOT say 'no commits' or 'zero activity'.\n"
+        "  3. NEVER invent numbers. Only use: commits, tests_changed, skill_count, evidence_count.\n"
+        "  4. NEVER invent language instance counts (e.g., '435 Python instances' is FORBIDDEN).\n"
+        "  5. ONLY mention languages from period_languages. Do not guess or add others.\n"
+        "  6. ONLY mention files from top_files. Do not invent file names or paths.\n"
+        "  7. ONLY mention activities from activity_types or commit_messages. No fabrication.\n"
+        "  8. Do NOT claim 'updated README' or 'documentation changes' unless 'docs' is in activity_types.\n"
+        "  9. FORBIDDEN phrases unless backed by specific data:\n"
+        "     - 'significant growth', 'strong emphasis', 'substantial activity'\n"
+        "     - 'dominant language', 'primary focus' (unless data proves it)\n"
+        "     - Any made-up counts or percentages\n"
+        "  10. For milestones: MUST cite the specific period AND specific evidence (file, message, or skill).\n"
+        "  11. If period_languages is empty, do NOT mention languages for that period.\n"
+        "  12. Respond with JSON only. No markdown fences, no explanations.\n\n"
+        f"Overall languages (from changed files): {overall_languages or '[]'}\n"
         f"Overall top skills: {overall_skills or '[]'}\n"
+        f"All activity types: {sorted(all_activity_types) or '[]'}\n"
         f"Total commits: {total_commits}, total tests changed: {total_tests}, total evidence: {total_evidence}, "
-        f"top period by commits: {top_period}\n"
-        f"Timeline:\n{json.dumps(timeline, ensure_ascii=False, indent=2)}\n"
+        f"top period by commits: {top_period}\n\n"
+        f"Timeline:\n{json.dumps(timeline, ensure_ascii=False, indent=2)}\n\n"
         "Respond with JSON only."
     )
 
@@ -108,6 +139,10 @@ def summarize_skill_progress(
         raise ValueError("Timeline required for skill progression summary")
 
     prompt = build_prompt(timeline)
+    
+    # Dump the exact LLM input for debugging
+    _dump_llm_input(timeline, prompt)
+    
     try:
         raw = call_model(prompt)
     except Exception as exc:
@@ -119,9 +154,10 @@ def summarize_skill_progress(
 
     dump_paths = _dump_raw_response(raw)
 
+    validation_warning: Optional[str] = None
+    
     try:
         parsed = _coerce_json_response(raw)
-        _validate_grounding(timeline, parsed)
     except ValueError as exc:
         snippet = _truncate(str(raw))
         try:
@@ -132,8 +168,13 @@ def summarize_skill_progress(
         except Exception:
             pass
         locations = f" | raw_dumped={','.join(dump_paths)}" if dump_paths else ""
-        prefix = "Validation failed" if "Model " in str(exc) else "Parse failed"
-        raise ValueError(f"{prefix}: {exc} | raw_snippet={snippet}{locations}") from exc
+        raise ValueError(f"Parse failed: {exc} | raw_snippet={snippet}{locations}") from exc
+
+    # Validate grounding but don't block - capture as warning
+    try:
+        _validate_grounding(timeline, parsed)
+    except ValueError as exc:
+        validation_warning = str(exc)
 
     for key in ("narrative", "milestones", "strengths", "gaps"):
         if key not in parsed:
@@ -144,6 +185,7 @@ def summarize_skill_progress(
         milestones=[str(x).strip() for x in parsed.get("milestones", []) if str(x).strip()],
         strengths=[str(x).strip() for x in parsed.get("strengths", []) if str(x).strip()],
         gaps=[str(x).strip() for x in parsed.get("gaps", []) if str(x).strip()],
+        validation_warning=validation_warning,
     )
 
 
@@ -213,6 +255,55 @@ def _dump_raw_response(raw: Any) -> List[str]:
             written.append(str(path_obj))
         except Exception:
             continue
+
+
+def _dump_llm_input(timeline: List[Dict[str, Any]], prompt: str) -> List[str]:
+    """Dump the exact LLM input (timeline + prompt) for debugging."""
+    written: List[str] = []
+    
+    # Analyze timeline for missing fields
+    missing_report = []
+    for entry in timeline or []:
+        period = entry.get("period_label") or entry.get("period") or "unknown"
+        missing = []
+        if not entry.get("commit_messages"):
+            missing.append("commit_messages")
+        if not entry.get("top_files"):
+            missing.append("top_files")
+        if not entry.get("activity_types"):
+            missing.append("activity_types")
+        if not entry.get("period_languages"):
+            missing.append("period_languages")
+        if missing:
+            missing_report.append(f"  {period}: MISSING {', '.join(missing)}")
+    
+    input_dump = {
+        "timeline": timeline,
+        "missing_fields_report": missing_report or ["All evidence fields present"],
+        "prompt_preview": prompt[:2000] + "..." if len(prompt) > 2000 else prompt,
+    }
+    
+    # Write to env path or default
+    env_paths = os.environ.get("SKILL_SUMMARY_DEBUG_PATH", "")
+    targets: List[str] = []
+    for part in env_paths.split(","):
+        target = part.strip()
+        if target:
+            # Create input dump path alongside the raw output
+            base = Path(target)
+            targets.append(str(base.parent / "skill_summary_input.json"))
+    targets.append(str(Path(tempfile.gettempdir()) / "skill_summary_input.json"))
+    
+    for target in targets:
+        try:
+            path_obj = Path(target)
+            path_obj.parent.mkdir(parents=True, exist_ok=True)
+            path_obj.write_text(json.dumps(input_dump, indent=2, ensure_ascii=False), encoding="utf-8")
+            written.append(str(path_obj))
+        except Exception:
+            continue
+    
+    return written
     return written
 
 
