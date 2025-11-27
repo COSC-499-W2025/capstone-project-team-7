@@ -14,6 +14,8 @@ from typing import Any, Callable, Dict, List, Protocol
 import json
 import re
 import ast
+import tempfile
+from pathlib import Path
 
 
 class _ModelCaller(Protocol):
@@ -105,7 +107,10 @@ def summarize_skill_progress(
         raise ValueError("Timeline required for skill progression summary")
 
     prompt = build_prompt(timeline)
-    raw = call_model(prompt)
+    try:
+        raw = call_model(prompt)
+    except Exception as exc:
+        raise ValueError(f"Model call failed: {exc}") from exc
 
     def _truncate(value: str, limit: int = 320) -> str:
         text = (value or "")[: limit + 1]
@@ -116,6 +121,11 @@ def summarize_skill_progress(
         _validate_grounding(timeline, parsed)
     except ValueError as exc:
         snippet = _truncate(str(raw))
+        try:
+            debug_path = Path(tempfile.gettempdir()) / "skill_summary_raw.txt"
+            debug_path.write_text(str(raw), encoding="utf-8")
+        except Exception:
+            pass
         raise ValueError(f"{exc} | raw_snippet={snippet}") from exc
 
     for key in ("narrative", "milestones", "strengths", "gaps"):

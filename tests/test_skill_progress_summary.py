@@ -224,3 +224,14 @@ def test_summarize_skill_progress_rejects_absent_json():
     with pytest.raises(ValueError) as err:
         summarize_skill_progress(timeline, fake_model)
     assert "raw_snippet" in str(err.value)
+
+
+def test_summarize_skill_progress_wraps_call_model_error():
+    timeline = [{"period_label": "2024-04", "commits": 1, "tests_changed": 0, "skill_count": 1, "evidence_count": 1}]
+
+    def fake_model(prompt: str) -> str:
+        raise RuntimeError("AI response was not json")
+
+    with pytest.raises(ValueError) as err:
+        summarize_skill_progress(timeline, fake_model)
+    assert "Model call failed" in str(err.value)
