@@ -203,3 +203,23 @@ def test_summarize_skill_progress_accepts_python_literal_json():
 
     summary = summarize_skill_progress(timeline, fake_model)
     assert summary.narrative == "ok"
+
+
+def test_summarize_skill_progress_accepts_leading_prose_with_json():
+    timeline = [{"period_label": "2024-02", "commits": 1, "tests_changed": 0, "skill_count": 1, "evidence_count": 1}]
+
+    def fake_model(prompt: str) -> str:
+        return "Sure, here it is:\n{\"narrative\": \"n\", \"milestones\": [], \"strengths\": [], \"gaps\": []}"
+
+    summary = summarize_skill_progress(timeline, fake_model)
+    assert summary.narrative == "n"
+
+
+def test_summarize_skill_progress_rejects_absent_json():
+    timeline = [{"period_label": "2024-03", "commits": 1, "tests_changed": 0, "skill_count": 1, "evidence_count": 1}]
+
+    def fake_model(prompt: str) -> str:
+        return "No JSON here"
+
+    with pytest.raises(ValueError):
+        summarize_skill_progress(timeline, fake_model)

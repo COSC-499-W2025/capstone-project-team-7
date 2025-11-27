@@ -135,26 +135,31 @@ def _coerce_json_response(raw: str) -> Dict[str, Any]:
     else:
         candidate = str(raw).strip()
 
+    # Direct JSON parse
     try:
         return json.loads(candidate)
     except Exception:
-        # Last resort: extract first JSON object substring if present.
-        start = candidate.find("{")
-        end = candidate.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            snippet = candidate[start : end + 1]
-            try:
-                return json.loads(snippet)
-            except Exception as exc:
-                # Fallback: accept Python-literal-style dicts with single quotes.
+        pass
+
+    def _try_snippet_from_brackets(text: str) -> Dict[str, Any]:
+        # Attempt to extract either object {} or array [] payloads.
+        for opener, closer in (("{", "}"), ("[", "]")):
+            start = text.find(opener)
+            end = text.rfind(closer)
+            if start != -1 and end != -1 and end > start:
+                snippet = text[start : end + 1]
                 try:
-                    literal_obj = ast.literal_eval(snippet)
-                    if isinstance(literal_obj, (dict, list)):
-                        return literal_obj  # type: ignore[return-value]
+                    return json.loads(snippet)
                 except Exception:
-                    pass
-                raise ValueError(f"Model did not return valid JSON: {exc}") from exc
+                    try:
+                        literal_obj = ast.literal_eval(snippet)
+                        if isinstance(literal_obj, (dict, list)):
+                            return literal_obj  # type: ignore[return-value]
+                    except Exception:
+                        continue
         raise ValueError("Model did not return valid JSON")
+
+    return _try_snippet_from_brackets(candidate)
 
 
 _KNOWN_LANGUAGES = {
