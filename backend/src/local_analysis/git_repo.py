@@ -5,6 +5,7 @@ from collections import Counter
 from datetime import datetime
 import re
 from pathlib import Path as _Path
+from typing import Set
 
 def _git(args, cwd: str) -> str:
     return check_output(["git", *args], cwd=cwd, text=True).strip()
@@ -48,6 +49,31 @@ _EXTENSION_LANGUAGE_MAP = {
 def _guess_language(path: str) -> str | None:
     ext = _Path(path).suffix.lower()
     return _EXTENSION_LANGUAGE_MAP.get(ext)
+
+
+_VENDOR_DIR_HINTS: Set[str] = {
+    "node_modules",
+    "vendor",
+    "third_party",
+    "third-party",
+    ".venv",
+    "venv",
+    ".git",
+    "dist",
+    "build",
+    "out",
+    "target",
+    ".eggs",
+    ".tox",
+    ".cache",
+}
+
+
+def _is_vendor_path(path: str) -> bool:
+    lowered = path.lower()
+    # Split on forward/back slashes to avoid partial matches
+    parts = re.split(r"[\\/]+", lowered)
+    return any(token in parts for token in _VENDOR_DIR_HINTS)
 
 
 def analyze_git_repo(repo_dir: str) -> dict:
@@ -185,6 +211,8 @@ def analyze_git_repo(repo_dir: str) -> dict:
                 continue
             # File path line
             path = line.strip()
+            if _is_vendor_path(path):
+                continue
             month_file_counts.setdefault(current_month, Counter())[path] += 1
             lang = _guess_language(path)
             if lang:
