@@ -1113,32 +1113,18 @@ PORTFOLIO COHERENCE:
                 temperature=0.3
             )
             
-            # Parse JSON response
-            try:
-                response_text = response.strip()
-                 # More robust markdown stripping using regex
-                response_text = re.sub(r'^```(?:json)?\s*', '', response_text)  # Remove opening ```json or ```
-                response_text = re.sub(r'\s*```$', '', response_text)           # Remove closing ```
-                response_text = response_text.strip()
-                
-                result = json.loads(response_text)
-                
+            # Parse JSON response with retry logic
+            result = self._parse_json_response(response, file_path, content, improvement_focus)
+            
+            if result.get("success"):
                 return {
                     "success": True,
                     "suggestions": result.get("suggestions", []),
                     "improved_code": result.get("improved_code", content),
                     "original_code": content
                 }
-                
-            except json.JSONDecodeError as e:
-                self.logger.error(f"Failed to parse JSON: {e}")
-                self.logger.error(f"Response: {response[:500]}")
-                
-                return {
-                    "success": False,
-                    "error": f"Failed to parse AI response: {str(e)}",
-                    "raw_response": response[:500]
-                }
+            else:
+                return result
             
         except Exception as e:
             self.logger.error(f"Failed to generate improvements: {e}")
@@ -1147,6 +1133,151 @@ PORTFOLIO COHERENCE:
                 "error": str(e)
             }
 
+    def _parse_json_response(
+        self,
+        response: str,
+        file_path: str,
+        original_content: str,
+        improvement_focus: str,
+        retry: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Robustly parse JSON response from LLM with fallback strategies.
+        
+        Strategies:
+        1. Try to parse response as-is
+        2. Strip markdown code fences
+        3. Extract JSON from text
+        4. Retry with stricter prompt if initial parse fails
+        
+        Args:
+            response: Raw response from LLM
+            file_path: File being analyzed (for error context)
+            original_content: Original file content
+            improvement_focus: Improvement focus instructions
+            retry: Whether to retry with stricter prompt on failure
+        
+        Returns:
+            Dict with success status and parsed result or error
+        """
+        # Strategy 1: Try direct parsing
+        try:
+            result = json.loads(response.strip())
+            self.logger.info(f"Successfully parsed JSON for {file_path}")
+            return {"success": True, **result}
+        except json.JSONDecodeError:
+            self.logger.debug(f"Direct JSON parsing failed for {file_path}")
+        
+        # Strategy 2: Strip markdown code fences
+        response_text = response.strip()
+        response_text = re.sub(r'^```(?:json)?\s*\n?', '', response_text)  # Opening ```
+        response_text = re.sub(r'\n?```\s*$', '', response_text)           # Closing ```
+        response_text = response_text.strip()
+        
+        try:
+            result = json.loads(response_text)
+            self.logger.info(f"Successfully parsed JSON after stripping fences for {file_path}")
+            return {"success": True, **result}
+        except json.JSONDecodeError:
+            self.logger.debug(f"Markdown stripping didn't help for {file_path}")
+        
+        # Strategy 3: Extract JSON block from text
+        json_match = re.search(r'\{[\s\S]*\}', response_text)
+        if json_match:
+            try:
+                json_str = json_match.group(0)
+                result = json.loads(json_str)
+                self.logger.info(f"Successfully extracted JSON from text for {file_path}")
+                return {"success": True, **result}
+            except json.JSONDecodeError:
+                self.logger.debug(f"Extracted JSON was invalid for {file_path}")
+        
+        # Strategy 4: Retry with stricter prompt
+        if retry:
+            self.logger.warning(f"JSON parsing failed for {file_path}, retrying with stricter prompt")
+            return self._retry_with_stricter_prompt(
+                file_path,
+                original_content,
+                improvement_focus,
+                response  # Include original response in context
+            )
+        
+        # All strategies failed
+        self.logger.error(f"All JSON parsing strategies failed for {file_path}")
+        return {
+            "success": False,
+            "error": "Failed to parse AI response after multiple strategies",
+            "raw_response": response[:500]
+        }
+
+    def _retry_with_stricter_prompt(
+        self,
+        file_path: str,
+        content: str,
+        improvement_focus: str,
+        previous_response: str
+    ) -> Dict[str, Any]:
+        """
+        Retry with a stricter, more explicit prompt if initial parsing failed.
+        
+        This helps when the model adds extra text, uses wrong format, etc.
+        """
+        stricter_prompt = f"""You are an expert code reviewer. Analyze this file ONLY.
+
+File: {file_path}
+
+Content:
+```
+{content}
+```
+
+{improvement_focus}
+
+RESPOND WITH ONLY THIS JSON FORMAT. NO OTHER TEXT. NO MARKDOWN BLOCKS:
+{{"suggestions": [{{"type": "string", "description": "string", "line_range": "string"}}], "improved_code": "string"}}"""
+
+        try:
+            messages = [{"role": "user", "content": stricter_prompt}]
+            response = self._make_llm_call(
+                messages,
+                max_tokens=2500,
+                temperature=0.3
+            )
+            
+            # Try parsing strategies again on new response
+            response_text = response.strip()
+            response_text = re.sub(r'^```(?:json)?\s*\n?', '', response_text)
+            response_text = re.sub(r'\n?```\s*$', '', response_text)
+            response_text = response_text.strip()
+            
+            try:
+                result = json.loads(response_text)
+                self.logger.info(f"Successfully parsed JSON on retry for {file_path}")
+                return {"success": True, **result}
+            except json.JSONDecodeError:
+                # Try to extract JSON
+                json_match = re.search(r'\{[\s\S]*\}', response_text)
+                if json_match:
+                    try:
+                        result = json.loads(json_match.group(0))
+                        self.logger.info(f"Successfully extracted JSON on retry for {file_path}")
+                        return {"success": True, **result}
+                    except json.JSONDecodeError:
+                        pass
+            
+            self.logger.error(f"Retry also failed for {file_path}")
+            return {
+                "success": False,
+                "error": "Failed to parse AI response even after retry with stricter prompt",
+                "raw_response": response[:500]
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Retry failed with exception: {e}")
+            return {
+                "success": False,
+                "error": f"Error during retry: {str(e)}"
+            }
 
     def _get_improvement_focus(self, file_path: str, file_type: str) -> str:
         """
