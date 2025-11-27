@@ -192,3 +192,14 @@ def test_summarize_skill_progress_rejects_hallucinated_languages():
 
     with pytest.raises(ValueError):
         summarize_skill_progress(timeline, fake_model)
+
+
+def test_summarize_skill_progress_accepts_python_literal_json():
+    timeline = [{"period_label": "2024-01", "commits": 1, "tests_changed": 0, "skill_count": 1, "evidence_count": 1}]
+
+    def fake_model(prompt: str) -> str:
+        # Returns single-quoted Python literal; should be coerced.
+        return "{'narrative': 'ok', 'milestones': ['a'], 'strengths': [], 'gaps': []}"
+
+    summary = summarize_skill_progress(timeline, fake_model)
+    assert summary.narrative == "ok"

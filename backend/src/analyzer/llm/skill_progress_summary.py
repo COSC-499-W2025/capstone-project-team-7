@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Protocol
 import json
 import re
+import ast
 
 
 class _ModelCaller(Protocol):
@@ -145,6 +146,13 @@ def _coerce_json_response(raw: str) -> Dict[str, Any]:
             try:
                 return json.loads(snippet)
             except Exception as exc:
+                # Fallback: accept Python-literal-style dicts with single quotes.
+                try:
+                    literal_obj = ast.literal_eval(snippet)
+                    if isinstance(literal_obj, (dict, list)):
+                        return literal_obj  # type: ignore[return-value]
+                except Exception:
+                    pass
                 raise ValueError(f"Model did not return valid JSON: {exc}") from exc
         raise ValueError("Model did not return valid JSON")
 
