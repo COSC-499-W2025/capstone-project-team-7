@@ -1,10 +1,16 @@
 """
 LLM-powered summarization for skills progress timelines.
 
-Uses a single model call to turn a timeline of period stats into a concise
-narrative with milestones, strengths, and gaps. The caller provides a
+Uses a single model call to turn a timeline of period stats into a concise,
+developer-friendly summary with actionable insights. The caller provides a
 `call_model` callable that returns the raw model text; this keeps the module
 testable without hitting the network.
+
+OUTPUT STRUCTURE (developer-focused):
+- overview: 3-5 sentences describing project phases/chapters
+- timeline: Per-period bullets with concrete examples from commits/files
+- skills_focus: Which skills were exercised and how
+- suggested_next_steps: Actionable coaching based on gaps
 """
 
 from __future__ import annotations
@@ -27,95 +33,227 @@ class _ModelCaller(Protocol):
 
 @dataclass
 class SkillProgressSummary:
-    narrative: str
-    milestones: List[str] = field(default_factory=list)
-    strengths: List[str] = field(default_factory=list)
-    gaps: List[str] = field(default_factory=list)
+    """Developer-friendly skill progression summary."""
+    overview: str  # 3-5 sentences describing project phases
+    timeline: List[str] = field(default_factory=list)  # Per-period bullets with examples
+    skills_focus: List[str] = field(default_factory=list)  # Which skills were exercised
+    suggested_next_steps: List[str] = field(default_factory=list)  # Actionable coaching
     validation_warning: Optional[str] = None
+
+    # Legacy property aliases for backward compatibility
+    @property
+    def narrative(self) -> str:
+        return self.overview
+
+    @property
+    def milestones(self) -> List[str]:
+        return self.timeline
+
+    @property
+    def strengths(self) -> List[str]:
+        return self.skills_focus
+
+    @property
+    def gaps(self) -> List[str]:
+        return self.suggested_next_steps
+
+
+def _filter_noise_languages(lang_dict: Dict[str, int], threshold_pct: float = 0.05) -> Dict[str, int]:
+    """Filter out noise languages that represent less than threshold of total."""
+    if not lang_dict:
+        return {}
+    total = sum(lang_dict.values())
+    if total == 0:
+        return {}
+    # Keep languages that are >= threshold OR have at least 3 files
+    return {
+        lang: count for lang, count in lang_dict.items()
+        if count / total >= threshold_pct or count >= 3
+    }
+
+
+def _get_primary_languages(lang_dict: Dict[str, int], top_n: int = 3) -> List[str]:
+    """Get the top N languages by file count."""
+    if not lang_dict:
+        return []
+    sorted_langs = sorted(lang_dict.items(), key=lambda x: x[1], reverse=True)
+    return [lang for lang, _ in sorted_langs[:top_n]]
+
+
+def _describe_period_focus(entry: Dict[str, Any]) -> str:
+    """Generate a human-readable focus description for a period."""
+    activity_types = entry.get("activity_types") or []
+    top_skills = entry.get("top_skills") or []
+    commits = entry.get("commits") or 0
+    tests = entry.get("tests_changed") or 0
+
+    if commits == 0:
+        return "light activity or setup"
+
+    focus_parts = []
+    if "tests" in activity_types or tests > 0:
+        focus_parts.append("testing")
+    if "ai" in activity_types:
+        focus_parts.append("AI/LLM integration")
+    if "api" in activity_types:
+        focus_parts.append("API development")
+    if "auth" in activity_types:
+        focus_parts.append("authentication")
+    if "refactor" in activity_types:
+        focus_parts.append("refactoring")
+    if "ui" in activity_types:
+        focus_parts.append("UI work")
+    if "async" in activity_types:
+        focus_parts.append("async/concurrency")
+    if "cli" in activity_types:
+        focus_parts.append("CLI tooling")
+    if "migrations" in activity_types:
+        focus_parts.append("database migrations")
+    if "config" in activity_types:
+        focus_parts.append("configuration")
+    if "docs" in activity_types:
+        focus_parts.append("documentation")
+    if "bugfix" in activity_types:
+        focus_parts.append("bug fixes")
+    if "feature" in activity_types:
+        focus_parts.append("new features")
+
+    if not focus_parts and top_skills:
+        focus_parts = top_skills[:2]
+
+    return ", ".join(focus_parts[:3]) if focus_parts else "general development"
 
 
 def build_prompt(timeline: List[Dict[str, Any]]) -> str:
-    """Create a deterministic prompt for summarizing skill progression."""
-    overall_languages = sorted(
-        {
-            lang
-            for entry in timeline or []
-            for lang in (entry.get("period_languages") or entry.get("languages") or {}).keys()
-            if lang
-        }
-    )
+    """Create a developer-focused prompt for summarizing skill progression."""
+
+    # Aggregate overall stats with noise filtering
+    overall_languages: Dict[str, int] = {}
+    for entry in timeline or []:
+        for lang, count in (entry.get("period_languages") or entry.get("languages") or {}).items():
+            if lang:
+                overall_languages[lang] = overall_languages.get(lang, 0) + count
+
+    # Filter noise languages (like stray C files)
+    filtered_languages = _filter_noise_languages(overall_languages)
+    primary_languages = _get_primary_languages(filtered_languages)
+
+    # Collect skills preserving order of appearance
     overall_skills = []
     seen_skills = set()
     for entry in timeline or []:
         for skill in entry.get("top_skills") or []:
-            if skill in seen_skills:
-                continue
-            seen_skills.add(skill)
-            overall_skills.append(skill)
+            if skill not in seen_skills:
+                seen_skills.add(skill)
+                overall_skills.append(skill)
 
-    # Collect all commit messages and files for reference
-    all_commit_messages = []
-    all_top_files = []
+    # Collect activity types across all periods
     all_activity_types = set()
     for entry in timeline or []:
-        all_commit_messages.extend(entry.get("commit_messages") or [])
-        all_top_files.extend(entry.get("top_files") or [])
         all_activity_types.update(entry.get("activity_types") or [])
 
+    # Calculate totals
     total_commits = sum((entry.get("commits") or 0) for entry in timeline or [])
     total_tests = sum((entry.get("tests_changed") or 0) for entry in timeline or [])
     total_evidence = sum((entry.get("evidence_count") or 0) for entry in timeline or [])
-    top_period = None
-    try:
-        top_period = max(timeline or [], key=lambda e: e.get("commits") or 0).get("period_label")
-    except Exception:
-        top_period = None
 
-    return (
-        "You are a precise software engineering coach who ONLY reports facts from the input data.\n\n"
-        "INPUT DATA FIELDS:\n"
-        "  - overall_languages: languages that appeared in changed files\n"
-        "  - overall_top_skills: skills detected across all periods\n"
-        "  - totals: commits, tests_changed, evidence_count, top_period_by_commits\n"
-        "  - timeline: JSON array where EACH period contains:\n"
-        "      * period_label: the month (e.g., '2025-10')\n"
-        "      * commits: number of commits in that period\n"
-        "      * tests_changed: number of test files modified\n"
-        "      * skill_count, evidence_count: skill metrics\n"
-        "      * top_skills: specific skills detected\n"
-        "      * commit_messages: ACTUAL commit messages from that period\n"
-        "      * top_files: ACTUAL files modified in that period\n"
-        "      * activity_types: inferred activities (e.g., 'tests', 'ai', 'refactor')\n"
-        "      * period_languages: languages of files CHANGED in that period with counts\n\n"
-        "TASK: Produce STRICT JSON with keys:\n"
-        "  - narrative (3-5 sentences): factual summary of what happened\n"
-        "  - milestones (3-5 bullets): specific achievements with evidence\n"
-        "  - strengths (2-3 bullets): demonstrated capabilities\n"
-        "  - gaps (1-2 bullets): areas for improvement\n\n"
-        "GROUNDING RULES (VIOLATIONS WILL BE REJECTED):\n"
-        "  1. ONLY reference data that appears in the input. No fabrication.\n"
-        "  2. If commits > 0, you MUST NOT say 'no commits' or 'zero activity'.\n"
-        "  3. NEVER invent numbers. Only use: commits, tests_changed, skill_count, evidence_count.\n"
-        "  4. NEVER invent language instance counts (e.g., '435 Python instances' is FORBIDDEN).\n"
-        "  5. ONLY mention languages from period_languages. Do not guess or add others.\n"
-        "  6. ONLY mention files from top_files. Do not invent file names or paths.\n"
-        "  7. ONLY mention activities from activity_types or commit_messages. No fabrication.\n"
-        "  8. Do NOT claim 'updated README' or 'documentation changes' unless 'docs' is in activity_types.\n"
-        "  9. FORBIDDEN phrases unless backed by specific data:\n"
-        "     - 'significant growth', 'strong emphasis', 'substantial activity'\n"
-        "     - 'dominant language', 'primary focus' (unless data proves it)\n"
-        "     - Any made-up counts or percentages\n"
-        "  10. For milestones: MUST cite the specific period AND specific evidence (file, message, or skill).\n"
-        "  11. If period_languages is empty, do NOT mention languages for that period.\n"
-        "  12. Respond with JSON only. No markdown fences, no explanations.\n\n"
-        f"Overall languages (from changed files): {overall_languages or '[]'}\n"
-        f"Overall top skills: {overall_skills or '[]'}\n"
-        f"All activity types: {sorted(all_activity_types) or '[]'}\n"
-        f"Total commits: {total_commits}, total tests changed: {total_tests}, total evidence: {total_evidence}, "
-        f"top period by commits: {top_period}\n\n"
-        f"Timeline:\n{json.dumps(timeline, ensure_ascii=False, indent=2)}\n\n"
-        "Respond with JSON only."
-    )
+    # Find busiest period
+    top_period = None
+    if timeline:
+        try:
+            top_period = max(timeline, key=lambda e: e.get("commits") or 0).get("period_label")
+        except Exception:
+            pass
+
+    # Build per-period summaries for the prompt
+    period_summaries = []
+    for entry in timeline or []:
+        period = entry.get("period_label", "unknown")
+        commits = entry.get("commits") or 0
+        tests = entry.get("tests_changed") or 0
+        skills = entry.get("top_skills") or []
+        messages = (entry.get("commit_messages") or [])[:5]  # Top 5 for prompt
+        files = (entry.get("top_files") or [])[:5]
+        activities = entry.get("activity_types") or []
+
+        # Filter period languages too
+        period_langs = _filter_noise_languages(entry.get("period_languages") or {})
+
+        summary = {
+            "period": period,
+            "commits": commits,
+            "tests_changed": tests,
+            "focus": _describe_period_focus(entry),
+            "skills": skills[:5],
+            "activities": activities,
+            "languages": list(period_langs.keys()),
+            "sample_commits": messages,
+            "sample_files": files,
+        }
+        period_summaries.append(summary)
+
+    # Build the prompt
+    prompt = f"""You are a friendly developer coach reviewing someone's project history. Your job is to help them understand what they accomplished and what they could focus on next.
+
+INPUT DATA:
+- Primary languages: {primary_languages}
+- All skills detected: {overall_skills}
+- Activity types seen: {sorted(all_activity_types)}
+- Total commits: {total_commits}, tests changed: {total_tests}
+- Busiest period: {top_period}
+
+PERIOD-BY-PERIOD DATA:
+{json.dumps(period_summaries, indent=2)}
+
+FULL TIMELINE (for reference):
+{json.dumps(timeline, indent=2)}
+
+YOUR TASK: Create a JSON summary that helps this developer understand their work. Output these exact keys:
+
+{{
+  "overview": "3-5 sentences describing the project phases. Start with what the project seems to be about, then describe how the work evolved (e.g., 'setup phase' -> 'core features' -> 'testing/polish'). Be specific about WHAT was built, not just that 'work happened'.",
+
+  "timeline": [
+    "In <period>, you focused on <focus area>, with commits like '<actual commit message>' and changes to <actual file>.",
+    "In <period>, testing ramped up with <N> test files changed, focusing on <skill or area>.",
+    "...3-6 bullets, one per significant period"
+  ],
+
+  "skills_focus": [
+    "<Skill>: <how it was used, e.g., 'grew throughout Oct-Nov with integration tests for LLM routes'>",
+    "<Skill>: <concrete observation>",
+    "...3-5 bullets for the most-used skills"
+  ],
+
+  "suggested_next_steps": [
+    "Consider <actionable suggestion based on gaps>, e.g., 'adding performance benchmarks' or 'earlier testing in the cycle'",
+    "...2-3 kind, actionable bullets"
+  ]
+}}
+
+GROUNDING RULES (your response will be validated):
+1. ONLY use numbers that appear in the input: commits, tests_changed, evidence_count, skill_count.
+2. ONLY mention skills that appear in "top_skills" for that period. If a skill IS listed, do NOT say it's missing or absent.
+3. ONLY mention languages from period_languages. Ignore tiny/noise languages.
+4. Quote actual commit messages from sample_commits. Do not invent commit messages.
+5. Reference actual files from sample_files. Do not invent file paths.
+6. If a period has 0 commits, say "light activity" or "setup", don't invent details.
+7. Do NOT use phrases like "N instances of Python" or made-up percentages.
+8. Do NOT say "no evidence of X" or "missing X" if X appears in that period's skills.
+9. suggested_next_steps should be KIND and ACTIONABLE, not critical. Focus on growth opportunities.
+10. For skills_focus, describe HOW the skill was used, not just that it exists.
+11. It's okay to say "more testing in November than September" if tests_changed supports it.
+
+FORBIDDEN:
+- Invented numbers, statistics, or percentages
+- "significant growth" / "substantial" / "dominant" without clear data backing
+- Claiming a skill is missing when it appears in top_skills
+- Generic filler like "broadening of expertise" or "expanding horizons"
+- Phrases like "440 instances" or any count not in the input
+
+Respond with valid JSON only. No markdown fences."""
+
+    return prompt
 
 
 def summarize_skill_progress(
@@ -176,15 +314,21 @@ def summarize_skill_progress(
     except ValueError as exc:
         validation_warning = str(exc)
 
-    for key in ("narrative", "milestones", "strengths", "gaps"):
-        if key not in parsed:
-            raise ValueError(f"Missing key in model response: {key}")
+    # Accept both new and legacy field names
+    overview = parsed.get("overview") or parsed.get("narrative", "")
+    timeline_bullets = parsed.get("timeline") or parsed.get("milestones", [])
+    skills_focus = parsed.get("skills_focus") or parsed.get("strengths", [])
+    next_steps = parsed.get("suggested_next_steps") or parsed.get("gaps", [])
+
+    # Require at least the overview/narrative
+    if not overview:
+        raise ValueError("Missing 'overview' or 'narrative' in model response")
 
     return SkillProgressSummary(
-        narrative=str(parsed.get("narrative", "")).strip(),
-        milestones=[str(x).strip() for x in parsed.get("milestones", []) if str(x).strip()],
-        strengths=[str(x).strip() for x in parsed.get("strengths", []) if str(x).strip()],
-        gaps=[str(x).strip() for x in parsed.get("gaps", []) if str(x).strip()],
+        overview=str(overview).strip(),
+        timeline=[str(x).strip() for x in timeline_bullets if str(x).strip()],
+        skills_focus=[str(x).strip() for x in skills_focus if str(x).strip()],
+        suggested_next_steps=[str(x).strip() for x in next_steps if str(x).strip()],
         validation_warning=validation_warning,
     )
 
@@ -329,9 +473,14 @@ _KNOWN_LANGUAGES = {
 
 
 def _validate_grounding(timeline: List[Dict[str, Any]], parsed: Dict[str, Any]) -> None:
-    """Reject summaries that invent numbers or languages not present in input."""
+    """Reject summaries that invent numbers, languages, or contradict input data."""
     allowed_numbers = set()
     allowed_languages = set()
+    all_skills = set()  # Track all skills mentioned across periods
+    
+    # Aggregate language counts to filter noise
+    total_lang_counts: Dict[str, int] = {}
+    
     for entry in timeline or []:
         # Extract years from period_label (e.g., "2025-08" -> 2025)
         period_label = entry.get("period_label") or entry.get("period") or ""
@@ -339,29 +488,43 @@ def _validate_grounding(timeline: List[Dict[str, Any]], parsed: Dict[str, Any]) 
             year_match = re.match(r"(\d{4})", period_label)
             if year_match:
                 allowed_numbers.add(int(year_match.group(1)))
-        
+
         for key in ("commits", "tests_changed", "skill_count", "evidence_count"):
             val = entry.get(key)
             if isinstance(val, int):
                 allowed_numbers.add(val)
-        # capture counts inside languages/period_languages
+        
+        # Capture counts inside languages/period_languages
         for lang_dict_key in ("languages", "period_languages"):
             lang_dict = entry.get(lang_dict_key)
             if isinstance(lang_dict, dict):
-                allowed_languages.update({k.lower() for k in lang_dict.keys()})
-                for count in lang_dict.values():
+                for lang, count in lang_dict.items():
+                    total_lang_counts[lang.lower()] = total_lang_counts.get(lang.lower(), 0) + count
                     if isinstance(count, int):
                         allowed_numbers.add(count)
-        # counts of commit messages/files
+        
+        # Capture skills for contradiction checking
+        for skill in entry.get("top_skills") or []:
+            all_skills.add(skill.lower())
+        
+        # Counts of commit messages/files
         for list_key in ("commit_messages", "top_files"):
             lst = entry.get(list_key)
             if isinstance(lst, list):
                 allowed_numbers.add(len(lst))
+    
+    # Filter noise languages (< 5% of total) from allowed set
+    total_files = sum(total_lang_counts.values()) if total_lang_counts else 0
+    for lang, count in total_lang_counts.items():
+        if total_files == 0 or count / total_files >= 0.05 or count >= 3:
+            allowed_languages.add(lang)
+    
     # Aggregate totals from timeline
     total_commits = sum((entry.get("commits") or 0) for entry in timeline or [])
     total_tests = sum((entry.get("tests_changed") or 0) for entry in timeline or [])
     total_evidence = sum((entry.get("evidence_count") or 0) for entry in timeline or [])
     allowed_numbers.update({total_commits, total_tests, total_evidence})
+    
     # Track languages per period for dominance checks
     per_period_lang_sets: List[set[str]] = []
     for entry in timeline or []:
@@ -407,6 +570,21 @@ def _validate_grounding(timeline: List[Dict[str, Any]], parsed: Dict[str, Any]) 
                     raise ValueError(f"Model hallucinated language {lang} in {field_name}")
             if total_commits > 0 and re.search(r"\bno commits\b", text, flags=re.IGNORECASE):
                 raise ValueError("Model claimed no commits despite commit data")
+            
+            # Check for contradictions: claiming skill is missing when it's in top_skills
+            for skill in all_skills:
+                # Look for patterns like "no evidence of X", "missing X", "lack of X", "no X"
+                contradiction_patterns = [
+                    rf"\bno\s+(?:evidence\s+of\s+)?{re.escape(skill)}\b",
+                    rf"\bmissing\s+{re.escape(skill)}\b",
+                    rf"\black\s+of\s+{re.escape(skill)}\b",
+                    rf"\babsent\s+{re.escape(skill)}\b",
+                    rf"\bno\s+{re.escape(skill)}\s+(?:skills?|evidence|work)\b",
+                ]
+                for pattern in contradiction_patterns:
+                    if re.search(pattern, text, flags=re.IGNORECASE):
+                        raise ValueError(f"Model claimed '{skill}' is missing but it appears in top_skills")
+            
             for lang in langs:
                 if lang_intersection and lang not in lang_intersection and re.search(
                     r"(dominant|primary|main)\s+language.*(all|across)\s+periods",
@@ -415,7 +593,8 @@ def _validate_grounding(timeline: List[Dict[str, Any]], parsed: Dict[str, Any]) 
                 ):
                     raise ValueError(f"Model overstated {lang} dominance across all periods")
 
-    _validate_field(parsed.get("narrative", ""), "narrative")
-    _validate_field(parsed.get("milestones", []), "milestones")
-    _validate_field(parsed.get("strengths", []), "strengths")
-    _validate_field(parsed.get("gaps", []), "gaps")
+    # Validate both old and new field names
+    _validate_field(parsed.get("overview", "") or parsed.get("narrative", ""), "overview")
+    _validate_field(parsed.get("timeline", []) or parsed.get("milestones", []), "timeline")
+    _validate_field(parsed.get("skills_focus", []) or parsed.get("strengths", []), "skills_focus")
+    _validate_field(parsed.get("suggested_next_steps", []) or parsed.get("gaps", []), "suggested_next_steps")

@@ -33,7 +33,7 @@ def _make_metrics() -> ProjectContributionMetrics:
         {"month": "2024-01", "commits": 4, "contributors": [{"email": "me@example.com", "commits": 4}]},
         {"month": "2024-02", "commits": 6, "contributors": [{"email": "me@example.com", "commits": 6}]},
     ]
-    metrics.total_contributors = 2
+    metrics.total_contributors = 1  # Consistent with timeline having 1 unique contributor
     metrics.languages_detected = {"Python", "JavaScript"}
     return metrics
 
@@ -71,7 +71,8 @@ def test_build_skill_progression_merges_skills_and_commits():
     assert jan.top_skills == ["Testing", "API Design"]
     # Languages now come only from per-period data; fallback to repo-wide stats is removed.
     assert jan.languages == {}
-    assert jan.contributors == 2
+    # Per-month contributor count: timeline has 1 contributor per month
+    assert jan.contributors == 1
 
     assert feb.period_label == "2024-02"
     assert feb.commits == 6
@@ -143,3 +144,75 @@ def test_build_skill_progression_prefers_period_languages(monkeypatch):
     assert period.commit_messages == ["Add API handler"]
     assert period.top_files == ["src/api.py", "web/app.js"]
     assert "tests" not in period.activity_types  # no test paths/messages present
+
+
+def test_build_skill_progression_uses_per_month_contributors():
+    """[2025-12] Verify that per-month contributor counts from timeline are used."""
+    metrics = ProjectContributionMetrics(
+        project_path="proj",
+        project_type="collaborative",
+        total_commits=10,
+        total_contributors=5,  # Repo-wide total
+        overall_activity_breakdown=ActivityBreakdown(),
+    )
+    metrics.timeline = [
+        {
+            "month": "2024-01",
+            "commits": 4,
+            "contributors": 3,  # Per-month count from git_repo
+            "languages": {"Python": 10},
+        },
+        {
+            "month": "2024-02",
+            "commits": 6,
+            "contributors": 2,  # Different per-month count
+            "languages": {"Python": 15},
+        },
+    ]
+    chronological = [
+        {"period": "2024-01", "skills_exercised": ["Testing"], "skill_count": 1, "evidence_count": 1},
+        {"period": "2024-02", "skills_exercised": ["APIs"], "skill_count": 1, "evidence_count": 1},
+    ]
+    
+    progression = build_skill_progression(chronological, metrics, author_emails=None)
+    
+    assert len(progression.timeline) == 2
+    jan, feb = progression.timeline
+    
+    # Should use per-month contributor counts, not repo-wide total
+    assert jan.contributors == 3
+    assert feb.contributors == 2
+
+
+def test_build_skill_progression_author_filtered_uses_timeline_contributors():
+    """[2025-12] Verify that author-filtered timeline uses per-month contributors."""
+    metrics = ProjectContributionMetrics(
+        project_path="proj",
+        project_type="collaborative",
+        total_commits=10,
+        total_contributors=5,
+        overall_activity_breakdown=ActivityBreakdown(),
+    )
+    # When author_emails is set, timeline is pre-filtered by contribution_analyzer
+    metrics.timeline = [
+        {
+            "month": "2024-01",
+            "commits": 4,
+            "contributors": 1,  # Single author after filtering
+            "languages": {"Python": 10},
+        },
+    ]
+    chronological = [
+        {"period": "2024-01", "skills_exercised": ["Testing"], "skill_count": 1, "evidence_count": 1},
+    ]
+    
+    progression = build_skill_progression(
+        chronological, metrics, author_emails={"me@example.com"}
+    )
+    
+    assert len(progression.timeline) == 1
+    period = progression.timeline[0]
+    
+    # Should use the contributors value from timeline, not hardcode to 1
+    assert period.contributors == 1
+    assert period.commits == 4
