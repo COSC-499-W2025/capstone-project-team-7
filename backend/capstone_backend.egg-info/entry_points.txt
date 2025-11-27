@@ -1,2 +1,0 @@
-[console_scripts]
-parse = src.cli.parse_zip:main
