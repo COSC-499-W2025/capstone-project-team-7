@@ -221,5 +221,6 @@ def test_summarize_skill_progress_rejects_absent_json():
     def fake_model(prompt: str) -> str:
         return "No JSON here"
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as err:
         summarize_skill_progress(timeline, fake_model)
+    assert "raw_snippet" in str(err.value)
