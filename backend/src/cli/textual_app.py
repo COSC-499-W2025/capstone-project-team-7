@@ -18,11 +18,6 @@ import time
 from typing import Optional, Dict, Any, List, Sequence, Type
 import os
 import weakref
-try:
-    from dotenv import load_dotenv
-except Exception:  # pragma: no cover - optional dependency
-    def load_dotenv(*args, **kwargs):  # type: ignore
-        return False
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -56,33 +51,15 @@ from .services.contribution_analysis_service import (
     ContributionAnalysisService,
     ContributionAnalysisError,
 )
-from .services.duplicate_detection_service import (
-    DuplicateDetectionService,
-)
 from .services.resume_generation_service import (
     ResumeGenerationError,
     ResumeGenerationService,
-    ResumeItem,
 )
-from .services.resume_storage_service import (
-    ResumeStorageError,
-    ResumeStorageService,
-)
-from .state import (
-    AIState,
-    ConsentState,
-    PreferencesState,
-    ProjectsState,
-    ResumesState,
-    ScanState,
-    SessionState,
-)
+from .state import AIState, ConsentState, PreferencesState, ProjectsState, ScanState, SessionState
 from .screens import (
     AIKeyCancelled,
     AIKeyScreen,
     AIKeySubmitted,
-    AIResultAction,
-    AIResultsScreen,
     ConsentAction,
     ConsentScreen,
     LoginCancelled,
@@ -101,12 +78,7 @@ from .screens import (
     ProjectDeleted,         
     ProjectInsightsCleared,
     ProjectsScreen,       
-    ProjectViewerScreen,
-    ResumeDeleted,
-    ResumeSelected,
-    ResumesScreen,
-    ResumeViewerScreen,
-    SkillProgressScreen,
+    ProjectViewerScreen,  
 )
 from ..cli.display import render_language_table
 from ..scanner.errors import ParserError
@@ -123,7 +95,6 @@ from ..auth import consent as consent_storage
 from ..local_analysis.git_repo import analyze_git_repo
 from ..local_analysis.media_analyzer import MediaAnalyzer
 from ..local_analysis.document_analyzer import DocumentAnalyzer, DocumentAnalysisResult
-from ..analyzer.llm.skill_progress_summary import SkillProgressSummary
 
 # Optional PDF analysis dependencies
 try:
@@ -207,13 +178,10 @@ class PortfolioTextualApp(App):
         ("Account", "Sign in to Supabase or sign out of the current session."),
         ("Run Portfolio Scan", "Prepare an archive or directory and run the portfolio scan workflow."),
         ("View Saved Projects", "Browse and view previously saved project scans."), 
-        ("View Saved Resumes", "Browse generated resume snippets saved in Supabase."),
         ("View Last Analysis", "Reopen the results from the most recent scan without rescanning."),
         ("Settings & User Preferences", "Manage scan profiles, file filters, and other preferences."),
         ("Consent Management", "Review and update required and external consent settings."),
         ("AI-Powered Analysis", "Trigger AI-based analysis for recent scan results (requires consent)."),
-        ("View Last AI Analysis", "View the results from the most recent AI analysis."),
-        ("Skill progression", "View skill progression timeline and optionally generate an AI summary."),
         ("Exit", "Quit the Textual interface."),
     ]
     BINDINGS = [
@@ -232,7 +200,6 @@ class PortfolioTextualApp(App):
         super().__init__(*args, **kwargs)
         self._session_state = SessionState()
         self._projects_state = ProjectsState()
-        self._resumes_state = ResumesState()
         self._consent_state = ConsentState()
         self._preferences_state = PreferencesState()
         self._scan_state = ScanState()
@@ -244,11 +211,8 @@ class PortfolioTextualApp(App):
         self._code_service = CodeAnalysisService()
         self._skills_service = SkillsAnalysisService()
         self._contribution_service = ContributionAnalysisService()
-        self._duplicate_service = DuplicateDetectionService()
         self._resume_service = ResumeGenerationService()
         self._projects_service: Optional[ProjectsService] = None
-        self._resume_storage_service: Optional[ResumeStorageService] = None
-        self._media_analyzer: Optional[MediaAnalyzer] = None
         try:
             self._document_analyzer = DocumentAnalyzer()
             self._document_analysis_error: Optional[str] = None
@@ -258,20 +222,16 @@ class PortfolioTextualApp(App):
         self._preferences_screen: Optional[PreferencesScreen] = None
         self._consent_screen: Optional[ConsentScreen] = None
         self._scan_results_screen: Optional[ScanResultsScreen] = None
-        self._resumes_screen: Optional[ResumesScreen] = None
-        self._init_resume_storage_service()
-        self._init_media_analyzer()
+        self._media_analyzer = MediaAnalyzer()
         self._media_vision_ready = media_vision_capabilities_enabled()
         self._debug_log_path = Path.home() / ".textual_ai_debug.log"
         self._ai_output_path = Path.cwd() / "ai-analysis-latest.md"
-        self._ai_config_path = Path.home() / ".portfolio_cli_ai_config.json"
         self._scan_progress_bar: Optional[ProgressBar] = None
         self._scan_progress_label: Optional[Static] = None
         self._debug_log("PortfolioTextualApp initialized")
         self._worker_pool: Optional[ThreadPoolExecutor] = None
         self._thread_debug_enabled = bool(os.getenv("TEXTUAL_CLI_DEBUG_THREADS"))
         atexit.register(self._shutdown_worker_pool)
-        self._load_ai_config()
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -352,16 +312,12 @@ class PortfolioTextualApp(App):
             detail_panel.update(self._render_last_scan_detail())
         elif label == "View Saved Projects":  # ✨ NEW
             detail_panel.update(self._render_saved_projects_detail())
-        elif label == "View Saved Resumes":
-            detail_panel.update(self._render_saved_resumes_detail())
         elif label == "Settings & User Preferences":
             detail_panel.update(self._render_preferences_detail())
         elif label == "Consent Management":
             detail_panel.update(self._render_consent_detail())
         elif label == "AI-Powered Analysis":
             detail_panel.update(self._render_ai_detail())
-        elif label == "Skill progression":
-            detail_panel.update(self._render_skill_progress_detail())
         else:
             detail_panel.update(
                 f"[b]{label}[/b]\n\n{description}\n\nPress Enter to continue or select another option."
@@ -381,13 +337,6 @@ class PortfolioTextualApp(App):
             return
         if label == "AI-Powered Analysis":
             self._handle_ai_analysis_selection()
-            return
-        if label == "Skill progression":
-            asyncio.create_task(self._show_skill_progress_modal())
-            return
-        
-        if label == "View Last AI Analysis":
-            asyncio.create_task(self._view_saved_ai_analysis())
             return
 
         if label == "Run Portfolio Scan":
@@ -433,14 +382,6 @@ class PortfolioTextualApp(App):
             self._show_status("Loading saved projects…", "info")
             asyncio.create_task(self._load_and_show_projects())
             return
-        if label == "View Saved Resumes":
-            if not self._session_state.session:
-                self._show_status("Sign in to view saved resumes.", "warning")
-                self._update_detail(index)
-                return
-            self._show_status("Loading saved resumes…", "info")
-            asyncio.create_task(self._load_and_show_resumes())
-            return
 
         self._show_status(f"{label} is coming soon. Hang tight!", "info")
 
@@ -480,336 +421,6 @@ class PortfolioTextualApp(App):
             return
 
         self._start_ai_analysis()
-
-    def _handle_skill_progress_summary(self) -> None:
-        """
-        Generate a skill progression summary on demand (no UI wiring yet).
-        """
-        try:
-            timeline = self._build_skill_progress_timeline()
-        except Exception as exc:  # pragma: no cover - defensive
-            self._show_status(f"Cannot build skills timeline: {exc}", "error")
-            return
-
-        if not timeline:
-            self._show_status("No skill progression timeline available.", "warning")
-            return
-
-        self._show_status("Generating skill progress summary…", "info")
-        try:
-            summary = self._generate_skill_progress_summary(timeline)
-        except RuntimeError:
-            self._show_status("AI client not configured. Provide an API key first.", "warning")
-            return
-        except Exception as exc:
-            friendly = self._format_skill_progress_error(exc)
-            self._show_status(friendly, "warning")
-            return
-
-        # Store results in state for future UI rendering/export
-        self._persist_skill_progress_summary(summary)
-        self._show_status("Skill progress summary ready.", "success")
-
-    def _build_skill_progress_timeline(self) -> Optional[List[Dict[str, Any]]]:
-        """
-        Build or reuse the skill progress timeline from existing analysis.
-        """
-        skills_progress = self._scan_state.skills_progress or {}
-        timeline = skills_progress.get("timeline") if isinstance(skills_progress, dict) else None
-        if timeline:
-            return timeline or []
-
-        skills_progress = self._skills_service.build_skill_progression(
-            contribution_metrics=self._scan_state.contribution_metrics,
-            author_emails=self._author_email_filter(),
-        )
-        if not skills_progress:
-            return None
-
-        self._scan_state.skills_progress = skills_progress
-        return skills_progress.get("timeline") or []
-
-    def _generate_skill_progress_summary(
-        self, timeline: List[Dict[str, Any]]
-    ) -> SkillProgressSummary:
-        """
-        Call the LLM to summarize a skill progression timeline.
-        """
-        client = self._ai_state.client
-        if client is None:
-            raise RuntimeError("AI client not configured")
-
-        def _call_model(prompt: str) -> str:
-            params = {
-                "messages": [{"role": "user", "content": prompt}],
-                "model": client.DEFAULT_MODEL if hasattr(client, "DEFAULT_MODEL") else None,
-                "max_tokens": 800,
-                "temperature": 0.0,
-            }
-            # Prefer JSON mode if supported by the client
-            try:
-                return client._make_llm_call(  # type: ignore[attr-defined]
-                    **{**params, "response_format": {"type": "json_object"}}
-                )
-            except TypeError:
-                return client._make_llm_call(  # type: ignore[attr-defined]
-                    **params
-                )
-
-        try:
-            return self._skills_service.summarize_skill_progression(timeline, _call_model)
-        except ValueError as exc:
-            raise RuntimeError("AI response was not valid JSON; please retry the summary.") from exc
-
-    def _persist_skill_progress_summary(self, summary: SkillProgressSummary) -> None:
-        """Persist a summary into scan state for reuse/export."""
-        if not self._scan_state.skills_progress:
-            self._scan_state.skills_progress = {}
-        self._scan_state.skills_progress["summary"] = {
-            "narrative": summary.narrative,
-            "milestones": summary.milestones,
-            "strengths": summary.strengths,
-            "gaps": summary.gaps,
-        }
-
-    def _hydrate_skill_progress_summary(
-        self, summary_data: Any
-    ) -> Optional[SkillProgressSummary]:
-        """Convert stored summary dicts into SkillProgressSummary objects."""
-        if isinstance(summary_data, SkillProgressSummary):
-            return summary_data
-        if isinstance(summary_data, dict):
-            return SkillProgressSummary(
-                narrative=str(summary_data.get("narrative", "")).strip(),
-                milestones=[str(x).strip() for x in summary_data.get("milestones", []) if str(x).strip()],
-                strengths=[str(x).strip() for x in summary_data.get("strengths", []) if str(x).strip()],
-                gaps=[str(x).strip() for x in summary_data.get("gaps", []) if str(x).strip()],
-            )
-        return None
-
-    async def _prepare_skill_progress(
-        self,
-    ) -> tuple[Optional[List[Dict[str, Any]]], Optional[SkillProgressSummary], Optional[str]]:
-        """
-        Ensure skill progression data is available and optionally generate an AI summary.
-
-        Returns:
-            timeline, summary (if available), summary note (when summary missing).
-        """
-        skills_progress = self._scan_state.skills_progress or {}
-        timeline = skills_progress.get("timeline") if isinstance(skills_progress, dict) else None
-
-        if not timeline:
-            if self._scan_state.code_file_count <= 0:
-                return None, None, "No skill progression timeline available. Run a scan with source files."
-            if self._scan_state.target is None:
-                return None, None, "Run a portfolio scan before viewing skill progression."
-
-            if self._scan_state.skills_analysis_result is None:
-                try:
-                    skills = await asyncio.to_thread(self._perform_skills_analysis)
-                except SkillsAnalysisError as exc:
-                    self._scan_state.skills_analysis_error = str(exc)
-                    return None, None, f"Skills analysis failed: {exc}"
-                self._scan_state.skills_analysis_result = skills
-                self._scan_state.skills_analysis_error = None
-
-            if self._scan_state.contribution_metrics is None and (
-                self._scan_state.code_file_count > 0 or self._scan_state.git_repos
-            ):
-                try:
-                    contribution_metrics = await asyncio.to_thread(self._perform_contribution_analysis)
-                    self._scan_state.contribution_metrics = contribution_metrics
-                    self._scan_state.contribution_analysis_error = None
-                except Exception as exc:
-                    # Soft-fail on contribution metrics; timeline can still render without commits
-                    self._scan_state.contribution_analysis_error = str(exc)
-
-            skills_progress = self._skills_service.build_skill_progression(
-                contribution_metrics=self._scan_state.contribution_metrics,
-                author_emails=self._author_email_filter(),
-            )
-            if skills_progress:
-                self._scan_state.skills_progress = skills_progress
-                timeline = skills_progress.get("timeline")
-
-        if not timeline:
-            return None, None, "No skill progression timeline available."
-
-        summary_data = None
-        if isinstance(self._scan_state.skills_progress, dict):
-            summary_data = self._scan_state.skills_progress.get("summary")
-
-        summary = self._hydrate_skill_progress_summary(summary_data)
-        summary_note = None
-        if not summary:
-            if self._ai_state.client:
-                try:
-                    summary = await asyncio.to_thread(self._generate_skill_progress_summary, timeline)
-                    self._persist_skill_progress_summary(summary)
-                except Exception as exc:
-                    summary_note = self._format_skill_progress_error(exc)
-            else:
-                summary_note = "Add an AI key to generate a narrative summary."
-
-        return timeline or [], summary, summary_note
-
-    def _debug_log_timeline(self, timeline: List[Dict[str, Any]]) -> None:
-        """Emit a compact timeline snapshot for troubleshooting."""
-        try:
-            preview = [
-                {
-                    "period": entry.get("period_label") or entry.get("period"),
-                    "commits": entry.get("commits"),
-                    "tests_changed": entry.get("tests_changed"),
-                    "skills": entry.get("top_skills"),
-                    "languages": list((entry.get("languages") or {}).keys()),
-                    "contributors": entry.get("contributors"),
-                }
-                for entry in timeline[:6]
-            ]
-            self._debug_log(f"[SkillProgress] Timeline preview: {preview}")
-        except Exception:
-            pass
-
-    def _author_email_filter(self) -> Optional[set[str]]:
-        """
-        Optional git author email filter for per-user timelines.
-
-        Controlled via env PORTFOLIO_USER_EMAIL or TEXTUAL_SKILL_PROGRESS_EMAILS (comma-separated).
-        """
-        try:
-            load_dotenv()
-        except Exception:
-            pass
-        raw = (
-            os.environ.get("PORTFOLIO_USER_EMAIL")
-            or os.environ.get("TEXTUAL_SKILL_PROGRESS_EMAILS")
-            or ""
-        )
-        emails = {email.strip().lower() for email in raw.split(",") if email.strip()}
-        return emails or None
-
-    def _preferred_user_email(self) -> Optional[str]:
-        """Resolve the primary email used for contribution-aware scoring."""
-        session_email = None
-        try:
-            session_email = self._session_state.session.email if self._session_state.session else None
-        except Exception:
-            session_email = None
-        if session_email:
-            return session_email.strip().lower()
-
-        emails = self._author_email_filter()
-        if emails:
-            # Deterministic ordering for tests and reproducibility
-            return sorted(emails)[0]
-        return None
-
-    def _begin_progress(self, message: str):
-        """Show the shared progress bar/label for background work."""
-        bar = getattr(self, "_scan_progress_bar", None)
-        label = getattr(self, "_scan_progress_label", None)
-        if bar:
-            try:
-                bar.display = True
-                bar.update(progress=0)
-            except Exception:
-                pass
-        if label:
-            try:
-                label.remove_class("hidden")
-                label.update(message)
-            except Exception:
-                pass
-
-        def _cleanup():
-            if bar:
-                try:
-                    bar.update(progress=0)
-                    bar.display = False
-                except Exception:
-                    pass
-            if label:
-                try:
-                    label.add_class("hidden")
-                    label.update("")
-                except Exception:
-                    pass
-
-        return _cleanup
-
-    @staticmethod
-    def _format_skill_progress_error(exc: Exception) -> str:
-        """User-facing error string for failed AI summaries."""
-        message = str(exc).strip()
-        if "valid JSON" in message or "Model did not return" in message:
-            # Surface a short raw snippet when available for debugging malformed outputs.
-            snippet = ""
-            if "raw_snippet=" in message:
-                try:
-                    snippet = message.split("raw_snippet=", 1)[1].strip()
-                except Exception:
-                    snippet = ""
-            detail = f" Debug hint: {snippet}" if snippet else f" Debug detail: {message}"
-            return f"AI summary unavailable: the response was not valid JSON.{detail} Please retry."
-        return f"AI summary unavailable: {message or 'unexpected error'}"
-
-    def _format_skill_progress_output(
-        self,
-        timeline: List[Dict[str, Any]],
-        summary: Optional[SkillProgressSummary] = None,
-        summary_note: Optional[str] = None,
-    ) -> str:
-        """Format timeline plus optional AI summary for display."""
-        lines: List[str] = ["[b]Skill progression timeline[/b]"]
-        for entry in timeline or []:
-            period = entry.get("period_label") or entry.get("period") or "Unknown period"
-            commits = entry.get("commits", 0) or 0
-            skill_count = entry.get("skill_count", 0) or 0
-            evidence_count = entry.get("evidence_count", 0) or 0
-            tests_changed = entry.get("tests_changed", 0) or 0
-            contributors = entry.get("contributors")
-            lines.append(
-                f"{period} — {commits} commits, {skill_count} skills, {evidence_count} evidence, {tests_changed} tests touched"
-            )
-            if contributors:
-                lines.append(f"  • Contributors in period: {contributors}")
-            top_skills = entry.get("top_skills") or []
-            if top_skills:
-                lines.append(f"  • Top skills: {', '.join(top_skills)}")
-            languages = entry.get("languages") or {}
-            if languages:
-                lang_list = ", ".join(sorted(languages.keys()))
-                lines.append(f"  • Languages: {lang_list}")
-            lines.append("")
-
-        while lines and not lines[-1]:
-            lines.pop()
-
-        if summary or summary_note:
-            lines.append("")
-            lines.append("[b]AI summary[/b]")
-
-        if summary:
-            if summary.narrative:
-                lines.append(summary.narrative)
-                lines.append("")
-            if summary.milestones:
-                lines.append("Milestones:")
-                lines.extend(f"  • {item}" for item in summary.milestones)
-            if summary.strengths:
-                lines.append("")
-                lines.append("Strengths:")
-                lines.extend(f"  • {item}" for item in summary.strengths)
-            if summary.gaps:
-                lines.append("")
-                lines.append("Gaps:")
-                lines.extend(f"  • {item}" for item in summary.gaps)
-        elif summary_note:
-            lines.append(summary_note)
-
-        return "\n".join(lines).rstrip()
 
     def _show_status(self, message: str, tone: str, *, log_to_stderr: bool = True) -> None:
         if log_to_stderr:
@@ -1099,10 +710,8 @@ class PortfolioTextualApp(App):
         self._scan_state.skills_analysis_error = None
         self._scan_state.contribution_metrics = None
         self._scan_state.contribution_analysis_error = None
-        self._scan_state.duplicate_analysis_result = None
         self._scan_state.resume_item_path = None
         self._scan_state.resume_item_content = None
-        self._scan_state.resume_item = None
         
         # Detect projects within scanned directory
         try:
@@ -1197,27 +806,21 @@ class PortfolioTextualApp(App):
         if self._scan_state.code_file_count:
             actions.append(("code", "Code analysis"))
             actions.append(("skills", "Skills analysis"))
-        if self._scan_state.code_file_count or (
-            self._scan_state.skills_progress and self._scan_state.skills_progress.get("timeline")
-        ):
-            actions.append(("skill_progress", "Skill progression"))
         if self._scan_state.git_repos:
             actions.append(("git", "Run Git analysis"))
         # Contribution metrics available for all projects (Git or file-based)
         if self._scan_state.code_file_count > 0 or self._scan_state.git_repos:
             actions.append(("contributions", "Contribution metrics"))
         actions.append(("resume", "Generate resume item"))
-        actions.append(("duplicates", "Find duplicate files"))
         actions.append(("export", "Export JSON report"))
 
         if self._scan_state.pdf_candidates:
-            label = (
-                "View PDF summaries"
-                if self._scan_state.pdf_summaries
-                else "Analyze PDF files"
-            )
-            actions.append(("pdf", label))
-            self._debug_log(f"Added PDF action: {label}")
+          label = (
+            "View PDF summaries"
+            if self._scan_state.pdf_summaries
+            else "Analyze PDF files"
+           )
+          actions.append(("pdf", label))
 
         if self._scan_state.document_candidates:
             actions.append(("documents", "Document analysis"))
@@ -1297,9 +900,6 @@ class PortfolioTextualApp(App):
 
         if action == "skills":
             await self._handle_skills_analysis_action(screen)
-            return
-        if action == "skill_progress":
-            await self._handle_skill_progress_action(screen)
             return
         
         if action == "contributions":
@@ -1425,10 +1025,6 @@ class PortfolioTextualApp(App):
             screen.set_message("Media insights ready.", tone="success")
             return
 
-        if action == "duplicates":
-            await self._handle_duplicate_detection_action(screen)
-            return
-
         screen.set_message("Unsupported action.", tone="error")
 
     def _collect_git_analysis(self) -> List[dict]:
@@ -1500,8 +1096,6 @@ class PortfolioTextualApp(App):
         if self._scan_state.media_analysis is not None:
             return self._scan_state.media_analysis
         if not self._scan_state.parse_result:
-            return {}
-        if not self._media_analyzer:
             return {}
         analysis = self._media_analyzer.analyze(self._scan_state.parse_result.files)
         self._scan_state.media_analysis = analysis
@@ -1763,36 +1357,6 @@ class PortfolioTextualApp(App):
         screen.display_output(full_output, context="Skills analysis")
         screen.set_message("Skills analysis ready.", tone="success")
     
-    async def _handle_skill_progress_action(self, screen: ScanResultsScreen) -> None:
-        """Show the skill progression timeline and optional AI summary."""
-        screen.set_message("Building skill progression timeline…", tone="info")
-        timeline, summary, summary_note = await self._prepare_skill_progress()
-        if not timeline:
-            message = summary_note or "No skill progression timeline available."
-            tone = "warning"
-            if message.startswith("Skills analysis failed"):
-                tone = "error"
-            screen.display_output(message, context="Skill progression")
-            screen.set_message(message, tone=tone)
-            return
-
-        self._debug_log_timeline(timeline)
-
-        if not summary and self._ai_state.client:
-            screen.set_message("Generating AI summary…", tone="info")
-
-        output = self._format_skill_progress_output(timeline, summary, summary_note)
-        screen.display_output(output, context="Skill progression")
-
-        message = "Skill progression ready."
-        tone = "success"
-        if summary:
-            message = "Skill progression and AI summary ready."
-        elif summary_note:
-            message = f"Skill progression ready. {summary_note}"
-            tone = "warning" if summary_note.startswith("AI summary unavailable") else "info"
-        screen.set_message(message, tone=tone)
-    
     async def _handle_contribution_analysis_action(self, screen: ScanResultsScreen) -> None:
         """Handle contribution analysis action from the scan results screen."""
         if not self._scan_state.git_repos:
@@ -1840,43 +1404,6 @@ class PortfolioTextualApp(App):
         screen.display_output(full_output, context="Contribution analysis")
         screen.set_message("Contribution analysis ready.", tone="success")
 
-    async def _handle_duplicate_detection_action(self, screen: ScanResultsScreen) -> None:
-        """Handle duplicate file detection action from the scan results screen."""
-        if self._scan_state.parse_result is None:
-            screen.display_output(
-                "No scan data available. Run a scan first.", context="Duplicate detection"
-            )
-            screen.set_message("No scan data available.", tone="warning")
-            return
-
-        if self._scan_state.duplicate_analysis_result is None:
-            screen.set_message("Analyzing files for duplicates…", tone="info")
-            try:
-                result = await asyncio.to_thread(
-                    self._duplicate_service.analyze_duplicates,
-                    self._scan_state.parse_result,
-                )
-                self._scan_state.duplicate_analysis_result = result
-            except Exception as exc:
-                screen.display_output(
-                    f"Failed to analyze duplicates: {exc}", context="Duplicate detection"
-                )
-                screen.set_message("Duplicate detection failed.", tone="error")
-                return
-
-        result = self._scan_state.duplicate_analysis_result
-        output = self._duplicate_service.format_duplicate_details(result)
-        screen.display_output(output, context="Duplicate detection")
-        
-        if result.duplicate_groups:
-            screen.set_message(
-                f"Found {result.unique_files_duplicated} sets of duplicate files "
-                f"({self._duplicate_service._format_size(result.total_wasted_bytes)} wasted).",
-                tone="warning",
-            )
-        else:
-            screen.set_message("No duplicate files found.", tone="success")
-
     async def _handle_resume_generation_action(self, screen: ScanResultsScreen) -> None:
         """Generate and display a resume-ready project summary."""
         if self._scan_state.parse_result is None:
@@ -1899,9 +1426,6 @@ class PortfolioTextualApp(App):
                 except Exception:
                     pass
 
-        await self._ensure_document_analysis_ready()
-        await self._ensure_pdf_summaries_ready()
-
         try:
             resume_item = await asyncio.to_thread(
                 self._resume_service.generate_resume_item,
@@ -1911,10 +1435,6 @@ class PortfolioTextualApp(App):
                 code_analysis_result=self._scan_state.code_analysis_result,
                 contribution_metrics=self._scan_state.contribution_metrics,
                 git_analysis=git_analysis,
-                detected_projects=self._scan_state.detected_projects,
-                skills=self._scan_state.skills_analysis_result,
-                document_results=self._scan_state.document_results,
-                pdf_summaries=self._scan_state.pdf_summaries,
                 output_path=self._scan_state.resume_item_path,
                 ai_client=self._ai_state.client,
             )
@@ -1931,7 +1451,6 @@ class PortfolioTextualApp(App):
 
         self._scan_state.resume_item_path = resume_item.output_path
         self._scan_state.resume_item_content = resume_item.to_markdown()
-        self._scan_state.resume_item = resume_item
 
         downloads_note = ""
         downloads_path = Path.home() / "Downloads" / resume_item.output_path.name
@@ -1945,13 +1464,11 @@ class PortfolioTextualApp(App):
             except Exception:
                 pass
 
-        context_label = "Resume item (AI-assisted)" if getattr(resume_item, "ai_generated", False) else "Resume item"
-        screen.display_output(resume_item.to_markdown(), context=context_label)
+        screen.display_output(resume_item.to_markdown(), context="Resume item")
         screen.set_message(
             f"✓ Resume item saved to: {resume_item.output_path}{downloads_note}",
             tone="success",
         )
-        await self._save_resume_to_database(resume_item)
 
     def _perform_skills_analysis(self):
         """Perform skills extraction from the scanned project."""
@@ -1981,17 +1498,7 @@ class PortfolioTextualApp(App):
         """Perform contribution metrics extraction from the scanned project."""
         # Git analysis is optional - can analyze non-Git projects too
         git_analysis = None
-
-        if not self._scan_state.git_analysis and self._scan_state.git_repos:
-            # Collect git analysis eagerly so commit timelines feed contribution metrics
-            analyses: List[dict] = []
-            for repo in self._scan_state.git_repos:
-                try:
-                    analyses.append(analyze_git_repo(str(repo)))
-                except Exception as exc:
-                    analyses.append({"path": str(repo), "error": str(exc)})
-            self._scan_state.git_analysis = analyses
-
+        
         if self._scan_state.git_analysis:
             # Use the first git repository's analysis (or combine if multiple)
             git_analysis = self._scan_state.git_analysis[0] if len(self._scan_state.git_analysis) == 1 else {
@@ -2030,17 +1537,7 @@ class PortfolioTextualApp(App):
                     for f in files if hasattr(f, 'success') and f.success
                 ]
             }
-        else:
-            # Fallback to languages derived from the scan summary when code analysis wasn't run
-            fallback_languages: Dict[str, int] = {}
-            for entry in self._scan_state.languages or []:
-                lang = entry.get("language") if isinstance(entry, dict) else None
-                if not lang:
-                    continue
-                fallback_languages[lang] = entry.get("files") or entry.get("count") or 1
-            if fallback_languages:
-                code_analysis_dict = {"languages": fallback_languages, "file_details": []}
-
+        
         return self._contribution_service.analyze_contributions(
             git_analysis=git_analysis,
             code_analysis=code_analysis_dict,
@@ -2180,25 +1677,17 @@ class PortfolioTextualApp(App):
         for summary in self._scan_state.pdf_summaries:
             lines: List[str] = []
             lines.append("=" * 60)
-            # Handle both dict and object formats
-            file_name = summary.get('file_name', 'Unknown') if isinstance(summary, dict) else getattr(summary, 'file_name', 'Unknown')
-            lines.append(f"📄 {file_name}")
+            lines.append(f"📄 {summary.file_name}")
             lines.append("=" * 60)
-            
-            success = summary.get('success', False) if isinstance(summary, dict) else getattr(summary, 'success', False)
-            if not success:
-                error_msg = summary.get('error_message') if isinstance(summary, dict) else getattr(summary, 'error_message', None)
-                lines.append(f"❌ Unable to summarize file: {error_msg or 'Unknown error.'}")
+            if not summary.success:
+                lines.append(f"❌ Unable to summarize file: {summary.error_message or 'Unknown error.'}")
                 sections.append("\n".join(lines))
                 continue
-            
             lines.append("")
             lines.append("Summary")
-            summary_text = summary.get('summary_text', '') if isinstance(summary, dict) else getattr(summary, 'summary_text', '')
-            lines.append(f"  {summary_text}")
-            
-            stats = summary.get('statistics', {}) if isinstance(summary, dict) else getattr(summary, 'statistics', {})
-            if stats:
+            lines.append(f"  {summary.summary_text}")
+            if summary.statistics:
+                stats = summary.statistics
                 lines.append("")
                 lines.append("📊 STATISTICS")
                 lines.append(f"  Words: {stats.get('total_words', 0):,}")
@@ -2207,40 +1696,21 @@ class PortfolioTextualApp(App):
                 avg_len = stats.get("avg_sentence_length")
                 if isinstance(avg_len, (int, float)):
                     lines.append(f"  Avg sentence length: {avg_len:.1f} words")
-            
-            keywords = summary.get('keywords', []) if isinstance(summary, dict) else getattr(summary, 'keywords', [])
-            if keywords:
+            if summary.keywords:
                 keywords_preview = ", ".join(
-                    f"{word} ({count})" for word, count in keywords[:10]
+                    f"{word} ({count})" for word, count in summary.keywords[:10]
                 )
                 lines.append("")
                 lines.append("🔑 TOP KEYWORDS")
                 lines.append(f"  {keywords_preview}")
-            
-            key_points = summary.get('key_points', []) if isinstance(summary, dict) else getattr(summary, 'key_points', [])
-            if key_points:
+            if summary.key_points:
                 lines.append("")
                 lines.append("💡 KEY POINTS")
-                for idx, point in enumerate(key_points[:5], start=1):
+                for idx, point in enumerate(summary.key_points[:5], start=1):
                     snippet = point if len(point) <= 120 else point[:117] + "..."
                     lines.append(f"  {idx}. {snippet}")
             sections.append("\n".join(lines))
         return "\n\n".join(sections).strip()
-
-    async def _ensure_pdf_summaries_ready(self) -> None:
-        if self._scan_state.pdf_summaries:
-            return
-        if not PDF_AVAILABLE:
-            return
-        if not self._scan_state.pdf_candidates:
-            return
-        try:
-            await asyncio.to_thread(self._analyze_pdfs_sync)
-        except Exception as exc:  # pragma: no cover - best-effort logging
-            try:
-                self._debug_log(f"PDF analysis prep failed: {exc}")
-            except Exception:
-                pass
 
     def _analyze_documents_sync(self) -> None:
         analyzer = self._document_analyzer
@@ -2388,21 +1858,6 @@ class PortfolioTextualApp(App):
             sections.append("\n".join(lines))
         return "\n\n".join(sections)
 
-    async def _ensure_document_analysis_ready(self) -> None:
-        if self._scan_state.document_results:
-            return
-        if not self._scan_state.document_candidates:
-            return
-        if self._document_analyzer is None:
-            return
-        try:
-            await asyncio.to_thread(self._analyze_documents_sync)
-        except Exception as exc:  # pragma: no cover - best-effort logging
-            try:
-                self._debug_log(f"Document analysis prep failed: {exc}")
-            except Exception:
-                pass
-
     def _export_scan_report(self) -> Path:
         if self._scan_state.parse_result is None or self._scan_state.archive is None:
             raise RuntimeError("No scan results to export.")
@@ -2410,17 +1865,7 @@ class PortfolioTextualApp(App):
             self._scan_state.target.parent if self._scan_state.target else Path.cwd()
         )
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-
-        def _sanitize_name(name: str) -> str:
-            cleaned = "".join(ch if ch.isalnum() or ch in ("-", "_") else "-" for ch in name.strip().lower())
-            while "--" in cleaned:
-                cleaned = cleaned.replace("--", "-")
-            cleaned = cleaned.strip("-_")
-            return cleaned or "scan"
-
-        project_name = self._scan_state.target.name if self._scan_state.target else "scan"
-        safe_name = _sanitize_name(project_name)
-        filename = f"scan_{safe_name}_{timestamp}.json"
+        filename = f"scan_result_{timestamp}.json"
         destination = target_dir / filename
         payload = self._build_export_payload(
             self._scan_state.parse_result,
@@ -2500,7 +1945,7 @@ class PortfolioTextualApp(App):
             payload["summary"]["languages"] = languages
         if self._scan_state.git_analysis:
             payload["git_analysis"] = self._scan_state.git_analysis
-        if self._scan_state.has_media_files and self._media_analyzer:
+        if self._scan_state.has_media_files:
             media_payload = self._scan_state.media_analysis
             if media_payload is None:
                 try:
@@ -2511,45 +1956,25 @@ class PortfolioTextualApp(App):
             if media_payload:
                 payload["media_analysis"] = media_payload
         if self._scan_state.pdf_summaries:
-            # Handle both dict and object formats for pdf_summaries
-            successful_count = 0
-            summaries_data = []
-            
-            for summary in self._scan_state.pdf_summaries:
-                if isinstance(summary, dict):
-                    if summary.get('success', False):
-                        successful_count += 1
-                    summaries_data.append({
-                        "file_name": summary.get('file_name', 'Unknown'),
-                        "success": summary.get('success', False),
-                        "summary": summary.get('summary_text') if summary.get('success') else None,
-                        "keywords": [
-                            {"word": word, "count": count} for word, count in summary.get('keywords', [])
-                        ] if summary.get('success') else [],
-                        "statistics": summary.get('statistics', {}) if summary.get('success') else {},
-                        "key_points": summary.get('key_points', []) if summary.get('success') else [],
-                        "error": summary.get('error_message') if not summary.get('success') else None,
-                    })
-                else:
-                    # Handle object format
-                    if getattr(summary, 'success', False):
-                        successful_count += 1
-                    summaries_data.append({
-                        "file_name": getattr(summary, 'file_name', 'Unknown'),
-                        "success": getattr(summary, 'success', False),
-                        "summary": getattr(summary, 'summary_text', None) if getattr(summary, 'success', False) else None,
-                        "keywords": [
-                            {"word": word, "count": count} for word, count in getattr(summary, 'keywords', [])
-                        ] if getattr(summary, 'success', False) else [],
-                        "statistics": getattr(summary, 'statistics', {}) if getattr(summary, 'success', False) else {},
-                        "key_points": getattr(summary, 'key_points', []) if getattr(summary, 'success', False) else [],
-                        "error": getattr(summary, 'error_message', None) if not getattr(summary, 'success', False) else None,
-                    })
-            
             payload["pdf_analysis"] = {
                 "total_pdfs": len(self._scan_state.pdf_summaries),
-                "successful": successful_count,
-                "summaries": summaries_data,
+                "successful": len([summary for summary in self._scan_state.pdf_summaries if summary.success]),
+                "summaries": [
+                    {
+                        "file_name": summary.file_name,
+                        "success": summary.success,
+                        "summary": summary.summary_text if summary.success else None,
+                        "keywords": [
+                            {"word": word, "count": count} for word, count in summary.keywords
+                        ]
+                        if summary.success
+                        else [],
+                        "statistics": summary.statistics if summary.success else {},
+                        "key_points": summary.key_points if summary.success else [],
+                        "error": summary.error_message if not summary.success else None,
+                    }
+                    for summary in self._scan_state.pdf_summaries
+                ],
             }
             
         # ✨ CODE ANALYSIS ✨
@@ -2614,23 +2039,6 @@ class PortfolioTextualApp(App):
                 "success": True,
                 **skills_data
             }
-            # Build and attach skill progression timeline if available
-            try:
-                if self._scan_state.skills_progress:
-                    skills_progress = self._scan_state.skills_progress
-                else:
-                    skills_progress = self._skills_service.build_skill_progression(
-                        contribution_metrics=self._scan_state.contribution_metrics
-                    )
-                    if skills_progress:
-                        self._scan_state.skills_progress = skills_progress
-                if skills_progress:
-                    payload["skills_progress"] = skills_progress
-            except Exception as exc:  # pragma: no cover - defensive
-                try:
-                    self._debug_log(f"Skill progression build failed: {exc}")
-                except Exception:
-                    pass
         elif self._scan_state.code_file_count > 0:
             # Code files detected but skills not extracted
             payload["skills_analysis"] = {
@@ -2642,18 +2050,10 @@ class PortfolioTextualApp(App):
         
         # ✨ CONTRIBUTION METRICS ✨
         if self._scan_state.contribution_metrics:
-            metrics_obj = self._scan_state.contribution_metrics
-            contribution_data = self._contribution_service.export_data(metrics_obj)
-            payload["contribution_metrics"] = contribution_data
-
-            # Compute contribution-based ranking signals for UI and persistence
-            user_email = self._preferred_user_email()
-            ranking = self._contribution_service.compute_contribution_score(
-                metrics_obj,
-                user_email=user_email,
-                user_name=None,
+            contribution_data = self._contribution_service.export_data(
+                self._scan_state.contribution_metrics
             )
-            payload["contribution_ranking"] = ranking
+            payload["contribution_metrics"] = contribution_data
         
         return payload
     
@@ -2768,45 +2168,6 @@ class PortfolioTextualApp(App):
             return self._projects_service
         except ProjectsServiceError as exc:
             raise ProjectsServiceError(f"Unable to initialize projects service: {exc}") from exc
-    
-    def _init_resume_storage_service(self) -> None:
-        """Initialize Supabase resume storage client without crashing the UI."""
-        try:
-            self._resume_storage_service = ResumeStorageService()
-        except ResumeStorageError as exc:
-            self._resume_storage_service = None
-            try:
-                self._debug_log(f"Resume storage initialization failed: {exc}")
-            except Exception:
-                pass
-
-    def _init_media_analyzer(self) -> None:
-        """Initialize optional media analyzer dependencies."""
-        try:
-            self._media_analyzer = MediaAnalyzer()
-        except Exception as exc:  # pragma: no cover - optional deps
-            self._media_analyzer = None
-            try:
-                self._debug_log(f"Media analyzer unavailable: {exc}")
-            except Exception:
-                pass
-    
-    def _get_resume_storage_service(self) -> ResumeStorageService:
-        """Lazy initialize resume storage service when needed."""
-        if self._resume_storage_service is None:
-            try:
-                self._resume_storage_service = ResumeStorageService()
-            except ResumeStorageError as exc:
-                raise ResumeStorageError(f"Unable to initialize resume storage: {exc}") from exc
-        # Ensure the client carries the current session token for RLS-aware tables.
-        token = None
-        if self._session_state.session:
-            token = self._session_state.session.access_token
-        try:
-            self._resume_storage_service.apply_access_token(token)
-        except AttributeError:
-            pass
-        return self._resume_storage_service
         
     def _show_consent_dialog(self) -> None:
         has_required = self._consent_state.record is not None
@@ -2863,9 +2224,6 @@ class PortfolioTextualApp(App):
 
     def on_scan_results_screen_closed(self) -> None:
         self._scan_results_screen = None
-
-    def on_resumes_screen_closed(self) -> None:
-        self._resumes_screen = None
 
     def _cancel_task(self, task: Optional[asyncio.Task], label: str) -> None:
         """Cancel a pending asyncio task and surface any unexpected errors."""
@@ -2993,7 +2351,6 @@ class PortfolioTextualApp(App):
         self._preferences_state.error = None
         self._preferences_state.config = {}
         self._reset_scan_state()
-        self._resumes_state = ResumesState()
 
     def _invalidate_preferences_cache(self) -> None:
         self._preferences_state.summary = None
@@ -3026,16 +2383,6 @@ class PortfolioTextualApp(App):
             return
         screen = self._scan_results_screen
         self._scan_results_screen = None
-        try:
-            screen.dismiss(None)
-        except Exception:  # pragma: no cover - defensive cleanup
-            pass
-
-    def _close_resumes_screen(self) -> None:
-        if self._resumes_screen is None:
-            return
-        screen = self._resumes_screen
-        self._resumes_screen = None
         try:
             screen.dismiss(None)
         except Exception:  # pragma: no cover - defensive cleanup
@@ -3139,11 +2486,6 @@ class PortfolioTextualApp(App):
             return
 
         self._show_status("Updating preferences…", "info")
-        
-        # Extract AI settings if present (these are saved locally, not to Supabase)
-        ai_temperature = payload.pop("ai_temperature", None)
-        ai_max_tokens = payload.pop("ai_max_tokens", None)
-        
         try:
             success, message = await asyncio.to_thread(
                 self._preferences_service.execute_action,
@@ -3160,28 +2502,6 @@ class PortfolioTextualApp(App):
             self._invalidate_preferences_cache()
             self._load_preferences()
             self._refresh_current_detail()
-            
-            # Save AI settings to local config file
-            if ai_temperature is not None or ai_max_tokens is not None:
-                try:
-                    import json
-                    config = {}
-                    if self._ai_config_path.exists():
-                        with open(self._ai_config_path, 'r') as f:
-                            config = json.load(f)
-                    
-                    if ai_temperature is not None:
-                        config['temperature'] = ai_temperature
-                    if ai_max_tokens is not None:
-                        config['max_tokens'] = ai_max_tokens
-                    
-                    with open(self._ai_config_path, 'w') as f:
-                        json.dump(config, f, indent=2)
-                    
-                    self._debug_log(f"Saved AI settings to config: temp={ai_temperature}, tokens={ai_max_tokens}")
-                except Exception as e:
-                    self._debug_log(f"Failed to save AI settings: {e}")
-            
             self._show_status(message or "Preferences updated.", "success")
             self._update_preferences_screen(message or "Preferences updated.", tone="success")
         else:
@@ -3249,22 +2569,7 @@ class PortfolioTextualApp(App):
             self._ai_state.pending_analysis = False
             self._show_status("API key required for AI analysis.", "error")
             return
-        
-        # Load temperature and max_tokens from saved config if not provided
-        if temperature is None or max_tokens is None:
-            try:
-                if self._ai_config_path.exists():
-                    import json
-                    with open(self._ai_config_path, 'r') as f:
-                        config = json.load(f)
-                        if temperature is None:
-                            temperature = config.get('temperature')
-                        if max_tokens is None:
-                            max_tokens = config.get('max_tokens')
-            except Exception as e:
-                self._debug_log(f"Failed to load AI config for defaults: {e}")
-        
-        self._debug_log(f"_verify_ai_key start masked={api_key[:4] + '...' if api_key else 'None'} temp={temperature} tokens={max_tokens} pending={self._ai_state.pending_analysis}")
+        self._debug_log(f"_verify_ai_key start masked={api_key[:4] + '...' if api_key else 'None'} pending={self._ai_state.pending_analysis}")
         self._show_status("Verifying AI API key…", "info")
 
         try:
@@ -3281,33 +2586,25 @@ class PortfolioTextualApp(App):
             self._ai_state.pending_analysis = False
             self._show_status(f"Invalid API key: {exc}", "error")
             self._debug_log(f"verify_ai_key invalid_key {exc}")
-            self._update_session_status()
             return
         except AIProviderError as exc:
             self._ai_state.pending_analysis = False
             self._show_status(f"AI service error: {exc}", "error")
             self._debug_log(f"verify_ai_key provider_error {exc}")
-            self._update_session_status()
             return
         except AIDependencyError as exc:
             self._ai_state.pending_analysis = False
             self._show_status(f"AI analysis unavailable: {exc}", "error")
             self._debug_log(f"verify_ai_key dependency_error {exc}")
-            self._update_session_status()
             return
         except Exception as exc:
             self._ai_state.pending_analysis = False
             self._show_status(f"Failed to verify API key: {exc}", "error")
             self._debug_log(f"verify_ai_key unexpected_error {exc.__class__.__name__}: {exc}")
-            self._update_session_status()
             return
 
         self._ai_state.client = client
         self._ai_state.api_key = api_key
-        
-        # Save AI config locally for future sessions
-        self._save_ai_config(api_key, client_config.temperature, client_config.max_tokens)
-        
         self._show_status(
             f"API key verified • temp {client_config.temperature} • max tokens {client_config.max_tokens}",
             "success",
@@ -3315,7 +2612,6 @@ class PortfolioTextualApp(App):
         self._debug_log(
             f"verify_ai_key success temp={client_config.temperature} max_tokens={client_config.max_tokens}"
         )
-        self._update_session_status()
 
         if self._ai_state.pending_analysis:
             self._ai_state.pending_analysis = False
@@ -3325,198 +2621,21 @@ class PortfolioTextualApp(App):
         if self._session_state.session:
             self._session_service.persist_session(self._session_state.session_path, self._session_state.session)
 
-    def _persist_ai_output(self, structured_result: Dict[str, Any], raw_result: Dict[str, Any]) -> bool:
-        """Write the latest AI analysis to disk as JSON for easier reading.
+    def _persist_ai_output(self, formatted_text: str, raw_result: Dict[str, Any]) -> bool:
+        """Write the latest AI analysis to disk for easier reading.
 
         Returns True if the file was written.
         """
         try:
-            import json
-            
-            # Change file extension to .json
-            output_path = self._ai_output_path.with_suffix('.json')
-            
-            # Save the structured result directly as JSON
-            output_path.write_text(json.dumps(structured_result, indent=2, ensure_ascii=False), encoding="utf-8")
-            self._debug_log(f"AI analysis written to {output_path}")
+            content = formatted_text.strip() or "[b]AI-Powered Analysis[/b]\n\nNo AI insights were returned."
+            raw_dump = json.dumps(raw_result, indent=2, default=str)
+            payload = f"{content}\n\n---\n\nRaw AI payload:\n{raw_dump}\n"
+            self._ai_output_path.write_text(payload, encoding="utf-8")
+            self._debug_log(f"AI analysis written to {self._ai_output_path}")
             return True
         except Exception as exc:
             self._debug_log(f"Failed to persist AI analysis: {exc}")
             return False
-    
-    def _display_ai_sections(self, structured_result: Dict[str, Any]) -> str:
-        """Format structured AI analysis into multi-section display with Rich markup.
-        
-        Args:
-            structured_result: Dict with portfolio_overview, projects, supporting_files, skipped_files
-            
-        Returns:
-            Formatted string with Rich markup and section separators
-        """
-        lines: List[str] = []
-        separator = "=" * 60
-        
-        # Portfolio Overview section (always shown if available)
-        portfolio_overview = structured_result.get("portfolio_overview")
-        if portfolio_overview:
-            lines.append("[b]Portfolio Overview[/b]")
-            lines.append("")
-            lines.append(portfolio_overview)
-        
-        # Project sections (only if projects exist)
-        projects = structured_result.get("projects") or []
-        for idx, project in enumerate(projects, 1):
-            # Add separator before each project (except before first if no portfolio overview)
-            if lines:  # Only add separator if there's content before
-                lines.append("")
-                lines.append(separator)
-                lines.append("")
-            
-            # Project header with numbering
-            project_name = project.get("name", f"Project {idx}")
-            project_path = project.get("path", "")
-            
-            # Show numbered header for multi-project, or for single project if path is not root
-            if len(projects) > 1 or (project_path and project_path != "."):
-                header = f"[b]{idx}. {project_name}[/b]"
-                if project_path and project_path != ".":
-                    header += f" [i]({project_path})[/i]"
-                lines.append(header)
-            else:
-                lines.append(f"[b]{project_name}[/b]")
-            
-            # Project overview
-            overview = project.get("overview", "")
-            if overview:
-                lines.append("")
-                lines.append(overview)
-            
-            # Key Files section
-            key_files = project.get("key_files") or []
-            if key_files:
-                lines.append("")
-                lines.append("[b]Key Files Analyzed[/b]")
-                lines.append("")
-                for file_idx, file_info in enumerate(key_files, 1):
-                    file_path = file_info.get("file_path", "Unknown file")
-                    analysis = file_info.get("analysis", "No analysis available.")
-                    
-                    lines.append(f"  [b]{file_idx}. {file_path}[/b]")
-                    lines.append(f"     {analysis}")
-                    if file_idx < len(key_files):  # Add spacing between files
-                        lines.append("")
-        
-        # Supporting Files section (only if not empty)
-        supporting_files = structured_result.get("supporting_files")
-        if supporting_files:
-            if lines:
-                lines.append("")
-                lines.append(separator)
-                lines.append("")
-            lines.append("[b]Supporting Files[/b]")
-            lines.append("")
-            lines.append(supporting_files)
-        
-        # Skipped Files section (only if not empty)
-        skipped_files = structured_result.get("skipped_files") or []
-        if skipped_files:
-            if lines:
-                lines.append("")
-                lines.append(separator)
-                lines.append("")
-            lines.append("[b]Skipped Files[/b]")
-            lines.append("")
-            for item in skipped_files:
-                path = item.get("path", "unknown")
-                reason = item.get("reason", "No reason provided.")
-                size_mb = item.get("size_mb")
-                size_txt = f" ({size_mb:.2f} MB)" if isinstance(size_mb, (int, float)) else ""
-                lines.append(f"  • {path}{size_txt}: {reason}")
-        
-        # If no content at all, show a message
-        if not lines:
-            return "[b]AI-Powered Analysis[/b]\n\nNo AI insights were returned."
-        
-        return "\n".join(lines)
-    
-    def _convert_rich_to_markdown(self, text: str) -> str:
-        """Convert Rich text markup to Markdown format.
-        
-        Args:
-            text: Text with Rich markup tags like [b], [i], etc.
-            
-        Returns:
-            Text with Markdown formatting
-        """
-        import re
-        
-        # Replace [b]...[/b] with **...**
-        text = re.sub(r'\[b\](.*?)\[/b\]', r'**\1**', text)
-        
-        # Replace [i]...[/i] with *...*
-        text = re.sub(r'\[i\](.*?)\[/i\]', r'*\1*', text)
-        
-        # Replace [u]...[/u] with underline (Markdown doesn't have native underline, use bold+italic)
-        text = re.sub(r'\[u\](.*?)\[/u\]', r'***\1***', text)
-        
-        # Replace standalone [b] or [/b] that might be unclosed
-        text = text.replace('[b]', '**').replace('[/b]', '**')
-        text = text.replace('[i]', '*').replace('[/i]', '*')
-        text = text.replace('[u]', '***').replace('[/u]', '***')
-        
-        return text
-    
-    def _load_ai_config(self) -> None:
-        """Load saved AI configuration (API key, temperature, max_tokens) from local file."""
-        try:
-            if not self._ai_config_path.exists():
-                return
-            
-            import json
-            config = json.loads(self._ai_config_path.read_text(encoding="utf-8"))
-            api_key = config.get("api_key")
-            
-            if api_key:
-                self._ai_state.api_key = api_key
-                # Silently create client with saved key
-                try:
-                    from .services.ai_service import AIService
-                    self._ai_state.client, _ = self._ai_service.verify_client(
-                        api_key,
-                        temperature=config.get("temperature"),
-                        max_tokens=config.get("max_tokens")
-                    )
-                    self._debug_log("AI client initialized from saved config")
-                except Exception:
-                    # If verification fails, just clear it
-                    self._ai_state.api_key = None
-                    self._ai_state.client = None
-        except Exception as exc:
-            self._debug_log(f"Failed to load AI config: {exc}")
-    
-    def _save_ai_config(self, api_key: str, temperature: Optional[float] = None, max_tokens: Optional[int] = None) -> None:
-        """Save AI configuration (API key, temperature, max_tokens) to local file."""
-        try:
-            import json
-            config = {"api_key": api_key}
-            if temperature is not None:
-                config["temperature"] = temperature
-            if max_tokens is not None:
-                config["max_tokens"] = max_tokens
-            
-            self._ai_config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
-            self._debug_log(f"AI config saved to {self._ai_config_path}")
-        except Exception as exc:
-            self._debug_log(f"Failed to save AI config: {exc}")
-    
-    def _clear_ai_config(self) -> None:
-        """Clear saved AI configuration from local file."""
-        try:
-            if self._ai_config_path.exists():
-                self._ai_config_path.unlink()
-                self._debug_log("AI config cleared")
-        except Exception as exc:
-            self._debug_log(f"Failed to clear AI config: {exc}")
 
     def _clear_session(self) -> None:
         self._session_service.clear_session(self._session_state.session_path)
@@ -3541,12 +2660,8 @@ class PortfolioTextualApp(App):
             if external and external.get("consent_given"):
                 external_badge = "[green]External on[/green]"
 
-            ai_badge = "[#9ca3af]AI off[/#9ca3af]"
-            if self._ai_state.client:
-                ai_badge = "[green]AI ready[/green]"
-
             status_panel.update(
-                f"[b]{self._session_state.session.email}[/b] • {consent_badge} • {external_badge} • {ai_badge}  (Ctrl+L to sign out)"
+                f"[b]{self._session_state.session.email}[/b] • {consent_badge} • {external_badge}  (Ctrl+L to sign out)"
             )
         else:
             status_panel.update(
@@ -3712,18 +2827,6 @@ class PortfolioTextualApp(App):
         self._preferences_state.profiles = profiles
         self._preferences_state.config = config
         self._preferences_state.error = error
-        
-        # Load AI settings from local config file and inject into summary
-        if summary:
-            try:
-                import json
-                if self._ai_config_path.exists():
-                    with open(self._ai_config_path, 'r') as f:
-                        ai_config = json.load(f)
-                        summary['ai_temperature'] = ai_config.get('temperature')
-                        summary['ai_max_tokens'] = ai_config.get('max_tokens')
-            except Exception as e:
-                self._debug_log(f"Failed to load AI settings for preferences: {e}")
 
     def _current_scan_preferences(self) -> ScanPreferences:
         config = self._preferences_state.config or self._preferences_service.default_structure()
@@ -3894,38 +2997,6 @@ class PortfolioTextualApp(App):
             lines.append(f"• Most recent: {name} ({timestamp_str})")
         
         return "\n".join(lines)
-
-    def _render_saved_resumes_detail(self) -> str:
-        """Render the saved resumes detail panel."""
-        lines = ["[b]View Saved Resumes[/b]"]
-        if not self._session_state.session:
-            lines.extend(
-                [
-                    "",
-                    "• Sign in (Ctrl+L) to sync resume snippets.",
-                    "• Resume items save automatically after generation.",
-                ]
-            )
-            return "\n".join(lines)
-
-        resume_count = len(self._resumes_state.resumes_list)
-        lines.extend(
-            [
-                "",
-                f"• Saved resume items: {resume_count}",
-                "• Press Enter to browse your resume snippets.",
-                "",
-                "Each generated resume snippet is synced to Supabase.",
-            ]
-        )
-        if resume_count > 0:
-            recent = self._resumes_state.resumes_list[0]
-            name = recent.get("project_name", "Unnamed project")
-            created = recent.get("created_at", "")
-            lines.append(f"• Most recent: {name}")
-            if created:
-                lines.append(f"• Generated: {created[:19]}")
-        return "\n".join(lines)
     
 
     def _render_last_scan_detail(self) -> str:
@@ -4036,72 +3107,6 @@ class PortfolioTextualApp(App):
 
         return "\n".join(lines)
 
-    def _render_skill_progress_detail(self) -> str:
-        lines = ["[b]Skill progression[/b]"]
-        if not self._scan_state.parse_result:
-            lines.extend(
-                [
-                    "",
-                    "• Run a portfolio scan to build the timeline.",
-                    "• Add an AI key to generate the summary (optional).",
-                ]
-            )
-            return "\n".join(lines)
-
-        timeline = None
-        summary = None
-        note = None
-        if isinstance(self._scan_state.skills_progress, dict):
-            timeline = self._scan_state.skills_progress.get("timeline")
-            summary = self._scan_state.skills_progress.get("summary")
-        if not timeline:
-            note = "Timeline will be built from skills + git activity."
-
-        lines.append("")
-        if timeline:
-                lines.append(f"• Timeline periods: {len(timeline)}")
-        if summary and isinstance(summary, dict):
-            narrative = str(summary.get("narrative", "")).strip()
-            if narrative:
-                preview = narrative[:90] + ("…" if len(narrative) > 90 else "")
-                lines.append(f"• AI summary: {preview}")
-        if self._author_email_filter():
-            lines.append("• Filtering git activity to your author emails.")
-        if note:
-            lines.append(f"• {note}")
-
-        if self._ai_state.client:
-            lines.append("\nPress Enter to view the timeline and refresh the AI summary.")
-        else:
-            lines.append("\nPress Enter to view the timeline. Add an AI key to generate a summary.")
-
-        return "\n".join(lines)
-
-    async def _show_skill_progress_modal(self) -> None:
-        """Open a modal with skill progression and optional AI summary."""
-        timeline, summary, summary_note = await self._prepare_skill_progress()
-        if not timeline:
-            self._show_status(summary_note or "No skill progression timeline available.", "warning")
-            return
-
-        output = self._format_skill_progress_output(timeline, summary, summary_note)
-        try:
-            screen = SkillProgressScreen(output)
-            self.push_screen(screen)
-        except Exception as exc:  # pragma: no cover - UI fallback
-            self._debug_log(f"Failed to open skill progression screen: {exc}")
-            self._show_status("Could not display skill progression.", "error")
-            return
-
-        message = "Skill progression ready."
-        tone = "success"
-        if summary:
-            message = "Skill progression and AI summary ready."
-        elif summary_note:
-            message = f"Skill progression ready. {summary_note}"
-            tone = "warning" if summary_note.startswith("AI summary unavailable") else "info"
-        self._show_status(message, tone)
-
     def _render_consent_detail(self) -> str:
         lines = ["[b]Consent Management[/b]"]
         if not self._session_state.session:
@@ -4136,83 +3141,23 @@ class PortfolioTextualApp(App):
             return
         self._ai_state.pending_analysis = False
         detail_panel = self.query_one("#detail", Static)
-        progress_bar = self._scan_progress_bar
-        if progress_bar:
-            progress_bar.display = True
-            progress_bar.update(progress=0)
-        progress_label = self._scan_progress_label
-        if progress_label:
-            progress_label.remove_class("hidden")
-            progress_label.update("Initializing AI analysis…")
         detail_panel.update("[b]AI-Powered Analysis[/b]\n\nPreparing AI insights…")
         self._show_status("Preparing AI analysis…", "info")
         self._ai_state.task = asyncio.create_task(self._run_ai_analysis())
 
     async def _run_ai_analysis(self) -> None:
         detail_panel = self.query_one("#detail", Static)
-        progress_bar = self._scan_progress_bar
-        progress_label = self._scan_progress_label
-        ai_progress_state = {"current_step": "Initializing…"}
-        progress_lock = threading.Lock()
-
-        self._debug_log("[AI Analysis] Starting AI analysis workflow")
 
         if not self._ai_state.client or not self._scan_state.parse_result:
-            self._debug_log("[AI Analysis] Missing prerequisites - client or parse_result is None")
             self._surface_error(
                 "AI-Powered Analysis",
                 "A recent scan and a verified API key are required.",
                 "Run a portfolio scan, grant external consent, then provide your OpenAI API key.",
             )
             self._ai_state.task = None
-            if progress_bar:
-                progress_bar.display = False
-            if progress_label:
-                progress_label.add_class("hidden")
             return
 
-        # Log scan state for debugging
-        files_count = len(self._scan_state.parse_result.files) if self._scan_state.parse_result.files else 0
-        git_repos_count = len(self._scan_state.git_repos) if self._scan_state.git_repos else 0
-        self._debug_log(f"[AI Analysis] Files in scan: {files_count}, Git repos: {git_repos_count}")
-        if self._scan_state.git_repos:
-            self._debug_log(f"[AI Analysis] Git repo paths: {self._scan_state.git_repos}")
-        if self._scan_state.target:
-            self._debug_log(f"[AI Analysis] Target path: {self._scan_state.target}")
-        if self._scan_state.archive:
-            self._debug_log(f"[AI Analysis] Archive path: {self._scan_state.archive}")
-
-        # Progress update callback
-        def _update_progress(message: str) -> None:
-            with progress_lock:
-                ai_progress_state["current_step"] = message
-            self._debug_log(f"[AI Analysis Progress] {message}")
-
-        # Background task to update UI
-        progress_stop = asyncio.Event()
-        async def _progress_heartbeat() -> None:
-            try:
-                step_count = 0
-                while not progress_stop.is_set():
-                    step_count += 1
-                    with progress_lock:
-                        current_message = ai_progress_state["current_step"]
-                    try:
-                        if progress_label:
-                            progress_label.update(current_message)
-                        if progress_bar:
-                            # Pulse the progress bar
-                            progress_bar.update(progress=(step_count % 100))
-                    except Exception as e:
-                        self._debug_log(f"[AI Analysis] Progress update error: {e}")
-                    await asyncio.sleep(0.5)
-            except Exception as e:
-                self._debug_log(f"[AI Analysis] Heartbeat error: {e}")
-
-        heartbeat_task = asyncio.create_task(_progress_heartbeat())
-
         try:
-            self._debug_log("[AI Analysis] Calling execute_analysis...")
             result = await asyncio.to_thread(
                 self._ai_service.execute_analysis,
                 self._ai_state.client,
@@ -4221,16 +3166,12 @@ class PortfolioTextualApp(App):
                 target_path=str(self._scan_state.target) if self._scan_state.target else None,
                 archive_path=str(self._scan_state.archive) if self._scan_state.archive else None,
                 git_repos=self._scan_state.git_repos,
-                progress_callback=_update_progress,
             )
-            self._debug_log(f"[AI Analysis] Analysis completed, result keys: {list(result.keys()) if result else 'None'}")
         except asyncio.CancelledError:
-            self._debug_log("[AI Analysis] Analysis cancelled by user")
             self._show_status("AI analysis cancelled.", "info")
             detail_panel.update(self._render_ai_detail())
             raise
         except InvalidAPIKeyError as exc:
-            self._debug_log(f"[AI Analysis] Invalid API key error: {exc}")
             self._ai_state.client = None
             self._ai_state.api_key = None
             self._surface_error(
@@ -4239,23 +3180,18 @@ class PortfolioTextualApp(App):
                 "Copy a fresh key from OpenAI and try again.",
             )
         except AIDependencyError as exc:
-            self._debug_log(f"[AI Analysis] Dependency error: {exc}")
             self._surface_error(
                 "AI-Powered Analysis",
                 f"Unavailable: {exc}",
                 "Ensure the optional AI dependencies are installed (see backend/requirements.txt).",
             )
         except AIProviderError as exc:
-            self._debug_log(f"[AI Analysis] Provider error: {exc}")
             self._surface_error(
                 "AI-Powered Analysis",
                 f"AI service error: {exc}",
                 "Retry in a few minutes or reduce the input size.",
             )
         except Exception as exc:
-            self._debug_log(f"[AI Analysis] Unexpected error: {exc.__class__.__name__}: {exc}")
-            import traceback
-            self._debug_log(f"[AI Analysis] Traceback: {traceback.format_exc()}")
             self._surface_error(
                 "AI-Powered Analysis",
                 f"Unexpected error ({exc.__class__.__name__}): {exc}",
@@ -4263,96 +3199,21 @@ class PortfolioTextualApp(App):
             )
         else:
             self._ai_state.last_analysis = result
-            structured_result = self._ai_service.format_analysis(result)
-            rendered = self._display_ai_sections(structured_result)
+            rendered = self._ai_service.format_analysis(result)
             if rendered.strip():
                 detail_panel.update(rendered)
             else:
                 detail_panel.update("[b]AI-Powered Analysis[/b]\n\nNo AI insights were returned.")
-            saved = self._persist_ai_output(structured_result, result)
+            saved = self._persist_ai_output(rendered, result)
             files_count = result.get("files_analyzed_count")
             message = "AI analysis complete."
             if files_count:
                 message = f"AI analysis complete — {files_count} files reviewed."
             if saved:
-                output_path = self._ai_output_path.with_suffix('.json')
-                message = f"{message} Saved to {output_path.name}."
+                message = f"{message} Saved to {self._ai_output_path.name}."
             self._show_status(message, "success")
-            
-            # Show AI results in full-screen modal
-            await self._show_ai_results(structured_result)
         finally:
-            progress_stop.set()
-            await heartbeat_task
-            if progress_bar:
-                progress_bar.update(progress=0)
-                progress_bar.display = False
-            if progress_label:
-                progress_label.add_class("hidden")
-                progress_label.update("")
             self._ai_state.task = None
-    
-    async def _show_ai_results(self, structured_data: Dict[str, Any]) -> None:
-        """Show AI analysis results in a full-screen modal with sections."""
-        try:
-            screen = AIResultsScreen(structured_data)
-            await self.push_screen(screen)
-        except Exception as exc:
-            self._debug_log(f"Failed to show AI results screen: {exc}")
-            self._show_status("Could not display AI results.", "error")
-    
-    async def _view_saved_ai_analysis(self) -> None:
-        """Load and display the saved AI analysis from disk."""
-        import json
-        
-        # Check for JSON file (new format)
-        json_path = self._ai_output_path.with_suffix('.json')
-        
-        if not json_path.exists():
-            self._show_status("No saved AI analysis found. Run AI analysis first.", "warning")
-            return
-        
-        try:
-            content = json_path.read_text(encoding="utf-8")
-            if not content.strip():
-                self._show_status("Saved AI analysis is empty.", "warning")
-                return
-            
-            # Load structured JSON
-            structured_result = json.loads(content)
-            
-            await self._show_ai_results(structured_result)
-            self._show_status("Showing saved AI analysis.", "success")
-        except json.JSONDecodeError as exc:
-            self._debug_log(f"Failed to parse saved AI analysis JSON: {exc}")
-            self._show_status(f"Saved AI analysis is corrupted: {exc}", "error")
-        except Exception as exc:
-            self._debug_log(f"Failed to load saved AI analysis: {exc}")
-            self._show_status(f"Could not load AI analysis: {exc}", "error")
-    
-    async def on_ai_result_action(self, message: AIResultAction) -> None:
-        """Handle AI result section selection."""
-        from .screens import AIResultsScreen
-        
-        screen = None
-        for s in self.screen_stack:
-            if isinstance(s, AIResultsScreen):
-                screen = s
-                break
-        
-        if screen is None:
-            self._debug_log("[AI Result Action] No AIResultsScreen found in screen stack")
-            return
-        
-        action = message.action
-        self._debug_log(f"[AI Result Action] Handling action: {action}")
-        
-        if action == "close":
-            screen.dismiss(None)
-            return
-        
-        screen._show_section(action)
-        screen.set_message(f"Viewing section", tone="success")
             
     # --- Projects helpers ---
 
@@ -4379,58 +3240,12 @@ class PortfolioTextualApp(App):
         except Exception as exc:
             self._show_status(f"Unexpected error loading projects: {exc}", "error")
             return
-
-        self._projects_state.projects_list = projects or []
+        
+        self._projects_state.projects_list = projects
         self._projects_state.error = None
         self._refresh_current_detail()
-        self.push_screen(ProjectsScreen(projects or []))
-        self._show_status(f"Loaded {len(projects or [])} project(s).", "success")
-
-    async def _load_and_show_resumes(self, *, show_modal: bool = True) -> None:
-        """Load user's saved resumes and optionally show the resumes screen."""
-        if not self._session_state.session:
-            self._show_status("Sign in to view resumes.", "error")
-            return
-        try:
-            resume_service = self._get_resume_storage_service()
-        except ResumeStorageError as exc:
-            if self._is_expired_token_error(exc):
-                self._handle_session_expired()
-            else:
-                self._show_status(f"Resumes unavailable: {exc}", "error")
-            return
-        try:
-            resumes = await asyncio.to_thread(
-                resume_service.get_user_resumes,
-                self._session_state.session.user_id,
-            )
-        except ResumeStorageError as exc:
-            if self._is_expired_token_error(exc):
-                self._handle_session_expired()
-            else:
-                self._show_status(f"Failed to load resumes: {exc}", "error")
-            return
-        except Exception as exc:
-            self._show_status(f"Unexpected error loading resumes: {exc}", "error")
-            return
-        self._resumes_state.resumes_list = resumes
-        self._resumes_state.error = None
-        self._refresh_current_detail()
-        if not show_modal:
-            return
-        if self._resumes_screen:
-            try:
-                self._resumes_screen.refresh_resumes(resumes)
-                self._show_status(f"Loaded {len(resumes)} resume item(s).", "success")
-                return
-            except Exception:
-                # Fall back to reopening the modal
-                self._close_resumes_screen()
-        self._close_resumes_screen()
-        screen = ResumesScreen(resumes)
-        self._resumes_screen = screen
-        self.push_screen(screen)
-        self._show_status(f"Loaded {len(resumes)} resume item(s).", "success")
+        self.push_screen(ProjectsScreen(projects))
+        self._show_status(f"Loaded {len(projects)} project(s).", "success")
 
     async def on_project_selected(self, message: ProjectSelected) -> None:
         """Handle when user selects a project to view."""
@@ -4461,30 +3276,8 @@ class PortfolioTextualApp(App):
         if not full_project:
             self._show_status("Project not found.", "error")
             return
-
-        # For legacy records without stored ranking, derive it from contribution metrics
-        try:
-            scan_data = full_project.get("scan_data") or {}
-            has_ranking = isinstance(scan_data.get("contribution_ranking"), dict)
-            metrics_dict = scan_data.get("contribution_metrics")
-            if metrics_dict and not has_ranking:
-                metrics_obj = self._contribution_service.metrics_from_dict(metrics_dict)
-                user_email = self._preferred_user_email()
-                ranking = self._contribution_service.compute_contribution_score(
-                    metrics_obj,
-                    user_email=user_email,
-                )
-                scan_data["contribution_ranking"] = ranking
-                full_project["scan_data"] = scan_data
-        except Exception as exc:
-            self._debug_log(f"Could not derive contribution ranking for project {project_id}: {exc}")
         
         self._projects_state.selected_project = full_project
-        try:
-            scan_data = full_project.get("scan_data") or {}
-            self._scan_state.skills_progress = scan_data.get("skills_progress")
-        except Exception:
-            pass
         self._show_status("Project loaded.", "success")
         self.push_screen(ProjectViewerScreen(full_project))
 
@@ -4516,71 +3309,6 @@ class PortfolioTextualApp(App):
             await self._load_and_show_projects()
         else:
             self._show_status("Failed to delete project.", "error")
-
-    async def on_resume_selected(self, message: ResumeSelected) -> None:
-        """Handle viewing a saved resume item."""
-        message.stop()
-        if not self._session_state.session:
-            self._show_status("Sign in required.", "error")
-            return
-        resume_id = message.resume.get("id")
-        if not resume_id:
-            self._show_status("Invalid resume selected.", "error")
-            return
-        self._show_status("Loading resume item…", "info")
-        try:
-            resume_service = self._get_resume_storage_service()
-            record = await asyncio.to_thread(
-                resume_service.get_resume_item,
-                self._session_state.session.user_id,
-                resume_id,
-            )
-        except ResumeStorageError as exc:
-            if self._is_expired_token_error(exc):
-                self._handle_session_expired()
-            else:
-                self._show_status(f"Failed to load resume: {exc}", "error")
-            return
-        except Exception as exc:
-            self._show_status(f"Unexpected error loading resume: {exc}", "error")
-            return
-        if not record:
-            self._show_status("Resume not found.", "error")
-            return
-        self._resumes_state.selected_resume = record
-        self._show_status("Resume loaded.", "success")
-        self.push_screen(ResumeViewerScreen(record))
-
-    async def on_resume_deleted(self, message: ResumeDeleted) -> None:
-        """Handle deleting a saved resume item."""
-        message.stop()
-        if not self._session_state.session:
-            self._show_status("Sign in required.", "error")
-            return
-        resume_id = message.resume_id
-        self._show_status("Deleting resume…", "info")
-        try:
-            resume_service = self._get_resume_storage_service()
-            success = await asyncio.to_thread(
-                resume_service.delete_resume_item,
-                self._session_state.session.user_id,
-                resume_id,
-            )
-        except ResumeStorageError as exc:
-            if self._is_expired_token_error(exc):
-                self._handle_session_expired()
-            else:
-                self._show_status(f"Failed to delete resume: {exc}", "error")
-            return
-        except Exception as exc:
-            self._show_status(f"Unexpected error deleting resume: {exc}", "error")
-            return
-        if success:
-            self._show_status("Resume deleted successfully.", "success")
-            await self._load_and_show_resumes(show_modal=self._resumes_screen is not None)
-        else:
-            self._show_status("Failed to delete resume.", "error")
-
         
     async def on_project_insights_cleared(self, message: ProjectInsightsCleared) -> None:
         """Handle deletion of stored insights without removing shared files."""
@@ -4651,93 +3379,7 @@ class PortfolioTextualApp(App):
         except Exception as exc:
             # Log but don't fail - user still has local export
             self._debug_log(f"Failed to save scan to database: {exc}")
-    async def _save_resume_to_database(self, resume_item: ResumeItem) -> None:
-        """Persist generated resume items for signed-in users."""
-        if not self._session_state.session:
             return
-        try:
-            resume_service = self._get_resume_storage_service()
-        except ResumeStorageError:
-            return
-
-        metadata = self._collect_resume_metadata()
-        target_path = self._scan_state.target
-        try:
-            await asyncio.to_thread(
-                resume_service.save_resume_item,
-                self._session_state.session.user_id,
-                resume_item,
-                metadata=metadata,
-                target_path=target_path,
-            )
-            self._debug_log(f"Resume saved to database for project: {resume_item.project_name}")
-        except ResumeStorageError as exc:
-            self._debug_log(f"Resume storage unavailable: {exc}")
-            if self._is_expired_token_error(exc):
-                self._handle_session_expired()
-        except Exception as exc:
-            self._debug_log(f"Unexpected error saving resume item: {exc}")
-
-    def _collect_resume_metadata(self) -> Dict[str, Any]:
-        """Gather lightweight metadata about the resume source project."""
-        languages = []
-        for entry in self._scan_state.languages:
-            if isinstance(entry, dict):
-                name = entry.get("name") or entry.get("language")
-                if name:
-                    languages.append(str(name))
-            elif entry:
-                languages.append(str(entry))
-
-        metadata: Dict[str, Any] = {}
-        if languages:
-            metadata["languages"] = languages
-
-        metadata["code_file_count"] = self._scan_state.code_file_count
-        metadata["git_repo_count"] = len(self._scan_state.git_repos)
-
-        if self._scan_state.target:
-            metadata["target_path"] = str(self._scan_state.target)
-
-        if self._scan_state.skills_analysis_result:
-            metadata["skills"] = [
-                getattr(skill, "name", str(skill))
-                for skill in self._scan_state.skills_analysis_result[:8]
-            ]
-
-        metrics = self._scan_state.contribution_metrics
-        if metrics:
-            metadata["total_commits"] = getattr(metrics, "total_commits", None)
-            metadata["total_contributors"] = getattr(metrics, "total_contributors", None)
-            metadata["project_type"] = getattr(metrics, "project_type", None)
-
-        return {key: value for key, value in metadata.items() if value not in (None, [], {})}
-
-    @staticmethod
-    def _is_expired_token_error(exc: ResumeStorageError) -> bool:
-        message = str(exc)
-        return "JWT expired" in message or "PGRST303" in message
-
-    def _handle_session_expired(self) -> None:
-        """Notify the user that their Supabase session is no longer valid."""
-        self._session_state.session = None
-        self._update_session_status()
-        self._show_status("Session expired — press Ctrl+L to sign in again.", "warning")
-
-    # ----------------------------
-    # main branch: project caching
-    # ----------------------------
-
-    async def _save_project_scan(
-        self,
-        project_name: str,
-        scan_data: Dict[str, Any],
-        project_record: Dict[str, Any],
-        projects_service: ProjectsService,
-        session: Session,
-    ) -> None:
-        """Save project scan results and cached file metadata."""
-        return  # (This return was already present in your screenshot; keep it)
 
         project_id = project_record.get("id")
         if project_id:
@@ -4758,15 +3400,9 @@ class PortfolioTextualApp(App):
                 project_id,
                 cached_records,
             )
-
             previous_paths = set(self._scan_state.cached_files.keys())
-            current_paths = {
-                entry["relative_path"]
-                for entry in cached_records
-                if entry.get("relative_path")
-            }
+            current_paths = {entry["relative_path"] for entry in cached_records if entry.get("relative_path")}
             stale_paths = sorted(previous_paths - current_paths)
-
             if stale_paths:
                 await asyncio.to_thread(
                     projects_service.delete_cached_files,
@@ -4774,13 +3410,9 @@ class PortfolioTextualApp(App):
                     project_id,
                     stale_paths,
                 )
-
             self._scan_state.cached_files = {
-                entry["relative_path"]: entry
-                for entry in cached_records
-                if entry.get("relative_path")
+                entry["relative_path"]: entry for entry in cached_records if entry.get("relative_path")
             }
-
         except ProjectsServiceError as exc:
             self._debug_log(f"Failed to update cached file metadata: {exc}")
 
@@ -4789,20 +3421,17 @@ class PortfolioTextualApp(App):
         records: List[Dict[str, Any]] = []
         if not files:
             return records
-
         timestamp = datetime.now(timezone.utc).isoformat()
-
+        # TODO: Compute SHA256 per entry to detect modifications beyond timestamp + size heuristics.
         for entry in files:
             path = entry.get("path")
             modified = entry.get("modified_at")
             if not path or not modified:
                 continue
-
             media_info = entry.get("media_info")
             metadata: Dict[str, Any] = {}
             if media_info:
                 metadata["media_info"] = media_info
-
             records.append(
                 {
                     "relative_path": path,
@@ -4813,8 +3442,8 @@ class PortfolioTextualApp(App):
                     "last_scanned_at": timestamp,
                 }
             )
-
         return records
+
 
 
 def main() -> None:
