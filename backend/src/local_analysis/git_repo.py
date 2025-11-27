@@ -66,6 +66,7 @@ _VENDOR_DIR_HINTS: Set[str] = {
     ".eggs",
     ".tox",
     ".cache",
+    "lib",  # Excludes vendored libs like tree-sitter bindings
 }
 
 
@@ -191,21 +192,27 @@ def analyze_git_repo(repo_dir: str) -> dict:
     # ---------- timeline ----------
     try:
         raw_log = _git(
-            ["log", "--date=short", "--pretty=%ad\t%s", "--name-only", "--all"],
+            ["log", "--date=short", "--pretty=%ad\t%s\t%ae", "--name-only", "--all"],
             repo_dir,
         ).splitlines()
         commit_counts: Counter[str] = Counter()
         month_messages: dict[str, list[str]] = {}
         month_file_counts: dict[str, Counter[str]] = {}
         month_languages: dict[str, Counter[str]] = {}
+        month_contributors: dict[str, set[str]] = {}  # Track unique contributors per month
         current_month = None
         for line in raw_log:
             if "\t" in line:
-                # Commit header
-                date_part, message = line.split("\t", 1)
+                # Commit header: date\tmessage\temail
+                parts = line.split("\t", 2)
+                date_part = parts[0]
+                message = parts[1] if len(parts) > 1 else ""
+                email = parts[2] if len(parts) > 2 else ""
                 current_month = date_part[:7]
                 commit_counts[current_month] += 1
                 month_messages.setdefault(current_month, []).append(message.strip())
+                if email:
+                    month_contributors.setdefault(current_month, set()).add(email.lower())
                 continue
             if not line.strip() or current_month is None:
                 continue
@@ -223,6 +230,7 @@ def analyze_git_repo(repo_dir: str) -> dict:
             files_counter = month_file_counts.get(month, Counter())
             top_files = [path for path, _ in files_counter.most_common(10)]  # Increased from 5
             languages = month_languages.get(month, Counter())
+            contributors_set = month_contributors.get(month, set())
             timeline.append(
                 {
                     "month": month,
@@ -230,6 +238,7 @@ def analyze_git_repo(repo_dir: str) -> dict:
                     "messages": (month_messages.get(month) or [])[:15],  # Increased from 5
                     "top_files": top_files,
                     "languages": dict(languages),
+                    "contributors": len(contributors_set),  # Per-month unique contributor count
                 }
             )
     except CalledProcessError:

@@ -172,16 +172,32 @@ def build_skill_progression(
             # When author_emails filter is set, we still use the month-level commits
             # because the timeline is already filtered by author in contribution_analyzer
             month_commits = month_entry.get("commits", 0)
+            
+            # Contributors can be an int (from git_repo.py) or a list (legacy format)
+            raw_contributors = month_entry.get("contributors")
+            if isinstance(raw_contributors, int):
+                month_contributors = raw_contributors
+            elif isinstance(raw_contributors, list):
+                month_contributors = len(raw_contributors)
+            else:
+                month_contributors = 0
+            
             if author_emails:
                 # Timeline from contribution_analyzer is already author-filtered,
                 # so we can use the month-level commit count directly
                 period_ref.commits = month_commits
-                period_ref.contributors = 1 if month_commits > 0 else 0
+                # Use per-month contributor count from timeline
+                period_ref.contributors = month_contributors if month_commits > 0 else 0
             else:
                 period_ref.commits = month_commits if month_commits > 0 else period_ref.commits
-                period_ref.contributors = max(
-                    period_ref.contributors, getattr(contribution_metrics, "total_contributors", 0)
-                )
+                # Use per-month contributor count from git_repo timeline if available,
+                # otherwise fall back to total_contributors
+                if month_contributors > 0:
+                    period_ref.contributors = month_contributors
+                else:
+                    period_ref.contributors = max(
+                        period_ref.contributors, getattr(contribution_metrics, "total_contributors", 0)
+                    )
             # Carry over evidence-rich fields if present
             commit_messages = month_entry.get("messages") or month_entry.get("commit_messages") or []
             if commit_messages:
