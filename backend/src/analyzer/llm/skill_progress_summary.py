@@ -132,7 +132,8 @@ def summarize_skill_progress(
         except Exception:
             pass
         locations = f" | raw_dumped={','.join(dump_paths)}" if dump_paths else ""
-        raise ValueError(f"{exc} | raw_snippet={snippet}{locations}") from exc
+        prefix = "Validation failed" if "Model " in str(exc) else "Parse failed"
+        raise ValueError(f"{prefix}: {exc} | raw_snippet={snippet}{locations}") from exc
 
     for key in ("narrative", "milestones", "strengths", "gaps"):
         if key not in parsed:
