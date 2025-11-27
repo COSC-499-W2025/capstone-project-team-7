@@ -54,6 +54,10 @@ from .services.contribution_analysis_service import (
 from .services.duplicate_detection_service import (
     DuplicateDetectionService,
 )
+from .services.export_service import (
+    ExportService,
+    ExportConfig,
+)
 from .services.resume_generation_service import (
     ResumeGenerationError,
     ResumeGenerationService,
@@ -237,6 +241,7 @@ class PortfolioTextualApp(App):
         self._skills_service = SkillsAnalysisService()
         self._contribution_service = ContributionAnalysisService()
         self._duplicate_service = DuplicateDetectionService()
+        self._export_service = ExportService()
         self._resume_service = ResumeGenerationService()
         self._projects_service: Optional[ProjectsService] = None
         self._resume_storage_service: Optional[ResumeStorageService] = None
@@ -862,6 +867,8 @@ class PortfolioTextualApp(App):
         actions.append(("resume", "Generate resume item"))
         actions.append(("duplicates", "Find duplicate files"))
         actions.append(("export", "Export JSON report"))
+        actions.append(("export_html", "Export HTML report"))
+        actions.append(("export_pdf", "Export PDF report"))
 
         if self._scan_state.pdf_candidates:
             label = (
@@ -990,6 +997,14 @@ class PortfolioTextualApp(App):
                 return
             screen.display_output(f"Exported scan report to {destination}", context="Export")
             screen.set_message(f"Report saved to {destination}", tone="success")
+            return
+
+        if action == "export_html":
+            await self._handle_html_export_action(screen)
+            return
+
+        if action == "export_pdf":
+            await self._handle_pdf_export_action(screen)
             return
 
         if action == "pdf":
@@ -1496,6 +1511,140 @@ class PortfolioTextualApp(App):
             )
         else:
             screen.set_message("No duplicate files found.", tone="success")
+
+    async def _handle_html_export_action(self, screen: ScanResultsScreen) -> None:
+        """Export scan results as a formatted HTML report."""
+        if self._scan_state.parse_result is None or self._scan_state.archive is None:
+            screen.set_message("No scan data available. Run a scan first.", tone="error")
+            return
+
+        screen.set_message("Generating HTML report…", tone="info")
+        
+        try:
+            # Build the export payload
+            payload = self._build_export_payload(
+                self._scan_state.parse_result,
+                self._scan_state.languages,
+                self._scan_state.archive,
+            )
+            
+            # Generate output path
+            target_dir = (
+                self._scan_state.target.parent if self._scan_state.target else Path.cwd()
+            )
+            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            project_name = self._scan_state.target.name if self._scan_state.target else "scan"
+            safe_name = self._sanitize_filename(project_name)
+            output_path = target_dir / f"report_{safe_name}_{timestamp}.html"
+            
+            # Export HTML
+            result = await asyncio.to_thread(
+                self._export_service.export_html,
+                payload,
+                output_path,
+                project_name,
+            )
+            
+            if result.success:
+                screen.display_output(
+                    f"✅ HTML report exported successfully!\n\n"
+                    f"📄 File: {result.file_path}\n"
+                    f"📊 Size: {self._format_bytes(result.file_size_bytes)}\n\n"
+                    f"Open this file in a web browser to view your formatted portfolio report.",
+                    context="HTML Export",
+                )
+                screen.set_message(f"Report saved to {result.file_path}", tone="success")
+            else:
+                screen.display_output(
+                    f"❌ Failed to export HTML report:\n{result.error}",
+                    context="HTML Export",
+                )
+                screen.set_message("HTML export failed.", tone="error")
+                
+        except Exception as exc:
+            screen.display_output(f"❌ Export error: {exc}", context="HTML Export")
+            screen.set_message(f"Failed to export: {exc}", tone="error")
+
+    async def _handle_pdf_export_action(self, screen: ScanResultsScreen) -> None:
+        """Export scan results as a PDF report."""
+        if self._scan_state.parse_result is None or self._scan_state.archive is None:
+            screen.set_message("No scan data available. Run a scan first.", tone="error")
+            return
+
+        screen.set_message("Generating PDF report…", tone="info")
+        
+        try:
+            # Build the export payload
+            payload = self._build_export_payload(
+                self._scan_state.parse_result,
+                self._scan_state.languages,
+                self._scan_state.archive,
+            )
+            
+            # Generate output path
+            target_dir = (
+                self._scan_state.target.parent if self._scan_state.target else Path.cwd()
+            )
+            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            project_name = self._scan_state.target.name if self._scan_state.target else "scan"
+            safe_name = self._sanitize_filename(project_name)
+            output_path = target_dir / f"report_{safe_name}_{timestamp}.pdf"
+            
+            # Export PDF
+            result = await asyncio.to_thread(
+                self._export_service.export_pdf,
+                payload,
+                output_path,
+                project_name,
+            )
+            
+            if result.success:
+                # Check if it fell back to HTML
+                format_note = ""
+                if result.format == "html" and result.error:
+                    format_note = f"\n\n⚠️ Note: {result.error}"
+                
+                screen.display_output(
+                    f"✅ Report exported successfully!\n\n"
+                    f"📄 File: {result.file_path}\n"
+                    f"📊 Size: {self._format_bytes(result.file_size_bytes)}\n"
+                    f"📋 Format: {result.format.upper()}"
+                    f"{format_note}",
+                    context="PDF Export",
+                )
+                screen.set_message(f"Report saved to {result.file_path}", tone="success")
+            else:
+                screen.display_output(
+                    f"❌ Failed to export PDF report:\n{result.error}",
+                    context="PDF Export",
+                )
+                screen.set_message("PDF export failed.", tone="error")
+                
+        except Exception as exc:
+            screen.display_output(f"❌ Export error: {exc}", context="PDF Export")
+            screen.set_message(f"Failed to export: {exc}", tone="error")
+
+    def _sanitize_filename(self, name: str) -> str:
+        """Sanitize a string for use as a filename."""
+        cleaned = "".join(
+            ch if ch.isalnum() or ch in ("-", "_") else "-"
+            for ch in name.strip().lower()
+        )
+        while "--" in cleaned:
+            cleaned = cleaned.replace("--", "-")
+        return cleaned.strip("-_") or "scan"
+
+    def _format_bytes(self, size_bytes: int) -> str:
+        """Format bytes into human-readable string."""
+        if size_bytes == 0:
+            return "0 B"
+        units = ["B", "KB", "MB", "GB"]
+        i = 0
+        size = float(size_bytes)
+        while size >= 1024 and i < len(units) - 1:
+            size /= 1024
+            i += 1
+        return f"{size:.1f} {units[i]}" if i > 0 else f"{int(size)} {units[i]}"
 
     async def _handle_resume_generation_action(self, screen: ScanResultsScreen) -> None:
         """Generate and display a resume-ready project summary."""
