@@ -250,3 +250,66 @@ def test_summarize_skill_progress_dumps_raw(monkeypatch, tmp_path):
 
     assert target.exists()
     assert "still not json" in target.read_text()
+
+
+def test_summarize_skill_progress_rejects_no_commits_claim():
+    timeline = [
+        {
+            "period_label": "2024-08",
+            "commits": 3,
+            "tests_changed": 1,
+            "skill_count": 1,
+            "evidence_count": 1,
+            "languages": {"Python": 1},
+            "period_languages": {"Python": 1},
+        }
+    ]
+
+    def fake_model(prompt: str) -> str:
+        return json.dumps(
+            {
+                "narrative": "No commits were made.",
+                "milestones": [],
+                "strengths": [],
+                "gaps": [],
+            }
+        )
+
+    with pytest.raises(ValueError):
+        summarize_skill_progress(timeline, fake_model)
+
+
+def test_summarize_skill_progress_rejects_false_dominant_language():
+    timeline = [
+        {
+            "period_label": "2024-09",
+            "commits": 1,
+            "tests_changed": 0,
+            "skill_count": 1,
+            "evidence_count": 1,
+            "languages": {"Python": 1},
+            "period_languages": {"Python": 1},
+        },
+        {
+            "period_label": "2024-10",
+            "commits": 2,
+            "tests_changed": 0,
+            "skill_count": 1,
+            "evidence_count": 1,
+            "languages": {"JavaScript": 1},
+            "period_languages": {"JavaScript": 1},
+        },
+    ]
+
+    def fake_model(prompt: str) -> str:
+        return json.dumps(
+            {
+                "narrative": "TypeScript was the dominant language across all periods.",
+                "milestones": [],
+                "strengths": [],
+                "gaps": [],
+            }
+        )
+
+    with pytest.raises(ValueError):
+        summarize_skill_progress(timeline, fake_model)
