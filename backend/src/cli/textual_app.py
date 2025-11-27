@@ -18,6 +18,11 @@ import time
 from typing import Optional, Dict, Any, List, Sequence, Type
 import os
 import weakref
+try:
+    from dotenv import load_dotenv
+except Exception:  # pragma: no cover - optional dependency
+    def load_dotenv(*args, **kwargs):  # type: ignore
+        return False
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -133,6 +138,7 @@ from ..auth import consent as consent_storage
 from ..local_analysis.git_repo import analyze_git_repo
 from ..local_analysis.media_analyzer import MediaAnalyzer
 from ..local_analysis.document_analyzer import DocumentAnalyzer, DocumentAnalysisResult
+from ..analyzer.llm.skill_progress_summary import SkillProgressSummary
 
 # Optional PDF analysis dependencies
 try:
@@ -709,6 +715,297 @@ class PortfolioTextualApp(App):
         }
         
         return type_map.get(extension, 'Text')
+
+    def _handle_skill_progress_summary(self) -> None:
+        """
+        Generate a skill progression summary on demand (no UI wiring yet).
+        """
+        try:
+            timeline = self._build_skill_progress_timeline()
+        except Exception as exc:  # pragma: no cover - defensive
+            self._show_status(f"Cannot build skills timeline: {exc}", "error")
+            return
+
+        if not timeline:
+            self._show_status("No skill progression timeline available.", "warning")
+            return
+
+        self._show_status("Generating skill progress summary…", "info")
+        try:
+            summary = self._generate_skill_progress_summary(timeline)
+        except RuntimeError:
+            self._show_status("AI client not configured. Provide an API key first.", "warning")
+            return
+        except Exception as exc:
+            friendly = self._format_skill_progress_error(exc)
+            self._show_status(friendly, "warning")
+            return
+
+        self._persist_skill_progress_summary(summary)
+        self._show_status("Skill progress summary ready.", "success")
+
+    def _build_skill_progress_timeline(self) -> Optional[List[Dict[str, Any]]]:
+        """
+        Build or reuse the skill progress timeline from existing analysis.
+        """
+        skills_progress = self._scan_state.skills_progress or {}
+        timeline = skills_progress.get("timeline") if isinstance(skills_progress, dict) else None
+        if timeline:
+            return timeline or []
+
+        skills_progress = self._skills_service.build_skill_progression(
+            contribution_metrics=self._scan_state.contribution_metrics,
+            author_emails=self._author_email_filter(),
+        )
+        if not skills_progress:
+            return None
+
+        self._scan_state.skills_progress = skills_progress
+        return skills_progress.get("timeline") or []
+
+    def _generate_skill_progress_summary(
+        self, timeline: List[Dict[str, Any]]
+    ) -> SkillProgressSummary:
+        """
+        Call the LLM to summarize a skill progression timeline.
+        """
+        client = self._ai_state.client
+        if client is None:
+            raise RuntimeError("AI client not configured")
+
+        def _call_model(prompt: str) -> str:
+            params = {
+                "messages": [{"role": "user", "content": prompt}],
+                "model": client.DEFAULT_MODEL if hasattr(client, "DEFAULT_MODEL") else None,
+                "max_tokens": 800,
+                "temperature": 0.0,
+            }
+            try:
+                return client._make_llm_call(  # type: ignore[attr-defined]
+                    **{**params, "response_format": {"type": "json_object"}}
+                )
+            except TypeError:
+                return client._make_llm_call(  # type: ignore[attr-defined]
+                    **params
+                )
+
+        try:
+            return self._skills_service.summarize_skill_progression(timeline, _call_model)
+        except ValueError as exc:
+            raise RuntimeError("AI response was not valid JSON; please retry the summary.") from exc
+
+    def _persist_skill_progress_summary(self, summary: SkillProgressSummary) -> None:
+        """Persist a summary into scan state for reuse/export."""
+        if not self._scan_state.skills_progress:
+            self._scan_state.skills_progress = {}
+        self._scan_state.skills_progress["summary"] = {
+            "narrative": summary.narrative,
+            "milestones": summary.milestones,
+            "strengths": summary.strengths,
+            "gaps": summary.gaps,
+        }
+
+    def _hydrate_skill_progress_summary(
+        self, summary_data: Any
+    ) -> Optional[SkillProgressSummary]:
+        """Convert stored summary dicts into SkillProgressSummary objects."""
+        if isinstance(summary_data, SkillProgressSummary):
+            return summary_data
+        if isinstance(summary_data, dict):
+            return SkillProgressSummary(
+                narrative=str(summary_data.get("narrative", "")).strip(),
+                milestones=[str(x).strip() for x in summary_data.get("milestones", []) if str(x).strip()],
+                strengths=[str(x).strip() for x in summary_data.get("strengths", []) if str(x).strip()],
+                gaps=[str(x).strip() for x in summary_data.get("gaps", []) if str(x).strip()],
+            )
+        return None
+
+    async def _prepare_skill_progress(
+        self,
+    ) -> tuple[Optional[List[Dict[str, Any]]], Optional[SkillProgressSummary], Optional[str]]:
+        """
+        Ensure skill progression data is available and optionally generate an AI summary.
+
+        Returns:
+            timeline, summary (if available), summary note (when summary missing).
+        """
+        skills_progress = self._scan_state.skills_progress or {}
+        timeline = skills_progress.get("timeline") if isinstance(skills_progress, dict) else None
+
+        if not timeline:
+            if self._scan_state.code_file_count <= 0:
+                return None, None, "No skill progression timeline available. Run a scan with source files."
+            if self._scan_state.target is None:
+                return None, None, "Run a portfolio scan before viewing skill progression."
+
+            if self._scan_state.skills_analysis_result is None:
+                try:
+                    skills = await asyncio.to_thread(self._perform_skills_analysis)
+                except SkillsAnalysisError as exc:
+                    self._scan_state.skills_analysis_error = str(exc)
+                    return None, None, f"Skills analysis failed: {exc}"
+                self._scan_state.skills_analysis_result = skills
+                self._scan_state.skills_analysis_error = None
+
+            if self._scan_state.contribution_metrics is None and (
+                self._scan_state.code_file_count > 0 or self._scan_state.git_repos
+            ):
+                try:
+                    contribution_metrics = await asyncio.to_thread(self._perform_contribution_analysis)
+                    self._scan_state.contribution_metrics = contribution_metrics
+                    self._scan_state.contribution_analysis_error = None
+                except Exception as exc:
+                    self._scan_state.contribution_analysis_error = str(exc)
+
+            skills_progress = self._skills_service.build_skill_progression(
+                contribution_metrics=self._scan_state.contribution_metrics,
+                author_emails=self._author_email_filter(),
+            )
+            if skills_progress:
+                self._scan_state.skills_progress = skills_progress
+                timeline = skills_progress.get("timeline")
+
+        if not timeline:
+            return None, None, "No skill progression timeline available."
+
+        summary_data = None
+        if isinstance(self._scan_state.skills_progress, dict):
+            summary_data = self._scan_state.skills_progress.get("summary")
+
+        summary = self._hydrate_skill_progress_summary(summary_data)
+        summary_note = None
+        if not summary:
+            if self._ai_state.client:
+                try:
+                    summary = await asyncio.to_thread(self._generate_skill_progress_summary, timeline)
+                    self._persist_skill_progress_summary(summary)
+                except Exception as exc:
+                    summary_note = self._format_skill_progress_error(exc)
+            else:
+                summary_note = "Add an AI key to generate a narrative summary."
+
+        return timeline or [], summary, summary_note
+
+    def _debug_log_timeline(self, timeline: List[Dict[str, Any]]) -> None:
+        """Emit a compact timeline snapshot for troubleshooting."""
+        try:
+            preview = [
+                {
+                    "period": entry.get("period_label") or entry.get("period"),
+                    "commits": entry.get("commits"),
+                    "tests_changed": entry.get("tests_changed"),
+                    "skills": entry.get("top_skills"),
+                    "languages": list((entry.get("languages") or {}).keys()),
+                    "contributors": entry.get("contributors"),
+                }
+                for entry in timeline[:6]
+            ]
+            self._debug_log(f"[SkillProgress] Timeline preview: {preview}")
+        except Exception:
+            pass
+
+    def _author_email_filter(self) -> Optional[set[str]]:
+        """
+        Optional git author email filter for per-user timelines.
+
+        Controlled via env PORTFOLIO_USER_EMAIL or TEXTUAL_SKILL_PROGRESS_EMAILS (comma-separated).
+        """
+        try:
+            load_dotenv()
+        except Exception:
+            pass
+        raw = (
+            os.environ.get("PORTFOLIO_USER_EMAIL")
+            or os.environ.get("TEXTUAL_SKILL_PROGRESS_EMAILS")
+            or ""
+        )
+        emails = {email.strip().lower() for email in raw.split(",") if email.strip()}
+        return emails or None
+
+    def _preferred_user_email(self) -> Optional[str]:
+        """Resolve the primary email used for contribution-aware scoring."""
+        session_email = None
+        try:
+            session_email = self._session_state.session.email if self._session_state.session else None
+        except Exception:
+            session_email = None
+        if session_email:
+            return session_email.strip().lower()
+
+        emails = self._author_email_filter()
+        if emails:
+            return sorted(emails)[0]
+        return None
+
+    @staticmethod
+    def _format_skill_progress_error(exc: Exception) -> str:
+        """User-facing error string for failed AI summaries."""
+        message = str(exc).strip()
+        if "valid JSON" in message or "Model did not return" in message:
+            snippet = ""
+            if "raw_snippet=" in message:
+                try:
+                    snippet = message.split("raw_snippet=", 1)[1].strip()
+                except Exception:
+                    snippet = ""
+            detail = f" Debug hint: {snippet}" if snippet else f" Debug detail: {message}"
+            return f"AI summary unavailable: the response was not valid JSON.{detail} Please retry."
+        return f"AI summary unavailable: {message or 'unexpected error'}"
+
+    def _format_skill_progress_output(
+        self,
+        timeline: List[Dict[str, Any]],
+        summary: Optional[SkillProgressSummary] = None,
+        summary_note: Optional[str] = None,
+    ) -> str:
+        """Format skill progress timeline plus optional AI summary."""
+        lines: List[str] = ["[b]Skill progression timeline[/b]"]
+        lines.append("")
+        if not timeline:
+            lines.append("No timeline data available.")
+            return "\n".join(lines)
+
+        for entry in timeline:
+            lines.append(f"[b]{entry.get('period_label') or entry.get('period')}[/b]")
+            commits = entry.get("commits")
+            if commits is not None:
+                lines.append(f"• Commits: {commits}")
+            tests = entry.get("tests_changed")
+            if tests is not None:
+                lines.append(f"• Tests touched: {tests}")
+            top_skills = entry.get("top_skills") or []
+            if top_skills:
+                lines.append(f"• Skills: {', '.join(top_skills)}")
+            languages = entry.get("languages") or {}
+            if languages:
+                lang_summary = ", ".join(f"{lang} ({count})" for lang, count in languages.items())
+                lines.append(f"• Languages: {lang_summary}")
+            lines.append("")
+
+        if summary:
+            lines.append("[b]AI summary[/b]")
+            if summary.narrative:
+                lines.append("")
+                lines.append(summary.narrative)
+                lines.append("")
+            if summary.milestones:
+                lines.append("• Milestones:")
+                for item in summary.milestones:
+                    lines.append(f"  - {item}")
+            if summary.strengths:
+                lines.append("• Strengths:")
+                for item in summary.strengths:
+                    lines.append(f"  - {item}")
+            if summary.gaps:
+                lines.append("• Gaps:")
+                for item in summary.gaps:
+                    lines.append(f"  - {item}")
+        elif summary_note:
+            lines.append("")
+            lines.append(f"[#9ca3af]{summary_note}[/#9ca3af]")
+
+        return "\n".join(lines)
+
     def _show_status(self, message: str, tone: str, *, log_to_stderr: bool = True) -> None:
         if log_to_stderr:
             try:
