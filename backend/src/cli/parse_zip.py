@@ -18,6 +18,8 @@ from ..local_analysis.code_parser import CodeAnalyzer
 from ..local_analysis.code_cli import display_analysis_results
 import logging
 from ..local_analysis.git_repo import analyze_git_repo
+from ..analyzer.llm_remote_media_analyzer import LLMRemoteMediaAnalyzer
+from ..scanner.media import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 
 
 USER_ID_ENV = "SCAN_USER_ID"
@@ -54,10 +56,16 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Run static code analysis (complexity, maintainability, security).",
     )
+    parser.add_argument(
+        "--llm-media",
+        action="store_true",
+        help="Send media files to the LLM for semantic summaries (optional, uses OpenAI).",
+    )
     args = parser.parse_args(argv)
 
     analysis_result = None
     git_repos: list[dict] = []
+    llm_media_results: list[dict] = []
     try:
         preferences = load_preferences(args.profile)
         archive_path = ensure_zip(args.archive, preferences=preferences)
@@ -83,13 +91,12 @@ def main(argv: list[str] | None = None) -> int:
                         
             except Exception as e:
                 logging.error("Error occurred during analysis: %s", e)
-                    
-                    
-                    
+        if args.llm_media:
+            llm_media_results = _run_llm_media_analyzer(
+                archive_path if archive_path.is_dir() else archive_path.parent,
+                result,
+            )
 
-# FIX: Actually run analysis
-        
-        
     except ParserError as exc:
         payload = {"error": exc.code, "message": str(exc)}
         print(json.dumps(payload), file=sys.stderr)
@@ -122,6 +129,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.json:
         payload = _serialize_result(result, languages, analysis_result)
+        if llm_media_results:
+            payload["llm_media"] = llm_media_results
         payload["git_repositories"] = git_repos
         print(json.dumps(payload, indent=2))
     else:
@@ -186,6 +195,29 @@ def _serialize_result(result, languages,analysis=None):
             "refactor_candidates": refactor_candidates
         }
     return payload
+
+
+def _run_llm_media_analyzer(base_path: Path, parse_result, max_bytes: int = 20 * 1024 * 1024) -> list[dict]:
+    """Run the remote LLM media analyzer over supported media files."""
+    analyzer = LLMRemoteMediaAnalyzer()
+    results: list[dict] = []
+    media_exts = set(IMAGE_EXTENSIONS + AUDIO_EXTENSIONS + VIDEO_EXTENSIONS)
+    for meta in parse_result.files:
+        suffix = Path(meta.path).suffix.lower()
+        if suffix not in media_exts:
+            continue
+        full_path = base_path / meta.path
+        if not full_path.exists() or full_path.stat().st_size > max_bytes:
+            continue
+        if suffix in IMAGE_EXTENSIONS:
+            result = analyzer.analyze_image(full_path)
+        elif suffix in AUDIO_EXTENSIONS:
+            result = analyzer.analyze_audio(full_path)
+        else:
+            result = analyzer.analyze_video(full_path)
+        result["path"] = meta.path
+        results.append(result)
+    return results
 
 
 def load_preferences(profile_name: str | None) -> ScanPreferences | None:

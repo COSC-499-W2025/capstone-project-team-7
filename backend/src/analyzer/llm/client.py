@@ -2,14 +2,21 @@
 # Handles integration with OpenAI API for analysis tasks
 
 import asyncio
+import base64
 import logging
 import threading
+import mimetypes
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, List, Any, Mapping, Tuple
 import openai
 from openai import OpenAI
 import tiktoken
 
+try:
+    from scanner.media import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
+except ImportError:  # pragma: no cover - fallback when scanner isn't on sys.path
+    from ...scanner.media import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 
 logger = logging.getLogger(__name__)
 
@@ -156,8 +163,16 @@ class LLMClient:
             self.logger.error(f"Verification error: {e}")
             
             # Check error message content to determine error type
-            if "authentication" in error_msg or "api key" in error_msg or "unauthorized" in error_msg:
+            if (
+                isinstance(e, openai.AuthenticationError)
+                or "authentication" in error_msg
+                or "api key" in error_msg
+                or "invalid key" in error_msg
+                or "unauthorized" in error_msg
+            ):
                 raise InvalidAPIKeyError("Invalid API key. Please verify your OpenAI API key is correct.")
+            elif isinstance(e, openai.APIError) or "api error" in error_msg:
+                raise LLMError(f"API error: {str(e)}")
             elif "rate limit" in error_msg or "quota" in error_msg:
                 raise LLMError(f"Rate limit exceeded. Please check your API quota and try again: {str(e)}")
             elif "connection" in error_msg or "network" in error_msg:
@@ -195,6 +210,402 @@ class LLMClient:
         except Exception as e:
             self.logger.warning(f"Failed to count tokens: {e}. Using character estimate.")
             return len(text) // 4
+
+    def _infer_media_type(self, path: str, mime_type: str) -> Optional[str]:
+        """Infer media type from path/mime string."""
+        mime = (mime_type or "").lower()
+        ext = Path(path).suffix.lower()
+        if ext in IMAGE_EXTENSIONS or mime.startswith("image/"):
+            return "image"
+        if ext in AUDIO_EXTENSIONS or mime.startswith("audio/"):
+            return "audio"
+        if ext in VIDEO_EXTENSIONS or mime.startswith("video/"):
+            return "video"
+        return None
+
+    @staticmethod
+    def _format_duration(seconds: float) -> str:
+        """Convert seconds to a human readable timestamp."""
+        try:
+            total = int(round(seconds))
+            minutes, sec = divmod(total, 60)
+            hours, minutes = divmod(minutes, 60)
+            if hours:
+                return f"{hours:d}:{minutes:02d}:{sec:02d}"
+            return f"{minutes:d}:{sec:02d}"
+        except Exception:
+            return f"{seconds:.1f}s"
+
+    @staticmethod
+    def _truncate_text(text: str, limit: int = 160) -> str:
+        if not text:
+            return ""
+        if len(text) <= limit:
+            return text
+        return text[: max(limit - 3, 0)].rstrip() + "..."
+
+    def _summarize_media_entry(
+        self, media_type: str, path: str, info: Mapping[str, Any]
+    ) -> Optional[str]:
+        """Build a short, human-friendly summary string for a media asset."""
+        parts: list[str] = []
+
+        if media_type == "image":
+            width = info.get("width")
+            height = info.get("height")
+            if isinstance(width, (int, float)) and isinstance(height, (int, float)):
+                parts.append(f"{int(width)}x{int(height)}px")
+            mode = info.get("mode")
+            image_format = info.get("format")
+            if mode and image_format:
+                parts.append(f"{mode}/{image_format}")
+            summary = info.get("content_summary")
+            if isinstance(summary, str) and summary:
+                parts.append(summary)
+            else:
+                labels = info.get("content_labels") or []
+                label_names = [
+                    str(entry.get("label"))
+                    for entry in labels
+                    if isinstance(entry, Mapping) and entry.get("label")
+                ]
+                if label_names:
+                    parts.append(f"labels: {', '.join(label_names[:3])}")
+
+        elif media_type == "audio":
+            duration = info.get("duration_seconds")
+            if isinstance(duration, (int, float)) and duration > 0:
+                parts.append(f"duration {self._format_duration(float(duration))}")
+            tempo = info.get("tempo_bpm")
+            if isinstance(tempo, (int, float)):
+                parts.append(f"tempo {tempo:.0f} BPM")
+            genres = info.get("genre_tags") or []
+            if isinstance(genres, list) and genres:
+                parts.append(f"genres: {', '.join(str(g) for g in genres[:3])}")
+            bitrate = info.get("bitrate")
+            if isinstance(bitrate, (int, float)):
+                parts.append(f"bitrate {int(bitrate)} bps")
+            sample_rate = info.get("sample_rate")
+            if isinstance(sample_rate, (int, float)):
+                parts.append(f"{int(sample_rate)} Hz")
+            channels = info.get("channels")
+            if isinstance(channels, (int, float)):
+                parts.append(f"{int(channels)} channel(s)")
+            summary = info.get("content_summary")
+            if isinstance(summary, str) and summary:
+                parts.append(summary)
+            else:
+                labels = info.get("content_labels") or []
+                label_names = [
+                    str(entry.get("label"))
+                    for entry in labels
+                    if isinstance(entry, Mapping) and entry.get("label")
+                ]
+                if label_names:
+                    parts.append(f"labels: {', '.join(label_names[:2])}")
+            transcript = info.get("transcript_excerpt")
+            if isinstance(transcript, str) and transcript.strip():
+                parts.append(f"speech excerpt: \"{self._truncate_text(transcript.strip(), 140)}\"")
+
+        elif media_type == "video":
+            duration = info.get("duration_seconds")
+            if isinstance(duration, (int, float)) and duration > 0:
+                parts.append(f"length {self._format_duration(float(duration))}")
+            bitrate = info.get("bitrate")
+            if isinstance(bitrate, (int, float)):
+                parts.append(f"bitrate {int(bitrate)} bps")
+            summary = info.get("content_summary")
+            if isinstance(summary, str) and summary:
+                parts.append(summary)
+            else:
+                labels = info.get("content_labels") or []
+                label_names = [
+                    str(entry.get("label"))
+                    for entry in labels
+                    if isinstance(entry, Mapping) and entry.get("label")
+                ]
+                if label_names:
+                    parts.append(f"labels: {', '.join(label_names[:2])}")
+
+        if not parts:
+            return None
+        return f"{media_type.capitalize()} — {path}: " + "; ".join(parts)
+
+    def _build_media_briefings(
+        self,
+        files: List[Dict[str, Any]],
+        base_path: Optional[Path] = None,
+        max_items: int = 12,
+        max_llm_images: int = 3,
+        max_llm_audio: int = 2,
+        max_llm_video: int = 2,
+        use_metadata: bool = True,
+    ) -> List[str]:
+        """Collect concise media descriptions for LLM context."""
+        by_type: Dict[str, List[Tuple[str, Mapping[str, Any]]]] = {"image": [], "audio": [], "video": []}
+        for meta in files:
+            media_info = meta.get("media_info")
+            if not isinstance(media_info, Mapping):
+                media_info = {}
+            path = str(meta.get("path", ""))
+            media_type = self._infer_media_type(path, str(meta.get("mime_type") or ""))
+            if not media_type:
+                continue
+            by_type.setdefault(media_type, []).append((path, media_info))
+
+        briefings: list[str] = []
+        total_candidates = sum(len(v) for v in by_type.values())
+
+        def _ensure_path(p: str) -> Optional[Path]:
+            full = (base_path / p) if base_path and not Path(p).is_absolute() else Path(p)
+            return full if full.exists() and full.is_file() else None
+
+        # Prioritize audio/video first so they are not crowded out by images.
+        llm_audio_used = 0
+        for path, info in by_type.get("audio", []):
+            if len(briefings) >= max_items:
+                break
+            if base_path and self.is_configured() and llm_audio_used < max_llm_audio:
+                full_path = _ensure_path(path)
+                if full_path:
+                    llm_summary = self._llm_describe_audio(full_path, info)
+                    if llm_summary:
+                        briefings.append(f"Audio — {path}: {llm_summary}")
+                        llm_audio_used += 1
+                        continue
+            if use_metadata:
+                summary = self._summarize_media_entry("audio", path, info)
+                if summary:
+                    briefings.append(summary)
+            # If no LLM and no metadata allowed, skip to keep output LLM-only.
+
+        llm_video_used = 0
+        for path, info in by_type.get("video", []):
+            if len(briefings) >= max_items:
+                break
+            if base_path and self.is_configured() and llm_video_used < max_llm_video:
+                full_path = _ensure_path(path)
+                if full_path:
+                    llm_summary = self._llm_describe_video(full_path, info)
+                    if llm_summary:
+                        briefings.append(f"Video — {path}: {llm_summary}")
+                        llm_video_used += 1
+                        continue
+            if use_metadata:
+                summary = self._summarize_media_entry("video", path, info)
+                if summary:
+                    briefings.append(summary)
+
+        llm_images_used = 0
+        for path, info in by_type.get("image", []):
+            if len(briefings) >= max_items:
+                break
+            # Prefer an LLM vision read for the first few images to improve accuracy.
+            if (
+                base_path
+                and self.is_configured()
+                and llm_images_used < max_llm_images
+            ):
+                full_path = _ensure_path(path)
+                if full_path and full_path.stat().st_size <= 6 * 1024 * 1024:
+                    llm_summary = self._llm_describe_image(full_path)
+                    if llm_summary:
+                        summary = f"Image — {path}: {llm_summary}"
+                        llm_images_used += 1
+                    else:
+                        summary = None
+                else:
+                    summary = None
+            else:
+                summary = None
+
+            if summary:
+                briefings.append(summary)
+                continue
+            if use_metadata:
+                summary = self._summarize_media_entry("image", path, info)
+                if summary:
+                    briefings.append(summary)
+
+        if total_candidates > len(briefings):
+            remaining = total_candidates - len(briefings)
+            briefings.append(f"...and {remaining} more media file(s) detected.")
+
+        return briefings
+
+    def summarize_media_only(
+        self,
+        relevant_files: List[Dict[str, Any]],
+        scan_base_path: str,
+        max_items: int = 12,
+        progress_callback: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        """Generate media-only insights (images/audio/video) without project analysis."""
+        if not self.is_configured():
+            raise LLMError("LLM client is not configured")
+        try:
+            base_path = Path(scan_base_path) if scan_base_path else None
+            briefings = self._build_media_briefings(
+                relevant_files, base_path=base_path, max_items=max_items, use_metadata=False
+            )
+            return {
+                "media_briefings": briefings,
+                "files_analyzed_count": len(briefings),
+            }
+        except Exception as exc:
+            self.logger.error(f"Media-only summary failed: {exc}")
+            raise LLMError(f"Failed to summarize media: {exc}")
+
+    def _llm_describe_image(self, path: Path) -> Optional[str]:
+        """Ask the LLM (vision) to describe an image file."""
+        if not self.is_configured():
+            return None
+        try:
+            mime_type = mimetypes.guess_type(path.name)[0] or "image/png"
+            return self._llm_describe_image_bytes(path.read_bytes(), mime_type=mime_type)
+        except Exception as exc:  # pragma: no cover - network/API dependent
+            self.logger.debug("Vision description failed for %s: %s", path, exc)
+        return None
+
+    def _llm_describe_image_bytes(self, data: bytes, mime_type: str = "image/jpeg") -> Optional[str]:
+        """Ask the LLM (vision) to describe image bytes."""
+        if not self.is_configured():
+            return None
+        try:
+            encoded = base64.b64encode(data).decode("utf-8")
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": (
+                                "Describe what appears in this image, any notable objects, "
+                                "text, or context, in 2-3 concise bullet points."
+                            ),
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{mime_type};base64,{encoded}",
+                                "detail": "auto",
+                            },
+                        },
+                    ],
+                }
+            ]
+            response = self.client.chat.completions.create(
+                model=self.DEFAULT_MODEL,
+                messages=messages,
+                max_tokens=150,
+                temperature=0.4,
+            )
+            if response and response.choices:
+                return response.choices[0].message.content.strip()
+        except Exception as exc:  # pragma: no cover - network/API dependent
+            self.logger.debug("Vision description failed for raw bytes: %s", exc)
+        return None
+
+    def _llm_transcribe_audio(self, path: Path) -> Optional[str]:
+        """Transcribe audio/video via Whisper if available."""
+        if not self.is_configured():
+            return None
+        if not path.exists() or not path.is_file():
+            return None
+        size_mb = path.stat().st_size / (1024 * 1024)
+        if size_mb > 15:  # keep uploads manageable
+            return None
+        try:
+            with path.open("rb") as f:
+                transcript = self.client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=f,
+                    response_format="text",
+                )
+            if isinstance(transcript, str) and transcript.strip():
+                return transcript.strip()
+        except Exception as exc:  # pragma: no cover - network/API dependent
+            self.logger.debug("Audio transcription failed for %s: %s", path, exc)
+        return None
+
+    def _llm_describe_audio(self, path: Path, media_info: Mapping[str, Any]) -> Optional[str]:
+        """Summarize audio by transcribing and prompting the LLM."""
+        transcript = self._llm_transcribe_audio(path)
+        if not transcript:
+            return None
+        duration = media_info.get("duration_seconds")
+        tempo = media_info.get("tempo_bpm")
+        genres = media_info.get("genre_tags") or []
+        meta_bits = []
+        if isinstance(duration, (int, float)):
+            meta_bits.append(f"duration {self._format_duration(float(duration))}")
+        if isinstance(tempo, (int, float)):
+            meta_bits.append(f"tempo {tempo:.0f} BPM")
+        if genres:
+            meta_bits.append(f"genres {', '.join(str(g) for g in genres[:3])}")
+        meta_text = "; ".join(meta_bits) if meta_bits else "duration unknown"
+        prompt = (
+            f"Audio clip ({meta_text}). Transcript:\n{transcript}\n\n"
+            "Provide a concise 2-3 sentence summary of what is spoken/sung, mood/genre hints, "
+            "and any notable entities or topics."
+        )
+        try:
+            messages = [{"role": "user", "content": prompt}]
+            resp = self._make_llm_call(messages, max_tokens=180, temperature=0.5)
+            return resp.strip()
+        except Exception as exc:  # pragma: no cover - network/API dependent
+            self.logger.debug("Audio summarize failed for %s: %s", path, exc)
+        return None
+
+    def _llm_describe_video(self, path: Path, media_info: Mapping[str, Any]) -> Optional[str]:
+        """Summarize video by transcribing audio track and/or sampling a frame."""
+        transcript = self._llm_transcribe_audio(path)
+        duration = media_info.get("duration_seconds")
+        meta_bits = []
+        if isinstance(duration, (int, float)):
+            meta_bits.append(f"length {self._format_duration(float(duration))}")
+        meta_text = "; ".join(meta_bits) if meta_bits else "length unknown"
+
+        # If transcript exists, prefer transcript-driven summary.
+        if transcript:
+            prompt = (
+                f"Video ({meta_text}). Audio transcript:\n{transcript}\n\n"
+                "Provide a concise 2-3 sentence summary of what the video likely shows based on the audio: "
+                "setting, participants, actions, tone, and any notable events or topics."
+            )
+            try:
+                messages = [{"role": "user", "content": prompt}]
+                resp = self._make_llm_call(messages, max_tokens=220, temperature=0.45)
+                if resp:
+                    return resp.strip()
+            except Exception as exc:  # pragma: no cover
+                self.logger.debug("Video summarize (audio) failed for %s: %s", path, exc)
+
+        # Fallback: sample a representative frame and ask vision model.
+        try:
+            import io
+            from PIL import Image  # type: ignore
+            try:
+                from torchvision.io import read_video  # type: ignore
+            except Exception:  # pragma: no cover - optional dep missing
+                read_video = None  # type: ignore
+
+            if read_video is not None and Image is not None:
+                frames, _, _ = read_video(str(path), pts_unit="sec")
+                if frames.numel() > 0:
+                    # Pick middle frame for a representative shot.
+                    idx = frames.shape[0] // 2
+                    frame = frames[int(idx)]
+                    image = Image.fromarray(frame.to("cpu").byte().numpy())
+                    buffer = io.BytesIO()
+                    image.save(buffer, format="JPEG")
+                    vision_desc = self._llm_describe_image_bytes(buffer.getvalue(), mime_type="image/jpeg")
+                    if vision_desc:
+                        return vision_desc
+        except Exception as exc:  # pragma: no cover
+            self.logger.debug("Video vision fallback failed for %s: %s", path, exc)
+
+        return None
     
     def _make_llm_call(
         self, 
@@ -242,8 +653,16 @@ class LLMClient:
             error_msg = str(e).lower()
             
             # Check error message content to determine error type
-            if "authentication" in error_msg or "api key" in error_msg or "unauthorized" in error_msg:
+            if (
+                isinstance(e, openai.AuthenticationError)
+                or "authentication" in error_msg
+                or "api key" in error_msg
+                or "unauthorized" in error_msg
+                or "invalid key" in error_msg
+            ):
                 raise InvalidAPIKeyError("Invalid API key. Please verify your OpenAI API key is correct.")
+            elif isinstance(e, openai.APIError) or "api error" in error_msg:
+                raise LLMError(f"API error: {str(e)}")
             elif "rate limit" in error_msg or "quota" in error_msg:
                 raise LLMError(f"Rate limit exceeded. Please wait a moment and try again, or check your API quota: {str(e)}")
             elif "connection" in error_msg or "network" in error_msg:
@@ -277,14 +696,21 @@ class LLMClient:
             raise LLMError("LLM client is not configured")
         
         try:
-            encoding = tiktoken.encoding_for_model(self.DEFAULT_MODEL)
-            tokens = encoding.encode(text)
+            try:
+                encoding = tiktoken.encoding_for_model(self.DEFAULT_MODEL)
+                tokens = encoding.encode(text)
+                decode_tokens = encoding.decode
+            except Exception as exc:
+                # Fall back when model mapping is unavailable in tiktoken
+                self.logger.warning(f"Failed to load tokenizer for {self.DEFAULT_MODEL}: {exc}. Using fallback chunking.")
+                tokens = [text[i:i + 4] for i in range(0, len(text), 4)]  # Approximate 4 chars per token
+                decode_tokens = lambda chunk_tokens: "".join(chunk_tokens)
             chunks = []
             
             i = 0
             while i < len(tokens):
                 chunk_tokens = tokens[i:i + chunk_size]
-                chunk_text = encoding.decode(chunk_tokens)
+                chunk_text = decode_tokens(chunk_tokens)
                 chunks.append(chunk_text)
                 i += chunk_size - overlap
             
@@ -384,14 +810,19 @@ NOTABLE PATTERNS: [1-2 notable techniques or patterns used]"""
             self.logger.error(f"Failed to summarize tagged file: {e}")
             raise LLMError(f"File summarization failed: {str(e)}")
     
-    def analyze_project(self, local_analysis: Dict[str, Any],
-                       tagged_files_summaries: List[Dict[str, str]]) -> Dict[str, str]:
+    def analyze_project(
+        self,
+        local_analysis: Dict[str, Any],
+        tagged_files_summaries: List[Dict[str, str]],
+        media_briefings: Optional[List[str]] = None,
+    ) -> Dict[str, str]:
         """
         Generate a comprehensive, resume-friendly project report.
         
         Args:
             local_analysis: Dict with stats, metrics, file_counts
             tagged_files_summaries: List of summaries from summarize_tagged_file()
+            media_briefings: Optional list of media asset summaries (images/audio/video)
             
         Returns:
             Dict containing:
@@ -408,6 +839,20 @@ NOTABLE PATTERNS: [1-2 notable techniques or patterns used]"""
                 f"File: {f.get('file_path', 'Unknown')}\n{f.get('analysis', '')}"
                 for f in tagged_files_summaries
             ])
+
+            media_context = ""
+            media_section_prompt = ""
+            if media_briefings:
+                media_lines = "\n".join(f"- {entry}" for entry in media_briefings)
+                media_context = f"""
+
+MEDIA ASSETS (images/audio/video):
+{media_lines}
+"""
+                media_section_prompt = """
+
+MEDIA INSIGHTS:
+[1-3 concise bullet points describing the listed media assets: what appears or is heard, notable timestamps/durations, any genre/label hints, and key transcript snippets.]"""
             
             prompt = f"""You are analyzing a software project to create a professional, resume-worthy report.
 
@@ -415,7 +860,7 @@ NOTABLE PATTERNS: [1-2 notable techniques or patterns used]"""
             {local_analysis}
 
             IMPORTANT FILES ANALYSIS:
-            {files_info if files_info else 'No tagged files provided'}
+            {files_info if files_info else 'No tagged files provided'}{media_context}
 
             Create a comprehensive analysis in the following format:
 
@@ -429,7 +874,9 @@ NOTABLE PATTERNS: [1-2 notable techniques or patterns used]"""
             [Summary of the tech stack and how technologies are used]
 
             PROJECT QUALITY:
-            [Assessment of completeness, production-readiness, code quality, and overall maturity]"""
+            [Assessment of completeness, production-readiness, code quality, and overall maturity]{media_section_prompt}
+
+            Only include the MEDIA INSIGHTS section when media assets are provided above; omit it when none are available."""
 
             messages = [{"role": "user", "content": prompt}]
             response = self._make_llm_call(messages, max_tokens=800, temperature=0.7)
@@ -579,7 +1026,8 @@ NOTABLE PATTERNS: [1-2 notable techniques or patterns used]"""
                                scan_base_path: str,
                                max_file_size_mb: int = 10,
                                project_dirs: Optional[List[str]] = None,
-                               progress_callback: Optional[Any] = None) -> Dict[str, Any]:
+                               progress_callback: Optional[Any] = None,
+                               include_media: bool = True) -> Dict[str, Any]:
         """
         Comprehensive AI analysis workflow for CLI integration.
         
@@ -599,6 +1047,7 @@ NOTABLE PATTERNS: [1-2 notable techniques or patterns used]"""
                 - file_summaries: List of results from summarize_tagged_file()
                 - summary_text: Combined formatted output for display
                 - skipped_files: List of files skipped due to size limits
+                - media_briefings: Optional human-friendly summaries of media assets
                 
         Raises:
             LLMError: If analysis fails
@@ -625,6 +1074,12 @@ NOTABLE PATTERNS: [1-2 notable techniques or patterns used]"""
                     project_dirs=project_dirs,
                     max_file_size_mb=max_file_size_mb,
                     progress_callback=progress_callback,
+                )
+
+            media_briefings: list[str] = []
+            if include_media:
+                media_briefings = self._build_media_briefings(
+                    relevant_files, base_path=Path(scan_base_path) if scan_base_path else None
                 )
             
             max_file_size_bytes = max_file_size_mb * 1024 * 1024
@@ -694,7 +1149,8 @@ NOTABLE PATTERNS: [1-2 notable techniques or patterns used]"""
             
             project_analysis = self.analyze_project(
                 local_analysis=scan_summary,
-                tagged_files_summaries=file_summaries
+                tagged_files_summaries=file_summaries,
+                media_briefings=media_briefings if media_briefings else None,
             )
             
             result = {
@@ -702,6 +1158,9 @@ NOTABLE PATTERNS: [1-2 notable techniques or patterns used]"""
                 "file_summaries": file_summaries,
                 "files_analyzed_count": len(file_summaries)
             }
+
+            if media_briefings:
+                result["media_briefings"] = media_briefings
             
             if skipped_files:
                 result["skipped_files"] = skipped_files
@@ -734,6 +1193,7 @@ NOTABLE PATTERNS: [1-2 notable techniques or patterns used]"""
             Dict with per-project analyses and overall summary
         """
         from pathlib import Path
+        from datetime import datetime
         
         self.logger.info(f"Analyzing {len(project_dirs)} separate projects")
         
@@ -767,12 +1227,14 @@ NOTABLE PATTERNS: [1-2 notable techniques or patterns used]"""
         
         import os
         debug_log_path = os.path.expanduser("~/.textual_ai_debug.log")
-        with open(debug_log_path, "a") as f:
-            from datetime import datetime
-            timestamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-            f.write(f"{timestamp} | [LLM Client] Projects normalized: {project_dirs_normalized}\n")
-            f.write(f"{timestamp} | [LLM Client] Sample files: {[f.get('path', '') for f in relevant_files[:5]]}\n")
-            f.write(f"{timestamp} | [LLM Client] Total files to group: {len(relevant_files)}\n")
+        try:
+            with open(debug_log_path, "a") as f:
+                timestamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+                f.write(f"{timestamp} | [LLM Client] Projects normalized: {project_dirs_normalized}\n")
+                f.write(f"{timestamp} | [LLM Client] Sample files: {[f.get('path', '') for f in relevant_files[:5]]}\n")
+                f.write(f"{timestamp} | [LLM Client] Total files to group: {len(relevant_files)}\n")
+        except OSError:
+            self.logger.debug("Unable to write debug log to %s; continuing without it.", debug_log_path)
         
         for file_meta in relevant_files:
             file_path = file_meta.get('path', '')
@@ -800,15 +1262,19 @@ NOTABLE PATTERNS: [1-2 notable techniques or patterns used]"""
         for proj_dir, proj_files in files_by_project.items():
             self.logger.info(f"Project '{proj_dir}': {len(proj_files)} files")
         
-        with open(debug_log_path, "a") as f:
-            timestamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-            for proj_dir, proj_files in files_by_project.items():
-                f.write(f"{timestamp} | [LLM Client] Project '{proj_dir}': {len(proj_files)} files\n")
+        try:
+            with open(debug_log_path, "a") as f:
+                timestamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+                for proj_dir, proj_files in files_by_project.items():
+                    f.write(f"{timestamp} | [LLM Client] Project '{proj_dir}': {len(proj_files)} files\n")
+        except OSError:
+            self.logger.debug("Unable to append grouped file stats to %s; continuing.", debug_log_path)
         
         project_analyses = []
         all_file_summaries = []
         all_skipped_files = []
         unassigned_analysis = None  # Track unassigned files separately
+        all_media_briefings: list[str] = []
         
         project_index = 0
         total_projects = len([p for p in files_by_project.keys() if p != '_unassigned' and files_by_project[p]])
@@ -833,6 +1299,9 @@ NOTABLE PATTERNS: [1-2 notable techniques or patterns used]"""
             self.logger.info(f"Analyzing project '{proj_name}' ({len(proj_files)} files)")
             
             # Prepare files for batch processing
+            media_briefings = self._build_media_briefings(
+                proj_files, base_path=base_path
+            )
             file_summaries = []
             skipped_files = []
             files_to_analyze = []
@@ -904,10 +1373,11 @@ NOTABLE PATTERNS: [1-2 notable techniques or patterns used]"""
                 "total_size_bytes": sum(f.get('size', 0) for f in proj_files)
             }
             
-            if file_summaries:
+            if file_summaries or media_briefings:
                 project_analysis = self.analyze_project(
                     local_analysis=project_summary,
-                    tagged_files_summaries=file_summaries
+                    tagged_files_summaries=file_summaries,
+                    media_briefings=media_briefings if media_briefings else None,
                 )
                 
                 analysis_result = {
@@ -916,8 +1386,10 @@ NOTABLE PATTERNS: [1-2 notable techniques or patterns used]"""
                     "file_count": len(proj_files),
                     "files_analyzed": len(file_summaries),
                     "analysis": project_analysis.get("analysis", ""),
-                    "file_summaries": file_summaries
+                    "file_summaries": file_summaries,
                 }
+                if media_briefings:
+                    analysis_result["media_briefings"] = media_briefings
                 
                 if proj_dir == '_unassigned':
                     unassigned_analysis = analysis_result
@@ -927,6 +1399,8 @@ NOTABLE PATTERNS: [1-2 notable techniques or patterns used]"""
             
             all_file_summaries.extend(file_summaries)
             all_skipped_files.extend(skipped_files)
+            if media_briefings:
+                all_media_briefings.extend(media_briefings)
         
         portfolio_summary = None
         if len(project_analyses) > 1:
@@ -954,6 +1428,12 @@ NOTABLE PATTERNS: [1-2 notable techniques or patterns used]"""
         if all_skipped_files:
             result["skipped_files"] = all_skipped_files
             self.logger.info(f"Skipped {len(all_skipped_files)} files across all projects")
+
+        if all_media_briefings:
+            capped_media = all_media_briefings[:12]
+            if len(all_media_briefings) > 12:
+                capped_media.append(f"...and {len(all_media_briefings) - 12} more media file(s) detected.")
+            result["media_briefings"] = capped_media
         
         return result
     

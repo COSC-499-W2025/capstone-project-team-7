@@ -2940,13 +2940,34 @@ class PortfolioTextualApp(App):
         lines: List[str] = []
         separator = "=" * 60
         
+        def _strip_media_section(text: str) -> str:
+            """Remove any media insights block from LLM text."""
+            if not text:
+                return text
+            lines_split = text.splitlines()
+            cleaned: list[str] = []
+            skipping = False
+            for line in lines_split:
+                header = line.strip().lower()
+                if header.startswith("### media") or header.startswith("## media") or header.startswith("media insights"):
+                    skipping = True
+                    continue
+                if skipping and (line.strip().startswith("#") or line.strip() == ""):
+                    skipping = False
+                    if line.strip().startswith("#"):
+                        cleaned.append(line)
+                    continue
+                if not skipping:
+                    cleaned.append(line)
+            return "\n".join(cleaned)
+
         # Portfolio Overview section (always shown if available)
         portfolio_overview = structured_result.get("portfolio_overview")
         if portfolio_overview:
             lines.append("[b]Portfolio Overview[/b]")
             lines.append("")
-            lines.append(portfolio_overview)
-        
+            lines.append(_strip_media_section(portfolio_overview))
+
         # Project sections (only if projects exist)
         projects = structured_result.get("projects") or []
         for idx, project in enumerate(projects, 1):
@@ -2970,7 +2991,7 @@ class PortfolioTextualApp(App):
                 lines.append(f"[b]{project_name}[/b]")
             
             # Project overview
-            overview = project.get("overview", "")
+            overview = _strip_media_section(project.get("overview", ""))
             if overview:
                 lines.append("")
                 lines.append(overview)
@@ -2989,6 +3010,16 @@ class PortfolioTextualApp(App):
                     lines.append(f"     {analysis}")
                     if file_idx < len(key_files):  # Add spacing between files
                         lines.append("")
+
+        media_assets = structured_result.get("media_assets")
+        if media_assets:
+            if lines:
+                lines.append("")
+                lines.append(separator)
+                lines.append("")
+            lines.append("[b]Media Assets[/b]")
+            lines.append("")
+            lines.append(media_assets)
         
         # Supporting Files section (only if not empty)
         supporting_files = structured_result.get("supporting_files")
@@ -3813,7 +3844,7 @@ class PortfolioTextualApp(App):
     async def _show_ai_results(self, structured_data: Dict[str, Any]) -> None:
         """Show AI analysis results in a full-screen modal with sections."""
         try:
-            screen = AIResultsScreen(structured_data)
+            screen = AIResultsScreen(structured_data, media_loader=self._load_media_insights)
             await self.push_screen(screen)
         except Exception as exc:
             self._debug_log(f"Failed to show AI results screen: {exc}")
@@ -3847,6 +3878,29 @@ class PortfolioTextualApp(App):
         except Exception as exc:
             self._debug_log(f"Failed to load saved AI analysis: {exc}")
             self._show_status(f"Could not load AI analysis: {exc}", "error")
+
+    async def _load_media_insights(self) -> str:
+        """Compute media-only insights on demand for the AI results modal."""
+        if not self._ai_state.client or not self._scan_state.parse_result:
+            return "Media insights unavailable."
+        target_path = str(self._scan_state.target) if self._scan_state.target else None
+        archive_path = str(self._scan_state.archive) if self._scan_state.archive else None
+        try:
+            result = await asyncio.to_thread(
+                self._ai_service.collect_media_insights,
+                self._ai_state.client,
+                self._scan_state.parse_result,
+                target_path=target_path,
+                archive_path=archive_path,
+                max_items=12,
+            )
+            briefings = result.get("media_briefings") or []
+            if not briefings:
+                return "No media assets available."
+            return "\n".join(f"• {entry}" for entry in briefings)
+        except Exception as exc:
+            self._debug_log(f"Media insights failed: {exc}")
+            return f"Media insights failed: {exc}"
     
     async def on_ai_result_action(self, message: AIResultAction) -> None:
         """Handle AI result section selection."""
