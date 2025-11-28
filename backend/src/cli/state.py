@@ -63,8 +63,10 @@ class ScanState:
     is_monorepo: bool = False
     contribution_metrics: Optional[Any] = None
     contribution_analysis_error: Optional[str] = None
+    duplicate_analysis_result: Optional[Any] = None
     resume_item_path: Optional[Path] = None
     resume_item_content: Optional[str] = None
+    resume_item: Optional[Any] = None
 
 
 @dataclass
