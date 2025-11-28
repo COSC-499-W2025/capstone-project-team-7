@@ -144,8 +144,8 @@ class LLMRemoteMediaAnalyzer:
             {
                 "role": "user",
                 "content": [
-                    {"type": "input_text", "text": prompt},
-                    {"type": "input_image", "image_url": img_data},
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": img_data}},
                 ],
             }
         ]
@@ -177,7 +177,7 @@ class LLMRemoteMediaAnalyzer:
             {
                 "role": "user",
                 "content": [
-                    {"type": "input_text", "text": prompt},
+                    {"type": "text", "text": prompt},
                     {"type": "input_audio", "audio_url": audio_data},
                 ],
             }
@@ -212,7 +212,7 @@ class LLMRemoteMediaAnalyzer:
                 img.save(buffer, format="JPEG")
                 b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
                 blocks.append(
-                    {"type": "input_image", "image_url": f"data:image/jpeg;base64,{b64}"}
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
                 )
 
         except Exception:
@@ -247,17 +247,6 @@ class LLMRemoteMediaAnalyzer:
             else:
                 mime = "video/mp4"
 
-        # For large clips, avoid inlining to keep payloads reasonable.
-        inline_ok = False
-        try:
-            inline_ok = path.stat().st_size <= MAX_INLINE_BYTES
-        except Exception:
-            pass
-
-        video_data = self._data_url(path, mime) if inline_ok else f"file://{path}"
-        if not video_data:
-            return {"type": "video", "error": "Unable to encode video"}
-
         prompt = (
             "You are an expert video analyst. Return JSON with keys: "
             "type, summary, objects, scenes, people, actions, transcript, confidence. "
@@ -265,9 +254,24 @@ class LLMRemoteMediaAnalyzer:
         )
 
         content_blocks = [
-            {"type": "input_text", "text": prompt},
-            {"type": "input_video", "video_url": video_data},
+            {"type": "text", "text": prompt},
         ]
+
+        # Prefer inline when under size limit, otherwise send file:// and let upstream decide.
+        video_block: dict[str, Any]
+        try:
+            if path.stat().st_size <= MAX_INLINE_BYTES:
+                data_url = self._data_url(path, mime)
+                if data_url:
+                    video_block = {"type": "input_audio", "audio_url": {"url": data_url}}
+                else:
+                    video_block = {"type": "input_audio", "audio_url": {"url": f"file://{path}"}}
+            else:
+                video_block = {"type": "input_audio", "audio_url": {"url": f"file://{path}"}}
+        except Exception:
+            video_block = {"type": "input_audio", "audio_url": {"url": f"file://{path}"}}
+
+        content_blocks.append(video_block)
 
         # Add multiple frames
         frame_blocks = self._extract_frames(path, num_frames=3)

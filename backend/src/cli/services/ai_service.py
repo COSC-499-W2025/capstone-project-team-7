@@ -179,42 +179,7 @@ class AIService:
             })
         
         # Ensure on-disk media files are included even if parser skipped them
-        def _ensure_media_candidates(base_dir: Optional[str], existing: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-            if not base_dir:
-                return existing
-            try:
-                from pathlib import Path
-                import mimetypes
-                from ...scanner.media import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
-                base = Path(base_dir)
-                if not base.exists():
-                    return existing
-                seen = {item["path"] for item in existing}
-                media_exts = set(AUDIO_EXTENSIONS + IMAGE_EXTENSIONS + VIDEO_EXTENSIONS)
-                added = 0
-                for path in base.rglob("*"):
-                    if added >= 30:  # guardrail
-                        break
-                    if not path.is_file():
-                        continue
-                    if path.suffix.lower() not in media_exts:
-                        continue
-                    rel_path = str(path.relative_to(base))
-                    if rel_path in seen:
-                        continue
-                    existing.append({
-                        "path": rel_path,
-                        "size": path.stat().st_size,
-                        "mime_type": mimetypes.guess_type(path.name)[0] or "",
-                        "media_info": None,
-                    })
-                    seen.add(rel_path)
-                    added += 1
-            except Exception:
-                pass
-            return existing
-        
-        relevant_files = _ensure_media_candidates(target_path, relevant_files)
+        relevant_files = self._ensure_media_candidates(target_path, relevant_files)
         
         self.logger.info(f"[AI Service] Total files: {len(files)}, Relevant files: {len(relevant_files)}")
         self.logger.info(f"[AI Service] Scan path: {scan_path}")
