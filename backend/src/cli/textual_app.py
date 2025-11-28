@@ -58,6 +58,10 @@ from .services.export_service import (
     ExportService,
     ExportConfig,
 )
+from .services.search_service import (
+    SearchService,
+    SearchFilters,
+)
 from .services.resume_generation_service import (
     ResumeGenerationError,
     ResumeGenerationService,
@@ -242,6 +246,7 @@ class PortfolioTextualApp(App):
         self._contribution_service = ContributionAnalysisService()
         self._duplicate_service = DuplicateDetectionService()
         self._export_service = ExportService()
+        self._search_service = SearchService()
         self._resume_service = ResumeGenerationService()
         self._projects_service: Optional[ProjectsService] = None
         self._resume_storage_service: Optional[ResumeStorageService] = None
@@ -866,6 +871,7 @@ class PortfolioTextualApp(App):
             actions.append(("contributions", "Contribution metrics"))
         actions.append(("resume", "Generate resume item"))
         actions.append(("duplicates", "Find duplicate files"))
+        actions.append(("search", "Search & filter files"))
         actions.append(("export", "Export JSON report"))
         actions.append(("export_html", "Export HTML report"))
         actions.append(("export_pdf", "Export PDF report"))
@@ -1005,6 +1011,10 @@ class PortfolioTextualApp(App):
 
         if action == "export_pdf":
             await self._handle_pdf_export_action(screen)
+            return
+
+        if action == "search":
+            await self._handle_search_action(screen)
             return
 
         if action == "pdf":
@@ -1645,6 +1655,53 @@ class PortfolioTextualApp(App):
             size /= 1024
             i += 1
         return f"{size:.1f} {units[i]}" if i > 0 else f"{int(size)} {units[i]}"
+
+    async def _handle_search_action(self, screen: ScanResultsScreen) -> None:
+        """Handle search and filter action from the scan results screen."""
+        if self._scan_state.parse_result is None:
+            screen.display_output(
+                "No scan data available. Run a scan first.", context="Search"
+            )
+            screen.set_message("No scan data available.", tone="warning")
+            return
+
+        # Show search help and prompt
+        help_text = """
+═══════════════════════════════════════════════════════════════
+🔍 SEARCH & FILTER FILES
+═══════════════════════════════════════════════════════════════
+
+Available filters (combine multiple with semicolons):
+
+  📝 Text Search:
+     name:*.py          - Files matching pattern (supports * and ?)
+     path:src/          - Files in paths containing text
+
+  📁 File Types:
+     ext:.py,.js        - Files with specific extensions
+     lang:python        - Files by programming language
+
+  📊 Size Filters:
+     min:1KB            - Minimum file size
+     max:1MB            - Maximum file size
+
+  📅 Date Filters:
+     after:2024-01-01   - Modified after date
+     before:2024-12-31  - Modified before date
+     after:last 30 days - Relative date
+
+═══════════════════════════════════════════════════════════════
+
+Examples:
+  • name:*.py                    → All Python files
+  • lang:python;min:1KB          → Python files over 1KB
+  • path:test;ext:.py            → Test Python files
+  • after:last 7 days            → Recently modified files
+
+Enter your search query below (or press Enter for all files):
+"""
+        screen.display_output(help_text, context="Search")
+        screen.set_message("Enter search filters (e.g., 'name:*.py' or 'lang:javascript')", tone="info")
 
     async def _handle_resume_generation_action(self, screen: ScanResultsScreen) -> None:
         """Generate and display a resume-ready project summary."""
