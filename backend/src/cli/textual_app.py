@@ -567,6 +567,13 @@ class PortfolioTextualApp(App):
         if not self._scan_state.skills_progress:
             self._scan_state.skills_progress = {}
         self._scan_state.skills_progress["summary"] = {
+            # New field names (preferred)
+            "overview": summary.overview,
+            "timeline": summary.timeline,
+            "skills_focus": summary.skills_focus,
+            "suggested_next_steps": summary.suggested_next_steps,
+            "validation_warning": summary.validation_warning,
+            # Legacy aliases retained for backward compatibility
             "narrative": summary.narrative,
             "milestones": summary.milestones,
             "strengths": summary.strengths,
@@ -580,11 +587,17 @@ class PortfolioTextualApp(App):
         if isinstance(summary_data, SkillProgressSummary):
             return summary_data
         if isinstance(summary_data, dict):
+            overview = summary_data.get("overview") or summary_data.get("narrative") or ""
+            timeline = summary_data.get("timeline") or summary_data.get("milestones") or []
+            skills_focus = summary_data.get("skills_focus") or summary_data.get("strengths") or []
+            gaps = summary_data.get("suggested_next_steps") or summary_data.get("gaps") or []
+            validation_warning = summary_data.get("validation_warning")
             return SkillProgressSummary(
-                narrative=str(summary_data.get("narrative", "")).strip(),
-                milestones=[str(x).strip() for x in summary_data.get("milestones", []) if str(x).strip()],
-                strengths=[str(x).strip() for x in summary_data.get("strengths", []) if str(x).strip()],
-                gaps=[str(x).strip() for x in summary_data.get("gaps", []) if str(x).strip()],
+                overview=str(overview).strip(),
+                timeline=[str(x).strip() for x in timeline if str(x).strip()],
+                skills_focus=[str(x).strip() for x in skills_focus if str(x).strip()],
+                suggested_next_steps=[str(x).strip() for x in gaps if str(x).strip()],
+                validation_warning=str(validation_warning).strip() if validation_warning else None,
             )
         return None
 
