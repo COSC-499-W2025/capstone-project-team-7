@@ -1226,10 +1226,6 @@ class PortfolioTextualApp(App):
         if self._scan_state.code_file_count:
             actions.append(("code", "Code analysis"))
             actions.append(("skills", "Skills analysis"))
-        if self._scan_state.code_file_count or (
-            self._scan_state.skills_progress and self._scan_state.skills_progress.get("timeline")
-        ):
-            actions.append(("skill_progress", "Skill progression"))
         if self._scan_state.git_repos:
             actions.append(("git", "Run Git analysis"))
         # Contribution metrics available for all projects (Git or file-based)
