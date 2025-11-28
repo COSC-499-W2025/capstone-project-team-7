@@ -2783,12 +2783,43 @@ class PortfolioTextualApp(App):
             screen.update_state(summary, profiles, message=message, tone=tone)
         except Exception:
             pass
+    
+    def _refresh_current_detail(self) -> None:
+        if self._current_detail_screen:
+            try:
+                self._current_detail_screen.refresh()
+            except Exception:
+                pass
+
+    def _update_session_status(self) -> None:
+        session = self._session_state.session
+        if not session:
+            self._status = "signed out"
+        else:
+            self._status = f"signed in as {session.email}"
+
+    def _finalize_session(self, session: Session, success_message: str) -> None:
+        self._session_state.session = session
+        self._session_state.last_email = session.email
+        self._session_state.auth_error = None
+        self._persist_session()
+
+        consent_storage.set_session_token(session.access_token)
+        consent_storage.load_user_consents(session.user_id, session.access_token)
+
+        self._invalidate_cached_state()
+        self._refresh_consent_state()
+        self._load_preferences()
+        self._update_session_status()
+        self._show_status(success_message, "success")
+        self._refresh_current_detail()
 
     async def _handle_login(self, email: str, password: str) -> None:
         try:
             if not email or not password:
                 self._show_status("Enter both email and password.", "error")
                 return
+
             try:
                 auth = self._get_auth()
             except AuthError as exc:
@@ -2797,6 +2828,7 @@ class PortfolioTextualApp(App):
                 return
 
             self._show_status("Signing in…", "info")
+
             try:
                 session = await asyncio.to_thread(auth.login, email, password)
             except AuthError as exc:
@@ -2804,29 +2836,27 @@ class PortfolioTextualApp(App):
                 self._show_status(f"Sign in failed: {exc}", "error")
                 return
             except Exception as exc:  # pragma: no cover - network/IO failures
+                traceback.print_exc()
                 self._show_status(f"Unexpected sign in error: {exc}", "error")
                 return
-            def _finalize_session(self, session: Session, success_message: str) -> None:
-                self._session_state.session = session
-                self._session_state.last_email = session.email
-                self._session_state.auth_error = None
-                self._persist_session()
-                consent_storage.set_session_token(session.access_token)
-                consent_storage.load_user_consents(session.user_id, session.access_token)
-                self._invalidate_cached_state()
-                self._refresh_consent_state()
-                self._load_preferences()
-                self._update_session_status()
+
+            try:
                 self._finalize_session(session, f"Signed in as {session.email}")
-                self._refresh_current_detail()
+            except Exception as exc:
+                traceback.print_exc()
+                self._show_status(
+                    f"Signed in, but failed to update session: {exc}", "error"
+                )
+                return
         finally:
             self._session_state.login_task = None
-    
+
     async def _handle_signup(self, email: str, password: str) -> None:
         try:
             if not email or not password:
                 self._show_status("Enter both email and password.", "error")
                 return
+
             try:
                 auth = self._get_auth()
             except AuthError as exc:
@@ -2835,33 +2865,38 @@ class PortfolioTextualApp(App):
                 return
 
             self._show_status("Creating account…", "info")
+
             try:
                 session = await asyncio.to_thread(auth.signup, email, password)
             except AuthError as exc:
                 self._session_state.auth_error = str(exc)
                 msg = str(exc)
-            if "already registered" in msg.lower():
-                self._show_status("Sign up failed: email already registered.", "error")
-            elif "password" in msg.lower():
-                self._show_status("Sign up failed: password does not meet requirements.", "error")
-            else:
-                self._show_status(f"Sign up failed: {msg}", "error")
+                if "already registered" in msg.lower():
+                    self._show_status(
+                        "Sign up failed: email already registered.", "error"
+                    )
+                elif "password" in msg.lower():
+                    self._show_status(
+                        "Sign up failed: password does not meet requirements.", "error"
+                    )
+                else:
+                    self._show_status(f"Sign up failed: {msg}", "error")
+                return
+            except Exception as exc:  # pragma: no cover - network/IO failures
+                traceback.print_exc()
+                self._show_status(f"Unexpected sign up error: {exc}", "error")
                 return
 
-            self._session_state.session = session
-            self._session_state.last_email = session.email
-            self._session_state.auth_error = None
-            self._persist_session()
-
-            consent_storage.set_session_token(session.access_token)
-            consent_storage.load_user_consents(session.user_id, session.access_token)
-
-            self._invalidate_cached_state()
-            self._refresh_consent_state()
-            self._load_preferences()
-            self._update_session_status()
-            self._show_status(f"Account created for {session.email}", "success")
-            self._refresh_current_detail()
+            try:
+                self._finalize_session(
+                    session, f"Account created for {session.email}"
+                )
+            except Exception as exc:
+                traceback.print_exc()
+                self._show_status(
+                    f"Account created, but failed to update session: {exc}", "error"
+                )
+                return
         finally:
             self._session_state.login_task = None
 

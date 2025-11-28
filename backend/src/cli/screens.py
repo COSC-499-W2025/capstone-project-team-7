@@ -160,10 +160,21 @@ class LoginScreen(ModalScreen[None]):
     def compose(self) -> ComposeResult:
         yield Vertical(
             Static("Sign in or create an account", classes="dialog-title"),
-            Input(value=self._default_email, placeholder="name@example.com", id="login-email"),
-            Input(password=True, placeholder="Password", id="login-password"),
-            Static("Sign in or create an account", classes="dialog-title"),
-            Static("Use a valid email and an 8+ character password.", classes="dialog-subtitle"),
+            Static(
+                "Use a valid email and an 8+ character password.",
+                classes="dialog-subtitle",
+            ),
+            Input(
+                value=self._default_email,
+                placeholder="name@example.com",
+                id="login-email",
+            ),
+            Input(
+                password=True,
+                placeholder="Password",
+                id="login-password",
+            ),
+            Static("", id="login-message", classes="dialog-message"),
             Horizontal(
                 Button("Cancel", id="login-cancel"),
                 Button("Log In", id="login-submit", variant="primary"),
@@ -180,15 +191,23 @@ class LoginScreen(ModalScreen[None]):
     def _validate(self) -> tuple[str, str] | None:
         email_input = self.query_one("#login-email", Input)
         password_input = self.query_one("#login-password", Input)
+        message_widget = self.query_one("#login-message", Static)
+
         email = email_input.value.strip()
         password = password_input.value
+
         if not email or "@" not in email:
-            self._set_message("Enter a valid email address.")
+            message_widget.update("Enter a valid email address.")
+            email_input.focus()
             return None
 
         if not password or len(password) < 8:
-            self._set_message("Password must be at least 8 characters.")
+            
+            message_widget.update("Password must be at least 8 characters.")
+            password_input.focus()
             return None
+
+        message_widget.update("")
         return email, password
 
     def _handle_submit(self, message_type) -> None:
