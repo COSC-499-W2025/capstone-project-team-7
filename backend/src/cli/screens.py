@@ -140,6 +140,87 @@ class AIKeyCancelled(Message):
 
     pass
 
+
+class SearchQuerySubmitted(Message):
+    """Raised when the user submits a search query."""
+
+    def __init__(self, query: str) -> None:
+        super().__init__()
+        self.query = query
+
+
+class SearchCancelled(Message):
+    """Raised when the search dialog is dismissed without submitting."""
+
+    pass
+
+
+class SearchInputScreen(ModalScreen[None]):
+    """Modal dialog for entering search/filter criteria."""
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def compose(self) -> ComposeResult:
+        help_text = """Available filters (combine with semicolons):
+  name:*.py       - Files matching pattern
+  path:src/       - Files in paths containing text
+  ext:.py,.js     - Files with extensions
+  lang:python     - Files by language
+  min:1KB         - Minimum file size
+  max:1MB         - Maximum file size
+  after:2024-01-01  - Modified after date
+  before:2024-12-31 - Modified before date
+
+Examples: name:*.py  |  lang:python;min:1KB  |  path:test"""
+        yield Vertical(
+            Static("🔍 Search & Filter Files", classes="dialog-title"),
+            Static(help_text, classes="dialog-subtitle search-help"),
+            Input(placeholder="Enter search filters (e.g., name:*.py)", id="search-query"),
+            Static("", id="search-message", classes="dialog-message"),
+            Horizontal(
+                Button("Cancel", id="search-cancel"),
+                Button("Search", id="search-submit", variant="primary"),
+                classes="dialog-buttons",
+            ),
+            classes="dialog search-dialog",
+        )
+
+    def on_mount(self, event: Mount) -> None:  # pragma: no cover - focus setup
+        self.query_one("#search-query", Input).focus()
+
+    def _submit(self) -> None:
+        query_input = self.query_one("#search-query", Input)
+        query = query_input.value.strip()
+        dispatch_message(self, SearchQuerySubmitted(query))
+        self.dismiss(None)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        try:
+            event.stop()
+        except Exception:
+            pass
+
+        if event.button.id == "search-submit":
+            self._submit()
+        elif event.button.id == "search-cancel":
+            dispatch_message(self, SearchCancelled())
+            self.dismiss(None)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "search-query":
+            try:
+                event.stop()
+            except Exception:
+                pass
+            self._submit()
+
+    def on_key(self, event: Key) -> None:  # pragma: no cover - keyboard shortcut
+        if event.key == "escape":
+            dispatch_message(self, SearchCancelled())
+            self.dismiss(None)
+
+
 class LoginScreen(ModalScreen[None]):
     """Modal dialog for collecting Supabase credentials."""
 
