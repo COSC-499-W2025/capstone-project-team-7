@@ -9,7 +9,9 @@ from typing import Optional, Dict, List, Any
 import openai
 from openai import OpenAI
 import tiktoken
-
+from pathlib import Path
+import json
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -1024,3 +1026,358 @@ PORTFOLIO COHERENCE:
         except Exception as e:
             self.logger.error(f"Portfolio summary generation failed: {e}")
             raise LLMError(f"Failed to generate portfolio summary: {str(e)}")
+        
+        
+    def generate_and_apply_improvements(
+    self,
+    file_path: str,
+    content: str,
+    file_type: str
+) -> Dict[str, Any]:
+        """
+        Generate AI-suggested improvements for text-based files.
+        
+        Handles:
+        - Code files (Python, JavaScript, etc.)
+        - PDFs (extracts text first)
+        - Word documents (extracts text first)
+        
+        Args:
+            file_path: Path to the file
+            content: File content as string
+            file_type: MIME type or file extension
+        
+        Returns:
+            Dict with:
+            - success: bool
+            - suggestions: List of improvement dicts
+            - improved_code: str (improved content)
+            - original_code: str (original content)
+            - error: str (if failed)
+        """
+        if not self.is_configured():
+            raise LLMError("LLM client is not configured")
+        
+        try:
+            token_count = self._count_tokens(content)
+            self.logger.info(f"Generating improvements for {file_path} ({token_count} tokens)")
+            
+            # Truncate if too large
+            if token_count > 3000:
+                try:
+                    import tiktoken
+                    encoding = tiktoken.encoding_for_model(self.DEFAULT_MODEL)
+                    tokens = encoding.encode(content)
+                    truncated_tokens = tokens[:3000]
+                    content = encoding.decode(truncated_tokens)
+                    self.logger.warning(f"Truncated {file_path} from {token_count} to 3000 tokens")
+                except Exception:
+                    # Fallback: truncate by characters
+                    content = content[:12000]
+            
+            # Determine file category and appropriate improvements
+            improvement_focus = self._get_improvement_focus(file_path, file_type)
+            
+            # Build adaptive prompt
+            prompt = f"""You are an expert code and document reviewer. Analyze this file and suggest improvements.
+
+    File: {file_path}
+
+    Original Content:
+    ```
+    {content}
+    ```
+
+    {improvement_focus}
+
+    Format your response as JSON:
+    {{
+    "suggestions": [
+        {{
+        "type": "documentation|refactoring|clarity|consistency|best-practices",
+        "description": "Brief description of the improvement",
+        "line_range": "Lines affected (e.g., '10-15' or 'general')"
+        }}
+    ],
+    "improved_code": "The complete improved content here"
+    }}
+
+    CRITICAL: Return ONLY valid JSON. No markdown code blocks, no extra text, ONLY the JSON object."""
+
+            messages = [{"role": "user", "content": prompt}]
+            
+            # Call OpenAI API
+            response = self._make_llm_call(
+                messages, 
+                max_tokens=2500,
+                temperature=0.3
+            )
+            
+            # Parse JSON response with retry logic
+            result = self._parse_json_response(response, file_path, content, improvement_focus)
+            
+            if result.get("success"):
+                return {
+                    "success": True,
+                    "suggestions": result.get("suggestions", []),
+                    "improved_code": result.get("improved_code", content),
+                    "original_code": content
+                }
+            else:
+                return result
+            
+        except Exception as e:
+            self.logger.error(f"Failed to generate improvements: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    def _parse_json_response(
+        self,
+        response: str,
+        file_path: str,
+        original_content: str,
+        improvement_focus: str,
+        retry: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Robustly parse JSON response from LLM with fallback strategies.
+        
+        Strategies:
+        1. Try to parse response as-is
+        2. Strip markdown code fences
+        3. Extract JSON from text
+        4. Retry with stricter prompt if initial parse fails
+        
+        Args:
+            response: Raw response from LLM
+            file_path: File being analyzed (for error context)
+            original_content: Original file content
+            improvement_focus: Improvement focus instructions
+            retry: Whether to retry with stricter prompt on failure
+        
+        Returns:
+            Dict with success status and parsed result or error
+        """
+        # Strategy 1: Try direct parsing
+        try:
+            result = json.loads(response.strip())
+            self.logger.info(f"Successfully parsed JSON for {file_path}")
+            return {"success": True, **result}
+        except json.JSONDecodeError:
+            self.logger.debug(f"Direct JSON parsing failed for {file_path}")
+        
+        # Strategy 2: Strip markdown code fences
+        response_text = response.strip()
+        response_text = re.sub(r'^```(?:json)?\s*\n?', '', response_text)  # Opening ```
+        response_text = re.sub(r'\n?```\s*$', '', response_text)           # Closing ```
+        response_text = response_text.strip()
+        
+        try:
+            result = json.loads(response_text)
+            self.logger.info(f"Successfully parsed JSON after stripping fences for {file_path}")
+            return {"success": True, **result}
+        except json.JSONDecodeError:
+            self.logger.debug(f"Markdown stripping didn't help for {file_path}")
+        
+        # Strategy 3: Extract JSON block from text
+        json_match = re.search(r'\{[\s\S]*\}', response_text)
+        if json_match:
+            try:
+                json_str = json_match.group(0)
+                result = json.loads(json_str)
+                self.logger.info(f"Successfully extracted JSON from text for {file_path}")
+                return {"success": True, **result}
+            except json.JSONDecodeError:
+                self.logger.debug(f"Extracted JSON was invalid for {file_path}")
+        
+        # Strategy 4: Retry with stricter prompt
+        if retry:
+            self.logger.warning(f"JSON parsing failed for {file_path}, retrying with stricter prompt")
+            return self._retry_with_stricter_prompt(
+                file_path,
+                original_content,
+                improvement_focus,
+                response  # Include original response in context
+            )
+        
+        # All strategies failed
+        self.logger.error(f"All JSON parsing strategies failed for {file_path}")
+        return {
+            "success": False,
+            "error": "Failed to parse AI response after multiple strategies",
+            "raw_response": response[:500]
+        }
+
+    def _retry_with_stricter_prompt(
+        self,
+        file_path: str,
+        content: str,
+        improvement_focus: str,
+        previous_response: str
+    ) -> Dict[str, Any]:
+        """
+        Retry with a stricter, more explicit prompt if initial parsing failed.
+        
+        This helps when the model adds extra text, uses wrong format, etc.
+        """
+        stricter_prompt = f"""You are an expert code reviewer. Analyze this file ONLY.
+
+File: {file_path}
+
+Content:
+```
+{content}
+```
+
+{improvement_focus}
+
+RESPOND WITH ONLY THIS JSON FORMAT. NO OTHER TEXT. NO MARKDOWN BLOCKS:
+{{"suggestions": [{{"type": "string", "description": "string", "line_range": "string"}}], "improved_code": "string"}}"""
+
+        try:
+            messages = [{"role": "user", "content": stricter_prompt}]
+            response = self._make_llm_call(
+                messages,
+                max_tokens=2500,
+                temperature=0.3
+            )
+            
+            # Try parsing strategies again on new response
+            response_text = response.strip()
+            response_text = re.sub(r'^```(?:json)?\s*\n?', '', response_text)
+            response_text = re.sub(r'\n?```\s*$', '', response_text)
+            response_text = response_text.strip()
+            
+            try:
+                result = json.loads(response_text)
+                self.logger.info(f"Successfully parsed JSON on retry for {file_path}")
+                return {"success": True, **result}
+            except json.JSONDecodeError:
+                # Try to extract JSON
+                json_match = re.search(r'\{[\s\S]*\}', response_text)
+                if json_match:
+                    try:
+                        result = json.loads(json_match.group(0))
+                        self.logger.info(f"Successfully extracted JSON on retry for {file_path}")
+                        return {"success": True, **result}
+                    except json.JSONDecodeError:
+                        pass
+            
+            self.logger.error(f"Retry also failed for {file_path}")
+            return {
+                "success": False,
+                "error": "Failed to parse AI response even after retry with stricter prompt",
+                "raw_response": response[:500]
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Retry failed with exception: {e}")
+            return {
+                "success": False,
+                "error": f"Error during retry: {str(e)}"
+            }
+
+    def _get_improvement_focus(self, file_path: str, file_type: str) -> str:
+        """
+        Get appropriate improvement instructions based on file type.
+        
+        Returns different guidance for:
+        - Programming code
+        - PDF documents
+        - Word documents
+        """
+        extension = Path(file_path).suffix.lower()
+        filename = Path(file_path).name.lower()
+        
+        # PDF files
+        if extension == '.pdf':
+            return """Focus on DOCUMENT IMPROVEMENTS:
+    - Improve document structure and organization
+    - Enhance clarity and readability
+    - Fix grammar and spelling errors
+    - Improve formatting and layout suggestions
+    - Add missing sections or context
+    - Ensure consistent style"""
+        
+        # Word documents
+        elif extension == '.docx':
+            return """Focus on DOCUMENT IMPROVEMENTS:
+    - Improve document structure and organization
+    - Enhance clarity and readability
+    - Fix grammar and spelling errors
+    - Improve formatting and layout suggestions
+    - Add missing sections or context
+    - Ensure consistent style and tone"""
+        
+        # Programming languages
+        code_extensions = {
+            '.py', '.js', '.jsx', '.ts', '.tsx', '.java', '.cpp', '.c', 
+            '.cs', '.rb', '.go', '.rs', '.php', '.swift', '.kt', '.scala'
+        }
+        
+        if extension in code_extensions:
+            return """Focus on CODE IMPROVEMENTS:
+    - Add clear comments and docstrings
+    - Improve variable and function names for clarity
+    - Add error handling and input validation
+    - Follow language-specific best practices
+    - Improve code structure and readability
+    - Add type hints where applicable
+    - Remove code duplication"""
+        
+        # Web files
+        web_extensions = {'.html', '.css', '.scss', '.sass'}
+        
+        if extension in web_extensions:
+            return """Focus on WEB FILE IMPROVEMENTS:
+    - Add helpful comments
+    - Improve naming conventions
+    - Follow modern best practices
+    - Improve accessibility
+    - Optimize structure
+    - Add documentation comments"""
+        
+        # Configuration files
+        config_extensions = {'.json', '.yaml', '.yml', '.toml', '.ini', '.env'}
+        
+        if extension in config_extensions:
+            return """Focus on CONFIGURATION IMPROVEMENTS:
+    - Add helpful comments explaining each setting
+    - Organize settings into logical groups
+    - Add default values and examples
+    - Improve key names for clarity
+    - Add validation comments
+    - Document required vs optional settings"""
+        
+        # Documentation files
+        doc_extensions = {'.md', '.txt', '.rst'}
+        
+        if extension in doc_extensions:
+            return """Focus on DOCUMENTATION IMPROVEMENTS:
+    - Improve clarity and readability
+    - Add missing sections (installation, usage, examples)
+    - Fix grammar and spelling
+    - Add code examples where helpful
+    - Improve formatting and structure
+    - Add links and references"""
+        
+        # SQL files
+        elif extension == '.sql':
+            return """Focus on SQL IMPROVEMENTS:
+    - Add comments explaining queries
+    - Improve query structure and formatting
+    - Optimize query performance
+    - Add error handling
+    - Use consistent naming conventions
+    - Add documentation for complex logic"""
+        
+        else:
+            # Generic text file
+            return """Focus on TEXT FILE IMPROVEMENTS:
+    - Improve clarity and readability
+    - Fix grammar and spelling
+    - Add helpful comments or explanations
+    - Improve formatting and structure
+    - Ensure consistency"""
