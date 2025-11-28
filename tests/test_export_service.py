@@ -66,6 +66,11 @@ class TestExportService:
                 "total_files": 2,
                 "successful_files": 2,
                 "failed_files": 0,
+                "languages": {
+                    "Python": 10,
+                    "JavaScript": 5,
+                    "TypeScript": 3,
+                },
                 "metrics": {
                     "total_lines": 500,
                     "total_code_lines": 350,
@@ -81,24 +86,90 @@ class TestExportService:
                     "high_priority_files": 0,
                     "functions_needing_refactor": 1,
                 },
+                "refactor_candidates": [
+                    {
+                        "path": "src/complex_module.py",
+                        "language": "Python",
+                        "complexity": 15.5,
+                        "maintainability": 45.0,
+                        "priority": "high",
+                        "top_functions": [
+                            {"name": "process_data", "complexity": 12, "needs_refactor": True},
+                        ],
+                    },
+                    {
+                        "path": "src/utils/helpers.py",
+                        "language": "Python",
+                        "complexity": 8.2,
+                        "maintainability": 55.0,
+                        "priority": "medium",
+                        "top_functions": [],
+                    },
+                ],
             },
             "skills_analysis": {
                 "success": True,
-                "skills": [
-                    {"name": "Python", "proficiency_level": "Expert", "file_count": 15},
-                    {"name": "FastAPI", "proficiency_level": "Proficient", "file_count": 8},
-                    {"name": "pytest", "proficiency_level": "Proficient", "file_count": 6},
-                    {"name": "SQL", "proficiency_level": "Familiar", "file_count": 3},
-                    {"name": "Docker", "proficiency_level": "Familiar", "file_count": 2},
+                "total_skills": 5,
+                "paragraph_summary": "The analysis detected 5 programming skills across the codebase, which demonstrates solid proficiency with an average score of 0.72.",
+                "skills_by_category": {
+                    "frameworks": [
+                        {"name": "Python", "proficiency": 0.95, "evidence_count": 15, "description": "Primary programming language"},
+                        {"name": "FastAPI", "proficiency": 0.75, "evidence_count": 8, "description": "Modern web framework"},
+                    ],
+                    "practices": [
+                        {"name": "pytest", "proficiency": 0.70, "evidence_count": 6, "description": "Testing framework"},
+                    ],
+                    "databases": [
+                        {"name": "SQL", "proficiency": 0.55, "evidence_count": 3, "description": "Database queries"},
+                    ],
+                },
+                "top_skills": [
+                    {"name": "Python", "category": "frameworks", "proficiency": 0.95, "evidence_count": 15},
+                    {"name": "FastAPI", "category": "frameworks", "proficiency": 0.75, "evidence_count": 8},
+                    {"name": "pytest", "category": "practices", "proficiency": 0.70, "evidence_count": 6},
+                    {"name": "SQL", "category": "databases", "proficiency": 0.55, "evidence_count": 3},
+                    {"name": "Docker", "category": "practices", "proficiency": 0.45, "evidence_count": 2},
+                ],
+                "all_skills": [
+                    {"name": "Python", "category": "frameworks", "proficiency": 0.95, "evidence_count": 15, "description": "Primary programming language"},
+                    {"name": "FastAPI", "category": "frameworks", "proficiency": 0.75, "evidence_count": 8, "description": "Modern web framework"},
+                    {"name": "pytest", "category": "practices", "proficiency": 0.70, "evidence_count": 6, "description": "Testing framework"},
+                    {"name": "SQL", "category": "databases", "proficiency": 0.55, "evidence_count": 3, "description": "Database queries"},
+                    {"name": "Docker", "category": "practices", "proficiency": 0.45, "evidence_count": 2, "description": "Containerization"},
                 ],
             },
             "contribution_metrics": {
+                "project_type": "collaborative",
+                "is_solo_project": False,
                 "total_commits": 125,
-                "total_lines_added": 5430,
-                "total_lines_deleted": 1250,
-                "total_files_changed": 45,
-                "first_commit_date": "2024-09-01T10:00:00",
-                "last_commit_date": "2025-01-20T15:30:00",
+                "total_contributors": 3,
+                "project_duration_days": 142,
+                "commit_frequency": 0.88,
+                "project_start_date": "2024-09-01T10:00:00",
+                "project_end_date": "2025-01-20T15:30:00",
+                "languages_detected": ["Python", "JavaScript", "SQL"],
+                "overall_activity_breakdown": {
+                    "lines": {
+                        "total": 6680,
+                        "code": 5430,
+                        "test": 800,
+                        "documentation": 250,
+                        "design": 100,
+                        "config": 100,
+                    },
+                    "percentages": {
+                        "code": 81.3,
+                        "test": 12.0,
+                        "documentation": 3.7,
+                        "design": 1.5,
+                        "config": 1.5,
+                    },
+                },
+                "contributors": [
+                    {"name": "Alice", "commits": 75, "commit_percentage": 60},
+                    {"name": "Bob", "commits": 35, "commit_percentage": 28},
+                    {"name": "Charlie", "commits": 15, "commit_percentage": 12},
+                ],
             },
         }
 
@@ -181,16 +252,15 @@ class TestExportService:
         assert "125" in content  # commits
         assert "5,430" in content  # lines added
 
-    def test_export_html_contains_file_list(self, export_service, sample_payload, tmp_path):
-        """Test that the HTML contains file list."""
+    def test_export_html_excludes_file_list_by_default(self, export_service, sample_payload, tmp_path):
+        """Test that the HTML excludes file list by default."""
         output_path = tmp_path / "report.html"
         
         export_service.export_html(sample_payload, output_path)
         
         content = output_path.read_text(encoding="utf-8")
-        assert "Files Analyzed" in content
-        assert "main.py" in content
-        assert "README.md" in content
+        # File list section should NOT be included by default
+        assert "Files Analyzed" not in content or "Detailed file breakdown" not in content
 
     def test_export_html_is_valid_html(self, export_service, sample_payload, tmp_path):
         """Test that the generated HTML is structurally valid."""
@@ -272,17 +342,18 @@ class TestExportService:
     # Configuration Tests
     # =========================================================================
 
-    def test_config_exclude_file_list(self, sample_payload, tmp_path):
-        """Test that file list can be excluded via config."""
-        config = ExportConfig(include_file_list=False)
+    def test_config_include_file_list(self, sample_payload, tmp_path):
+        """Test that file list can be included via config."""
+        config = ExportConfig(include_file_list=True)
         service = ExportService(config)
         output_path = tmp_path / "report.html"
         
         service.export_html(sample_payload, output_path)
         
         content = output_path.read_text(encoding="utf-8")
-        # Should not contain file table
-        assert "file-table" not in content or "main.py" not in content
+        # Should contain file table when explicitly enabled
+        assert "file-table" in content
+        assert "main.py" in content
 
     def test_config_exclude_code_analysis(self, sample_payload, tmp_path):
         """Test that code analysis can be excluded via config."""
@@ -297,7 +368,7 @@ class TestExportService:
 
     def test_config_max_files_limit(self, tmp_path):
         """Test that max_files_in_list config limits file display."""
-        config = ExportConfig(max_files_in_list=2)
+        config = ExportConfig(include_file_list=True, max_files_in_list=2)
         service = ExportService(config)
         
         payload = {
@@ -368,7 +439,7 @@ class TestExportConfig:
         """Test default configuration values."""
         config = ExportConfig()
         
-        assert config.include_file_list is True
+        assert config.include_file_list is False  # Disabled by default
         assert config.include_code_analysis is True
         assert config.include_skills is True
         assert config.include_contributions is True
@@ -381,12 +452,12 @@ class TestExportConfig:
     def test_custom_config(self):
         """Test custom configuration values."""
         config = ExportConfig(
-            include_file_list=False,
+            include_file_list=True,  # Explicitly enable
             max_files_in_list=50,
             chart_style="minimal",
         )
         
-        assert config.include_file_list is False
+        assert config.include_file_list is True
         assert config.max_files_in_list == 50
         assert config.chart_style == "minimal"
 
