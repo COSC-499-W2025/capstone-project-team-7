@@ -51,6 +51,9 @@ from .services.contribution_analysis_service import (
     ContributionAnalysisService,
     ContributionAnalysisError,
 )
+from .services.duplicate_detection_service import (
+    DuplicateDetectionService,
+)
 from .services.resume_generation_service import (
     ResumeGenerationError,
     ResumeGenerationService,
@@ -73,6 +76,7 @@ from .screens import (
     AIKeyCancelled,
     AIKeyScreen,
     AIKeySubmitted,
+    AIResultAction,
     AIResultsScreen,
     ConsentAction,
     ConsentScreen,
@@ -233,6 +237,7 @@ class PortfolioTextualApp(App):
         self._code_service = CodeAnalysisService()
         self._skills_service = SkillsAnalysisService()
         self._contribution_service = ContributionAnalysisService()
+        self._duplicate_service = DuplicateDetectionService()
         self._resume_service = ResumeGenerationService()
         self._projects_service: Optional[ProjectsService] = None
         self._resume_storage_service: Optional[ResumeStorageService] = None
@@ -246,6 +251,7 @@ class PortfolioTextualApp(App):
         self._preferences_screen: Optional[PreferencesScreen] = None
         self._consent_screen: Optional[ConsentScreen] = None
         self._scan_results_screen: Optional[ScanResultsScreen] = None
+        self._resumes_screen: Optional[ResumesScreen] = None
         self._init_resume_storage_service()
         self._init_media_analyzer()
         self._media_vision_ready = media_vision_capabilities_enabled()
@@ -751,8 +757,10 @@ class PortfolioTextualApp(App):
         self._scan_state.skills_analysis_error = None
         self._scan_state.contribution_metrics = None
         self._scan_state.contribution_analysis_error = None
+        self._scan_state.duplicate_analysis_result = None
         self._scan_state.resume_item_path = None
         self._scan_state.resume_item_content = None
+        self._scan_state.resume_item = None
         
         # Detect projects within scanned directory
         try:
@@ -853,6 +861,7 @@ class PortfolioTextualApp(App):
         if self._scan_state.code_file_count > 0 or self._scan_state.git_repos:
             actions.append(("contributions", "Contribution metrics"))
         actions.append(("resume", "Generate resume item"))
+        actions.append(("duplicates", "Find duplicate files"))
         actions.append(("export", "Export JSON report"))
 
         if self._scan_state.pdf_candidates:
@@ -1065,6 +1074,10 @@ class PortfolioTextualApp(App):
                 return
             screen.display_output(self._format_media_analysis(analysis), context="Media analysis")
             screen.set_message("Media insights ready.", tone="success")
+            return
+
+        if action == "duplicates":
+            await self._handle_duplicate_detection_action(screen)
             return
 
         screen.set_message("Unsupported action.", tone="error")
@@ -1448,6 +1461,43 @@ class PortfolioTextualApp(App):
         screen.display_output(full_output, context="Contribution analysis")
         screen.set_message("Contribution analysis ready.", tone="success")
 
+    async def _handle_duplicate_detection_action(self, screen: ScanResultsScreen) -> None:
+        """Handle duplicate file detection action from the scan results screen."""
+        if self._scan_state.parse_result is None:
+            screen.display_output(
+                "No scan data available. Run a scan first.", context="Duplicate detection"
+            )
+            screen.set_message("No scan data available.", tone="warning")
+            return
+
+        if self._scan_state.duplicate_analysis_result is None:
+            screen.set_message("Analyzing files for duplicates…", tone="info")
+            try:
+                result = await asyncio.to_thread(
+                    self._duplicate_service.analyze_duplicates,
+                    self._scan_state.parse_result,
+                )
+                self._scan_state.duplicate_analysis_result = result
+            except Exception as exc:
+                screen.display_output(
+                    f"Failed to analyze duplicates: {exc}", context="Duplicate detection"
+                )
+                screen.set_message("Duplicate detection failed.", tone="error")
+                return
+
+        result = self._scan_state.duplicate_analysis_result
+        output = self._duplicate_service.format_duplicate_details(result)
+        screen.display_output(output, context="Duplicate detection")
+        
+        if result.duplicate_groups:
+            screen.set_message(
+                f"Found {result.unique_files_duplicated} sets of duplicate files "
+                f"({self._duplicate_service._format_size(result.total_wasted_bytes)} wasted).",
+                tone="warning",
+            )
+        else:
+            screen.set_message("No duplicate files found.", tone="success")
+
     async def _handle_resume_generation_action(self, screen: ScanResultsScreen) -> None:
         """Generate and display a resume-ready project summary."""
         if self._scan_state.parse_result is None:
@@ -1470,6 +1520,9 @@ class PortfolioTextualApp(App):
                 except Exception:
                     pass
 
+        await self._ensure_document_analysis_ready()
+        await self._ensure_pdf_summaries_ready()
+
         try:
             resume_item = await asyncio.to_thread(
                 self._resume_service.generate_resume_item,
@@ -1479,6 +1532,10 @@ class PortfolioTextualApp(App):
                 code_analysis_result=self._scan_state.code_analysis_result,
                 contribution_metrics=self._scan_state.contribution_metrics,
                 git_analysis=git_analysis,
+                detected_projects=self._scan_state.detected_projects,
+                skills=self._scan_state.skills_analysis_result,
+                document_results=self._scan_state.document_results,
+                pdf_summaries=self._scan_state.pdf_summaries,
                 output_path=self._scan_state.resume_item_path,
                 ai_client=self._ai_state.client,
             )
@@ -1495,6 +1552,7 @@ class PortfolioTextualApp(App):
 
         self._scan_state.resume_item_path = resume_item.output_path
         self._scan_state.resume_item_content = resume_item.to_markdown()
+        self._scan_state.resume_item = resume_item
 
         downloads_note = ""
         downloads_path = Path.home() / "Downloads" / resume_item.output_path.name
@@ -1508,7 +1566,8 @@ class PortfolioTextualApp(App):
             except Exception:
                 pass
 
-        screen.display_output(resume_item.to_markdown(), context="Resume item")
+        context_label = "Resume item (AI-assisted)" if getattr(resume_item, "ai_generated", False) else "Resume item"
+        screen.display_output(resume_item.to_markdown(), context=context_label)
         screen.set_message(
             f"✓ Resume item saved to: {resume_item.output_path}{downloads_note}",
             tone="success",
@@ -1769,6 +1828,21 @@ class PortfolioTextualApp(App):
             sections.append("\n".join(lines))
         return "\n\n".join(sections).strip()
 
+    async def _ensure_pdf_summaries_ready(self) -> None:
+        if self._scan_state.pdf_summaries:
+            return
+        if not PDF_AVAILABLE:
+            return
+        if not self._scan_state.pdf_candidates:
+            return
+        try:
+            await asyncio.to_thread(self._analyze_pdfs_sync)
+        except Exception as exc:  # pragma: no cover - best-effort logging
+            try:
+                self._debug_log(f"PDF analysis prep failed: {exc}")
+            except Exception:
+                pass
+
     def _analyze_documents_sync(self) -> None:
         analyzer = self._document_analyzer
         if analyzer is None:
@@ -1915,6 +1989,21 @@ class PortfolioTextualApp(App):
             sections.append("\n".join(lines))
         return "\n\n".join(sections)
 
+    async def _ensure_document_analysis_ready(self) -> None:
+        if self._scan_state.document_results:
+            return
+        if not self._scan_state.document_candidates:
+            return
+        if self._document_analyzer is None:
+            return
+        try:
+            await asyncio.to_thread(self._analyze_documents_sync)
+        except Exception as exc:  # pragma: no cover - best-effort logging
+            try:
+                self._debug_log(f"Document analysis prep failed: {exc}")
+            except Exception:
+                pass
+
     def _export_scan_report(self) -> Path:
         if self._scan_state.parse_result is None or self._scan_state.archive is None:
             raise RuntimeError("No scan results to export.")
@@ -1922,7 +2011,17 @@ class PortfolioTextualApp(App):
             self._scan_state.target.parent if self._scan_state.target else Path.cwd()
         )
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        filename = f"scan_result_{timestamp}.json"
+
+        def _sanitize_name(name: str) -> str:
+            cleaned = "".join(ch if ch.isalnum() or ch in ("-", "_") else "-" for ch in name.strip().lower())
+            while "--" in cleaned:
+                cleaned = cleaned.replace("--", "-")
+            cleaned = cleaned.strip("-_")
+            return cleaned or "scan"
+
+        project_name = self._scan_state.target.name if self._scan_state.target else "scan"
+        safe_name = _sanitize_name(project_name)
+        filename = f"scan_{safe_name}_{timestamp}.json"
         destination = target_dir / filename
         payload = self._build_export_payload(
             self._scan_state.parse_result,
@@ -2127,10 +2226,19 @@ class PortfolioTextualApp(App):
         
         # ✨ CONTRIBUTION METRICS ✨
         if self._scan_state.contribution_metrics:
-            contribution_data = self._contribution_service.export_data(
-                self._scan_state.contribution_metrics
-            )
+            metrics_obj = self._scan_state.contribution_metrics
+            contribution_data = self._contribution_service.export_data(metrics_obj)
             payload["contribution_metrics"] = contribution_data
+
+            # Compute contribution-based ranking signals for UI and persistence
+            session = self._session_state.session
+            user_email = session.email if session else None
+            ranking = self._contribution_service.compute_contribution_score(
+                metrics_obj,
+                user_email=user_email,
+                user_name=None,
+            )
+            payload["contribution_ranking"] = ranking
         
         return payload
     
@@ -2341,6 +2449,9 @@ class PortfolioTextualApp(App):
     def on_scan_results_screen_closed(self) -> None:
         self._scan_results_screen = None
 
+    def on_resumes_screen_closed(self) -> None:
+        self._resumes_screen = None
+
     def _cancel_task(self, task: Optional[asyncio.Task], label: str) -> None:
         """Cancel a pending asyncio task and surface any unexpected errors."""
         if not task:
@@ -2500,6 +2611,16 @@ class PortfolioTextualApp(App):
             return
         screen = self._scan_results_screen
         self._scan_results_screen = None
+        try:
+            screen.dismiss(None)
+        except Exception:  # pragma: no cover - defensive cleanup
+            pass
+
+    def _close_resumes_screen(self) -> None:
+        if self._resumes_screen is None:
+            return
+        screen = self._resumes_screen
+        self._resumes_screen = None
         try:
             screen.dismiss(None)
         except Exception:  # pragma: no cover - defensive cleanup
@@ -2785,21 +2906,25 @@ class PortfolioTextualApp(App):
             self._ai_state.pending_analysis = False
             self._show_status(f"Invalid API key: {exc}", "error")
             self._debug_log(f"verify_ai_key invalid_key {exc}")
+            self._update_session_status()
             return
         except AIProviderError as exc:
             self._ai_state.pending_analysis = False
             self._show_status(f"AI service error: {exc}", "error")
             self._debug_log(f"verify_ai_key provider_error {exc}")
+            self._update_session_status()
             return
         except AIDependencyError as exc:
             self._ai_state.pending_analysis = False
             self._show_status(f"AI analysis unavailable: {exc}", "error")
             self._debug_log(f"verify_ai_key dependency_error {exc}")
+            self._update_session_status()
             return
         except Exception as exc:
             self._ai_state.pending_analysis = False
             self._show_status(f"Failed to verify API key: {exc}", "error")
             self._debug_log(f"verify_ai_key unexpected_error {exc.__class__.__name__}: {exc}")
+            self._update_session_status()
             return
 
         self._ai_state.client = client
@@ -2815,6 +2940,7 @@ class PortfolioTextualApp(App):
         self._debug_log(
             f"verify_ai_key success temp={client_config.temperature} max_tokens={client_config.max_tokens}"
         )
+        self._update_session_status()
 
         if self._ai_state.pending_analysis:
             self._ai_state.pending_analysis = False
@@ -2824,23 +2950,119 @@ class PortfolioTextualApp(App):
         if self._session_state.session:
             self._session_service.persist_session(self._session_state.session_path, self._session_state.session)
 
-    def _persist_ai_output(self, formatted_text: str, raw_result: Dict[str, Any]) -> bool:
-        """Write the latest AI analysis to disk for easier reading.
+    def _persist_ai_output(self, structured_result: Dict[str, Any], raw_result: Dict[str, Any]) -> bool:
+        """Write the latest AI analysis to disk as JSON for easier reading.
 
         Returns True if the file was written.
         """
         try:
-            content = formatted_text.strip() or "# AI-Powered Analysis\n\nNo AI insights were returned."
+            import json
             
-            # Convert Rich markup to Markdown
-            content = self._convert_rich_to_markdown(content)
+            # Change file extension to .json
+            output_path = self._ai_output_path.with_suffix('.json')
             
-            self._ai_output_path.write_text(content, encoding="utf-8")
-            self._debug_log(f"AI analysis written to {self._ai_output_path}")
+            # Save the structured result directly as JSON
+            output_path.write_text(json.dumps(structured_result, indent=2, ensure_ascii=False), encoding="utf-8")
+            self._debug_log(f"AI analysis written to {output_path}")
             return True
         except Exception as exc:
             self._debug_log(f"Failed to persist AI analysis: {exc}")
             return False
+    
+    def _display_ai_sections(self, structured_result: Dict[str, Any]) -> str:
+        """Format structured AI analysis into multi-section display with Rich markup.
+        
+        Args:
+            structured_result: Dict with portfolio_overview, projects, supporting_files, skipped_files
+            
+        Returns:
+            Formatted string with Rich markup and section separators
+        """
+        lines: List[str] = []
+        separator = "=" * 60
+        
+        # Portfolio Overview section (always shown if available)
+        portfolio_overview = structured_result.get("portfolio_overview")
+        if portfolio_overview:
+            lines.append("[b]Portfolio Overview[/b]")
+            lines.append("")
+            lines.append(portfolio_overview)
+        
+        # Project sections (only if projects exist)
+        projects = structured_result.get("projects") or []
+        for idx, project in enumerate(projects, 1):
+            # Add separator before each project (except before first if no portfolio overview)
+            if lines:  # Only add separator if there's content before
+                lines.append("")
+                lines.append(separator)
+                lines.append("")
+            
+            # Project header with numbering
+            project_name = project.get("name", f"Project {idx}")
+            project_path = project.get("path", "")
+            
+            # Show numbered header for multi-project, or for single project if path is not root
+            if len(projects) > 1 or (project_path and project_path != "."):
+                header = f"[b]{idx}. {project_name}[/b]"
+                if project_path and project_path != ".":
+                    header += f" [i]({project_path})[/i]"
+                lines.append(header)
+            else:
+                lines.append(f"[b]{project_name}[/b]")
+            
+            # Project overview
+            overview = project.get("overview", "")
+            if overview:
+                lines.append("")
+                lines.append(overview)
+            
+            # Key Files section
+            key_files = project.get("key_files") or []
+            if key_files:
+                lines.append("")
+                lines.append("[b]Key Files Analyzed[/b]")
+                lines.append("")
+                for file_idx, file_info in enumerate(key_files, 1):
+                    file_path = file_info.get("file_path", "Unknown file")
+                    analysis = file_info.get("analysis", "No analysis available.")
+                    
+                    lines.append(f"  [b]{file_idx}. {file_path}[/b]")
+                    lines.append(f"     {analysis}")
+                    if file_idx < len(key_files):  # Add spacing between files
+                        lines.append("")
+        
+        # Supporting Files section (only if not empty)
+        supporting_files = structured_result.get("supporting_files")
+        if supporting_files:
+            if lines:
+                lines.append("")
+                lines.append(separator)
+                lines.append("")
+            lines.append("[b]Supporting Files[/b]")
+            lines.append("")
+            lines.append(supporting_files)
+        
+        # Skipped Files section (only if not empty)
+        skipped_files = structured_result.get("skipped_files") or []
+        if skipped_files:
+            if lines:
+                lines.append("")
+                lines.append(separator)
+                lines.append("")
+            lines.append("[b]Skipped Files[/b]")
+            lines.append("")
+            for item in skipped_files:
+                path = item.get("path", "unknown")
+                reason = item.get("reason", "No reason provided.")
+                size_mb = item.get("size_mb")
+                size_txt = f" ({size_mb:.2f} MB)" if isinstance(size_mb, (int, float)) else ""
+                lines.append(f"  • {path}{size_txt}: {reason}")
+        
+        # If no content at all, show a message
+        if not lines:
+            return "[b]AI-Powered Analysis[/b]\n\nNo AI insights were returned."
+        
+        return "\n".join(lines)
     
     def _convert_rich_to_markdown(self, text: str) -> str:
         """Convert Rich text markup to Markdown format.
@@ -2944,8 +3166,12 @@ class PortfolioTextualApp(App):
             if external and external.get("consent_given"):
                 external_badge = "[green]External on[/green]"
 
+            ai_badge = "[#9ca3af]AI off[/#9ca3af]"
+            if self._ai_state.client:
+                ai_badge = "[green]AI ready[/green]"
+
             status_panel.update(
-                f"[b]{self._session_state.session.email}[/b] • {consent_badge} • {external_badge}  (Ctrl+L to sign out)"
+                f"[b]{self._session_state.session.email}[/b] • {consent_badge} • {external_badge} • {ai_badge}  (Ctrl+L to sign out)"
             )
         else:
             status_panel.update(
@@ -3607,22 +3833,24 @@ class PortfolioTextualApp(App):
             )
         else:
             self._ai_state.last_analysis = result
-            rendered = self._ai_service.format_analysis(result)
+            structured_result = self._ai_service.format_analysis(result)
+            rendered = self._display_ai_sections(structured_result)
             if rendered.strip():
                 detail_panel.update(rendered)
             else:
                 detail_panel.update("[b]AI-Powered Analysis[/b]\n\nNo AI insights were returned.")
-            saved = self._persist_ai_output(rendered, result)
+            saved = self._persist_ai_output(structured_result, result)
             files_count = result.get("files_analyzed_count")
             message = "AI analysis complete."
             if files_count:
                 message = f"AI analysis complete — {files_count} files reviewed."
             if saved:
-                message = f"{message} Saved to {self._ai_output_path.name}."
+                output_path = self._ai_output_path.with_suffix('.json')
+                message = f"{message} Saved to {output_path.name}."
             self._show_status(message, "success")
             
             # Show AI results in full-screen modal
-            await self._show_ai_results(rendered)
+            await self._show_ai_results(structured_result)
         finally:
             progress_stop.set()
             await heartbeat_task
@@ -3634,10 +3862,10 @@ class PortfolioTextualApp(App):
                 progress_label.update("")
             self._ai_state.task = None
     
-    async def _show_ai_results(self, analysis_text: str) -> None:
-        """Show AI analysis results in a full-screen modal."""
+    async def _show_ai_results(self, structured_data: Dict[str, Any]) -> None:
+        """Show AI analysis results in a full-screen modal with sections."""
         try:
-            screen = AIResultsScreen(analysis_text)
+            screen = AIResultsScreen(structured_data)
             await self.push_screen(screen)
         except Exception as exc:
             self._debug_log(f"Failed to show AI results screen: {exc}")
@@ -3645,21 +3873,56 @@ class PortfolioTextualApp(App):
     
     async def _view_saved_ai_analysis(self) -> None:
         """Load and display the saved AI analysis from disk."""
-        if not self._ai_output_path.exists():
+        import json
+        
+        # Check for JSON file (new format)
+        json_path = self._ai_output_path.with_suffix('.json')
+        
+        if not json_path.exists():
             self._show_status("No saved AI analysis found. Run AI analysis first.", "warning")
             return
         
         try:
-            content = self._ai_output_path.read_text(encoding="utf-8")
+            content = json_path.read_text(encoding="utf-8")
             if not content.strip():
                 self._show_status("Saved AI analysis is empty.", "warning")
                 return
             
-            await self._show_ai_results(content)
+            # Load structured JSON
+            structured_result = json.loads(content)
+            
+            await self._show_ai_results(structured_result)
             self._show_status("Showing saved AI analysis.", "success")
+        except json.JSONDecodeError as exc:
+            self._debug_log(f"Failed to parse saved AI analysis JSON: {exc}")
+            self._show_status(f"Saved AI analysis is corrupted: {exc}", "error")
         except Exception as exc:
             self._debug_log(f"Failed to load saved AI analysis: {exc}")
             self._show_status(f"Could not load AI analysis: {exc}", "error")
+    
+    async def on_ai_result_action(self, message: AIResultAction) -> None:
+        """Handle AI result section selection."""
+        from .screens import AIResultsScreen
+        
+        screen = None
+        for s in self.screen_stack:
+            if isinstance(s, AIResultsScreen):
+                screen = s
+                break
+        
+        if screen is None:
+            self._debug_log("[AI Result Action] No AIResultsScreen found in screen stack")
+            return
+        
+        action = message.action
+        self._debug_log(f"[AI Result Action] Handling action: {action}")
+        
+        if action == "close":
+            screen.dismiss(None)
+            return
+        
+        screen._show_section(action)
+        screen.set_message(f"Viewing section", tone="success")
             
     # --- Projects helpers ---
 
@@ -3686,15 +3949,15 @@ class PortfolioTextualApp(App):
         except Exception as exc:
             self._show_status(f"Unexpected error loading projects: {exc}", "error")
             return
-        
-        self._projects_state.projects_list = projects
+
+        self._projects_state.projects_list = projects or []
         self._projects_state.error = None
         self._refresh_current_detail()
-        self.push_screen(ProjectsScreen(projects))
-        self._show_status(f"Loaded {len(projects)} project(s).", "success")
+        self.push_screen(ProjectsScreen(projects or []))
+        self._show_status(f"Loaded {len(projects or [])} project(s).", "success")
 
-    async def _load_and_show_resumes(self) -> None:
-        """Load user's saved resumes and show the resumes screen."""
+    async def _load_and_show_resumes(self, *, show_modal: bool = True) -> None:
+        """Load user's saved resumes and optionally show the resumes screen."""
         if not self._session_state.session:
             self._show_status("Sign in to view resumes.", "error")
             return
@@ -3723,7 +3986,20 @@ class PortfolioTextualApp(App):
         self._resumes_state.resumes_list = resumes
         self._resumes_state.error = None
         self._refresh_current_detail()
-        self.push_screen(ResumesScreen(resumes))
+        if not show_modal:
+            return
+        if self._resumes_screen:
+            try:
+                self._resumes_screen.refresh_resumes(resumes)
+                self._show_status(f"Loaded {len(resumes)} resume item(s).", "success")
+                return
+            except Exception:
+                # Fall back to reopening the modal
+                self._close_resumes_screen()
+        self._close_resumes_screen()
+        screen = ResumesScreen(resumes)
+        self._resumes_screen = screen
+        self.push_screen(screen)
         self._show_status(f"Loaded {len(resumes)} resume item(s).", "success")
 
     async def on_project_selected(self, message: ProjectSelected) -> None:
@@ -3755,6 +4031,23 @@ class PortfolioTextualApp(App):
         if not full_project:
             self._show_status("Project not found.", "error")
             return
+
+        # For legacy records without stored ranking, derive it from contribution metrics
+        try:
+            scan_data = full_project.get("scan_data") or {}
+            has_ranking = isinstance(scan_data.get("contribution_ranking"), dict)
+            metrics_dict = scan_data.get("contribution_metrics")
+            if metrics_dict and not has_ranking:
+                metrics_obj = self._contribution_service.metrics_from_dict(metrics_dict)
+                user_email = self._session_state.session.email if self._session_state.session else None
+                ranking = self._contribution_service.compute_contribution_score(
+                    metrics_obj,
+                    user_email=user_email,
+                )
+                scan_data["contribution_ranking"] = ranking
+                full_project["scan_data"] = scan_data
+        except Exception as exc:
+            self._debug_log(f"Could not derive contribution ranking for project {project_id}: {exc}")
         
         self._projects_state.selected_project = full_project
         self._show_status("Project loaded.", "success")
@@ -3849,9 +4142,10 @@ class PortfolioTextualApp(App):
             return
         if success:
             self._show_status("Resume deleted successfully.", "success")
-            await self._load_and_show_resumes()
+            await self._load_and_show_resumes(show_modal=self._resumes_screen is not None)
         else:
             self._show_status("Failed to delete resume.", "error")
+
         
     async def on_project_insights_cleared(self, message: ProjectInsightsCleared) -> None:
         """Handle deletion of stored insights without removing shared files."""

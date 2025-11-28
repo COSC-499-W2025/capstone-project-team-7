@@ -80,7 +80,9 @@ class ResumeStorageService:
             "end_date": resume_item.end_date,
             "content": resume_item.to_markdown(),
             "bullets": list(resume_item.bullets),
-            "metadata": self._sanitize_metadata(metadata),
+            "metadata": self._sanitize_metadata(
+                {**(metadata or {}), "ai_generated": getattr(resume_item, "ai_generated", False)}
+            ),
             "source_path": self._path_to_str(target_path) or self._path_to_str(resume_item.output_path),
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
