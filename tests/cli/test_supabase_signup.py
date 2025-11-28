@@ -1,4 +1,4 @@
-from backend.src.cli.services.session_service import SupabaseAuth
+from backend.src.auth.session import SupabaseAuth
 
 class DummyResponse:
     def json(self):

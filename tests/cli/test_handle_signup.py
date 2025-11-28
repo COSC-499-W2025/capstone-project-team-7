@@ -35,14 +35,14 @@ async def test_handle_signup_success(monkeypatch):
     assert called["session"].email == "newuser@example.com"
     assert "Account created for" in called["msg"]
 
-    @pytest.mark.asyncio
-    async def test_handle_signup_invalid_input(monkeypatch):
-        app = PortfolioTextualApp()
+@pytest.mark.asyncio
+async def test_handle_signup_invalid_input(monkeypatch):
+    app = PortfolioTextualApp()
 
-        # Track what status message is shown
-        messages = []
-        monkeypatch.setattr(app, "_show_status", lambda m, t: messages.append(m))
+    # Track what status message is shown
+    messages = []
+    monkeypatch.setattr(app, "_show_status", lambda m, t: messages.append(m))
 
-        await app._handle_signup("", "short")
+    await app._handle_signup("", "short")
 
-        assert "Enter both email and password" in messages[0]
+    assert "Enter both email and password" in messages[0]
