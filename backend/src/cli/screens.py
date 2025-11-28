@@ -162,7 +162,8 @@ class LoginScreen(ModalScreen[None]):
             Static("Sign in or create an account", classes="dialog-title"),
             Input(value=self._default_email, placeholder="name@example.com", id="login-email"),
             Input(password=True, placeholder="Password", id="login-password"),
-            Static("", id="login-message", classes="dialog-message"),
+            Static("Sign in or create an account", classes="dialog-title"),
+            Static("Use a valid email and an 8+ character password.", classes="dialog-subtitle"),
             Horizontal(
                 Button("Cancel", id="login-cancel"),
                 Button("Log In", id="login-submit", variant="primary"),
@@ -181,12 +182,12 @@ class LoginScreen(ModalScreen[None]):
         password_input = self.query_one("#login-password", Input)
         email = email_input.value.strip()
         password = password_input.value
-        if not email or not password:
-            self.query_one("#login-message", Static).update("Enter an email and password to continue.")
-            if not email:
-                email_input.focus()
-            else:
-                password_input.focus()
+        if not email or "@" not in email:
+            self._set_message("Enter a valid email address.")
+            return None
+
+        if not password or len(password) < 8:
+            self._set_message("Password must be at least 8 characters.")
             return None
         return email, password
 
