@@ -78,8 +78,12 @@ from .screens import (
     AIKeySubmitted,
     AIResultAction,
     AIResultsScreen,
+    AutoSuggestionConfigScreen,
+    AutoSuggestionSelected,
+    AutoSuggestionCancelled,
     ConsentAction,
     ConsentScreen,
+    ImprovementResultsScreen,
     LoginCancelled,
     LoginScreen,
     LoginSubmitted,
@@ -206,6 +210,8 @@ class PortfolioTextualApp(App):
         ("Consent Management", "Review and update required and external consent settings."),
         ("AI-Powered Analysis", "Trigger AI-based analysis for recent scan results (requires consent)."),
         ("View Last AI Analysis", "View the results from the most recent AI analysis."),
+        ("AI Auto-Suggestion", "Let AI suggest and apply code improvements automatically."), 
+
         ("Exit", "Quit the Textual interface."),
     ]
     BINDINGS = [
@@ -389,6 +395,9 @@ class PortfolioTextualApp(App):
             self._show_status("Opening the most recent scan results…", "info")
             self._show_scan_results_dialog()
             return
+        
+        if label == "AI Auto-Suggestion":
+            self._handle_auto_suggestion_selection()
 
         if label == "Settings & User Preferences":
             if not self._session_state.session:
@@ -467,7 +476,227 @@ class PortfolioTextualApp(App):
             return
 
         self._start_ai_analysis()
-
+    
+    def _handle_auto_suggestion_selection(self) -> None:
+        if not self._session_state.session:
+            self._show_status("Sign in to use AI Auto-Suggestion.", "warning")
+            return
+        if not self._consent_state.record:
+            self._show_status("Grant required consent before using AI auto-suggestion.", "warning")
+            return
+    
+        if not self._has_external_consent():
+            self._show_status("Enable external services consent to use AI auto-suggestion.", "warning")
+            return
+        
+        if not self._scan_state.parse_result:
+            self._show_status("Run a scan before using AI auto-suggestion.", "warning")
+            return
+        
+        if self._ai_state.client is None:
+            self._ai_state.pending_auto_suggestion = True  # Remember to continue after key entry
+            self._show_ai_key_dialog()
+            return
+        
+        self._show_auto_suggestion_config()
+        
+    def _show_auto_suggestion_config(self) -> None:
+        """Show screen to select files for auto suggestion"""
+        if not self._scan_state.parse_result:
+            self._show_status("No scan results available.", "error")
+            return
+        
+        files = self._scan_state.parse_result.files or []
+        
+        # ✅ NO FILTERING - Just add every single file
+        files_info = []
+        
+        for meta in files:
+            files_info.append({
+                "path": meta.path,
+                "size": meta.size_bytes,
+                "mime_type": meta.mime_type or "unknown",
+                "file_type": self._get_file_type_label(meta.path, meta.mime_type or "")
+            })
+        
+        self._debug_log(f"[Auto-Suggestion] Showing ALL {len(files_info)} files from scan")
+        
+        if not files_info:
+            self._show_status("No files found in scan.", "warning")
+            return
+            
+        self.push_screen(AutoSuggestionConfigScreen(files_info, self._scan_state.target))
+        
+    def _is_binary_file(self, file_path: str, mime_type: str) -> bool:
+        """
+        Check if file should be EXCLUDED from auto-suggestion.
+        
+        We ONLY process:
+        - Code files (.py, .js, .ts, .java, .cpp, etc.)
+        - PDFs (.pdf)
+        - Word documents (.docx)
+        
+        Everything else returns True (excluded).
+        
+        Returns:
+            True = exclude (binary or unsupported)
+            False = include (code, PDF, or DOCX)
+        """
+        from pathlib import Path
+        
+        extension = Path(file_path).suffix.lower()
+        
+        # Code file extensions we support
+        code_extensions = {
+            # Python
+            '.py',
+            # JavaScript/TypeScript
+            '.js', '.jsx', '.ts', '.tsx',
+            # Java
+            '.java',
+            # C/C++
+            '.c', '.cpp', '.cc', '.cxx', '.h', '.hpp',
+            # C#
+            '.cs',
+            # Go
+            '.go',
+            # Rust
+            '.rs',
+            # Ruby
+            '.rb',
+            # PHP
+            '.php',
+            # Swift
+            '.swift',
+            # Kotlin
+            '.kt', '.kts',
+            # Scala
+            '.scala',
+            # R
+            '.r',
+            # Shell
+            '.sh', '.bash', '.zsh',
+            # Web
+            '.html', '.htm', '.css', '.scss', '.sass', '.less',
+            # Config/Data
+            '.json', '.yaml', '.yml', '.toml', '.xml', '.ini', '.env',
+            # SQL
+            '.sql',
+            # Markdown/Docs
+            '.md', '.txt', '.rst',
+        }
+        
+        # Document extensions we support
+        document_extensions = {
+            '.pdf',
+            '.docx',
+        }
+        
+        # Check if file is in our supported list
+        if extension in code_extensions or extension in document_extensions:
+            return False  # Include it
+        
+        # Everything else is excluded
+        return True
+        
+    def _get_file_type_label(self, file_path: str, mime_type: str) -> str:
+        """
+        Get a friendly display label for the file type.
+        
+        Args:
+            file_path: Path to the file
+            mime_type: MIME type of the file
+            
+        Returns:
+            Human-readable file type label
+        """
+        from pathlib import Path
+        
+        extension = Path(file_path).suffix.lower()
+        filename = Path(file_path).name.lower()
+        
+        # Special filenames
+        if filename in ('dockerfile', 'makefile', 'rakefile', 'gemfile'):
+            return filename.title()
+        if filename.startswith('.env'):
+            return "Environment Config"
+        if filename in ('readme.md', 'readme.txt', 'readme'):
+            return "README"
+        
+        # Map extensions to friendly names
+        type_map = {
+            # Python
+            '.py': 'Python',
+            
+            # JavaScript/TypeScript
+            '.js': 'JavaScript',
+            '.jsx': 'React JSX',
+            '.ts': 'TypeScript',
+            '.tsx': 'React TSX',
+            
+            # Java
+            '.java': 'Java',
+            
+            # C/C++
+            '.c': 'C',
+            '.cpp': 'C++',
+            '.cc': 'C++',
+            '.cxx': 'C++',
+            '.h': 'C Header',
+            '.hpp': 'C++ Header',
+            
+            # C#
+            '.cs': 'C#',
+            
+            # Other languages
+            '.go': 'Go',
+            '.rs': 'Rust',
+            '.rb': 'Ruby',
+            '.php': 'PHP',
+            '.swift': 'Swift',
+            '.kt': 'Kotlin',
+            '.kts': 'Kotlin Script',
+            '.scala': 'Scala',
+            '.r': 'R',
+            
+            # Shell
+            '.sh': 'Shell Script',
+            '.bash': 'Bash Script',
+            '.zsh': 'Zsh Script',
+            
+            # Web
+            '.html': 'HTML',
+            '.htm': 'HTML',
+            '.css': 'CSS',
+            '.scss': 'SCSS',
+            '.sass': 'Sass',
+            '.less': 'Less',
+            
+            # Config/Data
+            '.json': 'JSON Config',
+            '.yaml': 'YAML Config',
+            '.yml': 'YAML Config',
+            '.toml': 'TOML Config',
+            '.xml': 'XML',
+            '.ini': 'INI Config',
+            '.env': 'Environment Config',
+            
+            # Database
+            '.sql': 'SQL',
+            
+            # Documentation
+            '.md': 'Markdown',
+            '.txt': 'Text',
+            '.rst': 'reStructuredText',
+            
+            # Documents
+            '.pdf': 'PDF',
+            '.docx': 'Word Document',
+        }
+        
+        return type_map.get(extension, 'Text')
+     
+        
     def _show_status(self, message: str, tone: str, *, log_to_stderr: bool = True) -> None:
         if log_to_stderr:
             try:
@@ -2470,7 +2699,20 @@ class PortfolioTextualApp(App):
 
         task.add_done_callback(_drain_result)
         task.cancel()
-
+    async def on_auto_suggestion_selected(self, event: AutoSuggestionSelected) -> None:
+        """Handle when user confirms file selection for auto-suggestion"""
+        asyncio.create_task(self._run_auto_suggestion(
+            event.selected_files,
+            event.output_dir
+        ))
+    
+    def on_auto_suggestion_cancelled(self, event: AutoSuggestionCancelled) -> None:
+        """Handle when user cancels auto-suggestion configuration."""
+        self._show_status("Auto-suggestion cancelled.", "info")
+        
+        
+        
+        
     def _cleanup_async_tasks(self) -> None:
         """Ensure background tasks are cancelled before logout or shutdown."""
         if self._session_state.login_task:
@@ -2899,6 +3141,10 @@ class PortfolioTextualApp(App):
         self._debug_log(
             f"verify_ai_key success temp={client_config.temperature} max_tokens={client_config.max_tokens}"
         )
+        if self._ai_state.pending_auto_suggestion:
+            self._debug_log("API key verified, continuing with auto-suggestion")
+            self._ai_state.pending_auto_suggestion = False
+            self._show_auto_suggestion_config()
         self._update_session_status()
 
         if self._ai_state.pending_analysis:
@@ -3665,82 +3911,126 @@ class PortfolioTextualApp(App):
         detail_panel.update("[b]AI-Powered Analysis[/b]\n\nPreparing AI insights…")
         self._show_status("Preparing AI analysis…", "info")
         self._ai_state.task = asyncio.create_task(self._run_ai_analysis())
-
-    async def _run_ai_analysis(self) -> None:
-        detail_panel = self.query_one("#detail", Static)
+        
+        
+    async def _run_auto_suggestion(self, selected_files: List[str], output_dir: str) -> None:
+        """
+        Run AI auto-suggestion workflow.
+        
+        Steps:
+        1. Show status message
+        2. Call ai_service to generate improvements in background thread
+        3. Route progress updates safely back to main event loop
+        4. Show results screen
+        """
+        self._show_status("Generating AI suggestions…", "info")
+        
+        # Show progress UI
         progress_bar = self._scan_progress_bar
+        if progress_bar:
+            progress_bar.display = True
+            progress_bar.update(progress=0)
         progress_label = self._scan_progress_label
-        ai_progress_state = {"current_step": "Initializing…"}
+        if progress_label:
+            progress_label.remove_class("hidden")
+            progress_label.update("Initializing auto-suggestion…")
+        
+        # Thread-safe progress state
+        progress_state = {"current_message": "Initializing…", "current_percent": 0}
         progress_lock = threading.Lock()
-
-        self._debug_log("[AI Analysis] Starting AI analysis workflow")
-
-        if not self._ai_state.client or not self._scan_state.parse_result:
-            self._debug_log("[AI Analysis] Missing prerequisites - client or parse_result is None")
-            self._surface_error(
-                "AI-Powered Analysis",
-                "A recent scan and a verified API key are required.",
-                "Run a portfolio scan, grant external consent, then provide your OpenAI API key.",
-            )
-            self._ai_state.task = None
-            if progress_bar:
-                progress_bar.display = False
-            if progress_label:
-                progress_label.add_class("hidden")
-            return
-
-        # Log scan state for debugging
-        files_count = len(self._scan_state.parse_result.files) if self._scan_state.parse_result.files else 0
-        git_repos_count = len(self._scan_state.git_repos) if self._scan_state.git_repos else 0
-        self._debug_log(f"[AI Analysis] Files in scan: {files_count}, Git repos: {git_repos_count}")
-        if self._scan_state.git_repos:
-            self._debug_log(f"[AI Analysis] Git repo paths: {self._scan_state.git_repos}")
-        if self._scan_state.target:
-            self._debug_log(f"[AI Analysis] Target path: {self._scan_state.target}")
-        if self._scan_state.archive:
-            self._debug_log(f"[AI Analysis] Archive path: {self._scan_state.archive}")
-
-        # Progress update callback
-        def _update_progress(message: str) -> None:
+        
+        # Progress callback that safely updates shared state
+        def update_progress(message: str, progress: Optional[int] = None):
+            """Update progress state from worker thread (thread-safe)."""
+            timestamp = time.time()
+            self._debug_log(f"[{timestamp}] Progress: {message} ({progress}%)")
+            
             with progress_lock:
-                ai_progress_state["current_step"] = message
-            self._debug_log(f"[AI Analysis Progress] {message}")
-
-        # Background task to update UI
+                progress_state["current_message"] = message
+                if progress is not None:
+                    progress_state["current_percent"] = progress
+            
+            # Force immediate UI update (for testing)
+            try:
+                self.call_from_thread(
+                    self._show_status,
+                    message,
+                    "info",
+                    True  # ✅ Log to stderr so we SEE it
+                )
+            except Exception as e:
+                self._debug_log(f"[Progress] Immediate update failed: {e}")
+        
+        # Background task to route updates to UI from main loop
         progress_stop = asyncio.Event()
         async def _progress_heartbeat() -> None:
+            """Periodically update UI with progress from shared state."""
             try:
-                step_count = 0
                 while not progress_stop.is_set():
-                    step_count += 1
                     with progress_lock:
-                        current_message = ai_progress_state["current_step"]
+                        current_message = progress_state["current_message"]
+                        current_percent = progress_state["current_percent"]
                     try:
+                        # Route updates to main thread safely
+                        self.call_from_thread(
+                            self._show_status, 
+                            current_message, 
+                            "info", 
+                            False  # Don't spam stderr
+                        )
+                        
+                        # Update progress label
                         if progress_label:
-                            progress_label.update(current_message)
-                        if progress_bar:
-                            # Pulse the progress bar
-                            progress_bar.update(progress=(step_count % 100))
+                            self.call_from_thread(
+                                progress_label.update,
+                                current_message
+                            )
+                        
+                        # Update progress bar
+                        if progress_bar and current_percent > 0:
+                            self.call_from_thread(
+                                progress_bar.update,
+                                progress=current_percent
+                            )
+                            
                     except Exception as e:
-                        self._debug_log(f"[AI Analysis] Progress update error: {e}")
+                        self._debug_log(f"[Auto-Suggestion] Progress update error: {e}")
                     await asyncio.sleep(0.5)
             except Exception as e:
-                self._debug_log(f"[AI Analysis] Heartbeat error: {e}")
+                self._debug_log(f"[Auto-Suggestion] Heartbeat error: {e}")
 
         heartbeat_task = asyncio.create_task(_progress_heartbeat())
-
+        
         try:
-            self._debug_log("[AI Analysis] Calling execute_analysis...")
+            # Run in background thread
             result = await asyncio.to_thread(
-                self._ai_service.execute_analysis,
+                self._ai_service.execute_auto_suggestion,
                 self._ai_state.client,
+                selected_files,
+                output_dir,
+                self._scan_state.target,
                 self._scan_state.parse_result,
-                languages=self._scan_state.languages or [],
-                target_path=str(self._scan_state.target) if self._scan_state.target else None,
-                archive_path=str(self._scan_state.archive) if self._scan_state.archive else None,
-                git_repos=self._scan_state.git_repos,
-                progress_callback=_update_progress,
+                update_progress  # ✅ Pass thread-safe callback
             )
+            
+            # Show results
+            if result.get("successful", 0) > 0:
+                self._show_status(
+                    f"✓ Generated suggestions for {result['successful']} files!", 
+                    "success"
+                )
+                
+                # Show results screen
+                self.push_screen(ImprovementResultsScreen(result))
+            else:
+                self._show_status(
+                    f"✗ Failed to generate suggestions: {result.get('error', 'Unknown error')}", 
+                    "error"
+                )
+        
+        except Exception as e:
+            self._debug_log(f"Auto-suggestion failed: {e}")
+            self._show_status(f"✗ Auto-suggestion failed: {str(e)}", "error")
             self._debug_log(f"[AI Analysis] Analysis completed, result keys: {list(result.keys()) if result else 'None'}")
         except asyncio.CancelledError:
             self._debug_log("[AI Analysis] Analysis cancelled by user")
@@ -3800,15 +4090,20 @@ class PortfolioTextualApp(App):
             # Show AI results in full-screen modal
             await self._show_ai_results(structured_result)
         finally:
+            # Stop the heartbeat task
             progress_stop.set()
-            await heartbeat_task
+            try:
+                await heartbeat_task
+            except asyncio.CancelledError:
+                pass
+            
+            # Hide progress UI
             if progress_bar:
                 progress_bar.update(progress=0)
                 progress_bar.display = False
             if progress_label:
                 progress_label.add_class("hidden")
                 progress_label.update("")
-            self._ai_state.task = None
     
     async def _show_ai_results(self, structured_data: Dict[str, Any]) -> None:
         """Show AI analysis results in a full-screen modal with sections."""
