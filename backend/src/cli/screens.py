@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+from math import log
 import re
 import textwrap
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from dataclasses import dataclass
+
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, ScrollableContainer, Vertical
@@ -18,9 +21,11 @@ from textual.widgets import (
     ListItem,
     ListView,
     Log,
+    RichLog,
     Static,
     Switch,
 )
+
 
 try:
     from textual.widgets import TextLog  # type: ignore
@@ -110,7 +115,6 @@ class RunScanRequested(Message):
 
     pass
 
-
 class LoginSubmitted(Message):
     """Raised when the user submits Supabase credentials."""
 
@@ -125,6 +129,16 @@ class LoginCancelled(Message):
 
     pass
 
+@dataclass
+class AutoSuggestionSelected(Message):
+    """Message sent when user confirms file selection"""
+    selected_files: List[str]
+    output_dir:str
+    
+@dataclass
+class AutoSuggestionCancelled(Message):
+    """Message sent when user cancels auto-suggestion configuration"""
+    pass
 
 class AIKeySubmitted(Message):
     """Raised when the user submits an API key for AI analysis."""
@@ -202,6 +216,402 @@ class LoginScreen(ModalScreen[None]):
     def on_key(self, event: Key) -> None:  # pragma: no cover - keyboard shortcut
         if event.key == "escape":
             dispatch_message(self, LoginCancelled())
+            self.dismiss(None)
+            
+class AutoSuggestionConfigScreen(ModalScreen[None]):
+    """Modal screen for selecting files for auto suggestions"""
+    CSS = """
+    AutoSuggestionConfigScreen {
+        align: center middle;
+    }
+    
+    .auto-suggestion-dialog {
+        width: 90;
+        height: 45;
+        border: thick $background 80%;
+        background: $surface;
+        padding: 1 2;
+        overflow:hidden;
+    }
+    
+    #file-list-container {
+        width: 100%;
+        height: 1fr;
+        border: solid $primary;
+        margin: 1 0;
+    }
+    
+    .file-list-item {
+        padding: 0 1;
+    }
+    
+    .file-type-badge {
+        color: $accent;
+    }
+    
+     .dialog-buttons {
+        width: 100%;
+        height: auto;
+        align: center middle;
+        padding: 1 0;
+    }
+    """
+    def __init__(self,available_files:List[Dict[str,Any]], base_path:Optional[Path]) -> None:
+        super().__init__()
+        self.available_files = available_files
+        self.base_path = base_path
+        self.selected_paths = set()
+        
+    def compose(self) -> ComposeResult:
+        
+        def get_sort_key(f):
+                path = f.get("path", "")
+                # Get first directory component
+                parts = path.split('/')
+                first_dir = parts[0] if len(parts) > 1 else ""
+                return (first_dir, path) 
+            
+        sorted_files = sorted(self.available_files, key=get_sort_key)       
+
+        file_items = []
+        for idx, file_meta in enumerate(sorted_files):
+            path = file_meta.get("path","")
+            size_kb = file_meta.get("size",0) / 1024
+            file_type = file_meta.get("file_type", "Text")
+            
+            # Create label with file type badge
+            label_text = f"☐ [{file_type}] {path} ({size_kb:.1f} KB)"
+            
+            item = ListItem(
+                Label(label_text, classes="file-list-item"),
+                id=f"file-item-{idx}"
+            )
+            
+            item.data_path = path # Store path
+            item.data_index = idx # Store index in sorted list
+            item.data_type = file_type # Store file type
+            file_items.append(item)
+            
+            
+        type_counts = {}
+        for f in sorted_files:
+            ftype = f.get("file_type", "Text")
+            type_counts[ftype] = type_counts.get(ftype,0) + 1
+
+        type_summary = ", ".join([f"{count} {ftype}" for ftype,count in sorted(type_counts.items())])
+
+        yield Vertical(
+            Static("AI Auto-Suggestion", classes="dialog-title"),
+            Static(
+                f"Select files to improve (Space to toggle, ↑↓ to navigate)\n"
+                f"Available: {type_summary}\n"
+                f"Files will be saved to the output directory you specify below.", 
+
+                classes="dialog-subtitle",
+            ),
+            ScrollableContainer(
+                ListView(*file_items, id="file-list"),
+                id="file-list-container"
+            ),
+            Static(
+                f"Selected: 0 Files | Total size: 0.0 KB",
+                id="selection-summary",
+                classes="label"
+            ),
+            Static("Output directory:", classes="label"),
+            Input(
+                value=str(Path.home() / "improved_files"),
+                placeholder="/path/to/output",
+                id="output-dir"
+            ),
+            
+            Static("",id="config-message", classes="dialog-message"),
+            Horizontal(
+                Button("Cancel", id="cancel-btn"),
+                Button("Generate Suggestions", id="submit-btn", variant="primary"),
+                classes="dialog-buttons"
+            ),
+            classes="dialog auto-suggestion-dialog", 
+        )
+        
+        
+    def on_mount(self, event:Mount) -> None:
+        """Focus the file list on mount"""
+        try:
+            list_view = self.query_one("#file-list", ListView)
+            list_view.focus()
+        except Exception:
+            pass
+    
+    def on_list_view_selected(self, event:ListView.Selected) -> None:
+        """Toggle file selection when user presses Enter/Space"""
+        if event.control.id != "file-list":
+            return
+        item = event.item
+        path = getattr(item, "data_path", None)
+        idx = getattr(item, "data_index", None)
+        file_type = getattr(item,"data_type", "Text")
+        
+        
+        if not path or idx is None:
+            return
+        
+        sorted_files = sorted(self.available_files, key=lambda f: (f.get("file_type", ""), f.get("path", "")))
+
+        file_meta = sorted_files[idx]
+        size_kb = file_meta.get("size", 0) / 1024
+        
+        
+        # Toggle selection
+        if path in self.selected_paths:
+            self.selected_paths.remove(path)
+            #Update label to unchecked
+            label = item.query_one(Label)
+            label.update(f"☐ [{file_type}] {path} ({size_kb:.1f} KB)")
+        else:
+            self.selected_paths.add(path)
+            #Update label to checked
+            label = item.query_one(Label)
+            label.update(f"☑ [{file_type}] {path} ({size_kb:.1f} KB)")
+            
+        self._update_selection_summary()
+        
+        
+        
+    def _update_selection_summary(self) -> None:
+        """Update the selection summary label."""
+        try:
+            summary_label = self.query_one("#selection-summary", Static)
+            if not self.selected_paths:
+                summary_label.update("Selected: 0 files | Total size: 0.0 KB")
+                return
+            
+            # Calculate total size
+            total_size = 0
+            for file_meta in self.available_files:
+                if file_meta.get("path") in self.selected_paths:
+                    total_size += file_meta.get("size", 0)
+            
+            total_size_kb = total_size / 1024
+            count = len(self.selected_paths)
+            
+            summary_label.update(
+                f"Selected: {count} file{'s' if count != 1 else ''} | "
+                f"Total size: {total_size_kb:.1f} KB"
+            )
+        except Exception:
+            pass
+    
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "submit-btn":
+            self._submit()
+        elif event.button.id == "cancel-btn":
+            from .screens import dispatch_message
+            dispatch_message(self, AutoSuggestionCancelled())
+            self.dismiss(None)
+    
+    def _submit(self) -> None:
+        """Collect selected files and output directory."""
+        
+        if not self.selected_paths:
+            self.query_one("#config-message", Static).update(
+                "Select at least one file (press Space to toggle)."
+            )
+            return
+        
+        # Get output directory
+        output_dir = self.query_one("#output-dir", Input).value.strip()
+        if not output_dir:
+            self.query_one("#config-message", Static).update("Provide an output directory.")
+            return
+        
+        # ✅ VALIDATE PATH
+        try:
+            output_path = Path(output_dir).expanduser().resolve()
+            
+            # Check if path exists and is a file (not allowed)
+            if output_path.exists() and output_path.is_file():
+                self.query_one("#config-message", Static).update(
+                    "Output path is a file. Please specify a directory."
+                )
+                return
+            
+            # Check if parent directory exists and is writable
+            if not output_path.exists():
+                parent = output_path.parent
+                if not parent.exists():
+                    self.query_one("#config-message", Static).update(
+                        f"Parent directory does not exist: {parent}"
+                    )
+                    return
+                if not parent.is_dir():
+                    self.query_one("#config-message", Static).update(
+                        f"Parent path is not a directory: {parent}"
+                    )
+                    return
+            
+        except Exception as e:
+            self.query_one("#config-message", Static).update(
+                f"Invalid path: {str(e)}"
+            )
+            return
+    
+        
+        # Dispatch message with selected files
+        from .screens import dispatch_message
+        dispatch_message(self, AutoSuggestionSelected(
+            list(self.selected_paths), 
+            str(output_path),  # ✅ Use validated path
+        ))
+        self.dismiss(None)
+    
+    def on_key(self, event: Key) -> None:
+        if event.key == "escape":
+            from .screens import dispatch_message
+            dispatch_message(self, AutoSuggestionCancelled())
+            self.dismiss(None)
+        
+
+
+class ImprovementResultsScreen(ModalScreen[None]):
+    """Modal screen showing ai-suggestion-results"""
+    CSS = """
+    ImprovementResultsScreen {
+        align: center middle;
+    }
+    
+    .improvement-results-dialog {
+        width: 120;
+        max-width: 95%;
+        height: 50;
+        max-height: 90%;
+        border: thick $background 80%;
+        background: $surface;
+        padding: 1 2;
+    }
+    
+    #results-scroll {
+    #results-scroll {
+        width: 100%;
+        height: 1fr;
+        min-height: 20;
+        border: solid $primary;
+        margin: 1 0;
+        overflow-y: auto;
+        overflow-x: auto;
+    }
+    
+    #results-content {
+        width: auto;
+        min-width: 100%;
+        height: auto;
+        padding: 1;
+    }
+    
+    .dialog-buttons {
+        width: 100%;
+        height: auto;
+        align: center middle;
+        padding: 1 0;
+    }
+    """
+    
+    def __init__(self, results: Dict[str, Any]) -> None:
+        super().__init__()
+        self.results = results
+    
+    def compose(self) -> ComposeResult:
+        
+        yield Vertical(
+            Static("AI Auto-Suggestion Results", classes="dialog-title"),
+            Static(
+                f"Output: {self.results['output_dir']}\n"
+                f"Total: {self.results['total_files']} | "
+                f"Successful: {self.results['successful']} | "
+                f"Failed: {self.results['failed']}",
+                classes="dialog-subtitle",
+            ),
+            ScrollableContainer(
+                RichLog(id="results-content", wrap=False, highlight=False, markup=True, max_lines=5000),
+                id="results-scroll"
+            ),
+            Horizontal(
+                Button("Close", id="close-btn", variant="primary"),
+                classes="dialog-buttons",
+            ),
+            classes="dialog improvement-results-dialog",
+        )
+    
+    def on_mount(self, event: Mount) -> None:
+        """Populate results on mount."""
+        text_log = self.query_one("#results-content", RichLog)
+        for line in self._format_results().split('\n'):
+            text_log.write(line)
+
+   
+    def _format_results(self) -> str:
+        """Format results as rich text."""
+        lines = []
+        
+        for result in self.results.get("results", []):
+            file_path = result.get("file_path", "unknown")
+            success = result.get("success", False)
+            
+            if success:
+                # Success case
+                lines.append(f"\n[bold green]✓ {file_path}[/bold green]")
+                
+                # Show suggestions
+                suggestions = result.get("suggestions", [])
+                if suggestions:
+                    lines.append("\n[bold cyan]✨ Improvements Applied:[/bold cyan]")
+                    for idx, suggestion in enumerate(suggestions[:5], 1):  # Show max 5
+                        stype = suggestion.get("type", "improvement")
+                        desc = suggestion.get("description", "No description")
+                        line_range = suggestion.get("line_range", "")
+                        
+                        lines.append(f"  {idx}. [{stype}] {desc}")
+                        if line_range and line_range != "general":
+                            lines.append(f"     Lines: {line_range}")
+                
+                # Show diff preview (first 15 lines)
+                diff = result.get("diff", "")
+                if diff:
+                    lines.append("\n[bold yellow]📝 Changes Preview:[/bold yellow]")
+                    diff_lines = diff.split('\n')[:15]
+                    for line in diff_lines:
+                        if line.startswith('+') and not line.startswith('+++'):
+                            lines.append(f"[green]{line}[/green]")
+                        elif line.startswith('-') and not line.startswith('---'):
+                            lines.append(f"[red]{line}[/red]")
+                        else:
+                            lines.append(line)
+                    
+                    if len(diff.split('\n')) > 15:
+                        lines.append("[dim]... (diff truncated)[/dim]")
+                
+                # Show stats
+                lines_changed = result.get("lines_changed", 0)
+                output_file = result.get("output_file", "")
+                lines.append(f"\n[cyan]📊 Lines changed:[/cyan] {lines_changed}")
+                lines.append(f"[cyan]💾 Saved to:[/cyan] {output_file}")
+                
+            else:
+                # Failure case
+                error = result.get("error", "Unknown error")
+                lines.append(f"\n[bold red]✗ {file_path}[/bold red]")
+                lines.append(f"[red]Error: {error}[/red]")
+            
+            lines.append("\n" + "─" * 80)
+        
+        return "\n".join(lines)
+    
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "close-btn":
+            self.dismiss(None)
+    
+    def on_key(self, event: Key) -> None:
+        if event.key == "escape":
             self.dismiss(None)
 
 
