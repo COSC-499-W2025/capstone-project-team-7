@@ -54,6 +54,14 @@ from .services.contribution_analysis_service import (
 from .services.duplicate_detection_service import (
     DuplicateDetectionService,
 )
+from .services.export_service import (
+    ExportService,
+    ExportConfig,
+)
+from .services.search_service import (
+    SearchService,
+    SearchFilters,
+)
 from .services.resume_generation_service import (
     ResumeGenerationError,
     ResumeGenerationService,
@@ -96,6 +104,9 @@ from .screens import (
     ScanParametersChosen,
     ScanResultAction,
     ScanResultsScreen,
+    SearchCancelled,
+    SearchInputScreen,
+    SearchQuerySubmitted,
     ProjectSelected,       
     ProjectDeleted,         
     ProjectInsightsCleared,
@@ -243,6 +254,8 @@ class PortfolioTextualApp(App):
         self._skills_service = SkillsAnalysisService()
         self._contribution_service = ContributionAnalysisService()
         self._duplicate_service = DuplicateDetectionService()
+        self._export_service = ExportService()
+        self._search_service = SearchService()
         self._resume_service = ResumeGenerationService()
         self._projects_service: Optional[ProjectsService] = None
         self._resume_storage_service: Optional[ResumeStorageService] = None
@@ -1090,7 +1103,10 @@ class PortfolioTextualApp(App):
             actions.append(("contributions", "Contribution metrics"))
         actions.append(("resume", "Generate resume item"))
         actions.append(("duplicates", "Find duplicate files"))
+        actions.append(("search", "Search & filter files"))
         actions.append(("export", "Export JSON report"))
+        actions.append(("export_html", "Export HTML report"))
+        actions.append(("export_pdf", "📄 Export printable report"))
 
         if self._scan_state.pdf_candidates:
             label = (
@@ -1219,6 +1235,18 @@ class PortfolioTextualApp(App):
                 return
             screen.display_output(f"Exported scan report to {destination}", context="Export")
             screen.set_message(f"Report saved to {destination}", tone="success")
+            return
+
+        if action == "export_html":
+            await self._handle_html_export_action(screen)
+            return
+
+        if action == "export_pdf":
+            await self._handle_pdf_export_action(screen)
+            return
+
+        if action == "search":
+            await self._handle_search_action(screen)
             return
 
         if action == "pdf":
@@ -1725,6 +1753,248 @@ class PortfolioTextualApp(App):
             )
         else:
             screen.set_message("No duplicate files found.", tone="success")
+
+    async def _handle_html_export_action(self, screen: ScanResultsScreen) -> None:
+        """Export scan results as a formatted HTML report."""
+        if self._scan_state.parse_result is None or self._scan_state.archive is None:
+            screen.set_message("No scan data available. Run a scan first.", tone="error")
+            return
+
+        screen.set_message("Generating HTML report…", tone="info")
+        
+        try:
+            # Build the export payload
+            payload = self._build_export_payload(
+                self._scan_state.parse_result,
+                self._scan_state.languages,
+                self._scan_state.archive,
+            )
+            
+            # Generate output path
+            target_dir = (
+                self._scan_state.target.parent if self._scan_state.target else Path.cwd()
+            )
+            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            project_name = self._scan_state.target.name if self._scan_state.target else "scan"
+            safe_name = self._sanitize_filename(project_name)
+            output_path = target_dir / f"report_{safe_name}_{timestamp}.html"
+            
+            # Export HTML
+            result = await asyncio.to_thread(
+                self._export_service.export_html,
+                payload,
+                output_path,
+                project_name,
+            )
+            
+            if result.success:
+                screen.display_output(
+                    f"✅ HTML report exported successfully!\n\n"
+                    f"📄 File: {result.file_path}\n"
+                    f"📊 Size: {self._format_bytes(result.file_size_bytes)}\n\n"
+                    f"Open this file in a web browser to view your formatted portfolio report.",
+                    context="HTML Export",
+                )
+                screen.set_message(f"Report saved to {result.file_path}", tone="success")
+            else:
+                screen.display_output(
+                    f"❌ Failed to export HTML report:\n{result.error}",
+                    context="HTML Export",
+                )
+                screen.set_message("HTML export failed.", tone="error")
+                
+        except Exception as exc:
+            screen.display_output(f"❌ Export error: {exc}", context="HTML Export")
+            screen.set_message(f"Failed to export: {exc}", tone="error")
+
+    async def _handle_pdf_export_action(self, screen: ScanResultsScreen) -> None:
+        """Export scan results as a PDF report."""
+        if self._scan_state.parse_result is None or self._scan_state.archive is None:
+            screen.set_message("No scan data available. Run a scan first.", tone="error")
+            return
+
+        screen.set_message("Preparing comprehensive report (running all analyses)…", tone="info")
+        
+        try:
+            # Auto-run all analyses to ensure complete report
+            await self._run_all_analyses_for_export(screen)
+            
+            # Build the export payload
+            payload = self._build_export_payload(
+                self._scan_state.parse_result,
+                self._scan_state.languages,
+                self._scan_state.archive,
+            )
+            
+            # Generate output path
+            target_dir = (
+                self._scan_state.target.parent if self._scan_state.target else Path.cwd()
+            )
+            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            project_name = self._scan_state.target.name if self._scan_state.target else "scan"
+            safe_name = self._sanitize_filename(project_name)
+            output_path = target_dir / f"report_{safe_name}_{timestamp}.pdf"
+            
+            screen.set_message("Generating report…", tone="info")
+            
+            # Export PDF
+            result = await asyncio.to_thread(
+                self._export_service.export_pdf,
+                payload,
+                output_path,
+                project_name,
+            )
+            
+            if result.success:
+                # Auto-open HTML in browser for easy PDF printing
+                if result.file_path and result.file_path.exists():
+                    try:
+                        import webbrowser
+                        webbrowser.open(result.file_path.as_uri())
+                        opened_msg = "\n\n🌐 Report opened in your browser!"
+                    except Exception:
+                        opened_msg = ""
+                else:
+                    opened_msg = ""
+                
+                # Show helpful instructions
+                if result.format == "html":
+                    instructions = (
+                        "\n\n📋 To save as PDF:\n"
+                        "   1. Press Ctrl+P (or Cmd+P on Mac) in your browser\n"
+                        "   2. Select 'Save as PDF' as the destination\n"
+                        "   3. Click Save"
+                    )
+                else:
+                    instructions = ""
+                
+                screen.display_output(
+                    f"✅ Report exported successfully!\n\n"
+                    f"📄 File: {result.file_path}\n"
+                    f"📊 Size: {self._format_bytes(result.file_size_bytes)}\n"
+                    f"📋 Format: {result.format.upper()}"
+                    f"{opened_msg}"
+                    f"{instructions}",
+                    context="PDF Export",
+                )
+                screen.set_message(f"Report opened in browser - use Ctrl+P to save as PDF", tone="success")
+            else:
+                screen.display_output(
+                    f"❌ Failed to export PDF report:\n{result.error}",
+                    context="PDF Export",
+                )
+                screen.set_message("PDF export failed.", tone="error")
+                
+        except Exception as exc:
+            screen.display_output(f"❌ Export error: {exc}", context="PDF Export")
+            screen.set_message(f"Failed to export: {exc}", tone="error")
+
+    async def _run_all_analyses_for_export(self, screen: ScanResultsScreen) -> None:
+        """Run all analyses to ensure complete data for export."""
+        
+        # 1. Code Analysis
+        if self._scan_state.code_file_count > 0 and self._scan_state.target:
+            if self._scan_state.code_analysis_result is None:
+                screen.set_message("Running code analysis…", tone="info")
+                try:
+                    result = await asyncio.to_thread(self._perform_code_analysis)
+                    self._scan_state.code_analysis_result = result
+                    self._scan_state.code_analysis_error = None
+                except Exception as exc:
+                    self._scan_state.code_analysis_error = str(exc)
+                    self._debug_log(f"Code analysis failed: {exc}")
+        
+        # 2. Skills Analysis
+        if self._scan_state.code_file_count > 0 and self._scan_state.target:
+            if self._scan_state.skills_analysis_result is None:
+                screen.set_message("Extracting skills…", tone="info")
+                try:
+                    skills = await asyncio.to_thread(self._perform_skills_analysis)
+                    self._scan_state.skills_analysis_result = skills
+                    self._scan_state.skills_analysis_error = None
+                except Exception as exc:
+                    self._scan_state.skills_analysis_error = str(exc)
+                    self._debug_log(f"Skills analysis failed: {exc}")
+        
+        # 3. Contribution Analysis (requires git)
+        if self._scan_state.git_repos:
+            if self._scan_state.contribution_metrics is None:
+                screen.set_message("Analyzing contributions…", tone="info")
+                try:
+                    contribution_metrics = await asyncio.to_thread(self._perform_contribution_analysis)
+                    self._scan_state.contribution_metrics = contribution_metrics
+                except Exception as exc:
+                    self._scan_state.contribution_analysis_error = str(exc)
+                    self._debug_log(f"Contribution analysis failed: {exc}")
+        
+        # 4. Git Analysis
+        if self._scan_state.git_repos and not self._scan_state.git_analysis:
+            screen.set_message("Analyzing git history…", tone="info")
+            try:
+                git_analysis = await asyncio.to_thread(self._collect_git_analysis)
+                self._scan_state.git_analysis = git_analysis
+            except Exception as exc:
+                self._debug_log(f"Git analysis failed: {exc}")
+        
+        # 5. PDF Analysis
+        if self._scan_state.pdf_candidates and not self._scan_state.pdf_summaries:
+            screen.set_message("Analyzing PDF documents…", tone="info")
+            try:
+                await self._ensure_pdf_summaries_ready()
+            except Exception as exc:
+                self._debug_log(f"PDF analysis failed: {exc}")
+        
+        # 6. Document Analysis (DOCX, etc.)
+        if self._scan_state.document_candidates and not self._scan_state.document_results:
+            screen.set_message("Analyzing documents…", tone="info")
+            try:
+                await self._ensure_document_analysis_ready()
+            except Exception as exc:
+                self._debug_log(f"Document analysis failed: {exc}")
+        
+        # 7. Media Analysis
+        if self._scan_state.has_media_files and self._media_analyzer:
+            if self._scan_state.media_analysis is None:
+                screen.set_message("Analyzing media files…", tone="info")
+                try:
+                    media_payload = self._media_analyzer.analyze(self._scan_state.parse_result.files)
+                    self._scan_state.media_analysis = media_payload
+                except Exception as exc:
+                    self._debug_log(f"Media analysis failed: {exc}")
+
+    def _sanitize_filename(self, name: str) -> str:
+        """Sanitize a string for use as a filename."""
+        cleaned = "".join(
+            ch if ch.isalnum() or ch in ("-", "_") else "-"
+            for ch in name.strip().lower()
+        )
+        while "--" in cleaned:
+            cleaned = cleaned.replace("--", "-")
+        return cleaned.strip("-_") or "scan"
+
+    def _format_bytes(self, size_bytes: int) -> str:
+        """Format bytes into human-readable string."""
+        if size_bytes == 0:
+            return "0 B"
+        units = ["B", "KB", "MB", "GB"]
+        i = 0
+        size = float(size_bytes)
+        while size >= 1024 and i < len(units) - 1:
+            size /= 1024
+            i += 1
+        return f"{size:.1f} {units[i]}" if i > 0 else f"{int(size)} {units[i]}"
+
+    async def _handle_search_action(self, screen: ScanResultsScreen) -> None:
+        """Handle search and filter action from the scan results screen."""
+        if self._scan_state.parse_result is None:
+            screen.display_output(
+                "No scan data available. Run a scan first.", context="Search"
+            )
+            screen.set_message("No scan data available.", tone="warning")
+            return
+
+        # Push the search input modal screen
+        self.push_screen(SearchInputScreen())
 
     async def _handle_resume_generation_action(self, screen: ScanResultsScreen) -> None:
         """Generate and display a resume-ready project summary."""
@@ -2439,8 +2709,11 @@ class PortfolioTextualApp(App):
         # ✨ SKILLS ANALYSIS ✨
         if self._scan_state.skills_analysis_result:
             skills_data = self._skills_service.export_skills_data(self._scan_state.skills_analysis_result)
+            # Add narrative paragraph summary
+            paragraph_summary = self._skills_service.format_skills_paragraph(self._scan_state.skills_analysis_result)
             payload["skills_analysis"] = {
                 "success": True,
+                "paragraph_summary": paragraph_summary,
                 **skills_data
             }
         elif self._scan_state.code_file_count > 0:
@@ -2467,6 +2740,50 @@ class PortfolioTextualApp(App):
                 user_name=None,
             )
             payload["contribution_ranking"] = ranking
+        
+        # ✨ DOCUMENT ANALYSIS (DOCX, etc.) ✨
+        if self._scan_state.document_results:
+            doc_summaries = []
+            successful_count = 0
+            
+            for result in self._scan_state.document_results:
+                doc_data = {
+                    "file_name": getattr(result, 'file_name', 'Unknown'),
+                    "success": getattr(result, 'success', False),
+                }
+                
+                if getattr(result, 'success', False):
+                    successful_count += 1
+                    doc_data["summary"] = getattr(result, 'summary', None)
+                    doc_data["keywords"] = [
+                        {"word": word, "count": count} 
+                        for word, count in getattr(result, 'keywords', [])
+                    ]
+                    
+                    # Include metadata
+                    metadata = getattr(result, 'metadata', None)
+                    if metadata:
+                        doc_data["metadata"] = {
+                            "word_count": getattr(metadata, 'word_count', 0),
+                            "paragraph_count": getattr(metadata, 'paragraph_count', 0),
+                            "line_count": getattr(metadata, 'line_count', 0),
+                            "reading_time_minutes": getattr(metadata, 'reading_time_minutes', 0),
+                            "heading_count": getattr(metadata, 'heading_count', 0),
+                            "headings": getattr(metadata, 'headings', [])[:10],
+                            "code_blocks": getattr(metadata, 'code_blocks', 0),
+                            "links": getattr(metadata, 'links', 0),
+                            "images": getattr(metadata, 'images', 0),
+                        }
+                else:
+                    doc_data["error"] = getattr(result, 'error_message', None)
+                
+                doc_summaries.append(doc_data)
+            
+            payload["document_analysis"] = {
+                "total_documents": len(self._scan_state.document_results),
+                "successful": successful_count,
+                "documents": doc_summaries,
+            }
         
         return payload
     
@@ -3444,6 +3761,76 @@ class PortfolioTextualApp(App):
         if self._ai_state.task and not self._ai_state.task.done():
             return
         self._show_status("AI key entry cancelled.", "info")
+
+    def on_search_query_submitted(self, event: SearchQuerySubmitted) -> None:
+        """Handle search query submission from the search input screen."""
+        event.stop()
+        asyncio.create_task(self._execute_search(event.query))
+
+    def on_search_cancelled(self, event: SearchCancelled) -> None:
+        """Handle search dialog cancellation."""
+        event.stop()
+        self._show_status("Search cancelled.", "info")
+
+    async def _execute_search(self, query: str) -> None:
+        """Execute search with the given query and display results."""
+        screen = self._scan_results_screen
+        if screen is None or self._scan_state.parse_result is None:
+            return
+
+        # Parse the query string into filters
+        filters = self._parse_search_query(query)
+        
+        # Execute search
+        result = self._search_service.search(self._scan_state.parse_result, filters)
+        
+        # Format and display results
+        output = self._search_service.format_search_results(result)
+        screen.display_output(output, context="Search Results")
+        screen.set_message(f"Found {result.total_matches} files matching your criteria", tone="success")
+
+    def _parse_search_query(self, query: str) -> SearchFilters:
+        """Parse a search query string into SearchFilters."""
+        filters = SearchFilters()
+        
+        if not query.strip():
+            return filters  # Return empty filters to show all files
+        
+        # Parse semicolon-separated filter expressions
+        parts = [p.strip() for p in query.split(";") if p.strip()]
+        
+        for part in parts:
+            if ":" not in part:
+                # Treat as filename pattern if no colon
+                filters.filename_pattern = part
+                continue
+            
+            key, value = part.split(":", 1)
+            key = key.lower().strip()
+            value = value.strip()
+            
+            if key == "name":
+                filters.filename_pattern = value
+            elif key == "path":
+                filters.path_contains = value
+            elif key == "ext":
+                # Support comma-separated extensions
+                exts = {e.strip() if e.startswith(".") else f".{e.strip()}" for e in value.split(",")}
+                filters.extensions = exts
+            elif key == "lang":
+                # Support comma-separated languages
+                langs = {l.strip().lower() for l in value.split(",")}
+                filters.languages = langs
+            elif key == "min":
+                filters.min_size = self._search_service.parse_size_string(value)
+            elif key == "max":
+                filters.max_size = self._search_service.parse_size_string(value)
+            elif key == "after":
+                filters.modified_after = self._search_service.parse_date_string(value)
+            elif key == "before":
+                filters.modified_before = self._search_service.parse_date_string(value)
+        
+        return filters
 
     def on_consent_action(self, event: ConsentAction) -> None:
         event.stop()
