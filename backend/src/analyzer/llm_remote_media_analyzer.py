@@ -5,6 +5,7 @@ import io
 import json
 import mimetypes
 import subprocess
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -83,6 +84,8 @@ class LLMRemoteMediaAnalyzer:
 
     def _detect_codec(self, path: Path) -> Optional[str]:
         """Use ffprobe to detect video codec."""
+        if not shutil.which("ffprobe"):
+            return None
         try:
             result = subprocess.run(
                 [
@@ -103,9 +106,11 @@ class LLMRemoteMediaAnalyzer:
     def _convert_to_h264(self, path: Path) -> Path:
         """Convert unsupported HEVC/H265 MOV to H.264 MP4 via ffmpeg."""
         out_path = path.with_suffix(".converted.mp4")
+        if not shutil.which("ffmpeg"):
+            return path
 
         try:
-            subprocess.run(
+            result = subprocess.run(
                 [
                     "ffmpeg", "-y",
                     "-i", str(path),
@@ -117,7 +122,9 @@ class LLMRemoteMediaAnalyzer:
                 capture_output=True,
                 text=True,
             )
-            return out_path
+            if result.returncode == 0 and out_path.exists() and out_path.stat().st_size > 0:
+                return out_path
+            return path
         except Exception:
             return path  # fallback if ffmpeg not installed
 
@@ -178,7 +185,7 @@ class LLMRemoteMediaAnalyzer:
                 "role": "user",
                 "content": [
                     {"type": "text", "text": prompt},
-                    {"type": "input_audio", "audio_url": audio_data},
+                    {"type": "input_audio", "audio_url": {"url": audio_data}},
                 ],
             }
         ]
@@ -257,21 +264,16 @@ class LLMRemoteMediaAnalyzer:
             {"type": "text", "text": prompt},
         ]
 
-        # Prefer inline when under size limit, otherwise send file:// and let upstream decide.
-        video_block: dict[str, Any]
+        # Prefer inline when under size limit. For large files, rely on frames when inline is not possible.
         try:
-            if path.stat().st_size <= MAX_INLINE_BYTES:
-                data_url = self._data_url(path, mime)
-                if data_url:
-                    video_block = {"type": "input_audio", "audio_url": {"url": data_url}}
-                else:
-                    video_block = {"type": "input_audio", "audio_url": {"url": f"file://{path}"}}
-            else:
-                video_block = {"type": "input_audio", "audio_url": {"url": f"file://{path}"}}
+            size_ok = path.stat().st_size <= MAX_INLINE_BYTES
         except Exception:
-            video_block = {"type": "input_audio", "audio_url": {"url": f"file://{path}"}}
+            size_ok = False
 
-        content_blocks.append(video_block)
+        if size_ok:
+            data_url = self._data_url(path, mime)
+            if data_url:
+                content_blocks.append({"type": "input_audio", "audio_url": {"url": data_url}})
 
         # Add multiple frames
         frame_blocks = self._extract_frames(path, num_frames=3)

@@ -3195,16 +3195,21 @@ class PortfolioTextualApp(App):
             skipping = False
             for line in lines_split:
                 header = line.strip().lower()
-                if header.startswith("### media") or header.startswith("## media") or header.startswith("media insights"):
+                if (
+                    header.startswith("### media")
+                    or header.startswith("## media")
+                    or "media insights" in header
+                ):
                     skipping = True
                     continue
-                if skipping and (line.strip().startswith("#") or line.strip() == ""):
-                    skipping = False
-                    if line.strip().startswith("#"):
-                        cleaned.append(line)
+                if skipping:
+                    # stop skipping on blank or next header
+                    if line.strip() == "" or line.strip().startswith("#"):
+                        skipping = False
+                        if line.strip().startswith("#"):
+                            cleaned.append(line)
                     continue
-                if not skipping:
-                    cleaned.append(line)
+                cleaned.append(line)
             return "\n".join(cleaned)
 
         # Portfolio Overview section (always shown if available)
@@ -3942,7 +3947,55 @@ class PortfolioTextualApp(App):
         detail_panel.update("[b]AI-Powered Analysis[/b]\n\nPreparing AI insights…")
         self._show_status("Preparing AI analysis…", "info")
         self._ai_state.task = asyncio.create_task(self._run_ai_analysis())
-        
+
+    async def _run_ai_analysis(self) -> None:
+        """Run AI analysis without media; media stays in on-demand deep dive."""
+        progress_bar = self._scan_progress_bar
+        progress_label = self._scan_progress_label
+        detail_panel = self.query_one("#detail", Static)
+
+        def _set_progress(text: str) -> None:
+            try:
+                if progress_label:
+                    progress_label.update(text)
+            except Exception:
+                pass
+
+        try:
+            if not self._ai_state.client or not self._scan_state.parse_result:
+                self._show_status("A recent scan and verified API key are required.", "warning")
+                return
+
+            _set_progress("Running AI analysis…")
+            result = await asyncio.to_thread(
+                self._ai_service.execute_analysis,
+                self._ai_state.client,
+                self._scan_state.parse_result,
+                languages=self._scan_state.languages or [],
+                target_path=str(self._scan_state.target) if self._scan_state.target else None,
+                archive_path=str(self._scan_state.archive) if self._scan_state.archive else None,
+                git_repos=self._scan_state.git_repos,
+            )
+            self._ai_state.last_analysis = result
+            structured_result = self._ai_service.format_analysis(result)
+            detail_panel.update(self._display_ai_sections(structured_result))
+            await self._show_ai_results(structured_result)
+            self._show_status("AI analysis complete.", "success")
+        except Exception as exc:
+            self._show_status(f"AI analysis failed: {exc}", "error")
+        finally:
+            if progress_bar:
+                try:
+                    progress_bar.display = False
+                    progress_bar.update(progress=0)
+                except Exception:
+                    pass
+            if progress_label:
+                try:
+                    progress_label.add_class("hidden")
+                    progress_label.update("")
+                except Exception:
+                    pass
         
     async def _run_auto_suggestion(self, selected_files: List[str], output_dir: str) -> None:
         """
