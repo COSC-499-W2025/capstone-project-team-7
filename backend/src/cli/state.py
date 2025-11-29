@@ -59,6 +59,7 @@ class ScanState:
     code_analysis_error: Optional[str] = None
     skills_analysis_result: Optional[List[Any]] = None
     skills_analysis_error: Optional[str] = None
+    skills_progress: Optional[Dict[str, Any]] = None
     detected_projects: List[Any] = field(default_factory=list)
     is_monorepo: bool = False
     contribution_metrics: Optional[Any] = None

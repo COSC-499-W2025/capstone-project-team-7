@@ -12,6 +12,8 @@ try:
 except ImportError:
     SUPABASE_AVAILABLE = False
     Client = None  # type: ignore
+    def create_client(*args, **kwargs):  # type: ignore
+        raise ImportError("supabase-py is not installed")
 
 
 class ProjectsServiceError(Exception):
@@ -22,7 +24,7 @@ class ProjectsService:
     """Manage project scan storage in Supabase."""
     
     def __init__(self, supabase_url: Optional[str] = None, supabase_key: Optional[str] = None):
-        if not SUPABASE_AVAILABLE:
+        if not SUPABASE_AVAILABLE and not callable(create_client):
             raise ProjectsServiceError("Supabase client not available. Install supabase-py.")
         
         # Initialize Supabase client
@@ -92,13 +94,25 @@ class ProjectsService:
                     else None
                 ),
                 "project_end_date": scan_data.get("contribution_metrics", {}).get("project_end_date"),
+                "has_skills_progress": bool(scan_data.get("skills_progress")),
             }
             
             # Upsert (insert or update if exists)
-            response = self.client.table("projects").upsert(
-                record,
-                on_conflict="user_id,project_name"
-            ).execute()
+            try:
+                response = self.client.table("projects").upsert(
+                    record,
+                    on_conflict="user_id,project_name"
+                ).execute()
+            except Exception as exc:
+                # Backward compatibility: some databases may not have the has_skills_progress column yet.
+                if "has_skills_progress" in str(exc):
+                    record.pop("has_skills_progress", None)
+                    response = self.client.table("projects").upsert(
+                        record,
+                        on_conflict="user_id,project_name"
+                    ).execute()
+                else:
+                    raise
             
             if not response.data:
                 raise ProjectsServiceError("Failed to save project scan")
@@ -121,13 +135,28 @@ class ProjectsService:
                 "total_files, total_lines, languages, "
                 "has_media_analysis, has_pdf_analysis, has_code_analysis, has_git_analysis, "
                 "has_contribution_metrics, contribution_score, user_commit_share, total_commits, "
-                "primary_contributor, project_end_date, "
+                "primary_contributor, project_end_date, has_skills_progress, "
                 "created_at"
             ).eq("user_id", user_id).order("scan_timestamp", desc=True).execute()
             
             return response.data or []
             
         except Exception as exc:
+            # Fall back if older schema does not include has_skills_progress
+            if "has_skills_progress" in str(exc):
+                response = self.client.table("projects").select(
+                    "id, project_name, project_path, scan_timestamp, "
+                    "total_files, total_lines, languages, "
+                    "has_media_analysis, has_pdf_analysis, has_code_analysis, has_git_analysis, "
+                    "has_contribution_metrics, contribution_score, user_commit_share, total_commits, "
+                    "primary_contributor, project_end_date, "
+                    "created_at"
+                ).eq("user_id", user_id).order("scan_timestamp", desc=True).execute()
+                # Ensure callers can safely read the flag even if absent
+                projects = response.data or []
+                for project in projects:
+                    project.setdefault("has_skills_progress", False)
+                return projects
             raise ProjectsServiceError(f"Failed to get projects: {exc}") from exc
     
     def get_project_scan(self, user_id: str, project_id: str) -> Optional[Dict[str, Any]]:
@@ -193,15 +222,29 @@ class ProjectsService:
                 "has_pdf_analysis": False,
                 "has_code_analysis": False,
                 "has_git_analysis": False,
+                "has_skills_progress": False,
                 "insights_deleted_at": timestamp,
             }
-            response = (
-                self.client.table("projects")
-                .update(update_fields)
-                .eq("user_id", user_id)
-                .eq("id", project_id)
-                .execute()
-            )
+            try:
+                response = (
+                    self.client.table("projects")
+                    .update(update_fields)
+                    .eq("user_id", user_id)
+                    .eq("id", project_id)
+                    .execute()
+                )
+            except Exception as exc:
+                if "has_skills_progress" not in str(exc):
+                    raise ProjectsServiceError(f"Failed to delete insights: {exc}") from exc
+                # Retry without the missing column for backward compatibility
+                update_fields.pop("has_skills_progress", None)
+                response = (
+                    self.client.table("projects")
+                    .update(update_fields)
+                    .eq("user_id", user_id)
+                    .eq("id", project_id)
+                    .execute()
+                )
         except Exception as exc:
             raise ProjectsServiceError(f"Failed to delete insights: {exc}") from exc
 
