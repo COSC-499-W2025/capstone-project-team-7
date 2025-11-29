@@ -179,15 +179,35 @@ class SearchService:
         if filters.max_size is not None:
             predicates.append(lambda f, s=filters.max_size: f.size_bytes <= s)
         
-        # Date filters
+        # Date filters - guard against missing metadata (None)
         if filters.modified_after:
-            predicates.append(lambda f, d=filters.modified_after: f.modified_at >= d)
+            predicates.append(
+                lambda f, d=filters.modified_after: (
+                    getattr(f, "modified_at", None) is not None
+                    and f.modified_at >= d
+                )
+            )
         if filters.modified_before:
-            predicates.append(lambda f, d=filters.modified_before: f.modified_at <= d)
+            predicates.append(
+                lambda f, d=filters.modified_before: (
+                    getattr(f, "modified_at", None) is not None
+                    and f.modified_at <= d
+                )
+            )
         if filters.created_after:
-            predicates.append(lambda f, d=filters.created_after: f.created_at >= d)
+            predicates.append(
+                lambda f, d=filters.created_after: (
+                    getattr(f, "created_at", None) is not None
+                    and f.created_at >= d
+                )
+            )
         if filters.created_before:
-            predicates.append(lambda f, d=filters.created_before: f.created_at <= d)
+            predicates.append(
+                lambda f, d=filters.created_before: (
+                    getattr(f, "created_at", None) is not None
+                    and f.created_at <= d
+                )
+            )
         
         # Language filter
         if filters.languages:
@@ -240,8 +260,15 @@ class SearchService:
             for i, f in enumerate(result.files[:max_files]):
                 size_str = self._format_size(f.size_bytes)
                 ext = Path(f.path).suffix or "(no ext)"
+                # Safe rendering of modified date when metadata might be missing
+                modified = getattr(f, "modified_at", None)
+                try:
+                    modified_str = modified.strftime('%Y-%m-%d') if modified else "(unknown)"
+                except Exception:
+                    modified_str = "(unknown)"
+
                 lines.append(f"  {i+1:3}. {f.path}")
-                lines.append(f"       {size_str} | {ext} | Modified: {f.modified_at.strftime('%Y-%m-%d')}")
+                lines.append(f"       {size_str} | {ext} | Modified: {modified_str}")
             
             if len(result.files) > max_files:
                 lines.append("")
