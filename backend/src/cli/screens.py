@@ -5,6 +5,7 @@ import re
 import textwrap
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from unittest import result
 from dataclasses import dataclass
 
 
@@ -116,6 +117,15 @@ class RunScanRequested(Message):
 
 class LoginSubmitted(Message):
     """Raised when the user submits Supabase credentials."""
+
+    def __init__(self, email: str, password: str) -> None:
+        super().__init__()
+        self.email = email
+        self.password = password
+
+
+class SignupSubmitted(Message):
+    """Raised when the user submits credentials to create a Supabase account."""
 
     def __init__(self, email: str, password: str) -> None:
         super().__init__()
@@ -244,13 +254,26 @@ class LoginScreen(ModalScreen[None]):
 
     def compose(self) -> ComposeResult:
         yield Vertical(
-            Static("Sign in to Supabase", classes="dialog-title"),
-            Input(value=self._default_email, placeholder="name@example.com", id="login-email"),
-            Input(password=True, placeholder="Password", id="login-password"),
+            Static("Sign in or create an account", classes="dialog-title"),
+            Static(
+                "Use a valid email and an 8+ character password.",
+                classes="dialog-subtitle",
+            ),
+            Input(
+                value=self._default_email,
+                placeholder="name@example.com",
+                id="login-email",
+            ),
+            Input(
+                password=True,
+                placeholder="Password",
+                id="login-password",
+            ),
             Static("", id="login-message", classes="dialog-message"),
             Horizontal(
                 Button("Cancel", id="login-cancel"),
-                Button("Sign In", id="login-submit", variant="primary"),
+                Button("Log In", id="login-submit", variant="primary"),
+                Button("Create Account", id="signup-submit"),
                 classes="dialog-buttons",
             ),
             classes="dialog",
@@ -263,28 +286,45 @@ class LoginScreen(ModalScreen[None]):
     def _validate(self) -> tuple[str, str] | None:
         email_input = self.query_one("#login-email", Input)
         password_input = self.query_one("#login-password", Input)
+        message_widget = self.query_one("#login-message", Static)
+
         email = email_input.value.strip()
         password = password_input.value
-        if not email or not password:
-            self.query_one("#login-message", Static).update("Enter an email and password to continue.")
-            if not email:
-                email_input.focus()
-            else:
-                password_input.focus()
+
+        if not email or "@" not in email:
+            message_widget.update("Enter a valid email address.")
+            email_input.focus()
             return None
+
+        if not password or len(password) < 8:
+            
+            message_widget.update("Password must be at least 8 characters.")
+            password_input.focus()
+            return None
+
+        message_widget.update("")
         return email, password
 
-    def _submit(self) -> None:
+    def _handle_submit(self, message_type) -> None:
         result = self._validate()
         if not result:
             return
         email, password = result
-        dispatch_message(self, LoginSubmitted(email, password))
+        dispatch_message(self, message_type(email, password))
         self.dismiss(None)
+
+    def _submit(self) -> None:
+        self._handle_submit(LoginSubmitted)
+
+    def _submit_signup(self) -> None:
+        self._handle_submit(SignupSubmitted)
+
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "login-submit":
             self._submit()
+        elif event.button.id == "signup-submit":
+            self._submit_signup()
         elif event.button.id == "login-cancel":
             dispatch_message(self, LoginCancelled())
             self.dismiss(None)
