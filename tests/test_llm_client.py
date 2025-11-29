@@ -698,6 +698,36 @@ class TestSummarizeScanWithAI:
         assert "file_summaries" in result
         assert "files_analyzed_count" in result
         assert isinstance(result["file_summaries"], list)
+
+    def test_summarize_scan_includes_media_briefings(self, client_with_key, tmp_path):
+        """Media assets should be surfaced when metadata is available."""
+        scan_data = {
+            "scan_summary": {"total_files": 1, "scan_path": str(tmp_path)},
+            "relevant_files": [
+                {
+                    "path": "images/photo.jpg",
+                    "size": 2048,
+                    "mime_type": "image/jpeg",
+                    "media_info": {"width": 1024, "height": 768, "content_summary": "sunset over mountains"},
+                }
+            ],
+            "scan_base_path": str(tmp_path),
+        }
+
+        mock_response = Mock()
+        mock_choice = Mock()
+        mock_choice.message.content = "Analysis result with media"
+        mock_response.choices = [mock_choice]
+        client_with_key.client.chat.completions.create = Mock(return_value=mock_response)
+
+        result = client_with_key.summarize_scan_with_ai(
+            scan_summary=scan_data["scan_summary"],
+            relevant_files=scan_data["relevant_files"],
+            scan_base_path=scan_data["scan_base_path"],
+        )
+
+        assert result.get("media_briefings")
+        assert "photo.jpg" in " ".join(result["media_briefings"])
     
     def test_summarize_scan_not_configured(self, sample_scan_data):
         """Test scan summarization when client not configured."""
@@ -1237,4 +1267,3 @@ class TestAnalyzeMultipleProjects:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-

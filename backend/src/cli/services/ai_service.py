@@ -175,7 +175,11 @@ class AIService:
                 "path": file_path,
                 "size": meta.size_bytes,
                 "mime_type": meta.mime_type,
+                "media_info": getattr(meta, "media_info", None),
             })
+        
+        # Ensure on-disk media files are included even if parser skipped them
+        relevant_files = self._ensure_media_candidates(target_path, relevant_files)
         
         self.logger.info(f"[AI Service] Total files: {len(files)}, Relevant files: {len(relevant_files)}")
         self.logger.info(f"[AI Service] Scan path: {scan_path}")
@@ -201,11 +205,100 @@ class AIService:
                 scan_base_path=read_base_path,
                 project_dirs=project_dirs,
                 progress_callback=progress_callback,
+                include_media=False,
             )
             self.logger.info(f"[AI Service] Analysis complete, result keys: {list(result.keys()) if result else 'None'}")
             return result
         except Exception as exc:
             self.logger.error(f"[AI Service] Error during analysis: {exc}")
+            raise AIProviderError(str(exc)) from exc
+
+    def _ensure_media_candidates(self, base_dir: Optional[str], existing: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Augment relevant_files with media present on disk (guarded)."""
+        if not base_dir:
+            return existing
+        try:
+            from pathlib import Path
+            import mimetypes
+            from ...scanner.media import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
+            base = Path(base_dir)
+            if not base.exists():
+                return existing
+            seen = {item["path"] for item in existing}
+            media_exts = set(AUDIO_EXTENSIONS + IMAGE_EXTENSIONS + VIDEO_EXTENSIONS)
+            added = 0
+            for path in base.rglob("*"):
+                if added >= 30:
+                    break
+                if not path.is_file():
+                    continue
+                if path.suffix.lower() not in media_exts:
+                    continue
+                rel_path = str(path.relative_to(base))
+                if rel_path in seen:
+                    continue
+                existing.append({
+                    "path": rel_path,
+                    "size": path.stat().st_size,
+                    "mime_type": mimetypes.guess_type(path.name)[0] or "",
+                    "media_info": None,
+                })
+                seen.add(rel_path)
+                added += 1
+        except Exception:
+            pass
+        return existing
+
+    def collect_media_insights(
+        self,
+        client: Any,
+        parse_result,
+        *,
+        target_path: Optional[str],
+        archive_path: Optional[str],
+        max_items: int = 12,
+        progress_callback: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        """Run media-only summarization on demand."""
+        import logging
+        logger = logging.getLogger(__name__)
+        if client is None or parse_result is None:
+            raise RuntimeError("Media insights prerequisites missing.")
+
+        scan_path = target_path or archive_path or ""
+        read_base_path = target_path if target_path else archive_path
+        files = parse_result.files or []
+
+        if progress_callback:
+            progress_callback("Gathering media files…")
+
+        relevant_files = []
+        for meta in files:
+            file_path = meta.path
+            if target_path and '/' in file_path:
+                path_parts = file_path.split('/', 1)
+                if len(path_parts) > 1:
+                    file_path = path_parts[1]
+            relevant_files.append({
+                "path": file_path,
+                "size": meta.size_bytes,
+                "mime_type": meta.mime_type,
+                "media_info": getattr(meta, "media_info", None),
+            })
+
+        relevant_files = self._ensure_media_candidates(target_path, relevant_files)
+
+        try:
+            logger.info(f"[AI Service] Collecting media insights for {len(relevant_files)} files, scan path: {scan_path}")
+            result = client.summarize_media_only(
+                relevant_files=relevant_files,
+                scan_base_path=read_base_path or "",
+                max_items=max_items,
+                progress_callback=progress_callback,
+            )
+            return result
+        except Exception as exc:
+            logger.error(f"[AI Service] Media insights error: {exc}")
             raise AIProviderError(str(exc)) from exc
 
     def format_analysis(self, result: Dict[str, Any]) -> Dict[str, Any]:
@@ -216,12 +309,14 @@ class AIService:
             - projects: list of {name, path, overview, key_files: [{file_path, analysis, file_size, priority_score}]}
             - supporting_files: str or None
             - skipped_files: list of {path, reason, size_mb}
+            - media_assets: optional bullet list of media briefs
         """
         structured_result: Dict[str, Any] = {
             "portfolio_overview": None,
             "projects": [],
             "supporting_files": None,
-            "skipped_files": []
+            "skipped_files": [],
+            "media_assets": None,
         }
         
         # Helper function to escape Rich markup in AI-generated text
@@ -230,6 +325,12 @@ class AIService:
                 return ""
             # Escape square brackets that might interfere with Rich markup
             return text.replace("[", r"\[").replace("]", r"\]")
+
+        media_briefings = result.get("media_briefings") or []
+        if media_briefings:
+            structured_result["media_assets"] = "\n".join(
+                f"• {escape_rich_markup(entry)}" for entry in media_briefings
+            )
         
         # Helper to calculate file priority score
         def file_priority(f):
@@ -343,6 +444,9 @@ class AIService:
         file_summaries = result.get("file_summaries") or []
         if file_summaries:
             parts.append(f"Key file insights: {len(file_summaries)}")
+        media_briefings = result.get("media_briefings") or []
+        if media_briefings:
+            parts.append(f"Media assets reviewed: {len(media_briefings)}")
         analysis_text = (result.get("project_analysis") or {}).get("analysis") or ""
         if not analysis_text and result.get("projects"):
             first_project = result["projects"][0]

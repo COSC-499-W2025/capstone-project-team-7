@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from math import log
 import re
 import textwrap
@@ -2989,11 +2990,13 @@ class ProjectViewerScreen(ModalScreen[None]):
 class AIResultsScreen(ModalScreen[None]):
     """Full-screen modal showing AI analysis results with clickable sections."""
 
-    def __init__(self, structured_data: Dict[str, Any]) -> None:
+    def __init__(self, structured_data: Dict[str, Any], media_loader: Optional[Any] = None) -> None:
         super().__init__()
         self._structured_data = structured_data
         self._supports_rich_markup = TextLog is not None
         self._detail_context = "AI Analysis"
+        self._media_loader = media_loader
+        self._media_loading = False
         
         # Build actions based on available sections
         self._actions = self._build_actions()
@@ -3019,6 +3022,9 @@ class AIResultsScreen(ModalScreen[None]):
                 project_name = project.get("name", f"Project {idx}")
                 actions.append((action_id, f"{idx}. {project_name}"))
             # Key Files subsections will be added dynamically when project is selected
+        
+        if self._structured_data.get("media_assets") or self._media_loader:
+            actions.append(("media_deep_dive", "Media Deep Dive"))
         
         if self._structured_data.get("supporting_files"):
             actions.append(("supporting", "Supporting Files"))
@@ -3052,6 +3058,9 @@ class AIResultsScreen(ModalScreen[None]):
             if idx == project_idx + 1 and project.get("key_files"):
                 key_files_action_id = f"project_{idx}_files"
                 actions.append((key_files_action_id, "  ↳ Key Files"))
+        
+        if self._structured_data.get("media_assets") or self._media_loader:
+            actions.append(("media_deep_dive", "Media Deep Dive"))
         
         if self._structured_data.get("supporting_files"):
             actions.append(("supporting", "Supporting Files"))
@@ -3229,6 +3238,41 @@ class AIResultsScreen(ModalScreen[None]):
             )
             self.set_message("Viewing Supporting Files", tone="success")
         
+        elif action == "media_deep_dive":
+            if self._media_loading:
+                return
+            self._media_loading = True
+            self.set_message("Loading media insights…", tone="info")
+            async def _load():
+                try:
+                    if self._structured_data.get("media_assets"):
+                        media_assets = self._structured_data.get("media_assets")
+                    elif callable(self._media_loader):
+                        maybe = self._media_loader()
+                        if asyncio.iscoroutine(maybe):
+                            media_assets = await maybe
+                        else:
+                            media_assets = maybe
+                        if media_assets:
+                            self._structured_data["media_assets"] = media_assets
+                    else:
+                        media_assets = None
+                    if media_assets:
+                        self.display_output(
+                            f"[b]Media Insights[/b]\n\n{media_assets}",
+                            context="Media Insights"
+                        )
+                        self.set_message("Loaded media insights", tone="success")
+                    else:
+                        self.display_output("[b]No media assets available[/b]", context="Media Insights")
+                        self.set_message("No media assets available", tone="warning")
+                except Exception as exc:
+                    self.display_output(f"[b]Failed to load media insights:[/b] {exc}", context="Media Insights")
+                    self.set_message("Media insights failed", tone="error")
+                finally:
+                    self._media_loading = False
+            asyncio.create_task(_load())
+        
         elif action == "skipped":
             self._display_skipped_files()
             self.set_message("Viewing Skipped Files", tone="success")
@@ -3293,7 +3337,7 @@ class AIResultsScreen(ModalScreen[None]):
         
         context_name = "Key Files" if is_single_project else f"{name} - Key Files"
         self.display_output("\n".join(lines), context=context_name)
-
+    
     def _display_skipped_files(self) -> None:
         """Display skipped files."""
         skipped_files = self._structured_data.get("skipped_files", [])
