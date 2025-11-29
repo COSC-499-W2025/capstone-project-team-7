@@ -704,11 +704,20 @@ class PortfolioTextualApp(App):
                 print(f"STATUS: {message} [{tone}]", file=sys.__stderr__)
             except Exception:
                 pass
-        status_panel = self.query_one("#status", Static)
-        status_panel.update(message)
-        for tone_name in ("info", "success", "warning", "error"):
-            status_panel.remove_class(tone_name)
-        status_panel.add_class(tone)
+        # Querying the DOM may raise when the app hasn't been mounted (e.g. unit tests).
+        # Guard against that so handlers can run in headless tests.
+        try:
+            status_panel = self.query_one("#status", Static)
+            status_panel.update(message)
+            for tone_name in ("info", "success", "warning", "error"):
+                status_panel.remove_class(tone_name)
+            status_panel.add_class(tone)
+        except Exception:
+            # No UI available (tests or early app init); fallback to logging only.
+            try:
+                self.log(f"STATUS: {message} [{tone}]")
+            except Exception:
+                pass
         return
 
     def _debug_log(self, message: str) -> None:
