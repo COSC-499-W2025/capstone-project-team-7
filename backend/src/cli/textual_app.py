@@ -618,6 +618,10 @@ class PortfolioTextualApp(App):
         Returns:
             timeline, summary (if available), summary note (when summary missing).
         """
+        git_repos = self._scan_state.git_repos or []
+        if len(git_repos) > 1:
+            return None, None, "Skill progression timeline unavailable when scanning multiple git repositories at once. Scan one repo at a time."
+
         skills_progress = self._scan_state.skills_progress or {}
         timeline = skills_progress.get("timeline") if isinstance(skills_progress, dict) else None
 
