@@ -32,3 +32,11 @@ textual-ui.stderr
 ai-analysis-latest.md
 ai-analysis-latest.json
 resume_item.md
+SKILLS_PROGRESS_PLAN.md
+
+# Skill summary artifacts
+skill_summary_*.json
+skill_summary_raw.txt
+
+# Python build metadata
+*.egg-info/

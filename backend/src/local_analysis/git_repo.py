@@ -4,6 +4,8 @@ from subprocess import check_output, CalledProcessError
 from collections import Counter
 from datetime import datetime
 import re
+from pathlib import Path as _Path
+from typing import Set
 
 def _git(args, cwd: str) -> str:
     return check_output(["git", *args], cwd=cwd, text=True).strip()
@@ -20,6 +22,60 @@ def _project_type(contributors: list[dict]) -> str:  # 2025-11-06
     if not contributors:
         return "unknown"
     return "individual" if len(contributors) == 1 else "collaborative"
+
+_EXTENSION_LANGUAGE_MAP = {
+    ".py": "Python",
+    ".js": "JavaScript",
+    ".ts": "TypeScript",
+    ".tsx": "TypeScript",
+    ".jsx": "JavaScript",
+    ".go": "Go",
+    ".java": "Java",
+    ".rb": "Ruby",
+    ".rs": "Rust",
+    ".cs": "C#",
+    ".cpp": "C++",
+    ".c": "C",
+    ".h": "C",
+    ".sh": "Shell",
+    ".php": "PHP",
+    ".swift": "Swift",
+    ".kt": "Kotlin",
+    ".m": "Objective-C",
+    ".mm": "Objective-C++",
+}
+
+
+def _guess_language(path: str) -> str | None:
+    ext = _Path(path).suffix.lower()
+    return _EXTENSION_LANGUAGE_MAP.get(ext)
+
+
+_VENDOR_DIR_HINTS: Set[str] = {
+    "node_modules",
+    "vendor",
+    "third_party",
+    "third-party",
+    ".venv",
+    "venv",
+    ".git",
+    "dist",
+    "build",
+    "out",
+    "target",
+    ".eggs",
+    ".tox",
+    ".cache",
+    "lib",  # Excludes vendored libs like tree-sitter bindings
+}
+
+
+def _is_vendor_path(path: str) -> bool:
+    lowered = path.lower()
+    # Split on forward/back slashes to avoid partial matches
+    parts = re.split(r"[\\/]+", lowered)
+    return any(token in parts for token in _VENDOR_DIR_HINTS)
+
 
 def analyze_git_repo(repo_dir: str) -> dict:
     repo_dir = str(repo_dir)
@@ -135,11 +191,56 @@ def analyze_git_repo(repo_dir: str) -> dict:
 
     # ---------- timeline ----------
     try:
-        months = Counter(
-            d[:7]
-            for d in _git(["log", "--date=iso", "--pretty=%ad", "--all"], repo_dir).splitlines()
-        )
-        timeline = [{"month": m, "commits": months[m]} for m in sorted(months)]
+        raw_log = _git(
+            ["log", "--date=short", "--pretty=%ad\t%s\t%ae", "--name-only", "--all"],
+            repo_dir,
+        ).splitlines()
+        commit_counts: Counter[str] = Counter()
+        month_messages: dict[str, list[str]] = {}
+        month_file_counts: dict[str, Counter[str]] = {}
+        month_languages: dict[str, Counter[str]] = {}
+        month_contributors: dict[str, set[str]] = {}  # Track unique contributors per month
+        current_month = None
+        for line in raw_log:
+            if "\t" in line:
+                # Commit header: date\tmessage\temail
+                parts = line.split("\t", 2)
+                date_part = parts[0]
+                message = parts[1] if len(parts) > 1 else ""
+                email = parts[2] if len(parts) > 2 else ""
+                current_month = date_part[:7]
+                commit_counts[current_month] += 1
+                month_messages.setdefault(current_month, []).append(message.strip())
+                if email:
+                    month_contributors.setdefault(current_month, set()).add(email.lower())
+                continue
+            if not line.strip() or current_month is None:
+                continue
+            # File path line
+            path = line.strip()
+            if _is_vendor_path(path):
+                continue
+            month_file_counts.setdefault(current_month, Counter())[path] += 1
+            lang = _guess_language(path)
+            if lang:
+                month_languages.setdefault(current_month, Counter())[lang] += 1
+
+        timeline = []
+        for month in sorted(commit_counts.keys()):
+            files_counter = month_file_counts.get(month, Counter())
+            top_files = [path for path, _ in files_counter.most_common(10)]  # Increased from 5
+            languages = month_languages.get(month, Counter())
+            contributors_set = month_contributors.get(month, set())
+            timeline.append(
+                {
+                    "month": month,
+                    "commits": commit_counts[month],
+                    "messages": (month_messages.get(month) or [])[:15],  # Increased from 5
+                    "top_files": top_files,
+                    "languages": dict(languages),
+                    "contributors": len(contributors_set),  # Per-month unique contributor count
+                }
+            )
     except CalledProcessError:
         timeline = []
 

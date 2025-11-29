@@ -203,7 +203,8 @@ class LLMClient:
         messages: List[Dict[str, str]], 
         model: Optional[str] = None,
         max_tokens: Optional[int] = None, 
-        temperature: Optional[float] = None
+        temperature: Optional[float] = None,
+        response_format: Optional[Dict[str, Any]] = None,
     ) -> str:
         """
         Make a call to the LLM API using configured defaults.
@@ -228,12 +229,16 @@ class LLMClient:
         temperature = temperature if temperature is not None else self.temperature
         
         try:
-            response = self.client.chat.completions.create(
+            kwargs: Dict[str, Any] = dict(
                 model=model,
                 messages=messages,
                 max_tokens=max_tokens,
-                temperature=temperature
+                temperature=temperature,
             )
+            if response_format:
+                kwargs["response_format"] = response_format
+
+            response = self.client.chat.completions.create(**kwargs)
             
             if response and response.choices:
                 return response.choices[0].message.content.strip()

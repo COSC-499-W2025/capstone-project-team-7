@@ -12,6 +12,8 @@ try:
 except ImportError:
     SUPABASE_AVAILABLE = False
     Client = None  # type: ignore
+    def create_client(*args, **kwargs):  # type: ignore
+        raise ImportError("supabase-py is not installed")
 
 
 class ProjectsServiceError(Exception):
@@ -92,6 +94,7 @@ class ProjectsService:
                     else None
                 ),
                 "project_end_date": scan_data.get("contribution_metrics", {}).get("project_end_date"),
+                "has_skills_progress": bool(scan_data.get("skills_progress")),
             }
             
             # Upsert (insert or update if exists)
@@ -119,7 +122,7 @@ class ProjectsService:
             response = self.client.table("projects").select(
                 "id, project_name, project_path, scan_timestamp, "
                 "total_files, total_lines, languages, "
-                "has_media_analysis, has_pdf_analysis, has_code_analysis, has_git_analysis, "
+                "has_media_analysis, has_pdf_analysis, has_code_analysis, has_git_analysis, has_skills_progress, "
                 "has_contribution_metrics, contribution_score, user_commit_share, total_commits, "
                 "primary_contributor, project_end_date, "
                 "created_at"
@@ -193,6 +196,7 @@ class ProjectsService:
                 "has_pdf_analysis": False,
                 "has_code_analysis": False,
                 "has_git_analysis": False,
+                "has_skills_progress": False,
                 "insights_deleted_at": timestamp,
             }
             response = (
@@ -296,7 +300,7 @@ class ProjectsService:
             files: List of dictionaries with keys:
                 - relative_path (str)
                 - size_bytes (int)
-                - mime_type (str)
+                - mime_type (str | None)
                 - sha256 (str | None)
                 - metadata (dict)
                 - last_seen_modified_at (datetime ISO string)
