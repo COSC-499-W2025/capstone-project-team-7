@@ -1,5 +1,38 @@
 # Aaron Banerjee (@aaronbanerjee123)
 
+# Week 13: November 24 - November 30
+
+This week, I implemented the AI Auto-Suggestion feature to automatically suggest and apply code improvements based on skill detection and code analysis. This helps users enhance their codebase with AI-powered recommendations while maintaining code integrity and user control. This was implemented using secure file path handling and robust LLM integration for generating contextually relevant suggestions.
+
+**Key Accomplishments:**
+
+1. **AI Auto-Suggestion Module**: Added on to `AIService` class that orchestrates the suggestion workflow, validates file paths securely, generates AI-powered suggestions, and applies improvements to user code. Integrated with CLI and Textual UI for seamless user interaction.
+
+2. **Secure Path Validation**: Implemented critical security layer with `_validate_and_resolve_path()` to prevent path traversal attacks, handle archive prefixes, and ensure all file operations stay within designated directories.
+
+3. **File Selection & Configuration**: Created `AutoSuggestionConfigScreen` to allow users to select which files to process, configure output directories, and customize AI suggestion parameters. Added intelligent file filtering to exclude non-code files.
+
+4. **Testing & Quality Assurance**: Created 28 new tests covering file selection, AI execution, progress tracking, output handling, error recovery, and end-to-end integration. Achieved 100% pass rate.
+
+**Challenges & Learning:**
+Faced challenges with secure file path handling in cross-platform environments and archive extraction prefix stripping. Resolved by implementing multi-layer validation with path traversal detection. Learned the importance of fail-safe security measures when executing AI-driven code modifications.
+
+**Impact:**
+Users can now leverage AI to automatically identify and implement code improvements, reducing manual refactoring effort while maintaining code quality. The feature integrates seamlessly with skill detection to provide contextually relevant suggestions based on detected competencies. This significantly enhances the portfolio analysis system's value proposition by offering actionable insights.
+
+Issues resolved include: [#151- Ai auto suggestion](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/158)
+
+PR [#170 - Ai suggestion feature](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/170)
+
+![Tasks Completed](./assets/week13_ai_auto_suggestion.png)
+
+<img width="1163" height="64" alt="image" src="https://github.com/user-attachments/assets/fe91c1f0-9c35-4f72-be01-639960b60a9b" />
+<img width="1421" height="792" alt="image" src="https://github.com/user-attachments/assets/2d8443e3-4aba-4cf1-b916-9fdfb1dd18a9" />
+
+**Next Week Priorities**:
+- Improve other types of local analysis to better provide insights
+- Improve threading operations in  ```textual_app.py``` to improve speed and how resources are shared during tasks
+- Fix small UI bugs that occur when viewing old proejcts
 ## Week 12: November 17 - November 23
 
 This week I implemented the backend database connection to our project through implementing the "View saved projects" feature. This feature allows users to view their saved projects after exporting a JSON report. It allows users to view them in chronological order based on when they scanned the project, and lets them view all their key metrics and analysis in a tab format. 
