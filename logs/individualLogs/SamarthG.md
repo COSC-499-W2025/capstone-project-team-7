@@ -1,6 +1,31 @@
 # Samarth Grover (@Samarth-G)
 
-## Week 12:
+## Week 13: November 24 - 30
+This week I upgraded the AI analysis results screen from plain text output into an interactive and structured interface. The work focused on data organization, navigation UX, and smart content prioritization, all delivered in this PR: **[PR #157 – format view last ai analysis](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/166)**
+
+The core architectural change was refactoring `format_analysis()` to return structured JSON instead of markdown. Analysis results now organize into distinct sections; portfolio overview, projects, key files, supporting files, and skipped files; with intelligent file prioritization that highlights the top 3-5 most important files per project. This shift from flat text to hierarchical data enabled much better presentation possibilities.
+
+I rebuilt `AIResultsScreen` with a dynamic sidebar navigation system that adapts contextually for single vs. multi-project portfolio modes. Each section became expandable with collapsible file views, making it easy to drill into specific areas without scrolling through walls of text. The interface feels responsive and purposeful rather than overwhelming.
+
+Storage format changed from .md to .json to support the structured approach. I added a dedicated `_display_ai_sections()` method that handles Rich-markup rendering, cleanly separating data retrieval from presentation logic. This made the results viewer more maintainable and set up better patterns for future analysis features.
+
+### Reflection
+
+**What went well:**  
+The JSON structure mapped naturally to the Textual UI Library's widget hierarchy, and the sidebar navigation pattern felt intuitive immediately. Smart file prioritization worked better than expected, highlighting key files per project made large analyses much more scannable. The separation between data format and display logic paid of when testing as it made the results seamless. 
+
+**What didn’t go well:** 
+Migrating existing .md results to the new JSON format required backward compatibility handling that wasn't initially planned. Testing different portfolio structures (single project, multi-project, edge cases with no files) required more test data setup than anticipated. It also took several rounds of testing and since each run takes a while due to AI api delays, it was more tedious then expected.
+
+### Next Steps
+
+- Practice the presentation  
+- Record the video demo  
+- Finalize the team contract  
+
+![Week 13 Image](./assets/SamarthG-W12.png)
+
+## Week 12: November 17 - 23
 This week I worked on major improvements to the AI analysis capabilities, making it a fully integrated feature in the TUI. The work centered on persistent configuration, batch processing performance, and a polished results viewing experience. All of this shipped through **PR #153 – ‘AI analysis work on the tui’**.
 
 The biggest addition was automatic API key management through a new ~/.portfolio_cli_ai_config.json file. Instead of re-entering credentials every session, the AI client now initializes automatically on startup with saved settings. I integrated temperature and max_tokens configuration directly into the Settings dialog, giving users control over analysis behavior without touching config files manually.
