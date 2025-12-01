@@ -1,5 +1,30 @@
 # Capstone Team 7 Logs
 
+## Week 13 (November 24th - 30th)
+This week the team focused on finalizing Milestone 1 deliverables and polishing the integrated analysis platform. Key work included unifying the AI analysis with local insights, refining the Textual UI for a cohesive user experience, and tightening Supabase persistence across resumes, projects, and analyses. The team also addressed outstanding bugs, improved documentation, and prepared for the final presentation. Overall, the platform evolved into a robust, end-to-end portfolio analysis tool that combines skills extraction, contribution metrics, resume generation, and AI-driven insights within a seamless TUI workflow.
+
+**Joaquin:**
+
+**Jacob:**
+
+**Vlad:**
+
+**Aaron:**
+
+**Om:** This week I focused on finalizing the contribution metrics feature and integrating it into the Textual UI. I built a robust ContributionMetricsService that analyzes Git commit history to extract meaningful insights about user contributions, including commit frequency, lines of code changed, and collaboration patterns. The service was designed with modularity in mind, allowing for easy extension and maintenance.I also worked on further enhancements such as exporting and search functionality for the skills analysis results within the TUI. This involved creating a user-friendly interface that allows users to easily navigate through their skills data, filter results based on specific criteria, and export the data in various formats for further analysis or reporting. Additionally, I spent time reviewing and testing the overall integration of the contribution metrics feature to ensure it works seamlessly with the existing analysis pipeline and provides accurate and actionable insights to users.
+
+**[#170](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/170):** This PR by Aaron implements AI-powered auto-suggestion for code improvements. I reviewed and approved it, noting its security-conscious path validation, robust JSON parsing with multiple fallback strategies, and comprehensive test coverage. The feature handles file-type-aware improvements well with graceful error recovery. I suggested adding rate limiting for LLM calls and a `--dry-run` option as nice-to-haves.
+
+**[#172](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/172):** This PR by Joaquin adds a skill progression tracking feature with per-month activity timelines, languages, and contributors. I approved it after reviewing the `SkillsExtractor` module that identifies OOP principles, data structures, and design patterns. The implementation emphasizes depth over surface-level insights with evidence-based skill claims and strong test coverage across timeline building, LLM summarization, and hallucination prevention.
+
+**[#169](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/169):** This PR by Vlad enables account creation directly through the CLI. I initially requested changes for missing unit tests, password validation, and better error messaging. After Vlad addressed these issues—fixing unused imports, correcting test imports, and un-nesting test functions—I approved the clean implementation that reuses existing login patterns with proper task management.
+
+**[#175](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/175):** This PR by Jacob adds opt-in LLM remote media analysis for images/audio/video using GPT-4o. I requested changes for duplicate `_ensure_media_candidates` function, incorrect OpenAI message format, missing dependency guards for torchvision/PIL, and empty migration file. After fixes were implemented, I approved the well-architected media analysis integration.
+
+The following week will be spent preparing for the final presentation, deliverables and demo video preparation, addressing any last-minute bugs, and refining documentation to ensure a smooth handoff. The team will also reflect on lessons learned and plan next steps for future development beyond Milestone 1.
+
+**Samarth:**
+
 ## Week 12 (November 17th - 23rd)
 This week the team continued strengthening the analysis stack and polishing the user-facing workflow. Major work landed in resume/skills tooling, contribution metrics, and data persistence, while the Textual UI gained cleaner project-level insights and is now actively integrating AI-driven analysis. Several backend hygiene improvements—duplicate detection, stale insight cleanup, and more stable storage—helped improve reliability. Overall, the platform moved from isolated services toward a cohesive, persistent, and visual analysis experience that ties together skills extraction, resume generation, project metrics, and upcoming AI analysis in the TUI.
 
