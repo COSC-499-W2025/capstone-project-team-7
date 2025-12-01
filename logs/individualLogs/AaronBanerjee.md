@@ -24,10 +24,9 @@ Issues resolved include: [#151- Ai auto suggestion](https://github.com/COSC-499-
 
 PR [#170 - Ai suggestion feature](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/170)
 
-![Tasks Completed](./assets/week13_ai_auto_suggestion.png)
+<img width="1338" height="762" alt="image" src="https://github.com/user-attachments/assets/cd414d24-bb4a-42b6-ab16-0bc1941761d4" />
 
 <img width="1163" height="64" alt="image" src="https://github.com/user-attachments/assets/fe91c1f0-9c35-4f72-be01-639960b60a9b" />
-<img width="1421" height="792" alt="image" src="https://github.com/user-attachments/assets/2d8443e3-4aba-4cf1-b916-9fdfb1dd18a9" />
 
 **Next Week Priorities**:
 - Improve other types of local analysis to better provide insights
