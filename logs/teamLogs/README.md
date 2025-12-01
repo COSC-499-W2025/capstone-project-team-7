@@ -3,7 +3,13 @@
 ## Week 13 (November 24th - 30th)
 This week the team focused on finalizing Milestone 1 deliverables and polishing the integrated analysis platform. Key work included unifying the AI analysis with local insights, refining the Textual UI for a cohesive user experience, and tightening Supabase persistence across resumes, projects, and analyses. The team also addressed outstanding bugs, improved documentation, and prepared for the final presentation. Overall, the platform evolved into a robust, end-to-end portfolio analysis tool that combines skills extraction, contribution metrics, resume generation, and AI-driven insights within a seamless TUI workflow.
 
-**Joaquin:**
+**Joaquin:**  
+This week I focused on improving our project-level analytics through **PR [#172](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/172)** and **PR [#162](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/162)**. I refined the skill-progression pipeline by unifying everything around a single user identity and enriching each timeline period with clearer evidence and contributor data. I also tightened the LLM summary prompt and added a progress indicator to make long runs feel more responsive. On the contribution side, I restored scoring fields, added a Supabase index for faster sorting, and improved the project-sorting toggle for better clarity in the TUI. I also strengthened reliability across the analysis pipeline by adding stricter validation, raw-dump debugging, vendor-path filtering, and fixes to contributor counting. All 13 timeline tests now pass.
+
+
+Most of my remaining time went into reviewing teammates’ PRs: Most of my remaining time went into reviewing teammates’ PRs and making sure the new analysis and AI workflows stayed aligned. For **PR [#164](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/164)**, Jacob’s AI badge and resume fixes were a clear improvement, especially around empty-state handling and in-place updates; the only issue I flagged was the incorrect `on_unmount` signature. For **PR [#166](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/166)**, Samarth’s redesigned AI-analysis view was strong, with structured JSON and much better screens—just a small duplicate method in `screens.py` to remove. For **PR [#168](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/168)**, OM’s duplicate-detection system was well-structured and easy to follow; I mainly suggested switching the hashing logic to a streaming pattern to avoid loading entire files into memory. For **PR [#170](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/170)**, Aaron’s AI-suggestion feature had a great service + UI flow, and I flagged three fixes around path safety, UI updates from worker threads, and making JSON parsing more resilient. For **PR [#175](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/175)**, Jacob’s LLM analysis integration was clean and well-organized; my suggestions centered on adding dependency checks, verifying ffmpeg conversions succeed, sending extracted frames instead of `file://` URIs, and consolidating duplicated candidate-selection logic. And for **PR [#177](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/177)**, OM’s enhancements were solid overall, with the main improvement being better guarding against missing metadata values to avoid comparison errors.
+
+
 
 **Jacob:**
 
@@ -25,6 +31,23 @@ This week the team focused on finalizing Milestone 1 deliverables and polishing 
 The following week will be spent preparing for the final presentation, deliverables and demo video preparation, addressing any last-minute bugs, and refining documentation to ensure a smooth handoff. The team will also reflect on lessons learned and plan next steps for future development beyond Milestone 1.
 
 **Samarth:**
+
+## Reflection
+
+### What went well
+- Skill progression and contribution scoring became much more consistent and reliable after unifying identity, enriching evidence, and tightening validation.
+
+### Challenges
+- Updating old tests, handling contributor semantics, dependency mocking, and refining LLM outputs took longer than expected.
+
+## **Next Steps**
+- Practice the presentation  
+- Record the video demo  
+- Finalize the team contract  
+
+<p align="center">
+  <img src="./charts/w13burnup.png" alt="Week 5 Burnup Chart width="400"/>
+</p>
 
 ## Week 12 (November 17th - 23rd)
 This week the team continued strengthening the analysis stack and polishing the user-facing workflow. Major work landed in resume/skills tooling, contribution metrics, and data persistence, while the Textual UI gained cleaner project-level insights and is now actively integrating AI-driven analysis. Several backend hygiene improvements—duplicate detection, stale insight cleanup, and more stable storage—helped improve reliability. Overall, the platform moved from isolated services toward a cohesive, persistent, and visual analysis experience that ties together skills extraction, resume generation, project metrics, and upcoming AI analysis in the TUI.
