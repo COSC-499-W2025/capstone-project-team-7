@@ -7,7 +7,8 @@ This week the team focused on finalizing Milestone 1 deliverables and polishing 
 
 **Jacob:**
 
-**Vlad:**
+**Vlad:** This week I implemented the sign-up flow inside the TUI, completing all core logic needed for user registration from the terminal interface. I added input collection for email, password, and metadata, validated the inputs, and wired the screen to call our backend signup endpoint. I also handled success/error feedback inside the interface so users get clear responses without leaving the TUI. This work expands the CLI/TUI beyond read only actions and moves us closer to a fully interactive onboarding experience.
+
 
 **Aaron:**
 
