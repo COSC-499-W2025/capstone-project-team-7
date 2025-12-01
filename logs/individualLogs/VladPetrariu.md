@@ -1,3 +1,10 @@
+# Week 13: November 24 - November 30
+This week I implemented a sign up feature into our TUI **[*155]. Previously, when testing we would have to manually create a user within Supabase then use that information to log into the account within the TUI. After adding a sign up feature within our TUI that sends the user infromtation to be stored in Supabase, testing and account creation can be fully done within the TUI while running the program. The sign up feature also has account creation restriction such as requiring the user to enter a real email into the username section as oppossed to a random name and requiring the password to be a certain number of digits to ensure that the account is secure. Along with this implementation I also added tests to verify that the account creation works accross different cases and is properly hooked up to Supabase. 
+
+On top of implementing the sign up feature, I helped set up a meeting with my group to discuss about the upcoming presentation and to decide what each group member will be talking about.
+
+<img width="1081" height="640" alt="Screenshot 2025-11-30 at 4 40 18 PM" src="https://github.com/user-attachments/assets/586e443e-29bc-4adf-aa19-ff2829d602f8" />
+
 # Week 12: November 17 - November 23
 This week I focused on containerizing the backend to make the system fully reproducible **[*133](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/154). I created the Dockerfile and docker-compose service, resolved macOS specific Docker issues, and ensured the Textual TUI runs cleanly inside a container. I also optimized the Docker image size by using the python:3.12-slim base image and disabling pip caching, which reduced unnecessary layer bloat. After testing the full flow (docker compose run --rm cli), I updated the documentation so the team can run the CLI with a single command.
 
