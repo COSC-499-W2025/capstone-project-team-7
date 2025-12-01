@@ -1,5 +1,31 @@
 
 # Jacob Damery
+
+## Week 13 (Nov 24 – 30)
+This week I focused on two major areas of the project: external media analysis and refinements to the resume generation system.
+
+External Media Analysis:
+I expanded our analysis pipeline by implementing an external, LLM-powered media analysis workflow. This allows the system to process images, audio, and video using multimodal AI to extract higher-level semantic insights such as scene descriptions, object detection, and narrative summaries. I also worked on integrating these results cleanly into the existing TUI flow, ensuring the user can trigger and view media insights without breaking the local analysis experience.
+
+Resume Generation Improvements:
+I refined both the local and LLM-enhanced resume generation features to produce clearer, more consistent, and more professional output. This included improving how metadata and scan results feed into the generator, tightening the structure of bullet points, and reducing variability across projects. I also fixed several issues in how resume items were being saved and displayed, making the results more reliable and aligned with industry-standard phrasing.
+
+### Reflection
+
+**What Went Well** What Went Well
+Multimodal external media analysis progressed significantly, and the integration with the TUI went smoother than expected. The LLM now consistently returns structured insights for images, audio, and video.
+Resume generation quality improved noticeably after refining how scan metadata feeds into the generation pipeline. Outputs are more consistent, clearer, and closer to industry-ready bullet points.
+The overall user workflow feels more polished, especially with more deterministic behavior between local and external analysis paths.
+Fixed several smaller issues that improved reliability, including stability of resume saving and more predictable UI behavior.
+
+**What Didn’t Go Well**
+I got significantly stuck on adding video support to the media analysis pipeline. Handling video inputs required additional preprocessing steps (frame sampling, metadata extraction, and preparing the content for multimodal LLM ingestion), and I ran into multiple issues with formatting, file handling, and consistent output. This ended up taking more time than expected and slowed overall progress.
+The multimodal media pipeline in general needed more debugging than anticipated, especially for larger or unusual media files that produced incomplete or unstable results.
+Some resume generation outputs are still inconsistent across projects, meaning the formatting and tone require further refinement.
+
+**Next up:** The next step is to review our Milestone 1 feedback and reassess our priorities for the upcoming milestone.
+<img width="1073" height="627" alt="image" src="https://github.com/user-attachments/assets/338fe6aa-2cfa-45e6-85ee-489e152c5794" />
+
 ## Week 12 (Nov 16 – 23)
 
 This week was split into two major pushes: first solidifying the resume-generation flow inside the CLI, and then extending it so generated resumes persist in Supabase with a full management UI.
