@@ -1,5 +1,36 @@
 # Om Mistry (@OM200401)
 
+## Week 13: November 24 - November 30
+
+This week, I implemented the duplicate detection feature to identify similar or identical files within a project directory. This helps users clean up redundant files and manage their projects more effectively. This was implemented using MD5 content hashing to identify duplicates efficiently. Furthermore, I worked on refining and adding more enhancements to the existing system - Report Generation in HTML format which can then be saved as a PDF file by the user. Search and Filtering capabilities were also added to the Textual UI to help users navigate large scan results more easily.
+
+**Key Accomplishments:**
+
+1. **Duplicate Detection Module**: Developed `DuplicateDetector` class that scans project directories, computes MD5 hashes for files, and identifies duplicates. Integrated with CLI and Textual UI for user interaction.
+
+2. **Report Generation Enhancements**: Extended HTML report generation to include contribution metrics and duplicate file sections. Added PDF export functionality using `pdfkit`.
+
+3. **Search & Filtering**: Implemented search bar and filtering options in Textual UI to allow users to filter scan results by file type, size, date modified, and keywords.
+
+4. **Testing & Quality Assurance**: Created 18 new tests covering duplicate detection, report generation, and UI filtering features. Achieved 100% pass rate.
+
+**Challenges & Learning:**
+Faced challenges in efficiently handling large directories with many files. Resolved by optimizing file reading and hashing processes. Learned the importance of user-friendly UI design for search and filtering functionalities.
+
+**Impact:**
+Users can now easily identify and manage duplicate files, generate comprehensive reports, and navigate large scan results effectively. This enhances the overall usability and functionality of the portfolio analysis system.
+
+Issues resolved include: [#173](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/173), [#174](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/174) and [#167](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/167)
+
+PR [#168 - Duplicate Detection](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/168)
+
+PR [#177 - Report & UI Enhancements](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/177)
+
+![Tasks Completed](./assets/omistry_Week13.png)
+
+![PR Screenshot](./assets/PR_Week13_OM.png)
+
+
 ## Week 12: November 17 - November 23
 
 This week, I implemented a comprehensive contribution metrics system that analyzes both Git and non-Git projects. The feature extracts individual contributor data, activity breakdowns, and project timelines to provide insights into development patterns.
