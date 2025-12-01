@@ -34,13 +34,20 @@ I also created ImprovementResultsScreen to display the results in a polished for
 
 The following week will be spent preparing for the final presentation, deliverables and demo video preparation, addressing any last-minute bugs, and refining documentation to ensure a smooth handoff. The team will also reflect on lessons learned and plan next steps for future development beyond Milestone 1.
 
-**Samarth:**
+**Samarth:** This week I upgraded the `AIResultsScreen` from a basic text display into a fully interactive & structured viewer. I refactored the core `format_analysis()` function to output organized JSON instead of plain markdown, implementing smart file prioritization that automatically highlights the 3-5 most important files per project. I rebuilt the screen with a dynamic sidebar for navigation and expandable file views, creating a context-aware UI that adapts between single and multi-project portfolios. The interface now allows users to navigate through different sections: portfolio overview, projects, key files, supporting files, skipped files. I also migrated the persistence layer from markdown to JSON format and implemented a dedicated `_display_ai_sections()` method using Rich markup for enhanced rendering of the structured data. 
+The rest of the week I worked on testing the other parts of the system and doing final test runs to see if there are any problems. I identified a few runtime and formatting errors with some of the new AI features. I also reviewed the following PRs:
+
+**[#162](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/162):** This PR by Joaquin added contribution importance scoring, UI sort toggle for saved projects, and cleaned up the Supabase tables making fixes where needed. This was a solid implementation overall with proper documentation and test coverage. The ranking algorithm's weighted approach makes projects easier to prioritize and the RLS migration was a good addition to make user data more secure. I added a few suggestions to implement before merging: fix the sort button label mode synchronization, and add a database index on `contribution_score` for efficient sorting.
+
+**[#164](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/164):** This PR by Jacob fixes issues with the Resume generation module. I reviewed the commits and the requested changes by Joaquin, it looked good to me and was passing all test cases. Approved and merged.
+
 
 ## Reflection
 
 ### What went well
--Improving the resume generation function proceeded smoothly with no major issues.
+- Improving the resume generation function proceeded smoothly with no major issues.
 - Skill progression and contribution scoring became much more consistent and reliable after unifying identity, enriching evidence, and tightening validation.
+- The AI results screen refactor went well, changing output format to JSON allowed for a much better display setup with organized sections for single/multi mode.
 
 ### Challenges
 - Updating old tests, handling contributor semantics, dependency mocking, and refining LLM outputs took longer than expected.
