@@ -42,8 +42,8 @@ The following week will be spent preparing for the final presentation, deliverab
 
 ## **Next Steps**
 - Practice the presentation  
-- Record the video demo  
-- Finalize the team contract  
+- Record the video demo — [Record demo #161](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/161)  
+- Finalize the team contract — [Write up team contract #159](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/159)
 
 <p align="center">
   <img src="./charts/w13burnup.png" alt="Week 5 Burnup Chart width="400"/>
