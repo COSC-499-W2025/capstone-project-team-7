@@ -12,6 +12,7 @@ Most of my remaining time went into reviewing teammates’ PRs: Most of my remai
 
 
 **Jacob:**
+This week I delivered the new **opt-in LLM Remote Media Analyzer**, enabling GPT-4o processing for images, audio, and video. I added the `--llm-media` flag, created the Supabase migration for `llm_media`, and integrated the feature into both the scan flow and the Media Deep Dive UI, keeping heavy media processing optional so the main AI analysis stays fast.I resolved merge conflicts, restored the missing `_run_ai_analysis`, corrected OpenAI message formats, and added safer fallbacks for optional dependencies. Video handling was hardened with inline small-clip support, sampled frames for large files, and validated ffmpeg conversions. I expanded the test suite to cover the new LLM media paths and CLI integration. I also reviewed Vlad’s PR **#169**, helping maintain consistency across the analysis pipeline. Overall, this work enhanced stability, improved modularity, and significantly expanded the system’s semantic media analysis capabilities.
 
 **Vlad:** This week I implemented the sign-up flow inside the TUI, completing all core logic needed for user registration from the terminal interface. I added input collection for email, password, and metadata, validated the inputs, and wired the screen to call our backend signup endpoint. I also handled success/error feedback inside the interface so users get clear responses without leaving the TUI. This work expands the CLI/TUI beyond read only actions and moves us closer to a fully interactive onboarding experience.
 
@@ -35,11 +36,13 @@ The following week will be spent preparing for the final presentation, deliverab
 ## Reflection
 
 ### What went well
+-Improving the resume generation function proceeded smoothly with no major issues.
 - Skill progression and contribution scoring became much more consistent and reliable after unifying identity, enriching evidence, and tightening validation.
 
 ### Challenges
 - Updating old tests, handling contributor semantics, dependency mocking, and refining LLM outputs took longer than expected.
-
+- Adding video processing to the LLM analysis was challenging because GPT handles video differently from other media types.
+  
 ## **Next Steps**
 - Practice the presentation  
 - Record the video demo — [Record demo #161](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/161)  
