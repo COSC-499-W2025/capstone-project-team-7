@@ -6,10 +6,11 @@ import re
 import textwrap
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from unittest import result
 from dataclasses import dataclass
 
-
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Horizontal, ScrollableContainer, Vertical
 from textual.events import Key, Mount, Unmount
 from textual.message import Message
@@ -124,6 +125,15 @@ class LoginSubmitted(Message):
         self.password = password
 
 
+class SignupSubmitted(Message):
+    """Raised when the user submits credentials to create a Supabase account."""
+
+    def __init__(self, email: str, password: str) -> None:
+        super().__init__()
+        self.email = email
+        self.password = password
+
+
 class LoginCancelled(Message):
     """Raised when the login dialog is dismissed without submitting."""
 
@@ -155,6 +165,87 @@ class AIKeyCancelled(Message):
 
     pass
 
+
+class SearchQuerySubmitted(Message):
+    """Raised when the user submits a search query."""
+
+    def __init__(self, query: str) -> None:
+        super().__init__()
+        self.query = query
+
+
+class SearchCancelled(Message):
+    """Raised when the search dialog is dismissed without submitting."""
+
+    pass
+
+
+class SearchInputScreen(ModalScreen[None]):
+    """Modal dialog for entering search/filter criteria."""
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def compose(self) -> ComposeResult:
+        help_text = """Available filters (combine with semicolons):
+  name:*.py       - Files matching pattern
+  path:src/       - Files in paths containing text
+  ext:.py,.js     - Files with extensions
+  lang:python     - Files by language
+  min:1KB         - Minimum file size
+  max:1MB         - Maximum file size
+  after:2024-01-01  - Modified after date
+  before:2024-12-31 - Modified before date
+
+Examples: name:*.py  |  lang:python;min:1KB  |  path:test"""
+        yield Vertical(
+            Static("🔍 Search & Filter Files", classes="dialog-title"),
+            Static(help_text, classes="dialog-subtitle search-help"),
+            Input(placeholder="Enter search filters (e.g., name:*.py)", id="search-query"),
+            Static("", id="search-message", classes="dialog-message"),
+            Horizontal(
+                Button("Cancel", id="search-cancel"),
+                Button("Search", id="search-submit", variant="primary"),
+                classes="dialog-buttons",
+            ),
+            classes="dialog search-dialog",
+        )
+
+    def on_mount(self, event: Mount) -> None:  # pragma: no cover - focus setup
+        self.query_one("#search-query", Input).focus()
+
+    def _submit(self) -> None:
+        query_input = self.query_one("#search-query", Input)
+        query = query_input.value.strip()
+        dispatch_message(self, SearchQuerySubmitted(query))
+        self.dismiss(None)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        try:
+            event.stop()
+        except Exception:
+            pass
+
+        if event.button.id == "search-submit":
+            self._submit()
+        elif event.button.id == "search-cancel":
+            dispatch_message(self, SearchCancelled())
+            self.dismiss(None)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "search-query":
+            try:
+                event.stop()
+            except Exception:
+                pass
+            self._submit()
+
+    def on_key(self, event: Key) -> None:  # pragma: no cover - keyboard shortcut
+        if event.key == "escape":
+            dispatch_message(self, SearchCancelled())
+            self.dismiss(None)
+
+
 class LoginScreen(ModalScreen[None]):
     """Modal dialog for collecting Supabase credentials."""
 
@@ -164,13 +255,26 @@ class LoginScreen(ModalScreen[None]):
 
     def compose(self) -> ComposeResult:
         yield Vertical(
-            Static("Sign in to Supabase", classes="dialog-title"),
-            Input(value=self._default_email, placeholder="name@example.com", id="login-email"),
-            Input(password=True, placeholder="Password", id="login-password"),
+            Static("Sign in or create an account", classes="dialog-title"),
+            Static(
+                "Use a valid email and an 8+ character password.",
+                classes="dialog-subtitle",
+            ),
+            Input(
+                value=self._default_email,
+                placeholder="name@example.com",
+                id="login-email",
+            ),
+            Input(
+                password=True,
+                placeholder="Password",
+                id="login-password",
+            ),
             Static("", id="login-message", classes="dialog-message"),
             Horizontal(
                 Button("Cancel", id="login-cancel"),
-                Button("Sign In", id="login-submit", variant="primary"),
+                Button("Log In", id="login-submit", variant="primary"),
+                Button("Create Account", id="signup-submit"),
                 classes="dialog-buttons",
             ),
             classes="dialog",
@@ -183,28 +287,45 @@ class LoginScreen(ModalScreen[None]):
     def _validate(self) -> tuple[str, str] | None:
         email_input = self.query_one("#login-email", Input)
         password_input = self.query_one("#login-password", Input)
+        message_widget = self.query_one("#login-message", Static)
+
         email = email_input.value.strip()
         password = password_input.value
-        if not email or not password:
-            self.query_one("#login-message", Static).update("Enter an email and password to continue.")
-            if not email:
-                email_input.focus()
-            else:
-                password_input.focus()
+
+        if not email or "@" not in email:
+            message_widget.update("Enter a valid email address.")
+            email_input.focus()
             return None
+
+        if not password or len(password) < 8:
+            
+            message_widget.update("Password must be at least 8 characters.")
+            password_input.focus()
+            return None
+
+        message_widget.update("")
         return email, password
 
-    def _submit(self) -> None:
+    def _handle_submit(self, message_type) -> None:
         result = self._validate()
         if not result:
             return
         email, password = result
-        dispatch_message(self, LoginSubmitted(email, password))
+        dispatch_message(self, message_type(email, password))
         self.dismiss(None)
+
+    def _submit(self) -> None:
+        self._handle_submit(LoginSubmitted)
+
+    def _submit_signup(self) -> None:
+        self._handle_submit(SignupSubmitted)
+
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "login-submit":
             self._submit()
+        elif event.button.id == "signup-submit":
+            self._submit_signup()
         elif event.button.id == "login-cancel":
             dispatch_message(self, LoginCancelled())
             self.dismiss(None)
@@ -3308,3 +3429,159 @@ class AIResultsScreen(ModalScreen[None]):
         """Handle keyboard shortcuts."""
         if event.key == "escape" or event.key == "q":
             self.dismiss(None)
+
+
+class SkillProgressScreen(ModalScreen[None]):
+    """Modal showing skill progression timeline and optional AI summary."""
+
+    BINDINGS = [
+        Binding("c", "copy_summary", "Copy to clipboard"),
+        Binding("escape", "dismiss", "Close"),
+        Binding("q", "dismiss", "Close"),
+    ]
+
+    def __init__(self, content: str) -> None:
+        super().__init__()
+        self._content = content
+        self._supports_rich_markup = TextLog is not None
+
+    def compose(self) -> ComposeResult:
+        if TextLog:
+            log_widget = TextLog(
+                highlight=False,
+                markup=True,
+                wrap=True,
+                id="skill-progress-log",
+            )
+        else:
+            log_widget = Log(highlight=False, id="skill-progress-log")
+
+        yield Vertical(
+            Static("Skill progression (press [b]c[/b] to copy)", classes="dialog-title"),
+            Vertical(
+                ScrollableContainer(
+                    log_widget,
+                    id="skill-progress-output",
+                    classes="skill-progress-output",
+                ),
+                Horizontal(
+                    Button("Copy", id="skill-progress-copy", variant="default"),
+                    Button("Close", id="skill-progress-close", variant="primary"),
+                    classes="dialog-buttons",
+                ),
+                classes="dialog-body",
+            ),
+            classes="dialog skill-progress-dialog",
+        )
+
+    def on_mount(self, _: Mount) -> None:
+        log = self.query_one("#skill-progress-log", Log)
+        lines = self._content.splitlines() or ["No skill progression available."]
+        for line in lines:
+            self._write_line(log, line or " ")
+
+    def _write_line(self, log: Log, text: str) -> None:
+        for chunk in self._prepare_line(text):
+            writer = getattr(log, "write_line", None)
+            if callable(writer):
+                writer(chunk)
+            else:
+                log.write(chunk)
+                log.write("\n")
+
+    def _prepare_line(self, text: str) -> List[str]:
+        if self._supports_rich_markup:
+            return [text]
+        plain = self._strip_markup(text)
+        return self._wrap_plain(plain)
+
+    @staticmethod
+    def _strip_markup(text: str) -> str:
+        if not text:
+            return ""
+        return re.sub(r"\[/?[^\]]+\]", "", text)
+
+    @staticmethod
+    def _wrap_plain(text: str, width: int = 92) -> List[str]:
+        if not text:
+            return [""]
+        wrapped = textwrap.wrap(
+            text,
+            width=width,
+            break_long_words=False,
+            break_on_hyphens=False,
+        )
+        return wrapped or [text]
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "skill-progress-close":
+            self.dismiss(None)
+        elif event.button.id == "skill-progress-copy":
+            self.action_copy_summary()
+
+    def on_key(self, event: Key) -> None:
+        if event.key == "escape" or event.key == "q":
+            self.dismiss(None)
+
+    def action_copy_summary(self) -> None:
+        """Copy the skill progress summary to clipboard."""
+        import subprocess
+        import sys
+        
+        # Strip rich markup for clipboard
+        plain_content = self._strip_markup(self._content)
+        
+        if not plain_content:
+            self.app.notify("Nothing to copy", severity="warning")
+            return
+        
+        copied = False
+        
+        # Try platform-specific clipboard commands first (most reliable)
+        try:
+            if sys.platform == "darwin":
+                # macOS - use pbcopy
+                process = subprocess.Popen(
+                    ["pbcopy"],
+                    stdin=subprocess.PIPE,
+                    env={"LANG": "en_US.UTF-8"}
+                )
+                process.communicate(input=plain_content.encode("utf-8"))
+                if process.returncode == 0:
+                    copied = True
+            elif sys.platform.startswith("linux"):
+                # Linux - try xclip first, then xsel
+                for cmd in [["xclip", "-selection", "clipboard"], ["xsel", "--clipboard", "--input"]]:
+                    try:
+                        process = subprocess.Popen(cmd, stdin=subprocess.PIPE)
+                        process.communicate(input=plain_content.encode("utf-8"))
+                        if process.returncode == 0:
+                            copied = True
+                            break
+                    except FileNotFoundError:
+                        continue
+            elif sys.platform == "win32":
+                # Windows
+                process = subprocess.Popen(
+                    ["clip"],
+                    stdin=subprocess.PIPE,
+                    shell=True
+                )
+                process.communicate(input=plain_content.encode("utf-16"))
+                if process.returncode == 0:
+                    copied = True
+        except Exception:
+            pass
+        
+        # Fallback to Textual's copy_to_clipboard if platform method failed
+        if not copied:
+            try:
+                self.app.copy_to_clipboard(plain_content)
+                copied = True
+            except Exception:
+                pass
+        
+        if copied:
+            self.app.notify("Summary copied to clipboard!", severity="information")
+        else:
+            self.app.notify("Could not copy to clipboard", severity="warning")

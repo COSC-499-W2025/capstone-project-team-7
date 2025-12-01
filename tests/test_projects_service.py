@@ -185,6 +185,11 @@ def sample_scan_data():
                 ]
             }
         ],
+        "skills_progress": {
+            "timeline": [
+                {"period_label": "2024-12", "commits": 30, "tests_changed": 2, "top_skills": ["Testing"]}
+            ]
+        },
         "media_analysis": {
             "summary": {
                 "total_media_files": 10,
@@ -274,6 +279,7 @@ def test_1_add_project_to_database(projects_service, mock_supabase_client, sampl
     assert inserted_data["has_code_analysis"] is True
     assert inserted_data["has_git_analysis"] is True
     assert inserted_data["has_media_analysis"] is True
+    assert inserted_data["has_skills_progress"] is True
     
     # Check languages array
     assert "Python" in inserted_data["languages"]
@@ -309,6 +315,7 @@ def test_2_retrieve_project_with_all_data(projects_service, mock_supabase_client
             "has_git_analysis": True,
             "has_pdf_analysis": False,
             "has_media_analysis": True,
+            "has_skills_progress": True,
             "scan_data": sample_scan_data
         }
     ]
@@ -412,6 +419,7 @@ def test_4_delete_project_insights_only(projects_service, mock_supabase_client, 
     assert update_payload["has_git_analysis"] is False
     assert update_payload["has_media_analysis"] is False
     assert update_payload["has_pdf_analysis"] is False
+    assert update_payload.get("has_skills_progress") is False
     assert update_payload["languages"] == []
     assert update_payload["total_files"] == 0
     assert update_payload["total_lines"] == 0
@@ -503,6 +511,7 @@ def test_5_data_integrity_validation(projects_service, mock_supabase_client, sam
     assert inserted_data["has_code_analysis"] is True, "Should have code_analysis flag"
     assert inserted_data["has_git_analysis"] is True, "Should have git_analysis flag"
     assert inserted_data["has_media_analysis"] is True, "Should have media_analysis flag"
+    assert inserted_data["has_skills_progress"] is True, "Should have skills_progress flag"
     
     # Verify git_analysis exists in scan_data
     assert "git_analysis" in inserted_data["scan_data"]

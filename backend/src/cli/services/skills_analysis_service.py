@@ -12,6 +12,11 @@ from collections import defaultdict
 
 from ...analyzer.skills_extractor import SkillsExtractor, Skill, SkillEvidence
 from ...analyzer.project_detector import ProjectDetector, ProjectInfo
+from ...analyzer.llm.skill_progress_summary import (
+    SkillProgressSummary,
+    summarize_skill_progress,
+)
+from ...local_analysis.skill_progress_timeline import build_skill_progression
 
 logger = logging.getLogger(__name__)
 
@@ -351,6 +356,62 @@ class SkillsAnalysisService:
             List of time periods with skills exercised in each period
         """
         return self._extractor.get_chronological_overview()
+
+    def build_skill_progression(
+        self,
+        contribution_metrics: Optional[Any] = None,
+        author_emails: Optional[set[str]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Build a month-level skill progression timeline using existing analyses.
+
+        Args:
+            contribution_metrics: Optional ProjectContributionMetrics for commits/languages.
+            author_emails: Optional set of author emails to filter git activity to a single contributor.
+
+        Returns:
+            Dict with timeline entries or None if no chronological data is available.
+        """
+        chronological = self.get_chronological_overview()
+        if not chronological:
+            return None
+
+        progression = build_skill_progression(chronological, contribution_metrics, author_emails=author_emails)
+
+        def _period_to_dict(period):
+            return {
+                "period_label": period.period_label,
+                "commits": period.commits,
+                "tests_changed": period.tests_changed,
+                "skill_count": period.skill_count,
+                "evidence_count": period.evidence_count,
+                "top_skills": period.top_skills,
+                "languages": period.languages,
+                "contributors": period.contributors,
+                "commit_messages": period.commit_messages,
+                "top_files": period.top_files,
+                "activity_types": period.activity_types,
+                "period_languages": period.period_languages,
+            }
+
+        return {"timeline": [_period_to_dict(p) for p in progression.timeline]}
+
+    def summarize_skill_progression(
+        self,
+        timeline: List[Dict[str, Any]],
+        call_model: callable,
+    ) -> SkillProgressSummary:
+        """
+        Summarize skill progression timeline using a provided model caller.
+
+        Args:
+            timeline: list of period entries.
+            call_model: callable that takes a prompt and returns raw model text.
+
+        Returns:
+            SkillProgressSummary with narrative and bullet lists.
+        """
+        return summarize_skill_progress(timeline, call_model)
     
     def export_skills_data(self, skills: List[Skill]) -> Dict[str, Any]:
         """

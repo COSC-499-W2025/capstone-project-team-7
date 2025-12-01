@@ -41,7 +41,8 @@ class Session:
 class SupabaseAuth:
     """Thin wrapper around Supabase REST auth endpoints."""
 
-    def __init__(self, *, url: Optional[str] = None, anon_key: Optional[str] = None):
+    # Allow either positional or keyword construction for compatibility
+    def __init__(self, url: Optional[str] = None, anon_key: Optional[str] = None):
         self.base_url = url or os.getenv("SUPABASE_URL")
         self.anon_key = anon_key or os.getenv("SUPABASE_ANON_KEY") or os.getenv("SUPABASE_KEY")
         if not self.base_url or not self.anon_key:
