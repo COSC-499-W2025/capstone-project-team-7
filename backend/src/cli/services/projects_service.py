@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 import json
+import logging
 
 try:
     from supabase import Client, create_client
@@ -443,7 +444,10 @@ class ProjectsService:
         if isinstance(scan_data, dict) and {"v", "iv", "ct"} <= set(scan_data.keys()):
             try:
                 return self._encryption.decrypt_json(scan_data)
-            except Exception:
+            except Exception as exc:
+                logging.warning(
+                    "Failed to decrypt scan_data for project, returning as-is: %s", exc
+                )
                 return scan_data
         return scan_data
 
@@ -466,6 +470,10 @@ class ProjectsService:
         if isinstance(metadata, dict) and {"v", "iv", "ct"} <= set(metadata.keys()):
             try:
                 return self._encryption.decrypt_json(metadata) or {}
-            except Exception:
+            except Exception as exc:
+                logging.warning(
+                    "Failed to decrypt cached file metadata, returning empty dict: %s",
+                    exc,
+                )
                 return {}
         return metadata if isinstance(metadata, dict) else {}

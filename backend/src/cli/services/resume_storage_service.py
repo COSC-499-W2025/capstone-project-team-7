@@ -4,8 +4,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path as _Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
-import os
 import json
+import logging
+import os
 
 try:  # pragma: no cover - enforced via tests with mocks
     from supabase import Client, create_client
@@ -15,9 +16,8 @@ except ImportError:  # pragma: no cover - dependency missing
     Client = None  # type: ignore[assignment]
 
 if TYPE_CHECKING:  # pragma: no cover - typing helper only
+    from .encryption import EncryptionError, EncryptionService, EncryptionEnvelope
     from .resume_generation_service import ResumeItem
-
-from .encryption import EncryptionError, EncryptionService, EncryptionEnvelope
 
 
 class ResumeStorageError(Exception):
@@ -45,12 +45,18 @@ class ResumeStorageService:
             raise ResumeStorageError("Supabase credentials not configured.")
 
         self._access_token: Optional[str] = None
-        self._encryption: Optional[EncryptionService] = encryption_service
+        self._encryption: Optional["EncryptionService"] = encryption_service
 
         if encryption_required and self._encryption is None:
             try:
-                self._encryption = EncryptionService()
-            except EncryptionError as exc:  # pragma: no cover - surfaced in tests
+                from .encryption import EncryptionError as _EncryptionError
+                from .encryption import EncryptionService as _EncryptionService
+            except Exception as exc:  # pragma: no cover - import side issues are environment-specific
+                raise ResumeStorageError(f"Encryption unavailable: {exc}") from exc
+
+            try:
+                self._encryption = _EncryptionService()
+            except _EncryptionError as exc:  # pragma: no cover - surfaced in tests
                 raise ResumeStorageError(f"Encryption unavailable: {exc}") from exc
 
         try:
@@ -249,8 +255,12 @@ class ResumeStorageService:
                 decrypted = self._encryption.decrypt_json(envelope_dict)
                 record["content"] = decrypted.get("content")
                 record["bullets"] = decrypted.get("bullets", [])
-            except Exception:
+            except Exception as exc:
                 # Leave record as-is to avoid data loss if decryption fails
-                pass
+                logging.warning(
+                    "Failed to decrypt resume record %s, returning stored values: %s",
+                    record.get("id"),
+                    exc,
+                )
 
         return record
