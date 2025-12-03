@@ -3,7 +3,8 @@
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
-from typing import Optional, Dict
+from typing import Optional, Dict, NamedTuple
+from datetime import datetime, timedelta
 import logging
 import sys
 from pathlib import Path
@@ -47,9 +48,20 @@ class ClientStatusResponse(BaseModel):
     message: str
 
 
-# Per-user client storage
-# Key: user_id, Value: LLMClient instance
-_user_clients: Dict[str, LLMClient] = {}
+# TTL Configuration
+CLIENT_TTL_MINUTES = 30  # Clients expire after 30 minutes of inactivity
+MAX_CLIENTS = 100  # Maximum number of clients to store (LRU eviction)
+
+
+class ClientEntry(NamedTuple):
+    """Entry storing an LLM client with its last access timestamp."""
+    client: LLMClient
+    last_accessed: datetime
+
+
+# Per-user client storage with TTL support
+# Key: user_id, Value: ClientEntry (client + timestamp)
+_user_clients: Dict[str, ClientEntry] = {}
 _clients_lock = Lock()
 
 
