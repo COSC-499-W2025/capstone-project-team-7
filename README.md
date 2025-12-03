@@ -65,6 +65,12 @@ Press `q` (or `Ctrl+C`) to exit at any time.
 - Every successful AI run now saves the formatted output (plus the raw JSON payload) to `ai-analysis-latest.md` in the repo root so you can read or share the report outside the Textual UI.
 - The scan results dialog now includes **Analyze documents** whenever Markdown, text, or log files are detected, letting you review summaries, headings, and keyword insights alongside the existing PDF panel.
 
+### Encryption at Rest
+
+- Set `ENCRYPTION_MASTER_KEY` to a base64-encoded 32-byte value (e.g., `python - <<'PY'\nimport base64, os\nprint(base64.b64encode(os.urandom(32)).decode())\nPY`).
+- Resume storage (`resume_items`) and project scans/cached file metadata are encrypted before being written to Supabase when the key is present.
+- If the `cryptography` package is missing, encryption-enabled tests are skipped; install dependencies from `backend/requirements.txt` for full coverage.
+
 
 ## Docker usage
 
