@@ -67,9 +67,10 @@ Press `q` (or `Ctrl+C`) to exit at any time.
 
 ### Encryption at Rest
 
-- Set `ENCRYPTION_MASTER_KEY` to a base64-encoded 32-byte value (e.g., `python - <<'PY'\nimport base64, os\nprint(base64.b64encode(os.urandom(32)).decode())\nPY`).
-- Resume storage (`resume_items`) and project scans/cached file metadata are encrypted before being written to Supabase when the key is present.
-- If the `cryptography` package is missing, encryption-enabled tests are skipped; install dependencies from `backend/requirements.txt` for full coverage.
+- Generate a 32-byte base64 key and place it in `.env` as `ENCRYPTION_MASTER_KEY` (example: `python -c "import os,base64; print(base64.b64encode(os.urandom(32)).decode())"`).
+- Add your OpenAI key to `.env` (`OPENAI_API_KEY=...`) instead of exporting it globally.
+- With `ENCRYPTION_MASTER_KEY` set, resume storage (`resume_items`), project scan payloads, and cached file metadata are encrypted before being written to Supabase.
+- `cryptography` is now in `backend/requirements.txt`; install deps in the repo venv (`./venv/bin/pip install -r backend/requirements.txt`) to run encryption tests.
 
 
 ## Docker usage
