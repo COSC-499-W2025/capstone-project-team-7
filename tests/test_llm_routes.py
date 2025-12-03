@@ -272,9 +272,12 @@ class TestIntegrationScenarios(TestLLMRoutes):
             mock_validator_class.return_value = mock_validator
             
             with patch('api.llm_routes.LLMClient') as mock_llm_class:
-                mock_llm = Mock(spec=LLMClient)
-                mock_llm.verify_api_key.return_value = True
-                mock_llm_class.return_value = mock_llm
+                # Create separate mock instances for each user
+                mock_llm1 = Mock(spec=LLMClient)
+                mock_llm1.verify_api_key.return_value = True
+                mock_llm2 = Mock(spec=LLMClient)
+                mock_llm2.verify_api_key.return_value = True
+                mock_llm_class.side_effect = [mock_llm1, mock_llm2]
                 
                 # Verify keys for both users
                 response1 = client.post("/api/llm/verify-key", json={
@@ -300,6 +303,151 @@ class TestIntegrationScenarios(TestLLMRoutes):
         client1 = routes.get_user_client(user1_id)
         client2 = routes.get_user_client(user2_id)
         assert client1 is not client2
+
+
+class TestClientTTL(TestLLMRoutes):
+    """Test cases for client TTL (Time To Live) functionality."""
+    
+    def test_client_expires_after_ttl(self, clear_llm_clients):
+        """Test that clients expire after TTL period."""
+        from datetime import datetime, timedelta
+        
+        user_id = "550e8400-e29b-41d4-a716-446655440000"
+        mock_client = Mock(spec=LLMClient)
+        
+        # Store client with a timestamp in the past (expired)
+        expired_time = datetime.now() - timedelta(minutes=routes.CLIENT_TTL_MINUTES + 1)
+        routes._user_clients[user_id] = routes.ClientEntry(
+            client=mock_client,
+            last_accessed=expired_time
+        )
+        
+        # Should return None for expired client
+        result = routes.get_user_client(user_id)
+        assert result is None
+        
+        # Client should be removed from storage
+        assert user_id not in routes._user_clients
+    
+    def test_client_not_expired_within_ttl(self, clear_llm_clients):
+        """Test that clients remain valid within TTL period."""
+        from datetime import datetime, timedelta
+        
+        user_id = "550e8400-e29b-41d4-a716-446655440000"
+        mock_client = Mock(spec=LLMClient)
+        
+        # Store client with recent timestamp (not expired)
+        recent_time = datetime.now() - timedelta(minutes=routes.CLIENT_TTL_MINUTES - 5)
+        routes._user_clients[user_id] = routes.ClientEntry(
+            client=mock_client,
+            last_accessed=recent_time
+        )
+        
+        # Should return the client
+        result = routes.get_user_client(user_id)
+        assert result is mock_client
+    
+    def test_ttl_refreshed_on_access(self, clear_llm_clients):
+        """Test that accessing a client refreshes its TTL."""
+        from datetime import datetime, timedelta
+        
+        user_id = "550e8400-e29b-41d4-a716-446655440000"
+        mock_client = Mock(spec=LLMClient)
+        
+        # Store client with old (but not expired) timestamp
+        old_time = datetime.now() - timedelta(minutes=routes.CLIENT_TTL_MINUTES - 1)
+        routes._user_clients[user_id] = routes.ClientEntry(
+            client=mock_client,
+            last_accessed=old_time
+        )
+        
+        # Access the client
+        routes.get_user_client(user_id)
+        
+        # Timestamp should be refreshed to now
+        entry = routes._user_clients[user_id]
+        time_diff = datetime.now() - entry.last_accessed
+        assert time_diff.total_seconds() < 2  # Should be very recent
+    
+    def test_cleanup_expired_clients(self, clear_llm_clients):
+        """Test that expired clients are cleaned up when setting new client."""
+        from datetime import datetime, timedelta
+        
+        # Add an expired client
+        expired_user = "expired-user-id"
+        expired_time = datetime.now() - timedelta(minutes=routes.CLIENT_TTL_MINUTES + 10)
+        routes._user_clients[expired_user] = routes.ClientEntry(
+            client=Mock(spec=LLMClient),
+            last_accessed=expired_time
+        )
+        
+        # Add a valid client
+        valid_user = "valid-user-id"
+        routes.set_user_client(valid_user, Mock(spec=LLMClient))
+        
+        # Expired client should be cleaned up
+        assert expired_user not in routes._user_clients
+        # Valid client should exist
+        assert valid_user in routes._user_clients
+    
+    def test_max_clients_eviction(self, clear_llm_clients):
+        """Test that oldest client is evicted when at capacity."""
+        from datetime import datetime, timedelta
+        
+        # Fill up to MAX_CLIENTS
+        for i in range(routes.MAX_CLIENTS):
+            user_id = f"user-{i}"
+            # Stagger timestamps so we know which is oldest
+            timestamp = datetime.now() - timedelta(seconds=routes.MAX_CLIENTS - i)
+            routes._user_clients[user_id] = routes.ClientEntry(
+                client=Mock(spec=LLMClient),
+                last_accessed=timestamp
+            )
+        
+        assert len(routes._user_clients) == routes.MAX_CLIENTS
+        
+        # The oldest user should be user-0
+        assert "user-0" in routes._user_clients
+        
+        # Add one more client
+        routes.set_user_client("new-user", Mock(spec=LLMClient))
+        
+        # Should still be at MAX_CLIENTS
+        assert len(routes._user_clients) == routes.MAX_CLIENTS
+        
+        # Oldest client (user-0) should be evicted
+        assert "user-0" not in routes._user_clients
+        
+        # New client should exist
+        assert "new-user" in routes._user_clients
+    
+    def test_is_expired_helper(self, clear_llm_clients):
+        """Test the _is_expired helper function."""
+        from datetime import datetime, timedelta
+        
+        mock_client = Mock(spec=LLMClient)
+        
+        # Test expired entry
+        expired_entry = routes.ClientEntry(
+            client=mock_client,
+            last_accessed=datetime.now() - timedelta(minutes=routes.CLIENT_TTL_MINUTES + 1)
+        )
+        assert routes._is_expired(expired_entry) is True
+        
+        # Test valid entry
+        valid_entry = routes.ClientEntry(
+            client=mock_client,
+            last_accessed=datetime.now()
+        )
+        assert routes._is_expired(valid_entry) is False
+        
+        # Test edge case - exactly at TTL
+        edge_entry = routes.ClientEntry(
+            client=mock_client,
+            last_accessed=datetime.now() - timedelta(minutes=routes.CLIENT_TTL_MINUTES)
+        )
+        # At exactly TTL, should not be expired yet (uses >)
+        assert routes._is_expired(edge_entry) is False
 
 
 if __name__ == "__main__":
