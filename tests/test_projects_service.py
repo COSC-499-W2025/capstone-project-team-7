@@ -12,6 +12,8 @@ Run with: pytest tests/test_projects_database.py -v
 """
 
 import pytest
+import json
+import base64
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock, call
@@ -22,6 +24,7 @@ import sys
 backend_src_path = Path(__file__).parent.parent / "backend" / "src"
 sys.path.insert(0, str(backend_src_path))
 
+from cli.services.encryption import EncryptionEnvelope
 from cli.services.projects_service import ProjectsService, ProjectsServiceError
 
 
@@ -54,6 +57,24 @@ def mock_supabase_client():
     table_mock.execute.return_value = execute_mock
     
     return client
+
+
+class FakeEncryptionService:
+    """Deterministic fake encrypt/decrypt for tests."""
+
+    def encrypt_json(self, payload):
+        raw = json.dumps(payload).encode("utf-8")
+        return EncryptionEnvelope(version="1", iv="iv", ciphertext=base64.b64encode(raw).decode("ascii"))
+
+    def decrypt_json(self, envelope):
+        raw = base64.b64decode(envelope["ct"]).decode("utf-8")
+        return json.loads(raw)
+
+
+def _decrypt_scan_data(encrypted):
+    if isinstance(encrypted, dict) and {"v", "iv", "ct"} <= set(encrypted.keys()):
+        return FakeEncryptionService().decrypt_json(encrypted)
+    return encrypted
 
 
 @pytest.fixture
@@ -219,7 +240,7 @@ def projects_service(mock_supabase_client, monkeypatch):
     
     with patch('cli.services.projects_service.create_client') as mock_create:
         mock_create.return_value = mock_supabase_client
-        service = ProjectsService()
+        service = ProjectsService(encryption_service=FakeEncryptionService())
         return service
 
 
@@ -267,6 +288,7 @@ def test_1_add_project_to_database(projects_service, mock_supabase_client, sampl
     assert upsert_call is not None, "Upsert should have been called"
     
     inserted_data = upsert_call[0][0]
+    scan_payload = _decrypt_scan_data(inserted_data["scan_data"])
     
     # Check required fields
     assert inserted_data["user_id"] == sample_user_id
@@ -471,7 +493,8 @@ def test_5_data_integrity_validation(projects_service, mock_supabase_client, sam
         pytest.fail("Timestamp should be in ISO format")
     
     # Validate code_analysis integrity
-    code_analysis = inserted_data["scan_data"]["code_analysis"]
+    scan_payload = _decrypt_scan_data(inserted_data["scan_data"])
+    code_analysis = scan_payload["code_analysis"]
     
     # Check all metrics are present
     metrics = code_analysis["metrics"]
@@ -514,12 +537,12 @@ def test_5_data_integrity_validation(projects_service, mock_supabase_client, sam
     assert inserted_data["has_skills_progress"] is True, "Should have skills_progress flag"
     
     # Verify git_analysis exists in scan_data
-    assert "git_analysis" in inserted_data["scan_data"]
-    assert len(inserted_data["scan_data"]["git_analysis"]) > 0
+    assert "git_analysis" in scan_payload
+    assert len(scan_payload["git_analysis"]) > 0
     
     # Verify media_analysis exists in scan_data
-    assert "media_analysis" in inserted_data["scan_data"]
-    assert "summary" in inserted_data["scan_data"]["media_analysis"]
+    assert "media_analysis" in scan_payload
+    assert "summary" in scan_payload["media_analysis"]
     
     print("✓ Test 4 passed: All data integrity checks passed")
 

@@ -1,9 +1,11 @@
-"""Persist generated resume snippets to Supabase."""
+"""Persist generated resume snippets to Supabase with optional at-rest encryption."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path as _Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
+import json
+import logging
 import os
 
 try:  # pragma: no cover - enforced via tests with mocks
@@ -14,6 +16,7 @@ except ImportError:  # pragma: no cover - dependency missing
     Client = None  # type: ignore[assignment]
 
 if TYPE_CHECKING:  # pragma: no cover - typing helper only
+    from .encryption import EncryptionError, EncryptionService, EncryptionEnvelope
     from .resume_generation_service import ResumeItem
 
 
@@ -28,6 +31,9 @@ class ResumeStorageService:
         self,
         supabase_url: Optional[str] = None,
         supabase_key: Optional[str] = None,
+        *,
+        encryption_service: Optional[EncryptionService] = None,
+        encryption_required: bool = True,
     ):
         if not SUPABASE_AVAILABLE:
             raise ResumeStorageError("Supabase client not available. Install supabase-py.")
@@ -39,6 +45,19 @@ class ResumeStorageService:
             raise ResumeStorageError("Supabase credentials not configured.")
 
         self._access_token: Optional[str] = None
+        self._encryption: Optional["EncryptionService"] = encryption_service
+
+        if encryption_required and self._encryption is None:
+            try:
+                from .encryption import EncryptionError as _EncryptionError
+                from .encryption import EncryptionService as _EncryptionService
+            except Exception as exc:  # pragma: no cover - import side issues are environment-specific
+                raise ResumeStorageError(f"Encryption unavailable: {exc}") from exc
+
+            try:
+                self._encryption = _EncryptionService()
+            except _EncryptionError as exc:  # pragma: no cover - surfaced in tests
+                raise ResumeStorageError(f"Encryption unavailable: {exc}") from exc
 
         try:
             self.client: Client = create_client(self.supabase_url, self.supabase_key)
@@ -73,7 +92,7 @@ class ResumeStorageService:
         if not user_id:
             raise ResumeStorageError("User ID is required to save a resume.")
 
-        payload = {
+        payload: Dict[str, Any] = {
             "user_id": user_id,
             "project_name": resume_item.project_name,
             "start_date": resume_item.start_date,
@@ -86,6 +105,8 @@ class ResumeStorageService:
             "source_path": self._path_to_str(target_path) or self._path_to_str(resume_item.output_path),
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
+
+        payload = self._encrypt_payload(payload)
 
         try:
             response = self.client.table("resume_items").insert(payload).execute()
@@ -132,7 +153,8 @@ class ResumeStorageService:
 
         if not response.data:
             return None
-        return response.data[0]
+        record = response.data[0]
+        return self._decrypt_record(record)
 
     def delete_resume_item(self, user_id: str, resume_id: str) -> bool:
         """Remove a saved resume item."""
@@ -182,3 +204,63 @@ class ResumeStorageService:
         if path is None:
             return None
         return str(path)
+
+    # ------------------------------------------------------------------ #
+    # Encryption helpers
+    # ------------------------------------------------------------------ #
+
+    def _encrypt_payload(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Encrypt resume content + bullets when encryption is available."""
+        if not self._encryption:
+            return payload
+
+        try:
+            envelope = self._encryption.encrypt_json(
+                {"content": payload["content"], "bullets": payload["bullets"]}
+            )
+        except Exception as exc:
+            raise ResumeStorageError(f"Failed to encrypt resume content: {exc}") from exc
+
+        payload["content"] = json.dumps(envelope.to_dict())
+        payload["bullets"] = envelope.to_dict()
+        metadata = payload.get("metadata") or {}
+        metadata["_encrypted"] = True
+        payload["metadata"] = metadata
+        return payload
+
+    def _decrypt_record(self, record: Dict[str, Any]) -> Dict[str, Any]:
+        """Decrypt content/bullets if they are encrypted; tolerate plaintext."""
+        if not record:
+            return record
+
+        maybe_encrypted_content = record.get("content")
+        maybe_encrypted_bullets = record.get("bullets")
+
+        # Quick detection: content stored as JSON string/dict with expected keys
+        def _load_envelope(value: Any) -> Optional[Dict[str, Any]]:
+            if isinstance(value, dict) and {"v", "iv", "ct"} <= set(value.keys()):
+                return value
+            if isinstance(value, str):
+                try:
+                    parsed = json.loads(value)
+                except Exception:
+                    return None
+                if isinstance(parsed, dict) and {"v", "iv", "ct"} <= set(parsed.keys()):
+                    return parsed
+            return None
+
+        envelope_dict = _load_envelope(maybe_encrypted_content)
+        if envelope_dict and self._encryption:
+            try:
+                decrypted = self._encryption.decrypt_json(envelope_dict)
+                record["content"] = decrypted.get("content")
+                record["bullets"] = decrypted.get("bullets", [])
+            except Exception as exc:
+                # Leave record as-is to avoid data loss if decryption fails
+                logging.warning(
+                    "Failed to decrypt resume record %s, returning stored values: %s",
+                    record.get("id"),
+                    exc,
+                )
+
+        return record

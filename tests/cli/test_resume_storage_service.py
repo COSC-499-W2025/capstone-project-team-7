@@ -4,12 +4,15 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
+import json
+import base64
 
 from backend.src.cli.services.resume_generation_service import ResumeItem
 from backend.src.cli.services.resume_storage_service import (
     ResumeStorageError,
     ResumeStorageService,
 )
+from backend.src.cli.services.encryption import EncryptionEnvelope
 
 
 @pytest.fixture
@@ -40,12 +43,24 @@ def mock_supabase_client():
     return client
 
 
+class FakeEncryptionService:
+    """Deterministic fake encrypt/decrypt for tests without cryptography."""
+
+    def encrypt_json(self, payload):
+        raw = json.dumps(payload).encode("utf-8")
+        return EncryptionEnvelope(version="1", iv="iv", ciphertext=base64.b64encode(raw).decode("ascii"))
+
+    def decrypt_json(self, envelope):
+        data = base64.b64decode(envelope["ct"]).decode("utf-8")
+        return json.loads(data)
+
+
 def _make_service(mock_supabase_client, monkeypatch) -> ResumeStorageService:
     monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
     monkeypatch.setenv("SUPABASE_KEY", "test-key")
     with patch("backend.src.cli.services.resume_storage_service.create_client") as mock_create:
         mock_create.return_value = mock_supabase_client
-        return ResumeStorageService()
+        return ResumeStorageService(encryption_service=FakeEncryptionService())
 
 
 def test_save_resume_item_persists_record(mock_supabase_client, resume_item, monkeypatch):
@@ -61,7 +76,9 @@ def test_save_resume_item_persists_record(mock_supabase_client, resume_item, mon
     assert record["id"] == "resume-123"
     inserted = table.insert.call_args.args[0]
     assert inserted["project_name"] == "Test Project"
-    assert inserted["bullets"] == ["Bullet one", "Bullet two"]
+    assert inserted["metadata"]["_encrypted"] is True
+    assert isinstance(inserted["content"], str)
+    assert inserted["bullets"]["ct"]  # Envelope fields present
     assert inserted["metadata"]["target_path"] == "/tmp/test"
     assert inserted["metadata"]["ai_generated"] is True
     assert inserted["source_path"] == "/project"
