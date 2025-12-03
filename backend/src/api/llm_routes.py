@@ -65,30 +65,94 @@ _user_clients: Dict[str, ClientEntry] = {}
 _clients_lock = Lock()
 
 
+def _is_expired(entry: ClientEntry) -> bool:
+    """Check if a client entry has expired based on TTL."""
+    expiry_time = entry.last_accessed + timedelta(minutes=CLIENT_TTL_MINUTES)
+    return datetime.now() > expiry_time
+
+
+def _cleanup_expired_clients() -> int:
+    """
+    Remove all expired client entries.
+    Must be called while holding _clients_lock.
+    
+    Returns:
+        Number of clients removed
+    """
+    expired_users = [
+        user_id for user_id, entry in _user_clients.items()
+        if _is_expired(entry)
+    ]
+    for user_id in expired_users:
+        del _user_clients[user_id]
+        logger.info(f"Expired client removed for user {user_id}")
+    return len(expired_users)
+
+
+def _evict_oldest_client() -> None:
+    """
+    Remove the oldest (least recently accessed) client.
+    Must be called while holding _clients_lock.
+    """
+    if not _user_clients:
+        return
+    oldest_user = min(_user_clients.keys(), key=lambda u: _user_clients[u].last_accessed)
+    del _user_clients[oldest_user]
+    logger.info(f"Evicted oldest client for user {oldest_user} (max clients reached)")
+
+
 def get_user_client(user_id: str) -> Optional[LLMClient]:
     """
     Thread-safely retrieve a user's LLM client.
+    Updates last_accessed timestamp on successful retrieval.
+    Returns None if client not found or expired.
     
     Args:
         user_id: User identifier
         
     Returns:
-        LLMClient instance or None if not found
+        LLMClient instance or None if not found/expired
     """
     with _clients_lock:
-        return _user_clients.get(user_id)
+        entry = _user_clients.get(user_id)
+        if entry is None:
+            return None
+        
+        # Check if expired
+        if _is_expired(entry):
+            del _user_clients[user_id]
+            logger.info(f"Client expired for user {user_id}")
+            return None
+        
+        # Update last accessed time (refresh TTL)
+        _user_clients[user_id] = ClientEntry(
+            client=entry.client,
+            last_accessed=datetime.now()
+        )
+        return entry.client
 
 
 def set_user_client(user_id: str, client: LLMClient) -> None:
     """
-    Thread-safely store a user's LLM client.
+    Thread-safely store a user's LLM client with current timestamp.
+    Performs cleanup of expired clients and evicts oldest if at capacity.
     
     Args:
         user_id: User identifier
         client: LLMClient instance
     """
     with _clients_lock:
-        _user_clients[user_id] = client
+        # Cleanup expired clients first
+        _cleanup_expired_clients()
+        
+        # Evict oldest if at capacity (and not updating existing)
+        if user_id not in _user_clients and len(_user_clients) >= MAX_CLIENTS:
+            _evict_oldest_client()
+        
+        _user_clients[user_id] = ClientEntry(
+            client=client,
+            last_accessed=datetime.now()
+        )
 
 
 def remove_user_client(user_id: str) -> bool:
