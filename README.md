@@ -76,4 +76,5 @@ docker compose run --rm cli
 ./scripts/setup.sh
 bash scripts/run_textual_cli.sh
 
-- Manual setup may require Python 3.12 and a Rust toolchain for the tiktoken dependency.
+- Python 3.12.x is required (see `.python-version`). Python 3.14 fails due to upstream `numba` constraints; the run script will auto-install `python@3.12` via Homebrew when missing. If you prefer manual install: `brew install python@3.12` or `pyenv install 3.12.1 && pyenv local 3.12.1`.
+- Manual setup may require a Rust toolchain for the tiktoken dependency.
