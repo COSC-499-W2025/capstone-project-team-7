@@ -1153,6 +1153,9 @@ class PortfolioTextualApp(App):
         self.push_screen(ScanConfigScreen(default_path=default_path, relevant_only=relevant_only))
 
     async def _run_scan(self, target: Path, relevant_only: bool) -> None:
+        if not self._ensure_data_access_consent():
+            return
+
         self._show_status("Scanning project – please wait…", "info")
         detail_panel = self.query_one("#detail", Static)
         progress_bar = self._scan_progress_bar
@@ -3637,6 +3640,23 @@ class PortfolioTextualApp(App):
             screen.dismiss(None)
         except Exception:  # pragma: no cover - defensive cleanup
             pass
+
+    def _ensure_data_access_consent(self) -> bool:
+        if not self._session_state.session:
+            self._show_status("Sign in and enable data access consent before running a scan.", "warning")
+            self._refresh_current_detail()
+            return False
+
+        self._refresh_consent_state()
+        if self._consent_state.record:
+            return True
+
+        message = "Data access consent must be enabled before running a scan."
+        if self._consent_state.error:
+            message = f"Data access consent required. {self._consent_state.error}"
+        self._show_status(message, "warning")
+        self._refresh_current_detail()
+        return False
 
     def _has_external_consent(self) -> bool:
         if not self._session_state.session:
