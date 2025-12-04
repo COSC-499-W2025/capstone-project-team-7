@@ -1,4 +1,4 @@
-# Portfolio Analysis CLI (Team 7)
+# Portfolio Analysis (Team 7)
 
 Interactive Textual dashboard for scanning projects, summarizing artifacts, and generating resume-ready snippets. The stack couples a Python/FastAPI backend, Supabase persistence, and optional OpenAI-powered analysis while keeping all local analysis (PDFs/documents/media/git) on-device.
 
