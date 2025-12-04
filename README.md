@@ -58,13 +58,7 @@ Press `q` to exit at any time.
 - Run **Portfolio Scan** on a directory/zip → view code/doc/media summaries, duplicate findings, contribution stats, timelines, and language table.
 - Choose **AI-Powered Analysis** to generate narrative insights; outputs are saved to `backend/ai-analysis-latest.md`.
 - Generate resume bullets/snippets; they save locally and to Supabase `public.resume_items` for cross-device retrieval.
-- Use **View Saved Projects/Resumes** to browse synced items and delete entries (removes Supabase rows).
-
-## Resume Sync & Management
-- When you generate a resume snippet from the Textual UI, the Markdown file is written locally **and** stored in Supabase (`public.resume_items`).
-- Select **“View Saved Resumes”** in the main menu to browse synced items. Use `Enter`/`👁 View Resume` to preview and `Delete`/`🗑 Delete` to remove entries (removal also deletes the row in Supabase thanks to RLS policies).
-- If Supabase credentials are missing or your session expires, the UI prompts you to reauthenticate (Ctrl+L).
-- Press `q` (or `Ctrl+C`) to exit at any time.
+- Use **View Saved Projects/Resumes** to browse synced items and delete entries (removes Supabase rows). Reauth prompts appear if Supabase creds are missing/expired. Press `q` (or `Ctrl+C`) to exit at any time.
 
 ## AI Analysis Tips
 - After signing in, run **Run Portfolio Scan** for the project you want analyzed, then select **AI-Powered Analysis**.
