@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import base64
-import os
-
 import pytest
 
-cryptography = pytest.importorskip("cryptography")
+pytest.importorskip("cryptography")
 
 from backend.src.cli.services.encryption import (
     EncryptionEnvelope,
@@ -69,4 +67,3 @@ def test_invalid_envelope_rejected(monkeypatch):
     svc = EncryptionService()
     with pytest.raises(EncryptionError):
         svc.decrypt_bytes({"iv": "bad"})
-

@@ -73,6 +73,14 @@ Press `q` (or `Ctrl+C`) to exit at any time.
 - `cryptography` is now in `backend/requirements.txt`; install deps in the repo venv (`./venv/bin/pip install -r backend/requirements.txt`) to run encryption tests.
 
 
+## Desktop Migration Bootstrap (Next.js + Electron)
+
+- Renderer scaffold lives in `frontend/` (Next.js app router + Tailwind). Install deps with `cd frontend && npm install`, then `npm run dev` to serve http://localhost:3000.
+- Electron shell scaffold lives in `electron/`. Install deps with `cd electron && npm install`, then start it against the renderer with `ELECTRON_START_URL=http://localhost:3000 npm run dev`.
+- Repo now uses npm workspaces (`frontend`, `electron`) with a single lockfile. You can install everything at once via `npm install --workspaces` from repo root.
+- Security defaults: `nodeIntegration` disabled, `contextIsolation` enabled, IPC bridge lives in `electron/preload.ts` (currently exposes `desktop.ping()`).
+- Production fallback will load `frontend/out/index.html` when you export/build the renderer.
+
 ## Docker usage
 
 cp .env.example .env   # once

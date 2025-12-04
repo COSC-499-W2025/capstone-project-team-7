@@ -17,7 +17,7 @@ except ImportError:  # pragma: no cover - dependency missing
 if TYPE_CHECKING:  # pragma: no cover - typing helper only
     from .resume_generation_service import ResumeItem
 
-from .encryption import EncryptionError, EncryptionService, EncryptionEnvelope
+from .encryption import EncryptionError, EncryptionService
 
 
 class ResumeStorageError(Exception):

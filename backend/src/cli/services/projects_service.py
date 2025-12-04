@@ -4,7 +4,6 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
-import json
 
 try:
     from supabase import Client, create_client
