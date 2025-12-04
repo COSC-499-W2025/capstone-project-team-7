@@ -26,7 +26,7 @@ Key documentation
 - [Data Flow Diagrams](docs/dfd.md)
 - [System Architecture](docs/systemArchitecture.md)
 - [Work Breakdown Structure](docs/WBS.md)
-- [Team Contract](docs/teamContract.md)
+- [Team Contract](docs/teamContract.pdf)
 
 Please use a branching workflow, and once an item is ready, do remember to issue a PR, review, and merge it into the master branch. Be sure to keep your docs and README.md up-to-date.
 
