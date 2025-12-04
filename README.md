@@ -1,4 +1,4 @@
-# Project-Starter (capstone-project-team-7)
+# Capstone Project Team 7
 
 ```text
 ├── backend
