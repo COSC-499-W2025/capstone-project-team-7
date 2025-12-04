@@ -67,14 +67,20 @@ Press `q` (or `Ctrl+C`) to exit at any time.
 
 
 ## Docker usage
-
-cp .env.example .env   # once
+Before running for the first time:
+```bash
+cp .env.example .env
+```
+To run the TUI:
+```bash
 docker compose run --rm cli
+```
 
 ## Manual setup (optional)
-
+```bash
 ./scripts/setup.sh
 bash scripts/run_textual_cli.sh
+```
 
 - Python 3.12.x is required (see `.python-version`). Python 3.14 fails due to upstream `numba` constraints; the run script will auto-install `python@3.12` via Homebrew when missing. If you prefer manual install: `brew install python@3.12` or `pyenv install 3.12.1 && pyenv local 3.12.1`.
 - Manual setup may require a Rust toolchain for the tiktoken dependency.
