@@ -42,3 +42,9 @@ skill_summary_raw.txt
 
 # Python build metadata
 *.egg-info/
+
+# Node/Next/Electron artifacts
+node_modules/
+frontend/.next/
+frontend/out/
+electron/dist/

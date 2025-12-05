@@ -8,6 +8,7 @@ Purpose: spell out the one-time setup to stand up the Electron shell and Next.js
 - Backend: existing FastAPI service (`backend/src/main.py`, `backend/src/api/llm_routes.py`) + Python analyzers.
 - Data: Supabase (auth, `projects`, `scan_files`, `resume_items`, `user_configs`, `consents_v1`), local FS via IPC.
 - Packaging: electron-builder/forge (choose one) with bundled Next build and Python env or a system Python requirement.
+- Render mode decision: **static export** is the default until a concrete SSR/ISR need appears (app uses client-side fetches today).
 
 ### Dev Tooling Decision
 - Package manager: **npm workspaces** at repo root with a single lockfile (workspaces: `frontend`, `electron`). Keep using npm; no pnpm/yarn.
@@ -17,7 +18,7 @@ Purpose: spell out the one-time setup to stand up the Electron shell and Next.js
 ## Milestones (suggested)
 1) **Bootstrap renderer + shell**  
    - Create Next.js app with Tailwind/shadcn.  
-   - Add Electron main process that opens `http://localhost:3000` in dev and `.next` assets in prod.  
+   - Add Electron main process that opens `http://localhost:3000` in dev and `frontend/out` static assets in prod.  
    - Add preload with IPC bridge; disable `nodeIntegration`, enable `contextIsolation`.
 2) **Wire FastAPI to renderer**  
    - Run FastAPI on `127.0.0.1:8000`.  
@@ -30,8 +31,9 @@ Purpose: spell out the one-time setup to stand up the Electron shell and Next.js
    - Scripts to start FastAPI, Next dev, and Electron together (`npm run dev:desktop`).  
    - Ensure .env loading for both Node and Python; document ENCRYPTION_MASTER_KEY requirement.
 5) **Build pipeline**  
-   - `next build` + `next export` or custom Next server (decide).  
-   - Electron build packaging .next output + preload/main.  
+   - `next build` + `next export` to `frontend/out` (static mode).  
+   - Electron prod load points at `frontend/out/index.html`; dev uses `ELECTRON_START_URL=http://localhost:3000`.  
+   - If SSR/ISR is later required, switch to `next start` + bundled server and adjust Electron bootstrap.  
    - Decide Python shipping: embedded venv vs system Python + requirements check.
 6) **Docker updates**  
    - Add FastAPI service for local dev/testing (optional).  
@@ -98,12 +100,12 @@ Short descriptions:
 
 ## Build/Run Scripts (to add later)
 - `npm run dev:desktop`: `concurrently "uvicorn src.main:app --reload" "next dev" "electron ."`
-- `npm run build:renderer`: `next build` (or `next export`)
+- `npm run build:renderer`: `next export` (static mode; optionally `next build && next export`)
 - `npm run build:desktop`: `npm run build:renderer && electron-builder`
 - Python: `./venv/bin/uvicorn src.main:app --reload` (document for dev without Docker)
 
 ## Open Decisions to Document
-- Next.js mode: static export vs custom server. If SSR needed, bundle a Node server inside Electron.
+- Next.js mode: **resolved for now — static export**. Revisit if SSR/ISR/middleware or server-held secrets become necessary; then move to `next start` with a bundled server.
 - Python distribution: embedded venv vs system requirement.
 - Auto-update: choose electron-builder/forge update channel.
 - Code signing: macOS/Windows cert handling in CI.
@@ -159,7 +161,7 @@ This is optional and more disruptive (imports, tooling, Docker contexts). If you
 ## Quick start for the next agent
 When you pick this up:
 1) Read `docs/feature-inventory.md` (priorities P0/P1/P2) and this `migration-plan.md`.
-2) Decide Next.js render mode (static export vs custom server) and Python bundling strategy; record in this doc.
+2) Keep Next.js in static export mode unless a concrete SSR/ISR need emerges; still decide Python bundling strategy and record it here.
 3) Scaffold `frontend/` (Next + Tailwind + shadcn/ui) and `electron/` (main + preload + IPC skeleton), plus `scripts/dev-desktop.sh`.
 4) Add a FastAPI `/health` call in the Next app to prove wiring; adjust CORS.
 5) Add Docker `fastapi` service (from this doc) if using Docker in dev; otherwise document uvicorn command.
