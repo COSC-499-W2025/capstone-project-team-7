@@ -10,6 +10,7 @@ env/
 .pyc_cache/
 .cache/
 .tmp_archives/
+node_modules/
 
 # Editor/project files
 git
