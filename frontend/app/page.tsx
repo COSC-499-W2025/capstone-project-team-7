@@ -1,3 +1,9 @@
+/* eslint-disable @next/next/no-img-element */
+"use client";
+
+import { useEffect, useState } from "react";
+import { api } from "@/lib/api";
+
 const setupSteps = [
   {
     title: "Install dependencies",
@@ -37,13 +43,58 @@ export default function HomePage() {
       </section>
 
       <section className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5 shadow-inner shadow-slate-950/40">
-        <h3 className="text-lg font-semibold text-slate-50">Next steps</h3>
-        <ul className="mt-3 space-y-2 text-sm text-slate-200">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-50">Backend / desktop wiring</h3>
+            <p className="mt-1 text-sm text-slate-300">Quick checks to confirm FastAPI + IPC are reachable.</p>
+          </div>
+          <HealthStatus />
+        </div>
+        <ul className="mt-4 space-y-2 text-sm text-slate-200">
           <li>• Add FastAPI client helpers under <code>frontend/lib/api.ts</code>.</li>
           <li>• Expose IPC helpers in <code>electron/preload.ts</code> and type them for the renderer.</li>
           <li>• Build the dashboard and resume views with Tailwind + shadcn/ui.</li>
         </ul>
       </section>
     </main>
+  );
+}
+
+function HealthStatus() {
+  const [status, setStatus] = useState<"checking" | "ok" | "error">("checking");
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.health().then((res) => {
+      if (cancelled) return;
+      if (res.ok) {
+        setStatus("ok");
+        setMessage(res.data.message ?? res.data.status ?? "healthy");
+      } else {
+        setStatus("error");
+        setMessage(res.error ?? "unreachable");
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const pillClass =
+    status === "ok"
+      ? "bg-emerald-500/15 text-emerald-200 border border-emerald-700/40"
+      : status === "error"
+      ? "bg-rose-500/15 text-rose-200 border border-rose-700/40"
+      : "bg-slate-700/40 text-slate-200 border border-slate-700/60";
+
+  const label = status === "ok" ? "Backend healthy" : status === "error" ? "Backend unreachable" : "Checking backend";
+
+  return (
+    <div className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm ${pillClass}`}>
+      <span className="h-2 w-2 rounded-full bg-current opacity-80" />
+      <span>{label}</span>
+      {message && <span className="text-xs text-slate-300/80">{message}</span>}
+    </div>
   );
 }

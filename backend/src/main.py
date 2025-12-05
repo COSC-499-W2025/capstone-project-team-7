@@ -4,6 +4,7 @@
 # - Registers API routes (projects, skills, privacy, etc.)
 # - Provides root health-check endpoint
 # - Run with: uvicorn src.main:app --reload
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import sys
@@ -18,12 +19,14 @@ app = FastAPI(
     version="1.0.0"
 )
 
+allowed_origins = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "*").split(",")]
+
 app.add_middleware(
     CORSMiddleware,
-     allow_origins=["*"],  # Update this with your frontend URL in production
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*"]
 )
 
 @app.get("/")

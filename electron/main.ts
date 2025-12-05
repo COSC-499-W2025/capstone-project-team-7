@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import path from "node:path";
 import url from "node:url";
 import { IPC_CHANNELS } from "./ipc/channels";
@@ -49,6 +49,23 @@ app.whenReady().then(() => {
   createWindow();
 
   ipcMain.handle(IPC_CHANNELS.PING, async () => "pong");
+  ipcMain.handle(IPC_CHANNELS.OPEN_FILE, async (_event, options: Electron.OpenDialogOptions | undefined) => {
+    const result = await dialog.showOpenDialog({
+      properties: ["openFile"],
+      ...options
+    });
+    if (result.canceled) return [];
+    return result.filePaths;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.SELECT_DIRECTORY, async (_event, options: Electron.OpenDialogOptions | undefined) => {
+    const result = await dialog.showOpenDialog({
+      properties: ["openDirectory"],
+      ...options
+    });
+    if (result.canceled) return [];
+    return result.filePaths;
+  });
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
