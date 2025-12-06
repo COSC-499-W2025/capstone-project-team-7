@@ -12,8 +12,9 @@ from backend.src.cli.services.projects_service import (
 class DummyProjectsService(ProjectsService):
     """ProjectsService that accepts an injected Supabase client for testing."""
 
-    def __init__(self, client):  # type: ignore[override]
+    def __init__(self, client, encryption_service=None):  # type: ignore[override]
         self.client = client
+        self._encryption = encryption_service
 
 
 def _fake_supabase_client():

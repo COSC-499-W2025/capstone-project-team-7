@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 import json
+import logging
 
 try:
     from supabase import Client, create_client
@@ -23,7 +24,14 @@ class ProjectsServiceError(Exception):
 class ProjectsService:
     """Manage project scan storage in Supabase."""
     
-    def __init__(self, supabase_url: Optional[str] = None, supabase_key: Optional[str] = None):
+    def __init__(
+        self,
+        supabase_url: Optional[str] = None,
+        supabase_key: Optional[str] = None,
+        *,
+        encryption_service=None,
+        encryption_required: bool = False,
+    ):
         if not SUPABASE_AVAILABLE and not callable(create_client):
             raise ProjectsServiceError("Supabase client not available. Install supabase-py.")
         
@@ -34,6 +42,16 @@ class ProjectsService:
         
         if not self.supabase_url or not self.supabase_key:
             raise ProjectsServiceError("Supabase credentials not configured.")
+
+        self._encryption = encryption_service
+        if self._encryption is None:
+            try:
+                from .encryption import EncryptionService  # local import to avoid hard dependency at import time
+                self._encryption = EncryptionService()
+            except Exception as exc:
+                if encryption_required:
+                    raise ProjectsServiceError(f"Encryption unavailable: {exc}") from exc
+                self._encryption = None
         
         try:
             self.client: Client = create_client(self.supabase_url, self.supabase_key)
@@ -75,7 +93,7 @@ class ProjectsService:
                 "user_id": user_id,
                 "project_name": project_name,
                 "project_path": project_path,
-                "scan_data": scan_data,
+                "scan_data": self._encrypt_scan_data(scan_data),
                 "scan_timestamp": datetime.now().isoformat(),
                 "total_files": summary.get("files_processed", 0),
                 "total_lines": scan_data.get("code_analysis", {}).get("metrics", {}).get("total_lines", 0),
@@ -178,7 +196,9 @@ class ProjectsService:
             if not response.data:
                 return None
             
-            return response.data[0]
+            record = response.data[0]
+            record["scan_data"] = self._decrypt_scan_data(record.get("scan_data"))
+            return record
             
         except Exception as exc:
             raise ProjectsServiceError(f"Failed to get project scan: {exc}") from exc
@@ -283,7 +303,11 @@ class ProjectsService:
             raise ProjectsServiceError(f"Failed to load project: {exc}") from exc
 
         data = response.data or []
-        return data[0] if data else None
+        if not data:
+            return None
+        record = data[0]
+        record["scan_data"] = self._decrypt_scan_data(record.get("scan_data"))
+        return record
 
     # --- Cached file metadata helpers -------------------------------------------------
 
@@ -318,7 +342,7 @@ class ProjectsService:
                 "size_bytes": row.get("size_bytes"),
                 "mime_type": row.get("mime_type"),
                 "sha256": row.get("sha256"),
-                "metadata": row.get("metadata") or {},
+                "metadata": self._decrypt_cached_metadata(row.get("metadata")),
                 "last_seen_modified_at": row.get("last_seen_modified_at"),
                 "last_scanned_at": row.get("last_scanned_at"),
             }
@@ -363,7 +387,7 @@ class ProjectsService:
                     "size_bytes": entry.get("size_bytes"),
                     "mime_type": entry.get("mime_type"),
                     "sha256": entry.get("sha256"),
-                    "metadata": entry.get("metadata") or {},
+                    "metadata": self._encrypt_cached_metadata(entry.get("metadata")),
                     "last_seen_modified_at": modified,
                     "last_scanned_at": scanned,
                 }
@@ -400,3 +424,56 @@ class ProjectsService:
             )
         except Exception as exc:
             raise ProjectsServiceError(f"Failed to delete cached files: {exc}") from exc
+
+    # --- Encryption helpers -------------------------------------------------
+
+    def _encrypt_scan_data(self, scan_data: Dict[str, Any]) -> Any:
+        """Encrypt full scan payload when encryption is available."""
+        if not self._encryption:
+            return scan_data
+        try:
+            envelope = self._encryption.encrypt_json(scan_data)
+            return envelope.to_dict()
+        except Exception as exc:
+            raise ProjectsServiceError(f"Failed to encrypt scan data: {exc}") from exc
+
+    def _decrypt_scan_data(self, scan_data: Any) -> Any:
+        """Attempt to decrypt scan_data; fall back to original on failure."""
+        if not scan_data or not self._encryption:
+            return scan_data
+        if isinstance(scan_data, dict) and {"v", "iv", "ct"} <= set(scan_data.keys()):
+            try:
+                return self._encryption.decrypt_json(scan_data)
+            except Exception as exc:
+                logging.warning(
+                    "Failed to decrypt scan_data for project, returning as-is: %s", exc
+                )
+                return scan_data
+        return scan_data
+
+    def _encrypt_cached_metadata(self, metadata: Optional[Dict[str, Any]]) -> Any:
+        """Encrypt cached file metadata when available."""
+        meta = metadata or {}
+        if not self._encryption:
+            return meta
+        try:
+            return self._encryption.encrypt_json(meta).to_dict()
+        except Exception as exc:
+            raise ProjectsServiceError(f"Failed to encrypt cached file metadata: {exc}") from exc
+
+    def _decrypt_cached_metadata(self, metadata: Any) -> Dict[str, Any]:
+        """Decrypt cached metadata envelope back into a dict."""
+        if metadata is None:
+            return {}
+        if not self._encryption:
+            return metadata if isinstance(metadata, dict) else {}
+        if isinstance(metadata, dict) and {"v", "iv", "ct"} <= set(metadata.keys()):
+            try:
+                return self._encryption.decrypt_json(metadata) or {}
+            except Exception as exc:
+                logging.warning(
+                    "Failed to decrypt cached file metadata, returning empty dict: %s",
+                    exc,
+                )
+                return {}
+        return metadata if isinstance(metadata, dict) else {}
