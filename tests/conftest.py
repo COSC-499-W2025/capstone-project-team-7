@@ -3,7 +3,7 @@ Pytest configuration and fixtures
 """
 from pathlib import Path
 import sys
-import importlib.util
+import importlib
 import pytest
 
 
@@ -42,8 +42,7 @@ if str(LOCAL_ANALYSIS_DIR) not in sys.path:
 # IMPORTANT: Define this function BEFORE using it!
 def import_from_local_analysis(module_name: str):
     """
-    Helper function to import modules from the local-analysis directory.
-    Handles the hyphenated directory name that can't be imported normally.
+    Import modules from local_analysis as a package so relative imports work.
     
     Args:
         module_name: Name of the module to import (e.g., 'code_parser')
@@ -51,18 +50,11 @@ def import_from_local_analysis(module_name: str):
     Returns:
         The imported module
     """
-    module_path = LOCAL_ANALYSIS_DIR / f"{module_name}.py"
-    spec = importlib.util.spec_from_file_location(module_name, module_path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Could not load module {module_name} from {module_path}")
-    
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return importlib.import_module(f"local_analysis.{module_name}")
 
 
 # Now we can use the function to import code_parser
-from code_parser import CodeAnalyzer
+from local_analysis.code_parser import CodeAnalyzer
 
 
 # Path fixtures

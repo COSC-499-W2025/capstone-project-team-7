@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Callable, Optional, List, Dict, Any
 import difflib
 from ...scanner.models import ParseResult
+from ...scanner.media import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 
 class AIDependencyError(RuntimeError):
     """Raised when optional AI dependencies are missing."""
@@ -181,7 +182,17 @@ class AIService:
         # Ensure on-disk media files are included even if parser skipped them
         relevant_files = self._ensure_media_candidates(target_path, relevant_files)
         
+        media_exts = set(AUDIO_EXTENSIONS + IMAGE_EXTENSIONS + VIDEO_EXTENSIONS)
+        media_candidates = [
+            f for f in relevant_files
+            if f.get("media_info")
+            or (f.get("mime_type") or "").startswith(("audio/", "video/", "image/"))
+            or Path(f.get("path", "")).suffix.lower() in media_exts
+        ]
+        include_media = bool(media_candidates)
+
         self.logger.info(f"[AI Service] Total files: {len(files)}, Relevant files: {len(relevant_files)}")
+        self.logger.info(f"[AI Service] Media candidates: {len(media_candidates)}, include_media={include_media}")
         self.logger.info(f"[AI Service] Scan path: {scan_path}")
         self.logger.info(f"[AI Service] Read base path: {read_base_path}")
         self.logger.info(f"[AI Service] Git repos: {git_repos}")
@@ -205,7 +216,7 @@ class AIService:
                 scan_base_path=read_base_path,
                 project_dirs=project_dirs,
                 progress_callback=progress_callback,
-                include_media=False,
+                include_media=include_media,
             )
             self.logger.info(f"[AI Service] Analysis complete, result keys: {list(result.keys()) if result else 'None'}")
             return result
