@@ -141,6 +141,7 @@ class AIService:
         archive_path: Optional[str],
         git_repos: Sequence[Any],
         progress_callback: Optional[Any] = None,
+        include_media: bool = False,
     ) -> Dict[str, Any]:
        
         
@@ -189,7 +190,8 @@ class AIService:
             or (f.get("mime_type") or "").startswith(("audio/", "video/", "image/"))
             or Path(f.get("path", "")).suffix.lower() in media_exts
         ]
-        include_media = bool(media_candidates)
+        # Use the explicitly passed include_media parameter instead of auto-detection
+        # This allows users to choose between text-only and media deep dive analysis
 
         self.logger.info(f"[AI Service] Total files: {len(files)}, Relevant files: {len(relevant_files)}")
         self.logger.info(f"[AI Service] Media candidates: {len(media_candidates)}, include_media={include_media}")
