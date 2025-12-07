@@ -5327,7 +5327,8 @@ class PortfolioTextualApp(App):
         self._projects_state.projects_list = projects or []
         self._projects_state.error = None
         self._refresh_current_detail()
-        self.push_screen(ProjectsScreen(projects or []))
+        user_id = self._session_state.session.user_id if self._session_state.session else None
+        self.push_screen(ProjectsScreen(projects or [], projects_service=projects_service, user_id=user_id))
         self._show_status(f"Loaded {len(projects or [])} project(s).", "success")
 
     async def _load_and_show_resumes(self, *, show_modal: bool = True) -> None:
