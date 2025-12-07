@@ -1,4 +1,37 @@
 # Capstone Team 7 Logs
+## Week 14 (December 1st - 7th)
+This week the team focused on finalizing any last Milestone #1 requirements, adding some useful features, fixing bugs, and recording our demo and writing up the team contract.
+
+PR Reviews
+**Joaquin:**  
+This week, apart from implementing my feature, writing up the team contract and recording my part of the video demo, I focused on reviewing several team pull requests to help stabilize the platform ahead of the next milestone. I conducted a detailed review of Om’s **PR [#180](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/180)** on client session expiry. The refresh handling, eviction logic, and accompanying tests were all well-structured; my main note was that a few datetime-sensitive tests sat exactly at the TTL boundary and could become flaky without mocking `datetime.now()` or adding a buffer. The PR was otherwise solid and approved.   I also reviewed Vlad’s **PR [#186](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/186)**, which fixed a settings-related UI bug that was hiding several features. The fix was small but important for consistency within the TUI. Additionally, I reviewed Jacob’s **PR [#184](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/184)** addressing a minor issue in the media deep-dive pipeline. Both PRs were short, targeted bug fixes that improved stability in their respective areas.
+
+**Jacob:**
+
+**Vlad:**
+
+**Aaron:**
+
+**Om:** 
+
+**Samarth:** 
+
+
+## Reflection
+
+### What went well
+- Implementing the AES-GCM EncryptionService, updating environment docs, completing the demo recording, and supporting teammates all came together smoothly once the environment was properly configured.
+
+### Challenges
+- Environment conflicts, PEP-668 restrictions, multiple demo retakes, and debugging Vlad’s cloning-related `.env.example` issue made parts of the week slower and more complex than expected.
+  
+## **Next Steps**
+- Winter break
+
+<p align="center">
+  <img src="./charts/w14burnup.png" alt="Week 5 Burnup Chart width="400"/>
+</p>
+
 
 ## Week 13 (November 24th - 30th)
 This week the team focused on finalizing Milestone 1 deliverables and polishing the integrated analysis platform. Key work included unifying the AI analysis with local insights, refining the Textual UI for a cohesive user experience, and tightening Supabase persistence across resumes, projects, and analyses. The team also addressed outstanding bugs, improved documentation, and prepared for the final presentation. Overall, the platform evolved into a robust, end-to-end portfolio analysis tool that combines skills extraction, contribution metrics, resume generation, and AI-driven insights within a seamless TUI workflow.
