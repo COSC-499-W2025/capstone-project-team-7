@@ -180,6 +180,51 @@ class SearchCancelled(Message):
     pass
 
 
+class AnalysisModeChosen(Message):
+    """Raised when user selects text-only or media deep dive analysis mode."""
+
+    def __init__(self, include_media: bool) -> None:
+        super().__init__()
+        self.include_media = include_media
+
+
+class AnalysisModeChoiceScreen(ModalScreen[None]):
+    """Modal dialog for choosing between text-only and media deep dive AI analysis."""
+
+    def compose(self) -> ComposeResult:
+        yield Vertical(
+            Static("AI-Powered Analysis", classes="dialog-title"),
+            Static(
+                "Choose the type of AI analysis to perform:\n\n"
+                "• [b]Text-Only:[/b] Analysis of all code and text based documents (faster, low cost)\n\n"
+                "• [b]Media Deep Dive:[/b] Includes images, audio and video as part of analysis",
+                classes="dialog-subtitle",
+            ),
+            Static("", id="mode-message", classes="dialog-message"),
+            Horizontal(
+                Button("Text-Only", id="mode-text-only", variant="primary"),
+                Button("Media Deep Dive", id="mode-media", variant="default"),
+                Button("Cancel", id="mode-cancel"),
+                classes="dialog-buttons",
+            ),
+            classes="dialog",
+        )
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "mode-text-only":
+            dispatch_message(self, AnalysisModeChosen(include_media=False))
+            self.dismiss(None)
+        elif event.button.id == "mode-media":
+            dispatch_message(self, AnalysisModeChosen(include_media=True))
+            self.dismiss(None)
+        elif event.button.id == "mode-cancel":
+            self.dismiss(None)
+
+    def on_key(self, event: Key) -> None:  # pragma: no cover - keyboard shortcut
+        if event.key == "escape":
+            self.dismiss(None)
+
+
 class SearchInputScreen(ModalScreen[None]):
     """Modal dialog for entering search/filter criteria."""
 
