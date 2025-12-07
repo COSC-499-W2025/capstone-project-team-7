@@ -21,8 +21,12 @@ This week, apart from implementing my feature, writing up the team contract and 
 ### What went well
 - Implementing the AES-GCM EncryptionService, updating environment docs, completing the demo recording, and supporting teammates all came together smoothly once the environment was properly configured.
 
+- Implemented Client Session Expiry handling with refresh tokens, improving security and reliability.
+
 ### Challenges
 - Environment conflicts, PEP-668 restrictions, multiple demo retakes, and debugging Vlad’s cloning-related `.env.example` issue made parts of the week slower and more complex than expected.
+
+- Making sure the system considers different contributors correctly when calculating contribution metrics and labelling a project as collaborative or solo.
   
 ## **Next Steps**
 - Winter break
