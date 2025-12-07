@@ -91,6 +91,8 @@ from .screens import (
     AIKeySubmitted,
     AIResultAction,
     AIResultsScreen,
+    AnalysisModeChosen,
+    AnalysisModeChoiceScreen,
     AutoSuggestionConfigScreen,
     AutoSuggestionSelected,
     AutoSuggestionCancelled,
@@ -501,6 +503,18 @@ class PortfolioTextualApp(App):
             self._show_ai_key_dialog()
             return
 
+        self._show_analysis_mode_choice()
+
+    def _show_analysis_mode_choice(self) -> None:
+        """Show dialog to choose between text-only and media deep dive analysis."""
+        screen = AnalysisModeChoiceScreen()
+        self.push_screen(screen)
+
+    async def on_analysis_mode_chosen(self, message: AnalysisModeChosen) -> None:
+        """Handle analysis mode selection and start analysis."""
+        self._ai_state.include_media = message.include_media
+        mode_name = "Media Deep Dive" if message.include_media else "Text-Only"
+        self._show_status(f"Starting {mode_name} AI analysis…", "info")
         self._start_ai_analysis()
 
     def _handle_skill_progress_summary(self) -> None:
@@ -4056,7 +4070,7 @@ class PortfolioTextualApp(App):
 
         if self._ai_state.pending_analysis:
             self._ai_state.pending_analysis = False
-            self._start_ai_analysis()
+            self._show_analysis_mode_choice()
 
     def _persist_session(self) -> None:
         if self._session_state.session:
@@ -4989,6 +5003,12 @@ class PortfolioTextualApp(App):
             _reset_progress_ui()
             return
 
+        # Create progress callback to update UI during analysis
+        def progress_callback(message: str) -> None:
+            """Update progress label with analysis status."""
+            if progress_label:
+                self.call_from_thread(progress_label.update, message)
+
         try:
             result = await asyncio.to_thread(
                 self._ai_service.execute_analysis,
@@ -4998,6 +5018,8 @@ class PortfolioTextualApp(App):
                 target_path=str(self._scan_state.target) if self._scan_state.target else None,
                 archive_path=str(self._scan_state.archive) if self._scan_state.archive else None,
                 git_repos=self._scan_state.git_repos,
+                include_media=self._ai_state.include_media,
+                progress_callback=progress_callback,
             )
         except asyncio.CancelledError:
             self._show_status("AI analysis cancelled.", "info")

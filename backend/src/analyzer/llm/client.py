@@ -1083,13 +1083,17 @@ MEDIA INSIGHTS:
                     project_dirs=project_dirs,
                     max_file_size_mb=max_file_size_mb,
                     progress_callback=progress_callback,
+                    include_media=include_media,
                 )
 
             media_briefings: list[str] = []
             if include_media:
+                self.logger.info(f"Building media briefings for single-project mode (include_media=True)")
                 media_briefings = self._build_media_briefings(
                     relevant_files, base_path=Path(scan_base_path) if scan_base_path else None
                 )
+            else:
+                self.logger.info(f"Skipping media briefings for single-project mode (include_media=False)")
             
             max_file_size_bytes = max_file_size_mb * 1024 * 1024
             file_summaries = []
@@ -1186,7 +1190,8 @@ MEDIA INSIGHTS:
                                    scan_base_path: str,
                                    project_dirs: List[str],
                                    max_file_size_mb: int = 10,
-                                   progress_callback: Optional[Any] = None) -> Dict[str, Any]:
+                                   progress_callback: Optional[Any] = None,
+                                   include_media: bool = True) -> Dict[str, Any]:
         """
         Analyze multiple projects separately (e.g., multiple Git repos in one scan).
         
@@ -1204,7 +1209,7 @@ MEDIA INSIGHTS:
         from pathlib import Path
         from datetime import datetime
         
-        self.logger.info(f"Analyzing {len(project_dirs)} separate projects")
+        self.logger.info(f"Analyzing {len(project_dirs)} separate projects (include_media={include_media})")
         
         if progress_callback:
             progress_callback(f"Grouping files across {len(project_dirs)} projects…")
@@ -1308,9 +1313,11 @@ MEDIA INSIGHTS:
             self.logger.info(f"Analyzing project '{proj_name}' ({len(proj_files)} files)")
             
             # Prepare files for batch processing
-            media_briefings = self._build_media_briefings(
-                proj_files, base_path=base_path
-            )
+            media_briefings: list[str] = []
+            if include_media:
+                media_briefings = self._build_media_briefings(
+                    proj_files, base_path=base_path
+                )
             file_summaries = []
             skipped_files = []
             files_to_analyze = []
