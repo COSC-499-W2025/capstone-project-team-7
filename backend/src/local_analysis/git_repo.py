@@ -1,11 +1,11 @@
 from __future__ import annotations
 from pathlib import Path
 from subprocess import check_output, CalledProcessError
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import datetime
 import re
 from pathlib import Path as _Path
-from typing import Set
+from typing import Set, List, Dict, Any
 
 def _git(args, cwd: str) -> str:
     return check_output(["git", *args], cwd=cwd, text=True).strip()
@@ -16,6 +16,99 @@ def _is_git_repo(repo_dir: str) -> bool:
         return out.lower() == "true"
     except CalledProcessError:
         return False
+
+
+def _normalize_email(email: str | None) -> str | None:
+    """Normalize email for comparison (lowercase, strip noreply suffix)."""
+    if not email:
+        return None
+    email = email.lower().strip()
+    # Handle GitHub noreply emails: extract username
+    # e.g., "12345678+username@users.noreply.github.com" -> "username"
+    noreply_match = re.match(r"^\d+\+(.+)@users\.noreply\.github\.com$", email)
+    if noreply_match:
+        return noreply_match.group(1).lower()
+    # Return the local part (before @) for comparison
+    if "@" in email:
+        return email.split("@")[0].lower()
+    return email
+
+
+def _get_contributor_key(contrib: Dict[str, Any]) -> str:
+    """
+    Get a unique key for a contributor to detect same person.
+    
+    Uses:
+    1. GitHub username from noreply email
+    2. Name if it matches a GitHub username pattern
+    3. Normalized email local part
+    """
+    email = contrib.get("email", "") or ""
+    name = contrib.get("name", "") or ""
+    
+    # Extract GitHub username from noreply email
+    noreply_match = re.match(r"^\d+\+(.+)@users\.noreply\.github\.com$", email.lower())
+    if noreply_match:
+        return noreply_match.group(1).lower()
+    
+    # If name looks like a GitHub username (alphanumeric), use it as potential key
+    # This helps match "OM200401" with "97417509+OM200401@users.noreply.github.com"
+    if re.match(r"^[a-zA-Z0-9_-]+$", name) and len(name) <= 39:  # GitHub username max length
+        return name.lower()
+    
+    # Fallback to email local part
+    if "@" in email:
+        return email.split("@")[0].lower()
+    
+    # Last resort: use the name itself
+    return name.lower()
+
+
+def _merge_contributors(contributors: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Merge contributors that appear to be the same person.
+    
+    Detects same person by:
+    1. Same GitHub username (from name or noreply email)
+    2. Same normalized email local part
+    """
+    if len(contributors) <= 1:
+        return contributors
+    
+    # Group contributors by their unique key
+    key_groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    
+    for contrib in contributors:
+        key = _get_contributor_key(contrib)
+        key_groups[key].append(contrib)
+    
+    # Merge contributors with same key
+    merged: List[Dict[str, Any]] = []
+    
+    for key, group in key_groups.items():
+        if len(group) == 1:
+            merged.append(group[0])
+        else:
+            # Merge multiple entries for same person
+            # Use the name with most commits as primary
+            primary = max(group, key=lambda c: c.get("commits", 0))
+            total_commits = sum(c.get("commits", 0) for c in group)
+            
+            # Collect all emails and names for reference
+            all_emails = [c.get("email") for c in group if c.get("email")]
+            all_names = [c.get("name") for c in group if c.get("name")]
+            
+            merged_contrib = {
+                "name": primary.get("name"),
+                "email": primary.get("email"),
+                "commits": total_commits,
+                "aliases": list(set(all_names)),  # Store alternate names
+                "all_emails": list(set(all_emails)),  # Store all emails
+            }
+            merged.append(merged_contrib)
+    
+    return merged
+
 
 # [2025-11-06] NEW: simple classifier
 def _project_type(contributors: list[dict]) -> str:  # 2025-11-06
@@ -122,6 +215,9 @@ def analyze_git_repo(repo_dir: str) -> dict:
             name = name.strip()
             email = email[:-1].strip()
         contributors.append({"name": name.strip(), "email": email, "commits": n})
+
+    # Merge contributors that appear to be the same person (same email/username)
+    contributors = _merge_contributors(contributors)
 
     total = sum(c["commits"] for c in contributors) or 1
     for c in contributors:
