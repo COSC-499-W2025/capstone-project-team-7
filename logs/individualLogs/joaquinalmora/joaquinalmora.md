@@ -1,16 +1,20 @@
 # Joaquin Almora / @joaquinalmora
 
 ## Week 14 (December 1st - 7th)
+This week focused on strengthening our system’s security layer through the implementation of AES-GCM encryption and improvements to team configuration workflows. I added a new `EncryptionService` and integrated it into résumé and project storage with backward-compatible envelopes. I updated the `.env.example` and README to document the required `ENCRYPTION_MASTER_KEY` and proper placement of `OPENAI_API_KEY`, and added `cryptography` to the project requirements. All focused pytest suites ran successfully within the repo’s venv.
 
+Beyond encryption, I completed several team deliverables: writing the team contract, updating the README, recording my portion of the demo, and helping Vlad resolve setup issues. The demo required multiple retakes to ensure clarity and correctness. Assisting Vlad took significant time because his `.env.example` was not updating even though the Git commands appeared correct—eventually traced to a subtle cloning issue causing inconsistent repo state.
 
 ### Reflection
 
 **What went well:**  
-
+AES-GCM encryption integrated cleanly into the existing storage flow, and backwards compatibility behaved as expected. Clarifying environment variables improved setup consistency for the team. All focused tests passed under the correct venv, and the demo segment ultimately came together. Supporting Vlad ensured everyone remained aligned on proper environment and repo setup.
 
 **What didn’t go well:**  
+Environment conflicts initially slowed progress. System Python kept overriding the venv until an old zprofile alias was removed, and PEP-668 protections required explicitly using the repo’s Python and pip. The demo needed several retakes. Debugging Vlad’s `.env.example` issue took longer than expected because the error symptoms didn’t match typical Git misuse, making the root cause non-obvious.
 
 ### Next Steps
+Over the break, start setting up the API structure.
   
 ![Peer Eval](./images/w14peer.png)
 
