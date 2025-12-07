@@ -1554,7 +1554,7 @@ class ProjectsScreen(ModalScreen[None]):
     
     #projects-dialog {
         width: 90;
-        min-height: 35;
+        min-height: 45;
         border: thick $background 80%;
         background: $surface;
         padding: 1 2;
@@ -1574,9 +1574,20 @@ class ProjectsScreen(ModalScreen[None]):
         margin-bottom: 1;
     }
     
+    #top-projects-summary {
+        width: 100%;
+        height: 14;
+        border: solid $accent 50%;
+        background: $panel;
+        padding: 1;
+        margin-bottom: 1;
+        color: $text;
+        overflow: auto;
+    }
+    
     #projects-list {
         width: 100%;
-        height: 15;
+        height: 10;
         border: solid $primary;
         margin-bottom: 1;
     }
@@ -1587,7 +1598,7 @@ class ProjectsScreen(ModalScreen[None]):
     
     #projects-detail {
         width: 100%;
-        height: 8;
+        height: 6;
         border: solid $primary;
         padding: 1;
         margin-bottom: 1;
@@ -1627,6 +1638,84 @@ class ProjectsScreen(ModalScreen[None]):
     def _sort_label(self) -> str:
         """Return the button label that matches the active sort mode."""
         return "Sort: recency" if self.sort_mode == "recency" else "Sort: importance"
+
+    def _format_top_projects_summary(self) -> str:
+        """
+        Format a comprehensive summary of the top 3 projects by importance.
+        Includes code metrics, technologies, contribution analysis, and available analysis types.
+        Returns formatted text for display in the summary panel.
+        """
+        if not self.projects:
+            return ""
+        
+        # Get top 3 projects sorted by importance
+        sorted_projects = sorted(
+            self.projects,
+            key=lambda p: (
+                p.get("contribution_score") is None,
+                -(p.get("contribution_score") or 0),
+                p.get("scan_timestamp") or "",
+            ),
+        )
+        top_projects = sorted_projects[:3]
+        
+        # Build summary text
+        lines = ["🌟 TOP PROJECTS SUMMARY (ranked by importance):\n"]
+        
+        for i, proj in enumerate(top_projects, 1):
+            name = proj.get("project_name", "Unknown")
+            score = proj.get("contribution_score", 0)
+            share = proj.get("user_commit_share", 0)  # Stored as decimal 0-1
+            commits = proj.get("total_commits", 0)
+            files = proj.get("total_files", 0)
+            lines_count = proj.get("total_lines", 0)
+            languages = proj.get("languages", [])
+            
+            # Build analysis badges
+            analysis_types = []
+            if proj.get("has_code_analysis"):
+                analysis_types.append("💻 Code")
+            if proj.get("has_git_analysis"):
+                analysis_types.append("🔀 Git")
+            if proj.get("has_contribution_metrics"):
+                analysis_types.append("📊 Contributors")
+            if proj.get("has_pdf_analysis"):
+                analysis_types.append("📄 Docs")
+            if proj.get("has_media_analysis"):
+                analysis_types.append("🎨 Media")
+            if proj.get("has_skills_progress"):
+                analysis_types.append("🎯 Skills")
+            
+            analysis_str = " | ".join(analysis_types) if analysis_types else "No analysis"
+            
+            # Format languages - try to get from code analysis if available
+            langs_str = "Not detected"
+            if languages and isinstance(languages, list):
+                # Filter out None values and convert to strings
+                valid_langs = [str(lang) for lang in languages if lang is not None and lang != ""]
+                if valid_langs:
+                    langs_str = ", ".join(valid_langs[:3])
+                    if len(valid_langs) > 3:
+                        langs_str += f" (+{len(valid_langs)-3})"
+            
+            # If no languages detected in metadata, show a placeholder
+            # (full language breakdown would be in the detailed view)
+            if langs_str == "Not detected":
+                langs_str = "(view project details for language breakdown)"
+            
+            # Convert share from decimal to percentage
+            share_pct = share * 100 if isinstance(share, (int, float)) else 0
+            
+            # Build project summary line
+            if isinstance(score, (int, float)):
+                lines.append(f"\n{i}. {name} ⭐ {score:.2f}")
+                lines.append(f"   Impact: {share_pct:.0f}% of commits ({commits} total) • {files} files • {lines_count:,} lines")
+                lines.append(f"   Stack: {langs_str}")
+                lines.append(f"   Analysis: {analysis_str}")
+            else:
+                lines.append(f"\n{i}. {name}")
+        
+        return "\n".join(lines)
 
     def _sorted_projects(self) -> List[Dict[str, Any]]:
         """Return projects ordered per current sort mode."""
@@ -1680,6 +1769,9 @@ class ProjectsScreen(ModalScreen[None]):
                     id="projects-detail"
                 )
             else:
+                # Add top projects summary panel
+                yield Static(self._format_top_projects_summary(), id="top-projects-summary")
+                
                 # Create list items
                 sorted_projects = self._sorted_projects()
                 items = [

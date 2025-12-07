@@ -82,7 +82,16 @@ class ProjectsService:
             summary = scan_data.get("summary", {})
             
             languages = []
-            if "languages" in summary:
+            # Try to get languages from code_analysis first (most reliable)
+            code_analysis = scan_data.get("code_analysis", {})
+            if code_analysis.get("languages"):
+                lang_dict = code_analysis.get("languages", {})
+                if isinstance(lang_dict, dict):
+                    # Sort by count descending and get top languages
+                    languages = [lang for lang, count in sorted(lang_dict.items(), key=lambda x: x[1], reverse=True)]
+            
+            # Fallback to summary languages if available
+            if not languages and "languages" in summary:
                 lang_data = summary["languages"]
                 if isinstance(lang_data, list):
                     languages = [lang.get("name") for lang in lang_data if isinstance(lang, dict)]

@@ -41,6 +41,7 @@ from .services.ai_service import (
     AIProviderError,
     InvalidAPIKeyError,
 )
+from .services.top_projects_summarization_service import TopProjectsSummarizationService
 from .services.scan_service import ScanService
 from .services.session_service import SessionService
 from .services.code_analysis_service import (
@@ -258,6 +259,7 @@ class PortfolioTextualApp(App):
         self._session_service = SessionService(reporter=self._report_filesystem_issue)
         self._preferences_service = PreferencesService(media_extensions=MEDIA_EXTENSIONS)
         self._ai_service = AIService()
+        self._summarization_service = TopProjectsSummarizationService(ai_service=self._ai_service)
         self._code_service = CodeAnalysisService()
         self._skills_service = SkillsAnalysisService()
         self._contribution_service = ContributionAnalysisService()
