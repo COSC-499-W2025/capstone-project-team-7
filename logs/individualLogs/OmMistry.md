@@ -1,5 +1,33 @@
 # Om Mistry (@OM200401)
 
+## Week 14: December 1 - December 7
+This week, I focused on finalizing the documentation and preparing for the project presentation. Additionally, I worked on polishing the presentation slides and rehearsing for the final demo. Furthermore, I assisted in addressing any last-minute bugs and ensuring the overall stability of the system.
+
+**Key Accomplishments:**
+
+1. **Documentation Finalization**: Completed and reviewed all project documentation, including user guides, technical specifications, and API references.
+
+2. **Presentation Preparation**: Created and refined presentation slides, highlighting key features, challenges, and learnings from the project.
+
+3. **Collabarative v/s Individual Project Bug Fix**: Fixed bugs related to the collaborative versus individual project analysis feature, ensuring accurate detection and reporting. The issue was with the way the system was identifying solo projects as collaborative ones due to misinterpretation of commit history. Resolved by refining the logic to accurately assess contributor counts.
+
+4. **Client Session Expiry Handling**: Implemented session expiry handling in the client application to enhance security and user experience. This involved adding logic to detect session timeouts and prompt users to re-authenticate as needed.
+
+**Challenges & Learning:**
+Faced challenges in ensuring all documentation was comprehensive and user-friendly. Learned the importance of clear communication in technical writing. Additionally, rehearsing the presentation helped improve my public speaking skills and confidence. Needed to figure out a way to ensure the same git user being represnted across multiple commits to avoid misclassification of solo projects as collaborative ones.
+
+**Impact:**
+The finalized documentation provides users with clear guidance on using the portfolio analysis system effectively. The presentation preparation ensures a smooth and engaging demo of the project. The bug fixes and session handling enhance the overall reliability and security of the system.
+
+Issues resolved include: [#178](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/178)
+
+PR [#180 - Client Session Expiry](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/180)
+
+![Tasks Completed](./assets/omistry_Week14.png)
+
+![PR Screenshot](./assets/PR_Week14_OM.png)
+
+
 ## Week 13: November 24 - November 30
 
 This week, I implemented the duplicate detection feature to identify similar or identical files within a project directory. This helps users clean up redundant files and manage their projects more effectively. This was implemented using MD5 content hashing to identify duplicates efficiently. Furthermore, I worked on refining and adding more enhancements to the existing system - Report Generation in HTML format which can then be saved as a PDF file by the user. Search and Filtering capabilities were also added to the Textual UI to help users navigate large scan results more easily.
