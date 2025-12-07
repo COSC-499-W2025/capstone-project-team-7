@@ -11,7 +11,7 @@ This week, apart from implementing my feature, writing up the team contract and 
 
 **Aaron:**
 
-**Om:** 
+**Om:** This week I led the development of [PR #180 - Client Session TTL](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/180), implementing time-to-live data structures, TTL logic in helper functions, and a comprehensive test suite for automatic session expiration. I fixed flaky datetime-based tests by introducing deterministic mocking. I reviewed [PR #181 - Encryption at Rest](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/181) by Joaquin, providing feedback on the AES-256-GCM implementation and approving with suggestions on key rotation and error handling. On December 7th, I developed a bug fix for collaborative project detection, adding contributor merging logic to correctly identify solo projects when developers commit with multiple Git identities. I also merged [PR #188 - AI Analysis Bug Fixes](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/188) authored by Samarth. Other contributions included updating individual and team logs for Week 14 and adding pytest configuration to suppress third-party deprecation warnings.
 
 **Samarth:** 
 
