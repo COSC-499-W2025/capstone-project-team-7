@@ -1639,6 +1639,76 @@ class ProjectsScreen(ModalScreen[None]):
     def _sort_label(self) -> str:
         """Return the button label that matches the active sort mode."""
         return "Sort: recency" if self.sort_mode == "recency" else "Sort: importance"
+    
+    def refresh_after_delete(self, updated_projects: List[Dict[str, Any]]) -> None:
+        """Refresh the screen after a project deletion."""
+        self.projects = updated_projects
+        self.selected_project = None
+        
+        # If no projects left, we need to fully refresh the screen layout
+        if not updated_projects:
+            # Remove existing list if present
+            try:
+                list_view = self.query_one("#projects-list", ListView)
+                list_view.remove()
+            except Exception:
+                pass
+            
+            # Update detail to show empty state
+            try:
+                detail = self.query_one("#projects-detail", Static)
+                detail.update(
+                    "No saved projects found.\n\n"
+                    "Run a portfolio scan and export it to save your first project!"
+                )
+            except Exception:
+                pass
+            
+            # Update or remove buttons since there are no projects
+            try:
+                buttons_container = self.query_one("#projects-buttons", Horizontal)
+                # Remove all existing buttons except Close
+                for button in buttons_container.query(Button):
+                    if button.id != "close-btn":
+                        button.remove()
+            except Exception:
+                pass
+            
+            # Remove summary panel
+            try:
+                summary = self.query_one("#top-projects-summary", Static)
+                summary.remove()
+            except Exception:
+                pass
+        else:
+            # Projects still exist, update the list
+            try:
+                list_view = self.query_one("#projects-list", ListView)
+                # Clear all items first
+                while len(list_view) > 0:
+                    list_view.remove_index(0)
+                
+                sorted_projects = self._sorted_projects()
+                for proj in sorted_projects:
+                    list_view.append(
+                        ListItem(Label(self._format_project_item(proj), classes="project-item"))
+                    )
+                
+                # Select first project by setting index and updating detail
+                if sorted_projects and len(list_view) > 0:
+                    list_view.index = 0
+                    self.selected_project = sorted_projects[0]
+                    self._update_detail(self.selected_project)
+            except Exception as e:
+                # Silently fail - UI might not be fully initialized yet
+                pass
+            
+            # Update summary panel
+            try:
+                summary = self.query_one("#top-projects-summary", Static)
+                summary.update(self._format_top_projects_summary())
+            except Exception:
+                pass
 
     def _format_top_projects_summary(self) -> str:
         """Format a summary of the top ranked projects with their analysis."""
@@ -1850,10 +1920,26 @@ class ProjectsScreen(ModalScreen[None]):
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         """When user presses Enter on a project, open it immediately."""
         if event.control.id == "projects-list":
-            if self.selected_project:
+            # Get the selected project from the current sorted order
+            sorted_projects = self._sorted_projects()
+            if event.control.index < len(sorted_projects):
+                self.selected_project = sorted_projects[event.control.index]
                 dispatch_message(self, ProjectSelected(self.selected_project))
             else:
                 self._set_status("No project selected", "warning")
+    
+    def on_mount(self) -> None:
+        """Set initial selection when the screen mounts."""
+        try:
+            list_view = self.query_one("#projects-list", ListView)
+            if self.projects:
+                sorted_projects = self._sorted_projects()
+                if sorted_projects:
+                    list_view.index = 0
+                    self.selected_project = sorted_projects[0]
+                    self._update_detail(self.selected_project)
+        except Exception:
+            pass
     
     def _update_detail(self, project: Dict[str, Any]) -> None:
         """Update the detail panel with project info."""
@@ -1966,6 +2052,16 @@ class ProjectsScreen(ModalScreen[None]):
         """Handle keyboard shortcuts."""
         if event.key == "escape":
             self.dismiss(None)
+        elif event.key in ("up", "down"):
+            # Update detail when navigating list with arrow keys
+            try:
+                list_view = self.query_one("#projects-list", ListView)
+                sorted_projects = self._sorted_projects()
+                if list_view.index >= 0 and list_view.index < len(sorted_projects):
+                    self.selected_project = sorted_projects[list_view.index]
+                    self._update_detail(self.selected_project)
+            except Exception:
+                pass
 
 
 class ResumeViewerScreen(ModalScreen[None]):
