@@ -1,3 +1,10 @@
+# Week 14: December 1 - December 7
+This week I completed a targeted UI bug fix and contributed to our demo recording. I opened **PR [#186](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/186)**, which resolved a visual issue in the settings and user-preferences menu where text labels and toggle switches were partially hidden, preventing proper user interaction. I also reviewed **PR [#190](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/190)** from Aaron, providing feedback on his UI refresh that improves overall usability and consistency across the interface.
+
+Beyond development work, I recorded several segments of our demo video, specifically the parts shown in the attached screenshot, highlighting how our system identifies programming languages, extracts contribution metrics, and summarizes project information.
+
+<img width="1081" height="636" alt="Screenshot 2025-12-07 at 7 32 43 PM" src="https://github.com/user-attachments/assets/be50d76f-4573-4a8a-961c-a0db6215a9d3" />
+
 # Week 13: November 24 - November 30
 This week I implemented a sign up feature into our TUI **[*155](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/169). Previously, when testing we would have to manually create a user within Supabase then use that information to log into the account within the TUI. After adding a sign up feature within our TUI that sends the user infromtation to be stored in Supabase, testing and account creation can be fully done within the TUI while running the program. The sign up feature also has account creation restriction such as requiring the user to enter a real email into the username section as oppossed to a random name and requiring the password to be a certain number of digits to ensure that the account is secure. Along with this implementation I also added tests to verify that the account creation works accross different cases and is properly hooked up to Supabase. 
 
