@@ -1,5 +1,7 @@
 
 # Jacob Damery
+## Week 14 (Dec 1 – 7)
+<img width="1070" height="625" alt="image" src="https://github.com/user-attachments/assets/d276c73f-b920-4ce9-8f09-199b0de6cf92" />
 
 ## Week 13 (Nov 24 – 30)
 This week I focused on two major areas of the project: external media analysis and refinements to the resume generation system.
