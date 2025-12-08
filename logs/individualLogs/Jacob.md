@@ -17,6 +17,7 @@ What Went Well What Went Well was the recording of the project demo. Aswell, the
 
 
 This week was alot calmer as we have finished all the requirments for milestone #1 so everything this week went smoothly with nothing that went wrong for me on my side. 
+
 **Issues:** [#184](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/184)
 
 <img width="1070" height="625" alt="image" src="https://github.com/user-attachments/assets/d276c73f-b920-4ce9-8f09-199b0de6cf92" />
