@@ -5349,7 +5349,8 @@ class PortfolioTextualApp(App):
         self._projects_state.projects_list = projects or []
         self._projects_state.error = None
         self._refresh_current_detail()
-        self.push_screen(ProjectsScreen(projects or []))
+        user_id = self._session_state.session.user_id if self._session_state.session else None
+        self.push_screen(ProjectsScreen(projects or [], projects_service=projects_service, user_id=user_id))
         self._show_status(f"Loaded {len(projects or [])} project(s).", "success")
 
     async def _load_and_show_resumes(self, *, show_modal: bool = True) -> None:
@@ -5477,12 +5478,34 @@ class PortfolioTextualApp(App):
             return
         
         if success:
-            self._show_status("Project deleted successfully.", "success")
-            # Reload projects list
-            await self._load_and_show_projects()
+            # Refresh projects list
+            try:
+                projects = await asyncio.to_thread(
+                    projects_service.get_user_projects,
+                    self._session_state.session.user_id
+                )
+                self._projects_state.projects_list = projects or []
+                self._refresh_current_detail()
+                
+                # Close the ProjectsScreen if it's open and reopen it with fresh data
+                # This ensures a complete refresh of the UI
+                for screen in self.screen_stack[:]:  # Create a copy to iterate
+                    if isinstance(screen, ProjectsScreen):
+                        # Dismiss the screen
+                        screen.dismiss(None)
+                        # Reopen it with fresh data after a brief delay to ensure the dismiss completes
+                        async def reopen_projects() -> None:
+                            await asyncio.sleep(0.1)
+                            self.push_screen(ProjectsScreen(projects or [], projects_service=projects_service, user_id=self._session_state.session.user_id))
+                        asyncio.create_task(reopen_projects())
+                        break
+                
+                self._show_status("Project deleted successfully.", "success")
+            except Exception as exc:
+                self._show_status(f"Failed to refresh: {exc}", "error")
         else:
             self._show_status("Failed to delete project.", "error")
-
+            
     async def on_resume_selected(self, message: ResumeSelected) -> None:
         """Handle viewing a saved resume item."""
         message.stop()
