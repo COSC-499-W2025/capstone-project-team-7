@@ -7,7 +7,7 @@ This week, apart from implementing my feature, writing up the team contract and 
 
 **Jacob:**
 
-**Vlad:**
+**Vlad:** This week I implemented a quick bug/visual update **PR [#186](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/186)**. This fixed a visual bug in the settings and user preference menu which hid some text and toggle switched from being accessed by the user. I also reviewed **PR [#190](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/190)** by Aaron, which gives a UI refresh and makes the UX more robust. My other contribution this week includes recording part of the project demo which goes over some of the features of out program.
 
 **Aaron:**
 
