@@ -1,6 +1,20 @@
 
 # Jacob Damery
 ## Week 14 (Dec 1 – 7)
+**Week 14: December 1 - December 7**
+
+This week, I focused on restoring the Media Deep Dive in AI results and recording the weekly demo video. 
+
+**Key Accomplishments:**
+- **Media Deep Dive Fix:** Ensured media candidates are detected and forwarded to the LLM (`include_media=True`), so AI runs now surface Media Deep Dive with media briefings.
+- **Demo Recording:** Recorded aspects of the demo video due this week.
+**Challenges & Learning:** Needed to combine metadata, MIME, and extension checks to avoid missing media files in AI payloads; verified the UI wiring so the deep dive action appears reliably.
+
+**Impact:** Media insights now show up in AI results, and the demo video documents the fix.
+
+**Issues:** [#184](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/184)
+.
+
 <img width="1070" height="625" alt="image" src="https://github.com/user-attachments/assets/d276c73f-b920-4ce9-8f09-199b0de6cf92" />
 
 ## Week 13 (Nov 24 – 30)
