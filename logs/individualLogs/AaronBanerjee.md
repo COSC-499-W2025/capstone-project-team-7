@@ -1,4 +1,30 @@
 # Aaron Banerjee (@aaronbanerjee123)
+## Week 14: December 1 - December 7
+This week, I focused on implementing a comprehensive summary feature for the View Saved Projects screen and fixing critical navigation bugs to improve the user experience.
+
+**Key Accomplishments:**
+
+1. **Summary Tab Implementation**: Created a new Summary tab in the ProjectViewerScreen that aggregates data from all available analyses (code, git, skills, contributions, media, documents, duplicates, and AI) into a single, unified view.
+
+2. **Top Ranked Projects Panel**: Implemented a top-ranked projects summary in the View Saved Projects screen displaying the 3 highest-ranked projects by contribution score, along with key metrics (impact percentage, commits, files, lines, and available analyses).
+
+3. **Project Deletion Bug Fix**: Fixed a critical bug where deleted projects would still appear after pressing Esc. Enhanced the `refresh_after_delete()` method and modified the deletion handler to close and reopen the ProjectsScreen with fresh data, ensuring complete UI refresh.
+
+4. **Enhanced UI Navigation**: Improved ProjectsScreen with better selection handling, arrow key navigation for dynamic detail updates, and more reliable ListView item management.
+5. **Presentation Video Editing**: I edited the group's demo vide,o which involved getting everybody's clips and connecting them with subtitles
+
+**Challenges & Learning:**
+The main challenge was ensuring proper UI synchronization after deletion. Initially attempted component updates in place, but discovered closing and reopening the screen with fresh data was more reliable. This taught me the importance of understanding Textual's rendering lifecycle and screen stack management.
+
+**Impact:**
+The Summary tab provides users with a cleaner way to review project insights at a glance. The top-ranked projects panel helps users identify their most important work. The deletion bug fix ensures proper data synchronization and prevents confusion when managing saved projects.
+
+Issues resolved include:[#53](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/XXX)
+
+PR [#190 - Summary Tab & Deletion Fix](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/XXX)]
+<img width="1335" height="786" alt="image" src="https://github.com/user-attachments/assets/ebfe427d-de12-4a32-995b-f3f4fec7cc76" />
+<img width="1318" height="887" alt="image" src="https://github.com/user-attachments/assets/93d6c592-dcc0-4fe8-805f-c0acec24a6e3" />
+
 
 # Week 13: November 24 - November 30
 
