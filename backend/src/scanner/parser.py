@@ -213,6 +213,11 @@ def parse_zip(
         else None
     )
 
+    # When explicitly asking for relevant files, rely on the built-in relevance
+    # heuristics rather than user-configured extension filters.
+    if relevant_only:
+        allowed_extensions = None
+
     cached_files = cached_files or {}
 
     try:

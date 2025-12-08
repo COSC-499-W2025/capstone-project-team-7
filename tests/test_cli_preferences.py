@@ -23,7 +23,7 @@ def test_preferences_from_config_populates_fields():
     prefs = cli_parse_zip._preferences_from_config(config, None)
 
     assert isinstance(prefs, ScanPreferences)
-    assert prefs.allowed_extensions == [".py", ".py"]
+    assert prefs.allowed_extensions == [".py"]
     assert prefs.excluded_dirs == ["venv", "__pycache__"]
     assert prefs.max_file_size_bytes == 4 * 1024 * 1024
     assert prefs.follow_symlinks is True

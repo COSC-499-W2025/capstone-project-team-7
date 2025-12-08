@@ -23,9 +23,6 @@ if str(BACKEND_SRC) not in sys.path:
 
 # Add paths to sys.path
 backend_local_analysis = Path(__file__).parent.parent / "backend" / "src" / "local_analysis"
-if backend_local_analysis.exists():
-    sys.path.insert(0, str(backend_local_analysis))
-
 # Add lib folder from backend/src/local_analysis/lib
 lib_path = backend_local_analysis / "lib"
 if lib_path.exists():
@@ -50,11 +47,11 @@ def import_from_local_analysis(module_name: str):
     Returns:
         The imported module
     """
-    return importlib.import_module(f"local_analysis.{module_name}")
+    return importlib.import_module(f"src.local_analysis.{module_name}")
 
 
 # Now we can use the function to import code_parser
-from local_analysis.code_parser import CodeAnalyzer
+from src.local_analysis.code_parser import CodeAnalyzer
 
 
 # Path fixtures

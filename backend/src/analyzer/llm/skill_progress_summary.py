@@ -308,6 +308,9 @@ def summarize_skill_progress(
         locations = f" | raw_dumped={','.join(dump_paths)}" if dump_paths else ""
         raise ValueError(f"Parse failed: {exc} | raw_snippet={snippet}{locations}") from exc
 
+    if not isinstance(parsed, dict):
+        raise ValueError("Model did not return valid JSON object.")
+
     # Validate grounding but don't block - capture as warning
     try:
         _validate_grounding(timeline, parsed)

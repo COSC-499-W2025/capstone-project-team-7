@@ -15,17 +15,11 @@ import pytest
 import json
 import base64
 from datetime import datetime
-from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock, call
 import json
-import sys
 
-# Add backend/src to path (tests/ and backend/ are siblings)
-backend_src_path = Path(__file__).parent.parent / "backend" / "src"
-sys.path.insert(0, str(backend_src_path))
-
-from cli.services.encryption import EncryptionEnvelope
-from cli.services.projects_service import ProjectsService, ProjectsServiceError
+from backend.src.cli.services.encryption import EncryptionEnvelope
+from backend.src.cli.services.projects_service import ProjectsService, ProjectsServiceError
 
 
 # ============================================================================
@@ -238,7 +232,7 @@ def projects_service(mock_supabase_client, monkeypatch):
     monkeypatch.setenv("SUPABASE_URL", "https://test.supabase.co")
     monkeypatch.setenv("SUPABASE_KEY", "test-key-123")
     
-    with patch('cli.services.projects_service.create_client') as mock_create:
+    with patch('backend.src.cli.services.projects_service.create_client') as mock_create:
         mock_create.return_value = mock_supabase_client
         service = ProjectsService(encryption_service=FakeEncryptionService())
         return service

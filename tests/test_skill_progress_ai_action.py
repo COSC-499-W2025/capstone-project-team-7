@@ -12,19 +12,24 @@ import pytest
 backend_src_path = Path(__file__).parent.parent / "backend" / "src"
 sys.path.insert(0, str(backend_src_path))
 
-# Stub textual modules used in textual_app to avoid optional dependency
-if "textual" not in sys.modules:  # pragma: no cover
+# Stub textual modules used in textual_app when the optional dependency isn't installed.
+try:  # pragma: no cover - prefer real library when available
+    import textual  # noqa: F401
+except ImportError:  # pragma: no cover
     sys.modules["textual"] = types.SimpleNamespace()
+
     class _StubApp:
         def __init__(self, *args, **kwargs):
             pass
+
     class _StubBinding:
         def __init__(self, *args, **kwargs):
             pass
+
     sys.modules["textual.app"] = types.SimpleNamespace(App=_StubApp, ComposeResult=None)
     sys.modules["textual.binding"] = types.SimpleNamespace(Binding=_StubBinding)
     sys.modules["textual.containers"] = types.SimpleNamespace(Vertical=object, Horizontal=object, ScrollableContainer=object)
-    sys.modules["textual.events"] = types.SimpleNamespace(Mount=object, Key=object)
+    sys.modules["textual.events"] = types.SimpleNamespace(Mount=object, Key=object, Unmount=object)
     sys.modules["textual.driver"] = types.SimpleNamespace(Driver=object)
     sys.modules["textual.message"] = types.SimpleNamespace(Message=object)
     sys.modules["textual.message_pump"] = types.SimpleNamespace(MessagePump=object)
@@ -42,9 +47,14 @@ if "textual" not in sys.modules:  # pragma: no cover
         Switch=object,
         Input=object,
         Log=object,
+        RichLog=object,
         TextLog=object,
     )
-if "pypdf" not in sys.modules:  # pragma: no cover - optional dep stub
+
+# Stub pypdf only when missing to avoid optional dependency errors.
+try:  # pragma: no cover
+    import pypdf  # noqa: F401
+except ImportError:  # pragma: no cover - optional dep stub
     errors_module = types.SimpleNamespace(PdfReadError=Exception)
     sys.modules["pypdf"] = types.SimpleNamespace(PdfReader=lambda *args, **kwargs: None, errors=errors_module)
     sys.modules["pypdf.errors"] = errors_module

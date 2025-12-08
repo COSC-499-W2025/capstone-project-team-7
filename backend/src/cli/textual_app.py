@@ -809,13 +809,14 @@ class PortfolioTextualApp(App):
 
         if "valid JSON" in message or "Model did not return" in message:
             # Surface a short raw snippet when available for debugging malformed outputs.
-            snippet = ""
+            detail = ""
             if "raw_snippet=" in message:
                 try:
                     snippet = message.split("raw_snippet=", 1)[1].strip()
+                    if snippet:
+                        detail = f" Debug hint: {snippet}"
                 except Exception:
-                    snippet = ""
-            detail = f" Debug hint: {snippet}" if snippet else f" Debug detail: {message}"
+                    detail = ""
             return f"AI summary unavailable: the response was not valid JSON.{detail} Please retry."
         # Default: show the underlying error with any debug markers (raw_snippet/raw_dumped)
         return f"AI summary unavailable: {message or 'unexpected error'}"
@@ -3946,46 +3947,6 @@ class PortfolioTextualApp(App):
         finally:
             self._session_state.login_task = None
     
-    async def _handle_signup(self, email: str, password: str) -> None:
-        try:
-            if not email or not password:
-                self._show_status("Enter both email and password.", "error")
-                return
-            try:
-                auth = self._get_auth()
-            except AuthError as exc:
-                self._session_state.auth_error = str(exc)
-                self._show_status(f"Sign up unavailable: {exc}", "error")
-                return
-
-            self._show_status("Creating account…", "info")
-            try:
-                session = await asyncio.to_thread(auth.signup, email, password)
-            except AuthError as exc:
-                self._session_state.auth_error = str(exc)
-                self._show_status(f"Sign up failed: {exc}", "error")
-                return
-            except Exception as exc:
-                self._show_status(f"Unexpected sign up error: {exc}", "error")
-                return
-
-            self._session_state.session = session
-            self._session_state.last_email = session.email
-            self._session_state.auth_error = None
-            self._persist_session()
-
-            consent_storage.set_session_token(session.access_token)
-            consent_storage.load_user_consents(session.user_id, session.access_token)
-
-            self._invalidate_cached_state()
-            self._refresh_consent_state()
-            self._load_preferences()
-            self._update_session_status()
-            self._show_status(f"Account created for {session.email}", "success")
-            self._refresh_current_detail()
-        finally:
-            self._session_state.login_task = None
-
     async def _verify_ai_key(
         self,
         api_key: str,
@@ -5054,7 +5015,7 @@ class PortfolioTextualApp(App):
             )
         else:
             self._ai_state.last_analysis = result
-            structured_result = self._ai_service.format_analysis(result)
+            structured_result, _ = self._ai_service.format_analysis(result, return_structured=True)
             rendered = self._display_ai_sections(structured_result)
             if rendered.strip():
                 detail_panel.update(rendered)
@@ -5224,7 +5185,7 @@ class PortfolioTextualApp(App):
             )
         else:
             self._ai_state.last_analysis = result
-            structured_result = self._ai_service.format_analysis(result)
+            structured_result, _ = self._ai_service.format_analysis(result, return_structured=True)
             rendered = self._display_ai_sections(structured_result)
             if rendered.strip():
                 detail_panel.update(rendered)
@@ -5609,7 +5570,7 @@ class PortfolioTextualApp(App):
         """Save the scan to the projects database."""
         if not self._session_state.session:
             return
-        
+
         try:
             projects_service = self._get_projects_service()
         except ProjectsServiceError:
@@ -5640,6 +5601,18 @@ class PortfolioTextualApp(App):
         except Exception as exc:
             # Log but don't fail - user still has local export
             self._debug_log(f"Failed to save scan to database: {exc}")
+            if self._is_expired_token_error(exc):
+                self._handle_session_expired()
+            return
+
+        try:
+            await self._save_project_scan(
+                project_name, scan_data, project_record, projects_service, session
+            )
+        except Exception as exc:
+            self._debug_log(f"Failed to save cached file metadata: {exc}")
+            return
+
     async def _save_resume_to_database(self, resume_item: ResumeItem) -> None:
         """Persist generated resume items for signed-in users."""
         if not self._session_state.session:
@@ -5726,8 +5699,6 @@ class PortfolioTextualApp(App):
         session: Session,
     ) -> None:
         """Save project scan results and cached file metadata."""
-        return  # (This return was already present in your screenshot; keep it)
-
         project_id = project_record.get("id")
         if project_id:
             self._scan_state.project_id = project_id
