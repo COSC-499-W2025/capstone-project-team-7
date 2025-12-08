@@ -5457,8 +5457,65 @@ class PortfolioTextualApp(App):
         
         if success:
             self._show_status("Project deleted successfully.", "success")
-            # Reload projects list
-            await self._load_and_show_projects()
+            
+            # ✅ REFRESH THE APP'S PROJECT STATE
+            try:
+                projects = await asyncio.to_thread(
+                    projects_service.get_user_projects,
+                    self._session_state.session.user_id
+                )
+                self._projects_state.projects_list = projects or []
+                
+                # ✅ UPDATE THE MAIN MENU DETAIL PANEL
+                self._refresh_current_detail()
+                
+                # ✅ UPDATE THE ProjectsScreen IF IT'S STILL OPEN
+                projects_screen = None
+                for screen in self.screen_stack:
+                    if isinstance(screen, ProjectsScreen):
+                        projects_screen = screen
+                        break
+                
+                if projects_screen:
+                    # Update the screen's data
+                    projects_screen.projects = projects or []
+                    projects_screen.selected_project = None
+                    
+                    # Rebuild the list view
+                    list_view = projects_screen.query_one("#projects-list", ListView)
+                    list_view.clear()
+                    
+                    if projects:
+                        # Add updated project items
+                        for proj in projects_screen._sorted_projects():
+                            list_view.append(
+                                ListItem(Label(projects_screen._format_project_item(proj), classes="project-item"))
+                            )
+                        
+                        # Select first project
+                        if len(projects) > 0:
+                            projects_screen.selected_project = projects[0]
+                            projects_screen._update_detail(projects[0])
+                    else:
+                        # Show "no projects" message
+                        detail = projects_screen.query_one("#projects-detail", Static)
+                        detail.update(
+                            "No saved projects found.\n\n"
+                            "Run a portfolio scan and export it to save your first project!"
+                        )
+                    
+                    # ✅ UPDATE TOP SUMMARY PANEL
+                    try:
+                        summary = projects_screen.query_one("#top-projects-summary", Static)
+                        if projects:
+                            summary.update(projects_screen._format_top_projects_summary())
+                        else:
+                            summary.remove()  # Remove summary panel when no projects
+                    except Exception:
+                        pass
+                    
+            except Exception as exc:
+                self._show_status(f"Failed to refresh projects: {exc}", "error")
         else:
             self._show_status("Failed to delete project.", "error")
 
