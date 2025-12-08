@@ -1,5 +1,31 @@
 # Samarth Grover (@Samarth-G)
 
+## Week 14: December 1st - 7th
+This week I focused on stabilizing the AI analysis workflow and enhancing user control over analysis depth. The work centered on fixing multi-project bugs, restoring real-time progress tracking, and introducing different analysis modes, all delivered in this PR: **[PR 187 fix bugs in ai analysis](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/188)**
+
+The key technical improvement was fixing critical issues in multi-project mode where the analysis workflow was breaking down. I refactored the progress tracking system that had stopped working, implementing real-time status messages that now provide visibility throughout the entire analysis process. Users can see exactly what's happening at each stage rather than staring at a frozen screen.
+
+I also built a new `AnalysisModeChoiceScreen` that gives users meaningful control over analysis depth. The interface presents two clear options: "Text-Only" mode for fast, code-focused analysis, and "Media Deep Dive" mode for comprehensive analysis including images and multimedia assets. This architectural choice puts decision-making power in the user's hands while keeping the implementation clean and extensible for future analysis modes.
+
+Beyond coding, this week involved significant team work. We gave our Milestone 1 presentation, watched and peer-reviewed other teams' presentations, participated in team meetings to plan our demo layout, and recorded my 2 minute segment of our 10 minute demo video helping Aaron with editing. We also finalized and signed our team contract, establishing clear expectations moving forward.
+
+### Reflection
+
+**What went well:** 
+
+The progress tracking refactor was easy to implement, I identified where the system was breaking and the fix mapped naturally to the existing event flow. The analysis mode selection screen came together quickly with good UI. The milestone 1 presentation also went well, we recieved a good grade for that and overall were happy with what we were able to show.
+
+**What didn’t go well:** 
+
+Coordinating the major team activities this week like the presentation and the demo recording compressed the available coding time more than planned, though the deliverables themselves went smoothly. It also was a bit frustrating to crunch all the info we had in the demo down to 10 mins, but we found ways to cut out parts that were not the most important.
+
+### Next Steps
+
+- Finals
+- Winter Break  
+
+![Week 14 Image](./assets/SamarthG-W14.png)
+
 ## Week 13: November 24 - 30
 This week I upgraded the AI analysis results screen from plain text output into an interactive and structured interface. The work focused on data organization, navigation UX, and smart content prioritization, all delivered in this PR: **[PR #157 – format view last ai analysis](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/166)**
 

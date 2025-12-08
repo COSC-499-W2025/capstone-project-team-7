@@ -14,7 +14,7 @@ Alongside this, I supported the team by giving feedback on integration details a
 
 **Om:** This week I led the development of [PR #180 - Client Session TTL](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/180), implementing time-to-live data structures, TTL logic in helper functions, and a comprehensive test suite for automatic session expiration. I fixed flaky datetime-based tests by introducing deterministic mocking. I reviewed [PR #181 - Encryption at Rest](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/181) by Joaquin, providing feedback on the AES-256-GCM implementation and approving with suggestions on key rotation and error handling. On December 7th, I developed a bug fix for collaborative project detection, adding contributor merging logic to correctly identify solo projects when developers commit with multiple Git identities. I also merged [PR #188 - AI Analysis Bug Fixes](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/188) authored by Samarth. Other contributions included updating individual and team logs for Week 14 and adding pytest configuration to suppress third-party deprecation warnings.
 
-**Samarth:** 
+**Samarth:** This week I developed **PR [#187](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/188)**, fixing critical issues in multi-project mode and refactoring the progress tracking view to provide real-time status messages throughout the analysis workflow. I implemented an AI Analysis Mode Selection screen that allows users to choose between "Text-Only" and "Media Deep Dive" analysis modes, improving user control over analysis depth. I also reviewed the Client Session Expiry **PR [#180](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/180)** by Om, providing approval on the solid implementation of TTL-based client expiry with 30-minute automatic expiration, LRU eviction at 100 max clients, and lazy cleanup mechanisms. I verified the thread-safe ClientEntry implementation with timestamped access and confirmed all unit tests covering edge cases pass successfully. Furthermore, this week I worked on making the demo video along with my team and finalized our project by testing different parts to make sure it is ready for the deliverable deadline. 
 
 
 ## Reflection
@@ -22,7 +22,6 @@ Alongside this, I supported the team by giving feedback on integration details a
 ### What went well
 - Implementing the AES-GCM EncryptionService, updating environment docs, completing the demo recording, and supporting teammates all came together smoothly once the environment was properly configured.
 - Provding a quick fix for deep dive bug
-
 - Implemented Client Session Expiry handling with refresh tokens, improving security and reliability.
 
 ### Challenges
