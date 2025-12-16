@@ -110,13 +110,13 @@ Content-Type: multipart/form-data
 - Portfolio/resume display: endpoints expose textual summaries suitable for portfolio showcase and resume items.
 - Desktop migration alignment: `/health` for renderer wiring, `/api/llm/*` for settings, `/api/scans` (upload+parse+analysis) for IPC-triggered scans, `/api/projects/*` and `/api/resume/*` for pages, `/api/config` for settings, `/api/search` and `/api/dedup` for table views; no filesystem reads from renderer.
 
-## Suggested Delivery Order
-1) Finalize OpenAPI draft covering endpoints and error models.
-2) Upload/parse/storage path (no LLM).
-3) Local analysis APIs (contribution/skills/ranking/timeline).
-4) Consent + LLM wrapper with fallbacks.
-5) Resume/portfolio storage and selection/reordering persistence.
-6) Delete/refresh/append zip, safety, and dedup paths.
+## Suggested Delivery Order (current status)
+1) Finalize OpenAPI draft covering endpoints and error models. ✅ Draft at `docs/api-spec.yaml` (aligned to current payloads).
+2) Upload/parse/storage path (no LLM). ⏳ Stub routes live in `backend/src/api/spec_routes.py`; needs real parser/writer.
+3) Local analysis APIs (contribution/skills/ranking/timeline). ⏳ Stubbed; wire to actual analyzers/services next.
+4) Consent + LLM wrapper with fallbacks. ⏳ Existing `/api/llm/*` live; need auth/consent enforcement on new routes.
+5) Resume/portfolio storage and selection/reordering persistence. ⏳ Stubbed; connect to Supabase services.
+6) Delete/refresh/append zip, safety, and dedup paths. ⏳ Endpoints stubbed; implement with real dedup + retention.
 
 ## Next Steps (to finalize before implementation)
 - **Contracts/OpenAPI**: Lock request/response schemas (IDs, enums, timestamps, pagination, filters), error envelope, and status codes; publish an OpenAPI draft.
