@@ -12,6 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from api.llm_routes import router as llm_router
+from api.spec_routes import router as spec_router
 
 app = FastAPI(
     title="Capstone Backend API",
@@ -41,6 +42,7 @@ def health_check():
 
 # Register API routes
 app.include_router(llm_router)
+app.include_router(spec_router)
 
 if __name__ == "__main__":
     import uvicorn
