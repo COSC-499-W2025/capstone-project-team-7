@@ -1,0 +1,20 @@
+{
+  "name": "capstone-desktop-shell",
+  "version": "0.0.1",
+  "private": true,
+  "main": "dist/main.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "ts-node main.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "electron": "^31.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.3"
+  }
+}

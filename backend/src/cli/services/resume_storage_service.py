@@ -19,6 +19,8 @@ if TYPE_CHECKING:  # pragma: no cover - typing helper only
     from .encryption import EncryptionError, EncryptionService, EncryptionEnvelope
     from .resume_generation_service import ResumeItem
 
+from .encryption import EncryptionError, EncryptionService
+
 
 class ResumeStorageError(Exception):
     """Raised when resume storage operations fail."""

@@ -87,7 +87,6 @@ class ProjectsService:
                 if isinstance(lang_data, list):
                     for lang in lang_data:
                         if isinstance(lang, dict):
-                            # Try multiple possible keys
                             name = lang.get("name") or lang.get("language") or "Unknown"
                             if name and name != "Unknown":
                                 languages.append(name)
@@ -250,6 +249,8 @@ class ProjectsService:
                 "has_media_analysis": False,
                 "has_pdf_analysis": False,
                 "has_code_analysis": False,
+                "has_skills_analysis": False,
+                "has_document_analysis": False,
                 "has_git_analysis": False,
                 "has_skills_analysis": False,      
                 "has_document_analysis": False,   
@@ -483,8 +484,7 @@ class ProjectsService:
                 return self._encryption.decrypt_json(metadata) or {}
             except Exception as exc:
                 logging.warning(
-                    "Failed to decrypt cached file metadata, returning empty dict: %s",
-                    exc,
+                    "Failed to decrypt cached file metadata, returning empty dict: %s", exc
                 )
                 return {}
         return metadata if isinstance(metadata, dict) else {}
