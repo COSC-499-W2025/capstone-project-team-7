@@ -10,6 +10,7 @@ env/
 .pyc_cache/
 .cache/
 .tmp_archives/
+node_modules/
 
 # Editor/project files
 git
@@ -33,8 +34,6 @@ ai-analysis-latest.md
 ai-analysis-latest.json
 resume_item.md
 SKILLS_PROGRESS_PLAN.md
-docs/feature-inventory.md
-docs/migration-plan.md
 
 # Skill summary artifacts
 skill_summary_*.json
@@ -44,7 +43,6 @@ skill_summary_raw.txt
 *.egg-info/
 
 # Node/Next/Electron artifacts
-node_modules/
 frontend/.next/
 frontend/out/
 electron/dist/

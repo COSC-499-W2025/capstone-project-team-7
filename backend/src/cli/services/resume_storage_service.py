@@ -6,6 +6,7 @@ from pathlib import Path as _Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 import os
 import json
+import logging
 
 try:  # pragma: no cover - enforced via tests with mocks
     from supabase import Client, create_client
@@ -249,8 +250,12 @@ class ResumeStorageService:
                 decrypted = self._encryption.decrypt_json(envelope_dict)
                 record["content"] = decrypted.get("content")
                 record["bullets"] = decrypted.get("bullets", [])
-            except Exception:
+            except Exception as exc:
                 # Leave record as-is to avoid data loss if decryption fails
-                pass
+                logging.warning(
+                    "Failed to decrypt resume record %s, returning stored values: %s",
+                    record.get("id"),
+                    exc,
+                )
 
         return record

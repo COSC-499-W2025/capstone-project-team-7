@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
+import logging
 
 try:
     from supabase import Client, create_client
@@ -83,7 +84,13 @@ class ProjectsService:
             if "languages" in summary:
                 lang_data = summary["languages"]
                 if isinstance(lang_data, list):
-                    languages = [lang.get("name") for lang in lang_data if isinstance(lang, dict)]
+                    for lang in lang_data:
+                        if isinstance(lang, dict):
+                            name = lang.get("name") or lang.get("language") or "Unknown"
+                            if name and name != "Unknown":
+                                languages.append(name)
+                        elif isinstance(lang, str):
+                            languages.append(lang)
                 elif isinstance(lang_data, dict):
                     languages = list(lang_data.keys())
             
@@ -99,6 +106,8 @@ class ProjectsService:
                 "has_media_analysis": "media_analysis" in scan_data,
                 "has_pdf_analysis": "pdf_analysis" in scan_data,
                 "has_code_analysis": "code_analysis" in scan_data,
+                "has_skills_analysis": "skills_analysis" in scan_data and scan_data.get("skills_analysis", {}).get("success"),
+                "has_document_analysis": "document_analysis" in scan_data,
                 "has_git_analysis": "git_analysis" in scan_data,
                 "has_contribution_metrics": "contribution_metrics" in scan_data,
                 "contribution_score": scan_data.get("contribution_ranking", {}).get("score"),
@@ -151,7 +160,7 @@ class ProjectsService:
                 "total_files, total_lines, languages, "
                 "has_media_analysis, has_pdf_analysis, has_code_analysis, has_git_analysis, "
                 "has_contribution_metrics, contribution_score, user_commit_share, total_commits, "
-                "primary_contributor, project_end_date, has_skills_progress, "
+                "primary_contributor, project_end_date, has_skills_progress, has_skills_analysis, has_document_analysis, "
                 "created_at"
             ).eq("user_id", user_id).order("scan_timestamp", desc=True).execute()
             
@@ -230,7 +239,7 @@ class ProjectsService:
         """
         try:
             timestamp = datetime.now().isoformat()
-            update_fields = {
+                update_fields = {
                 "scan_data": None,
                 "scan_timestamp": None,
                 "total_files": 0,
@@ -239,6 +248,8 @@ class ProjectsService:
                 "has_media_analysis": False,
                 "has_pdf_analysis": False,
                 "has_code_analysis": False,
+                "has_skills_analysis": False,
+                "has_document_analysis": False,
                 "has_git_analysis": False,
                 "has_skills_progress": False,
                 "insights_deleted_at": timestamp,
@@ -442,7 +453,10 @@ class ProjectsService:
         if isinstance(scan_data, dict) and {"v", "iv", "ct"} <= set(scan_data.keys()):
             try:
                 return self._encryption.decrypt_json(scan_data)
-            except Exception:
+            except Exception as exc:
+                logging.warning(
+                    "Failed to decrypt scan_data for project, returning as-is: %s", exc
+                )
                 return scan_data
         return scan_data
 
@@ -465,6 +479,9 @@ class ProjectsService:
         if isinstance(metadata, dict) and {"v", "iv", "ct"} <= set(metadata.keys()):
             try:
                 return self._encryption.decrypt_json(metadata) or {}
-            except Exception:
+            except Exception as exc:
+                logging.warning(
+                    "Failed to decrypt cached file metadata, returning empty dict: %s", exc
+                )
                 return {}
         return metadata if isinstance(metadata, dict) else {}
