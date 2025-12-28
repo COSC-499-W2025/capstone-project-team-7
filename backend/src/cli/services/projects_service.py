@@ -240,7 +240,7 @@ class ProjectsService:
         """
         try:
             timestamp = datetime.now().isoformat()
-                update_fields = {
+            update_fields = {
                 "scan_data": None,
                 "scan_timestamp": None,
                 "total_files": 0,
