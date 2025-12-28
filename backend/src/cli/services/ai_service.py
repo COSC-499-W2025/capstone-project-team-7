@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Callable, Optional, List, Dict, Any
 import difflib
 from ...scanner.models import ParseResult
+from ...scanner.media import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 
 class AIDependencyError(RuntimeError):
     """Raised when optional AI dependencies are missing."""
@@ -140,6 +141,7 @@ class AIService:
         archive_path: Optional[str],
         git_repos: Sequence[Any],
         progress_callback: Optional[Any] = None,
+        include_media: bool = False,
     ) -> Dict[str, Any]:
        
         
@@ -181,7 +183,18 @@ class AIService:
         # Ensure on-disk media files are included even if parser skipped them
         relevant_files = self._ensure_media_candidates(target_path, relevant_files)
         
+        media_exts = set(AUDIO_EXTENSIONS + IMAGE_EXTENSIONS + VIDEO_EXTENSIONS)
+        media_candidates = [
+            f for f in relevant_files
+            if f.get("media_info")
+            or (f.get("mime_type") or "").startswith(("audio/", "video/", "image/"))
+            or Path(f.get("path", "")).suffix.lower() in media_exts
+        ]
+        # Use the explicitly passed include_media parameter instead of auto-detection
+        # This allows users to choose between text-only and media deep dive analysis
+
         self.logger.info(f"[AI Service] Total files: {len(files)}, Relevant files: {len(relevant_files)}")
+        self.logger.info(f"[AI Service] Media candidates: {len(media_candidates)}, include_media={include_media}")
         self.logger.info(f"[AI Service] Scan path: {scan_path}")
         self.logger.info(f"[AI Service] Read base path: {read_base_path}")
         self.logger.info(f"[AI Service] Git repos: {git_repos}")
@@ -205,7 +218,7 @@ class AIService:
                 scan_base_path=read_base_path,
                 project_dirs=project_dirs,
                 progress_callback=progress_callback,
-                include_media=False,
+                include_media=include_media,
             )
             self.logger.info(f"[AI Service] Analysis complete, result keys: {list(result.keys()) if result else 'None'}")
             return result
@@ -301,7 +314,7 @@ class AIService:
             logger.error(f"[AI Service] Media insights error: {exc}")
             raise AIProviderError(str(exc)) from exc
 
-    def format_analysis(self, result: Dict[str, Any]) -> Dict[str, Any]:
+    def format_analysis(self, result: Dict[str, Any], *, return_structured: bool = False):
         """Format AI analysis result into structured sections with Rich markup.
         
         Returns a dict with:
@@ -431,7 +444,62 @@ class AIService:
                 "size_mb": item.get("size_mb")
             })
         
-        return structured_result
+        rendered = self._render_analysis_sections(structured_result)
+        return (structured_result, rendered) if return_structured else rendered
+
+    def _render_analysis_sections(self, structured_result: Dict[str, Any]) -> str:
+        """Render a human-readable summary of AI analysis sections."""
+        lines: List[str] = []
+
+        overview = structured_result.get("portfolio_overview")
+        if overview:
+            lines.append("Portfolio Overview")
+            lines.append(overview)
+            lines.append("")
+
+        projects = structured_result.get("projects") or []
+        if projects:
+            lines.append("Project Insights")
+            for project in projects:
+                name = project.get("name", "Project")
+                path = project.get("path")
+                header = f"- {name}"
+                if path and path != ".":
+                    header = f"{header} ({path})"
+                lines.append(header)
+                proj_overview = project.get("overview")
+                if proj_overview:
+                    lines.append(f"  {proj_overview}")
+                key_files = project.get("key_files") or []
+                if key_files:
+                    lines.append("  Key Files")
+                    for entry in key_files:
+                        file_path = entry.get("file_path", "Unknown file")
+                        analysis = entry.get("analysis", "").strip()
+                        lines.append(f"    • {file_path}: {analysis}")
+            lines.append("")
+
+        supporting = structured_result.get("supporting_files")
+        if supporting:
+            lines.append("Supporting Files")
+            lines.append(supporting)
+            lines.append("")
+
+        media_assets = structured_result.get("media_assets")
+        if media_assets:
+            lines.append("Media Assets")
+            lines.append(media_assets)
+            lines.append("")
+
+        skipped_files = structured_result.get("skipped_files") or []
+        if skipped_files:
+            lines.append("Skipped Files")
+            for item in skipped_files:
+                path = item.get("path", "unknown")
+                reason = item.get("reason", "Skipped")
+                lines.append(f"  • {path}: {reason}")
+
+        return "\n".join(line for line in lines if line).strip()
 
     def summarize_analysis(self, result: Dict[str, Any]) -> str:
         parts: List[str] = []

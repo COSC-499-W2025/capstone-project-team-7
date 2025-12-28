@@ -57,7 +57,11 @@ def test_analyze_video_success(tmp_media: Path):
 
 
 def test_size_limit(tmp_media: Path, monkeypatch):
-    monkeypatch.setattr(Path, "stat", lambda self: SimpleNamespace(st_size=35 * 1024 * 1024, st_mode=0o100644))
+    monkeypatch.setattr(
+        Path,
+        "stat",
+        lambda self, follow_symlinks=True: SimpleNamespace(st_size=35 * 1024 * 1024, st_mode=0o100644),
+    )
     monkeypatch.setattr(Path, "is_file", lambda self: True)
     analyzer = LLMRemoteMediaAnalyzer(client=MockClient("{}"))
     result = analyzer.analyze_audio(tmp_media)

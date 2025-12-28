@@ -78,6 +78,8 @@ class AIState:
     task: Optional[asyncio.Task[Any]] = None
     pending_analysis: bool = False
     pending_auto_suggestion: bool = False
+    include_media: bool = False
+
 
 @dataclass
 class ProjectsState:

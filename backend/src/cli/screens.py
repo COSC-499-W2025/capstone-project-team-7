@@ -180,6 +180,51 @@ class SearchCancelled(Message):
     pass
 
 
+class AnalysisModeChosen(Message):
+    """Raised when user selects text-only or media deep dive analysis mode."""
+
+    def __init__(self, include_media: bool) -> None:
+        super().__init__()
+        self.include_media = include_media
+
+
+class AnalysisModeChoiceScreen(ModalScreen[None]):
+    """Modal dialog for choosing between text-only and media deep dive AI analysis."""
+
+    def compose(self) -> ComposeResult:
+        yield Vertical(
+            Static("AI-Powered Analysis", classes="dialog-title"),
+            Static(
+                "Choose the type of AI analysis to perform:\n\n"
+                "• [b]Text-Only:[/b] Analysis of all code and text based documents (faster, low cost)\n\n"
+                "• [b]Media Deep Dive:[/b] Includes images, audio and video as part of analysis",
+                classes="dialog-subtitle",
+            ),
+            Static("", id="mode-message", classes="dialog-message"),
+            Horizontal(
+                Button("Text-Only", id="mode-text-only", variant="primary"),
+                Button("Media Deep Dive", id="mode-media", variant="default"),
+                Button("Cancel", id="mode-cancel"),
+                classes="dialog-buttons",
+            ),
+            classes="dialog",
+        )
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "mode-text-only":
+            dispatch_message(self, AnalysisModeChosen(include_media=False))
+            self.dismiss(None)
+        elif event.button.id == "mode-media":
+            dispatch_message(self, AnalysisModeChosen(include_media=True))
+            self.dismiss(None)
+        elif event.button.id == "mode-cancel":
+            self.dismiss(None)
+
+    def on_key(self, event: Key) -> None:  # pragma: no cover - keyboard shortcut
+        if event.key == "escape":
+            self.dismiss(None)
+
+
 class SearchInputScreen(ModalScreen[None]):
     """Modal dialog for entering search/filter criteria."""
 
@@ -1554,7 +1599,7 @@ class ProjectsScreen(ModalScreen[None]):
     
     #projects-dialog {
         width: 90;
-        min-height: 35;
+        min-height: 45;
         border: thick $background 80%;
         background: $surface;
         padding: 1 2;
@@ -1574,9 +1619,19 @@ class ProjectsScreen(ModalScreen[None]):
         margin-bottom: 1;
     }
     
+    #top-projects-summary {
+        width: 100%;
+        height: 14;
+        border: solid $secondary;
+        background: $panel;
+        padding: 1;
+        margin-bottom: 1;
+        overflow: auto;
+    }
+    
     #projects-list {
         width: 100%;
-        height: 15;
+        height: 10;
         border: solid $primary;
         margin-bottom: 1;
     }
@@ -1587,7 +1642,7 @@ class ProjectsScreen(ModalScreen[None]):
     
     #projects-detail {
         width: 100%;
-        height: 8;
+        height: 6;
         border: solid $primary;
         padding: 1;
         margin-bottom: 1;
@@ -1617,9 +1672,11 @@ class ProjectsScreen(ModalScreen[None]):
     .status-success { color: $success; }
     """
     
-    def __init__(self, projects: List[Dict[str, Any]]) -> None:
+    def __init__(self, projects: List[Dict[str, Any]], projects_service: Optional[Any] = None, user_id: Optional[str] = None) -> None:
         super().__init__()
         self.projects = projects
+        self.projects_service = projects_service
+        self.user_id = user_id
         self.selected_project: Optional[Dict[str, Any]] = None
         # Track whether projects are ordered by contribution importance or scan recency
         self.sort_mode: str = "importance"
@@ -1627,6 +1684,146 @@ class ProjectsScreen(ModalScreen[None]):
     def _sort_label(self) -> str:
         """Return the button label that matches the active sort mode."""
         return "Sort: recency" if self.sort_mode == "recency" else "Sort: importance"
+    
+    def refresh_after_delete(self, updated_projects: List[Dict[str, Any]]) -> None:
+        """Refresh the screen after a project deletion."""
+        self.projects = updated_projects
+        self.selected_project = None
+        
+        # If no projects left, we need to fully refresh the screen layout
+        if not updated_projects:
+            # Remove existing list if present
+            try:
+                list_view = self.query_one("#projects-list", ListView)
+                list_view.remove()
+            except Exception:
+                pass
+            
+            # Update detail to show empty state
+            try:
+                detail = self.query_one("#projects-detail", Static)
+                detail.update(
+                    "No saved projects found.\n\n"
+                    "Run a portfolio scan and export it to save your first project!"
+                )
+            except Exception:
+                pass
+            
+            # Update or remove buttons since there are no projects
+            try:
+                buttons_container = self.query_one("#projects-buttons", Horizontal)
+                # Remove all existing buttons except Close
+                for button in buttons_container.query(Button):
+                    if button.id != "close-btn":
+                        button.remove()
+            except Exception:
+                pass
+            
+            # Remove summary panel
+            try:
+                summary = self.query_one("#top-projects-summary", Static)
+                summary.remove()
+            except Exception:
+                pass
+        else:
+            # Projects still exist, update the list
+            try:
+                list_view = self.query_one("#projects-list", ListView)
+                # Clear all items first
+                while len(list_view) > 0:
+                    list_view.remove_index(0)
+                
+                sorted_projects = self._sorted_projects()
+                for proj in sorted_projects:
+                    list_view.append(
+                        ListItem(Label(self._format_project_item(proj), classes="project-item"))
+                    )
+                
+                # Select first project by setting index and updating detail
+                if sorted_projects and len(list_view) > 0:
+                    list_view.index = 0
+                    self.selected_project = sorted_projects[0]
+                    self._update_detail(self.selected_project)
+            except Exception as e:
+                # Silently fail - UI might not be fully initialized yet
+                pass
+            
+            # Update summary panel
+            try:
+                summary = self.query_one("#top-projects-summary", Static)
+                summary.update(self._format_top_projects_summary())
+            except Exception:
+                pass
+
+    def _format_top_projects_summary(self) -> str:
+        """Format a summary of the top ranked projects with their analysis."""
+        if not self.projects:
+            return "No projects to summarize."
+        
+        # Get top projects sorted by importance
+        sorted_projects = sorted(
+            self.projects,
+            key=lambda p: (
+                p.get("contribution_score") is None,
+                -(p.get("contribution_score") or 0),
+                p.get("scan_timestamp") or "",
+            ),
+        )
+        
+        # Take top 3
+        top_projects = sorted_projects[:3]
+        
+        summary_lines = ["🌟 TOP PROJECTS SUMMARY (ranked by importance):\n"]
+        
+        for idx, project in enumerate(top_projects, 1):
+            name = project.get("project_name", "Unknown")
+            score = project.get("contribution_score", 0)
+            user_share = project.get("user_commit_share", 0)
+            total_commits = project.get("total_commits", 0)
+            total_files = project.get("total_files", 0)
+            total_lines = project.get("total_lines", 0)
+            
+            # Calculate impact percentage
+            impact_pct = int(user_share * 100) if user_share else 0
+            
+            # Build summary line
+            score_str = f"⭐ {score:.2f}" if isinstance(score, (int, float)) else ""
+            summary_lines.append(f"\n{idx}. {name} {score_str}")
+            summary_lines.append(f"   Impact: {impact_pct}% of commits ({total_commits} total) • {total_files} files • {total_lines:,} lines")
+            
+            # ✅ CHECK ALL ANALYSIS TYPES
+            analysis_types = []
+            
+            if project.get("has_code_analysis"):
+                analysis_types.append("💻 Code")
+            
+            if project.get("has_git_analysis"):
+                analysis_types.append("🔀 Git")
+            
+            if project.get("has_contribution_metrics"):
+                analysis_types.append("📊 Contributors")
+            
+            if project.get("has_skills_analysis"):  # ✅ NEW
+                analysis_types.append("🎯 Skills")
+            
+            if project.get("has_pdf_analysis"):
+                analysis_types.append("📄 PDFs")
+            
+            if project.get("has_document_analysis"):  # ✅ NEW
+                analysis_types.append("📝 Docs")
+            
+            if project.get("has_media_analysis"):
+                analysis_types.append("🎨 Media")
+            
+            if project.get("has_skills_progress"):
+                analysis_types.append("📈 Timeline")
+            
+            if analysis_types:
+                analysis_str = " | ".join(analysis_types)
+                summary_lines.append(f"   Analysis: {analysis_str}")
+        
+        return "\n".join(summary_lines)
+
 
     def _sorted_projects(self) -> List[Dict[str, Any]]:
         """Return projects ordered per current sort mode."""
@@ -1672,6 +1869,11 @@ class ProjectsScreen(ModalScreen[None]):
                 "↑↓ to navigate • Enter to view • Tab to buttons • Esc to close",
                 id="projects-help"
             )
+            
+            # Always show summary panel if there are projects
+            if self.projects:
+                summary_text = self._format_top_projects_summary()
+                yield Static(summary_text, id="top-projects-summary")
             
             if not self.projects:
                 yield Static(
@@ -1763,10 +1965,26 @@ class ProjectsScreen(ModalScreen[None]):
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         """When user presses Enter on a project, open it immediately."""
         if event.control.id == "projects-list":
-            if self.selected_project:
+            # Get the selected project from the current sorted order
+            sorted_projects = self._sorted_projects()
+            if event.control.index < len(sorted_projects):
+                self.selected_project = sorted_projects[event.control.index]
                 dispatch_message(self, ProjectSelected(self.selected_project))
             else:
                 self._set_status("No project selected", "warning")
+    
+    def on_mount(self) -> None:
+        """Set initial selection when the screen mounts."""
+        try:
+            list_view = self.query_one("#projects-list", ListView)
+            if self.projects:
+                sorted_projects = self._sorted_projects()
+                if sorted_projects:
+                    list_view.index = 0
+                    self.selected_project = sorted_projects[0]
+                    self._update_detail(self.selected_project)
+        except Exception:
+            pass
     
     def _update_detail(self, project: Dict[str, Any]) -> None:
         """Update the detail panel with project info."""
@@ -1879,6 +2097,16 @@ class ProjectsScreen(ModalScreen[None]):
         """Handle keyboard shortcuts."""
         if event.key == "escape":
             self.dismiss(None)
+        elif event.key in ("up", "down"):
+            # Update detail when navigating list with arrow keys
+            try:
+                list_view = self.query_one("#projects-list", ListView)
+                sorted_projects = self._sorted_projects()
+                if list_view.index >= 0 and list_view.index < len(sorted_projects):
+                    self.selected_project = sorted_projects[list_view.index]
+                    self._update_detail(self.selected_project)
+            except Exception:
+                pass
 
 
 class ResumeViewerScreen(ModalScreen[None]):
@@ -2296,10 +2524,10 @@ class ProjectViewerScreen(ModalScreen[None]):
         super().__init__()
         self.project = project
         self.scan_data = project.get("scan_data") or {}
-        self.current_tab = "overview"
+        self.current_tab = "summary"
         
-        # Determine available tabs
-        self.available_tabs = ["overview"]
+        # Determine available tabs - summary is always first
+        self.available_tabs = ["summary", "overview"]
         if self.scan_data.get("code_analysis"):
             self.available_tabs.append("code")
         if self.scan_data.get("git_analysis"):
@@ -2321,7 +2549,8 @@ class ProjectViewerScreen(ModalScreen[None]):
             
             # Tab buttons
             with Horizontal(id="viewer-tabs"):
-                yield Button("Overview", id="tab-overview", variant="primary")
+                yield Button("Summary", id="tab-summary", variant="primary")
+                yield Button("Overview", id="tab-overview")
                 if "code" in self.available_tabs:
                     yield Button("Code Analysis", id="tab-code")
                 if "git" in self.available_tabs:
@@ -2335,7 +2564,8 @@ class ProjectViewerScreen(ModalScreen[None]):
                 if "contributions" in self.available_tabs:
                     yield Button("Contributions", id="tab-contributions")
             # Content area
-            yield Static(self._render_overview(), id="viewer-content")
+            with ScrollableContainer(id="viewer-content"):
+                yield Static(self._render_summary(), id="viewer-content-text")
             
             # Action buttons - ✅ ADD BACK BUTTON
             with Horizontal(id="viewer-buttons"):
@@ -2378,9 +2608,11 @@ class ProjectViewerScreen(ModalScreen[None]):
     def _update_content(self) -> None:
         """Update content based on current tab."""
         try:
-            content = self.query_one("#viewer-content", Static)
+            content = self.query_one("#viewer-content-text", Static)
             
-            if self.current_tab == "overview":
+            if self.current_tab == "summary":
+                content.update(self._render_summary())
+            elif self.current_tab == "overview":
                 content.update(self._render_overview())
             elif self.current_tab == "code":
                 content.update(self._render_code_analysis())
@@ -2397,18 +2629,23 @@ class ProjectViewerScreen(ModalScreen[None]):
 
         except Exception:
             pass
-    
-    def _render_overview(self) -> str:
-        """Render overview tab."""
+
+    def _render_summary(self) -> str:
+        """Render comprehensive summary with all available sections."""
+        from rich.markup import escape
+        
         lines: List[str] = []
         
-        lines.append("[b]Project Overview[/b]\n")
+        # === PROJECT HEADER ===
+        lines.append("[b][cyan]📊 Project Summary[/cyan][/b]\n")
         
-        # Basic info
-        lines.append(f"Name: {self.project.get('project_name', 'Unknown')}")
-        lines.append(f"Path: {self.project.get('project_path', 'Unknown')}")
-        
+        project_name = escape(self.project.get('project_name', 'Unknown'))
+        project_path = escape(self.project.get('project_path', 'Unknown'))
         timestamp = self.project.get("scan_timestamp", "Unknown")
+        
+        lines.append(f"[b]{project_name}[/b]")
+        lines.append(f"Path: {project_path}")
+        
         if timestamp != "Unknown":
             try:
                 from datetime import datetime
@@ -2416,45 +2653,222 @@ class ProjectViewerScreen(ModalScreen[None]):
                 timestamp = dt.strftime("%Y-%m-%d at %H:%M:%S")
             except:
                 pass
-        lines.append(f"Scanned: {timestamp}")
+        lines.append(f"Scanned: {timestamp}\n")
         
-        lines.append("")
+        # Guard: Make sure scan_data is a dict
+        if not isinstance(self.scan_data, dict):
+            lines.append("[red]Cannot render: scan_data is not a dictionary[/red]")
+            return "\n".join(lines)
         
-        # Summary stats
+        # === SUMMARY STATISTICS ===
         summary = self.scan_data.get("summary", {})
-        lines.append("[b]Summary[/b]")
-        lines.append(f"Files processed: {summary.get('files_processed', 0)}")
-        lines.append(f"Bytes processed: {summary.get('bytes_processed', 0):,}")
-        lines.append(f"Issues found: {summary.get('issues_count', 0)}")
+        if summary:
+            lines.append("[b][yellow]📈 Summary Statistics[/yellow][/b]")
+            files = summary.get('files_processed', 0)
+            bytes_proc = summary.get('bytes_processed', 0)
+            issues = summary.get('issues_count', 0)
+            
+            lines.append(f"  • Files processed: {files}")
+            lines.append(f"  • Total size: {bytes_proc:,} bytes ({bytes_proc / 1024 / 1024:.2f} MB)")
+            if issues:
+                lines.append(f"  • Issues found: {issues}")
+            lines.append("")
         
-        filtered = summary.get("filtered_out")
-        if filtered is not None:
-            lines.append(f"Files filtered: {filtered}")
-        
-        lines.append("")
-        
-        # Languages
+        # === LANGUAGES ===
         languages = summary.get("languages", [])
         if languages:
-            lines.append("[b]Languages Detected[/b]")
+            lines.append("[b][yellow]🔤 Languages[/yellow][/b]")
             if isinstance(languages, list):
                 for lang in languages[:10]:
                     if isinstance(lang, dict):
-                        name = lang.get("name", "Unknown")
+                        name = lang.get("name") or lang.get("language") or "Unknown"
                         count = lang.get("files", 0)
-                        lines.append(f"  • {name}: {count} files")
+                        if name and name != "Unknown":
+                            safe_name = escape(str(name))
+                            lines.append(f"  • {safe_name}: {count} files")
+            if len(languages) > 10:
+                lines.append(f"  ... +{len(languages) - 10} more")
             lines.append("")
         
-        # Analysis types
-        lines.append("[b]Available Analyses[/b]")
-        if self.scan_data.get("code_analysis"):
-            lines.append("  ✓ Code Analysis")
-        if self.scan_data.get("git_analysis"):
-            lines.append("  ✓ Git Statistics")
-        if self.scan_data.get("pdf_analysis"):
-            lines.append("  ✓ PDF Analysis")
-        if self.scan_data.get("media_analysis"):
-            lines.append("  ✓ Media Analysis")
+        # === CODE QUALITY ===
+        code_data = self.scan_data.get("code_analysis", {})
+        if code_data and code_data.get("success"):
+            lines.append("[b][yellow]💻 Code Quality[/yellow][/b]")
+            
+            metrics = code_data.get("metrics", {})
+            if metrics:
+                total_lines = metrics.get('total_lines', 0)
+                code_lines = metrics.get('total_code_lines', 0)
+                comments = metrics.get('total_comments', 0)
+                functions = metrics.get('total_functions', 0)
+                classes = metrics.get('total_classes', 0)
+                avg_complexity = metrics.get('average_complexity', 0)
+                avg_maint = metrics.get('average_maintainability', 0)
+                
+                lines.append(f"  • Total lines: {total_lines:,}")
+                lines.append(f"  • Code lines: {code_lines:,} | Comments: {comments:,}")
+                lines.append(f"  • Functions: {functions:,} | Classes: {classes:,}")
+                lines.append(f"  • Avg complexity: {avg_complexity:.2f}")
+                lines.append(f"  • Avg maintainability: {avg_maint:.1f}/100")
+            
+            quality = code_data.get("quality", {})
+            if quality:
+                security = quality.get('security_issues', 0)
+                todos = quality.get('todos', 0)
+                high_priority = quality.get('high_priority_files', 0)
+                refactor_funcs = quality.get('functions_needing_refactor', 0)
+                
+                if security or todos or high_priority or refactor_funcs:
+                    lines.append("")
+                    if security:
+                        lines.append(f"  ⚠ Security issues: {security}")
+                    if todos:
+                        lines.append(f"  📝 TODOs: {todos}")
+                    if high_priority:
+                        lines.append(f"  🔴 High priority files: {high_priority}")
+                    if refactor_funcs:
+                        lines.append(f"  🔧 Functions needing refactor: {refactor_funcs}")
+            lines.append("")
+        
+        # === SKILLS ===
+        skills_data = self.scan_data.get("skills_analysis", {})
+        if skills_data and skills_data.get("success"):
+            lines.append("[b][yellow]🎯 Skills Detected[/yellow][/b]")
+            total_skills = skills_data.get("total_skills", 0)
+            skills_by_cat = skills_data.get("skills_by_category", {})
+            
+            if total_skills:
+                lines.append(f"  • Total skills: {total_skills}")
+                lines.append("")
+            
+            if skills_by_cat:
+                for category, skills in list(skills_by_cat.items())[:5]:
+                    if skills:
+                        lines.append(f"  [b]{escape(category)}:[/b]")
+                        for skill in skills[:3]:
+                            if isinstance(skill, dict):
+                                name = escape(skill.get("name", "Unknown"))
+                                prof = skill.get("proficiency", "")
+                                lines.append(f"    • {name}{f' ({prof})' if prof else ''}")
+                            else:
+                                lines.append(f"    • {escape(str(skill))}")
+            lines.append("")
+        
+        # === GIT STATS ===
+        git_data = self.scan_data.get("git_analysis", [])
+        if isinstance(git_data, list) and len(git_data) > 0:
+            repo = git_data[0]
+            
+            if isinstance(repo, dict) and not repo.get("error"):
+                lines.append("[b][yellow]🔀 Git Statistics[/yellow][/b]")
+                
+                commits = repo.get("commit_count", 0)
+                branches = repo.get("branches", [])
+                
+                lines.append(f"  • Total commits: {commits}")
+                lines.append(f"  • Branches: {len(branches)}")
+                
+                # Date range
+                date_range = repo.get("date_range", {})
+                if date_range:
+                    start = date_range.get("start", "")
+                    end = date_range.get("end", "")
+                    if start and end:
+                        lines.append(f"  • Active period: {start} → {end}")
+                
+                # Top contributors
+                contributors = repo.get("contributors", [])
+                if contributors:
+                    lines.append("")
+                    lines.append("  [b]Top contributors:[/b]")
+                    for contrib in contributors[:3]:
+                        name = escape(contrib.get("name", "Unknown"))
+                        commit_count = contrib.get("commits", 0)
+                        percent = contrib.get("percent", 0)
+                        lines.append(f"    • {name}: {commit_count} commits ({percent}%)")
+                
+                lines.append("")
+        
+        # === CONTRIBUTIONS ===
+        contrib_data = self.scan_data.get("contribution_metrics", {})
+        if isinstance(contrib_data, dict) and contrib_data:
+            lines.append("[b][yellow]📊 Contribution Metrics[/yellow][/b]")
+            
+            # Ranking
+            ranking = self.scan_data.get("contribution_ranking", {})
+            if isinstance(ranking, dict) and ranking.get("score") is not None:
+                score = ranking.get("score")
+                user_share = ranking.get("user_commit_share")
+                lines.append(f"  • Importance score: {score:.2f}")
+                if isinstance(user_share, (int, float)):
+                    lines.append(f"  • Your contribution: {user_share*100:.1f}%")
+            
+            total_commits = contrib_data.get("total_commits", 0)
+            total_contribs = contrib_data.get("total_contributors", 0)
+            total_lines = contrib_data.get("total_lines_of_code", 0)
+            
+            if total_commits:
+                lines.append(f"  • Total commits: {total_commits}")
+            if total_contribs:
+                lines.append(f"  • Contributors: {total_contribs}")
+            if total_lines:
+                lines.append(f"  • Total lines of code: {total_lines:,}")
+            
+            # Activity timeline
+            timeline = contrib_data.get("activity_timeline", [])
+            if timeline:
+                lines.append("")
+                lines.append("  [b]Recent activity:[/b]")
+                for month_data in timeline[:3]:
+                    month = month_data.get("month", "Unknown")
+                    commits = month_data.get("commits", 0)
+                    lines.append(f"    • {month}: {commits} commits")
+            
+            lines.append("")
+        
+        # === MEDIA ANALYSIS ===
+        media_data = self.scan_data.get("media_analysis", {})
+        if isinstance(media_data, dict) and media_data:
+            lines.append("[b][yellow]🎨 Media Analysis[/yellow][/b]")
+            
+            summary_obj = media_data.get("summary", {})
+            if summary_obj:
+                total_media = summary_obj.get("total_media_files", 0)
+                images = summary_obj.get("image_files", 0)
+                audio = summary_obj.get("audio_files", 0)
+                video = summary_obj.get("video_files", 0)
+                
+                if total_media:
+                    lines.append(f"  • Total media files: {total_media}")
+                if images:
+                    lines.append(f"  • Images: {images}")
+                if audio:
+                    lines.append(f"  • Audio files: {audio}")
+                if video:
+                    lines.append(f"  • Video files: {video}")
+                
+                # Image metrics
+                metrics = media_data.get("metrics", {})
+                image_metrics = metrics.get("images", {})
+                if image_metrics:
+                    avg_w = image_metrics.get("average_width")
+                    avg_h = image_metrics.get("average_height")
+                    if avg_w and avg_h:
+                        lines.append(f"  • Avg resolution: {avg_w:.0f}×{avg_h:.0f}")
+            
+            lines.append("")
+        
+        # === PDF ANALYSIS ===
+        pdf_data = self.scan_data.get("pdf_analysis", {})
+        if pdf_data:
+            total_pdfs = pdf_data.get("total_pdfs", 0)
+            successful = pdf_data.get("successful", 0)
+            
+            if total_pdfs > 0:
+                lines.append("[b][yellow]📄 PDF Analysis[/yellow][/b]")
+                lines.append(f"  • Total PDFs: {total_pdfs}")
+                lines.append(f"  • Successfully analyzed: {successful}")
+                lines.append("")
         
         return "\n".join(lines)
     
@@ -2484,6 +2898,7 @@ class ProjectViewerScreen(ModalScreen[None]):
         lines.append(f"  • Successful: {code_data.get('successful_files', 0)}")
         lines.append(f"  • Failed: {code_data.get('failed_files', 0)}")
         lines.append("")
+        
         
         # Language breakdown
         languages = code_data.get("languages", {})

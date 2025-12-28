@@ -38,6 +38,14 @@ def test_encrypt_decrypt_json_roundtrip(monkeypatch):
     assert restored == payload
 
 
+def test_encrypts_empty_payload(monkeypatch):
+    _set_env_key(monkeypatch)
+    svc = EncryptionService()
+    envelope = svc.encrypt_json({})
+    restored = svc.decrypt_json(envelope.to_dict())
+    assert restored == {}
+
+
 def test_missing_or_bad_key_raises(monkeypatch):
     monkeypatch.delenv("ENCRYPTION_MASTER_KEY", raising=False)
     with pytest.raises(EncryptionError):

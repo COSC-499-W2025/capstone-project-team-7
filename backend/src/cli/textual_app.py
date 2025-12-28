@@ -91,6 +91,8 @@ from .screens import (
     AIKeySubmitted,
     AIResultAction,
     AIResultsScreen,
+    AnalysisModeChosen,
+    AnalysisModeChoiceScreen,
     AutoSuggestionConfigScreen,
     AutoSuggestionSelected,
     AutoSuggestionCancelled,
@@ -501,6 +503,18 @@ class PortfolioTextualApp(App):
             self._show_ai_key_dialog()
             return
 
+        self._show_analysis_mode_choice()
+
+    def _show_analysis_mode_choice(self) -> None:
+        """Show dialog to choose between text-only and media deep dive analysis."""
+        screen = AnalysisModeChoiceScreen()
+        self.push_screen(screen)
+
+    async def on_analysis_mode_chosen(self, message: AnalysisModeChosen) -> None:
+        """Handle analysis mode selection and start analysis."""
+        self._ai_state.include_media = message.include_media
+        mode_name = "Media Deep Dive" if message.include_media else "Text-Only"
+        self._show_status(f"Starting {mode_name} AI analysis…", "info")
         self._start_ai_analysis()
 
     def _handle_skill_progress_summary(self) -> None:
@@ -795,13 +809,14 @@ class PortfolioTextualApp(App):
 
         if "valid JSON" in message or "Model did not return" in message:
             # Surface a short raw snippet when available for debugging malformed outputs.
-            snippet = ""
+            detail = ""
             if "raw_snippet=" in message:
                 try:
                     snippet = message.split("raw_snippet=", 1)[1].strip()
+                    if snippet:
+                        detail = f" Debug hint: {snippet}"
                 except Exception:
-                    snippet = ""
-            detail = f" Debug hint: {snippet}" if snippet else f" Debug detail: {message}"
+                    detail = ""
             return f"AI summary unavailable: the response was not valid JSON.{detail} Please retry."
         # Default: show the underlying error with any debug markers (raw_snippet/raw_dumped)
         return f"AI summary unavailable: {message or 'unexpected error'}"
@@ -1153,6 +1168,9 @@ class PortfolioTextualApp(App):
         self.push_screen(ScanConfigScreen(default_path=default_path, relevant_only=relevant_only))
 
     async def _run_scan(self, target: Path, relevant_only: bool) -> None:
+        if not self._ensure_data_access_consent():
+            return
+
         self._show_status("Scanning project – please wait…", "info")
         detail_panel = self.query_one("#detail", Static)
         progress_bar = self._scan_progress_bar
@@ -3638,6 +3656,23 @@ class PortfolioTextualApp(App):
         except Exception:  # pragma: no cover - defensive cleanup
             pass
 
+    def _ensure_data_access_consent(self) -> bool:
+        if not self._session_state.session:
+            self._show_status("Sign in and enable data access consent before running a scan.", "warning")
+            self._refresh_current_detail()
+            return False
+
+        self._refresh_consent_state()
+        if self._consent_state.record:
+            return True
+
+        message = "Data access consent must be enabled before running a scan."
+        if self._consent_state.error:
+            message = f"Data access consent required. {self._consent_state.error}"
+        self._show_status(message, "warning")
+        self._refresh_current_detail()
+        return False
+
     def _has_external_consent(self) -> bool:
         if not self._session_state.session:
             return False
@@ -3912,46 +3947,6 @@ class PortfolioTextualApp(App):
         finally:
             self._session_state.login_task = None
     
-    async def _handle_signup(self, email: str, password: str) -> None:
-        try:
-            if not email or not password:
-                self._show_status("Enter both email and password.", "error")
-                return
-            try:
-                auth = self._get_auth()
-            except AuthError as exc:
-                self._session_state.auth_error = str(exc)
-                self._show_status(f"Sign up unavailable: {exc}", "error")
-                return
-
-            self._show_status("Creating account…", "info")
-            try:
-                session = await asyncio.to_thread(auth.signup, email, password)
-            except AuthError as exc:
-                self._session_state.auth_error = str(exc)
-                self._show_status(f"Sign up failed: {exc}", "error")
-                return
-            except Exception as exc:
-                self._show_status(f"Unexpected sign up error: {exc}", "error")
-                return
-
-            self._session_state.session = session
-            self._session_state.last_email = session.email
-            self._session_state.auth_error = None
-            self._persist_session()
-
-            consent_storage.set_session_token(session.access_token)
-            consent_storage.load_user_consents(session.user_id, session.access_token)
-
-            self._invalidate_cached_state()
-            self._refresh_consent_state()
-            self._load_preferences()
-            self._update_session_status()
-            self._show_status(f"Account created for {session.email}", "success")
-            self._refresh_current_detail()
-        finally:
-            self._session_state.login_task = None
-
     async def _verify_ai_key(
         self,
         api_key: str,
@@ -4036,7 +4031,7 @@ class PortfolioTextualApp(App):
 
         if self._ai_state.pending_analysis:
             self._ai_state.pending_analysis = False
-            self._start_ai_analysis()
+            self._show_analysis_mode_choice()
 
     def _persist_session(self) -> None:
         if self._session_state.session:
@@ -4969,6 +4964,12 @@ class PortfolioTextualApp(App):
             _reset_progress_ui()
             return
 
+        # Create progress callback to update UI during analysis
+        def progress_callback(message: str) -> None:
+            """Update progress label with analysis status."""
+            if progress_label:
+                self.call_from_thread(progress_label.update, message)
+
         try:
             result = await asyncio.to_thread(
                 self._ai_service.execute_analysis,
@@ -4978,6 +4979,8 @@ class PortfolioTextualApp(App):
                 target_path=str(self._scan_state.target) if self._scan_state.target else None,
                 archive_path=str(self._scan_state.archive) if self._scan_state.archive else None,
                 git_repos=self._scan_state.git_repos,
+                include_media=self._ai_state.include_media,
+                progress_callback=progress_callback,
             )
         except asyncio.CancelledError:
             self._show_status("AI analysis cancelled.", "info")
@@ -5012,7 +5015,7 @@ class PortfolioTextualApp(App):
             )
         else:
             self._ai_state.last_analysis = result
-            structured_result = self._ai_service.format_analysis(result)
+            structured_result, _ = self._ai_service.format_analysis(result, return_structured=True)
             rendered = self._display_ai_sections(structured_result)
             if rendered.strip():
                 detail_panel.update(rendered)
@@ -5182,7 +5185,7 @@ class PortfolioTextualApp(App):
             )
         else:
             self._ai_state.last_analysis = result
-            structured_result = self._ai_service.format_analysis(result)
+            structured_result, _ = self._ai_service.format_analysis(result, return_structured=True)
             rendered = self._display_ai_sections(structured_result)
             if rendered.strip():
                 detail_panel.update(rendered)
@@ -5307,7 +5310,8 @@ class PortfolioTextualApp(App):
         self._projects_state.projects_list = projects or []
         self._projects_state.error = None
         self._refresh_current_detail()
-        self.push_screen(ProjectsScreen(projects or []))
+        user_id = self._session_state.session.user_id if self._session_state.session else None
+        self.push_screen(ProjectsScreen(projects or [], projects_service=projects_service, user_id=user_id))
         self._show_status(f"Loaded {len(projects or [])} project(s).", "success")
 
     async def _load_and_show_resumes(self, *, show_modal: bool = True) -> None:
@@ -5435,12 +5439,34 @@ class PortfolioTextualApp(App):
             return
         
         if success:
-            self._show_status("Project deleted successfully.", "success")
-            # Reload projects list
-            await self._load_and_show_projects()
+            # Refresh projects list
+            try:
+                projects = await asyncio.to_thread(
+                    projects_service.get_user_projects,
+                    self._session_state.session.user_id
+                )
+                self._projects_state.projects_list = projects or []
+                self._refresh_current_detail()
+                
+                # Close the ProjectsScreen if it's open and reopen it with fresh data
+                # This ensures a complete refresh of the UI
+                for screen in self.screen_stack[:]:  # Create a copy to iterate
+                    if isinstance(screen, ProjectsScreen):
+                        # Dismiss the screen
+                        screen.dismiss(None)
+                        # Reopen it with fresh data after a brief delay to ensure the dismiss completes
+                        async def reopen_projects() -> None:
+                            await asyncio.sleep(0.1)
+                            self.push_screen(ProjectsScreen(projects or [], projects_service=projects_service, user_id=self._session_state.session.user_id))
+                        asyncio.create_task(reopen_projects())
+                        break
+                
+                self._show_status("Project deleted successfully.", "success")
+            except Exception as exc:
+                self._show_status(f"Failed to refresh: {exc}", "error")
         else:
             self._show_status("Failed to delete project.", "error")
-
+            
     async def on_resume_selected(self, message: ResumeSelected) -> None:
         """Handle viewing a saved resume item."""
         message.stop()
@@ -5544,7 +5570,7 @@ class PortfolioTextualApp(App):
         """Save the scan to the projects database."""
         if not self._session_state.session:
             return
-        
+
         try:
             projects_service = self._get_projects_service()
         except ProjectsServiceError:
@@ -5575,6 +5601,18 @@ class PortfolioTextualApp(App):
         except Exception as exc:
             # Log but don't fail - user still has local export
             self._debug_log(f"Failed to save scan to database: {exc}")
+            if self._is_expired_token_error(exc):
+                self._handle_session_expired()
+            return
+
+        try:
+            await self._save_project_scan(
+                project_name, scan_data, project_record, projects_service, session
+            )
+        except Exception as exc:
+            self._debug_log(f"Failed to save cached file metadata: {exc}")
+            return
+
     async def _save_resume_to_database(self, resume_item: ResumeItem) -> None:
         """Persist generated resume items for signed-in users."""
         if not self._session_state.session:
@@ -5661,8 +5699,6 @@ class PortfolioTextualApp(App):
         session: Session,
     ) -> None:
         """Save project scan results and cached file metadata."""
-        return  # (This return was already present in your screenshot; keep it)
-
         project_id = project_record.get("id")
         if project_id:
             self._scan_state.project_id = project_id

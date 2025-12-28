@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
+import json
 import logging
 
 try:
@@ -93,7 +94,7 @@ class ProjectsService:
                             languages.append(lang)
                 elif isinstance(lang_data, dict):
                     languages = list(lang_data.keys())
-            
+                
             record = {
                 "user_id": user_id,
                 "project_name": project_name,
@@ -160,7 +161,7 @@ class ProjectsService:
                 "total_files, total_lines, languages, "
                 "has_media_analysis, has_pdf_analysis, has_code_analysis, has_git_analysis, "
                 "has_contribution_metrics, contribution_score, user_commit_share, total_commits, "
-                "primary_contributor, project_end_date, has_skills_progress, has_skills_analysis, has_document_analysis, "
+                "primary_contributor, project_end_date, has_skills_progress, has_skills_analysis, has_document_analysis,"
                 "created_at"
             ).eq("user_id", user_id).order("scan_timestamp", desc=True).execute()
             
@@ -251,6 +252,8 @@ class ProjectsService:
                 "has_skills_analysis": False,
                 "has_document_analysis": False,
                 "has_git_analysis": False,
+                "has_skills_analysis": False,      
+                "has_document_analysis": False,   
                 "has_skills_progress": False,
                 "insights_deleted_at": timestamp,
             }

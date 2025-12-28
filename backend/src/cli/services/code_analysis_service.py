@@ -134,6 +134,8 @@ class CodeAnalysisService:
         """Return a multi-line string summarizing analyzer output."""
         summary = getattr(result, "summary", None) or {}
         lines: List[str] = []
+        lines.append("[b]Code analysis[/b]")
+        lines.append("")
         lines.append("[b]Overview[/b]")
         lines.append(f"Target: {getattr(result, 'path', 'unknown')}")
         lines.append("")
