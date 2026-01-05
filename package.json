@@ -1,14 +1,21 @@
 {
   "name": "capstone-project-team-7",
   "version": "1.0.0",
+  "private": true,
   "description": "```text ├── backend │   └── src │       ├── analyzer/ │       ├── api/ │       ├── auth/ │       ├── scanner/ │       ├── storage/ │       └── main.py ├── docs │   ├── assets/ │   ├── WBS.md │   ├── dfd.md │   ├── systemArchitecture.md │   ├── projectProposal.md │   ├── projectRequirements.md ├── tests ├── docker-compose.yml └── README.md ```",
   "main": "index.js",
+  "workspaces": [
+    "frontend",
+    "electron"
+  ],
   "directories": {
     "doc": "docs",
     "test": "tests"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev:desktop": "concurrently -k -n backend,frontend,electron \"cd backend && uvicorn src.main:app --reload\" \"cd frontend && npm run dev\" \"cd electron && ELECTRON_START_URL=http://localhost:3000 npm run dev\"",
+    "preview:desktop": "npm run export --workspace frontend && npm run build --workspace electron && npm run start --workspace electron"
   },
   "repository": {
     "type": "git",
@@ -23,5 +30,8 @@
   "homepage": "https://github.com/COSC-499-W2025/capstone-project-team-7#readme",
   "dependencies": {
     "@supabase/supabase-js": "^2.75.1"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
   }
 }

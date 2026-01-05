@@ -1,0 +1,1166 @@
+openapi: 3.0.3
+info:
+  title: Capstone Backend API (Draft)
+  version: 0.1.0
+  description: |
+    Draft contracts for Milestone 2 backend. Keep in sync with docs/api-plan.md.
+servers:
+  - url: http://localhost:8000
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Supabase access token; required for all protected endpoints.
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: invalid_format
+        message:
+          type: string
+        details:
+          type: object
+      required: [code, message]
+
+    Pagination:
+      type: object
+      properties:
+        limit: { type: integer, example: 20 }
+        offset: { type: integer, example: 0 }
+        total: { type: integer, example: 120 }
+
+    ConsentStatus:
+      type: object
+      properties:
+        user_id: { type: string }
+        data_access: { type: boolean }
+        external_services: { type: boolean }
+        updated_at: { type: string, format: date-time }
+      required: [user_id, data_access, external_services, updated_at]
+
+    LLMKeyStatus:
+      type: object
+      properties:
+        valid: { type: boolean }
+        message: { type: string }
+
+    JobState:
+      type: string
+      enum: [queued, running, succeeded, failed, canceled]
+
+    Progress:
+      type: object
+      properties:
+        percent: { type: number, format: float, minimum: 0, maximum: 100 }
+        message: { type: string }
+
+    Upload:
+      type: object
+      properties:
+        upload_id: { type: string }
+        filename: { type: string }
+        size_bytes: { type: integer }
+        status: { type: string, enum: [stored, parsing, parsed, failed] }
+        created_at: { type: string, format: date-time }
+        error: { $ref: '#/components/schemas/ErrorResponse' }
+      required: [upload_id, status, created_at]
+
+    ParseOptions:
+      type: object
+      properties:
+        profile_id: { type: string }
+        relevance_only: { type: boolean, default: false }
+
+    ScanRequest:
+      type: object
+      properties:
+        source_path:
+          type: string
+          description: Local directory path to zip server-side (desktop IPC).
+        upload_id:
+          type: string
+          description: Use an existing upload instead of source_path.
+        use_llm:
+          type: boolean
+          default: false
+        llm_media:
+          type: boolean
+          default: false
+        profile_id:
+          type: string
+        relevance_only:
+          type: boolean
+          default: false
+        persist_project:
+          type: boolean
+          default: true
+      required: []
+
+    ScanStatus:
+      type: object
+      properties:
+        scan_id: { type: string }
+        project_id: { type: string, nullable: true }
+        upload_id: { type: string, nullable: true }
+        state: { $ref: '#/components/schemas/JobState' }
+        progress: { $ref: '#/components/schemas/Progress' }
+        error: { $ref: '#/components/schemas/ErrorResponse' }
+        result:
+          type: object
+          properties:
+            project: { $ref: '#/components/schemas/ProjectDetail' }
+            analysis: { $ref: '#/components/schemas/AnalysisSummary' }
+      required: [scan_id, state]
+
+    ProjectSummary:
+      type: object
+      properties:
+        project_id: { type: string }
+        name: { type: string }
+        project_type: { type: string, enum: [individual, collaborative] }
+        languages: { type: array, items: { type: string } }
+        frameworks: { type: array, items: { type: string } }
+        rank_score: { type: number, format: float }
+        created_at: { type: string, format: date-time }
+
+    ProjectDetail:
+      type: object
+      properties:
+        project_id: { type: string }
+        name: { type: string }
+        project_type: { type: string, enum: [individual, collaborative, unknown] }
+        project_path: { type: string }
+        scan_timestamp: { type: string, format: date-time }
+        total_files: { type: integer }
+        total_lines: { type: integer }
+        languages: { type: array, items: { type: string } }
+        frameworks: { type: array, items: { type: string } }
+        has_media_analysis: { type: boolean }
+        has_pdf_analysis: { type: boolean }
+        has_code_analysis: { type: boolean }
+        has_git_analysis: { type: boolean }
+        has_contribution_metrics: { type: boolean }
+        contribution_score: { type: number, format: float }
+        user_commit_share: { type: number, format: float }
+        total_commits: { type: integer }
+        primary_contributor: { type: string, nullable: true }
+        project_end_date: { type: string, nullable: true }
+        has_skills_progress: { type: boolean }
+        rank_score: { type: number, format: float }
+        summary: { type: object }
+        analysis: { $ref: '#/components/schemas/AnalysisSummary' }
+
+    RankRequest:
+      type: object
+      properties:
+        weights:
+          type: object
+          additionalProperties: { type: number, format: float }
+      required: [weights]
+
+    RankResponse:
+      type: object
+      properties:
+        score: { type: number, format: float }
+        reasons: { type: array, items: { type: string } }
+
+    ResumeItem:
+      type: object
+      properties:
+        id: { type: string }
+        project_id: { type: string }
+        title: { type: string }
+        role: { type: string }
+        summary: { type: string }
+        evidence: { type: array, items: { type: string } }
+        thumbnail_url: { type: string }
+        created_at: { type: string, format: date-time }
+
+    SelectionRequest:
+      type: object
+      properties:
+        project_order:
+          type: array
+          items: { type: string }
+        skill_order:
+          type: array
+          items: { type: string }
+        selected_project_ids:
+          type: array
+          items: { type: string }
+        selected_skill_ids:
+          type: array
+          items: { type: string }
+
+    FileMetadata:
+      type: object
+      properties:
+        path: { type: string }
+        size_bytes: { type: integer }
+        mime_type: { type: string }
+        created_at: { type: string, format: date-time }
+        modified_at: { type: string, format: date-time }
+        media_info: { type: object, nullable: true }
+        file_hash: { type: string, nullable: true }
+
+    ParseIssue:
+      type: object
+      properties:
+        path: { type: string }
+        code: { type: string }
+        message: { type: string }
+
+    ParseResult:
+      type: object
+      properties:
+        files:
+          type: array
+          items: { $ref: '#/components/schemas/FileMetadata' }
+        issues:
+          type: array
+          items: { $ref: '#/components/schemas/ParseIssue' }
+        summary:
+          type: object
+          description: Key/value summary (e.g., counts by language)
+
+    AnalysisSummary:
+      type: object
+      description: |
+        Combined analysis payload (scan_data). Fields are optional and may be absent depending on feature flags and available data.
+      properties:
+        parse_result: { $ref: '#/components/schemas/ParseResult' }
+        git_analysis: { $ref: '#/components/schemas/GitAnalysisSummary' }
+        code_analysis: { $ref: '#/components/schemas/CodeAnalysisSummary' }
+        contribution_metrics: { $ref: '#/components/schemas/ContributionMetrics' }
+        skills_analysis: { $ref: '#/components/schemas/SkillsAnalysis' }
+        skills_progress: { $ref: '#/components/schemas/SkillsProgress' }
+        media_analysis: { $ref: '#/components/schemas/MediaAnalysisSummary' }
+        pdf_analysis: { $ref: '#/components/schemas/PdfAnalysisSummary' }
+        document_analysis: { $ref: '#/components/schemas/DocumentAnalysisSummary' }
+        duplicate_report: { $ref: '#/components/schemas/DedupReport' }
+        ranking:
+          type: object
+          properties:
+            score: { type: number, format: float }
+            reasons: { type: array, items: { type: string } }
+        summaries: { type: object }
+        search_index: { type: object }
+
+    GitContributor:
+      type: object
+      properties:
+        name: { type: string }
+        commits: { type: integer }
+        percent: { type: number, format: float }
+
+    GitTimelineItem:
+      type: object
+      properties:
+        month: { type: string, example: "2025-01" }
+        commits: { type: integer }
+
+    GitRepoAnalysis:
+      type: object
+      properties:
+        path: { type: string }
+        commit_count: { type: integer }
+        date_range:
+          type: object
+          properties:
+            start: { type: string, format: date }
+            end: { type: string, format: date }
+        branches:
+          type: array
+          items: { type: string }
+        contributors:
+          type: array
+          items: { $ref: '#/components/schemas/GitContributor' }
+        timeline:
+          type: array
+          items: { $ref: '#/components/schemas/GitTimelineItem' }
+
+    GitAnalysisSummary:
+      type: array
+      items: { $ref: '#/components/schemas/GitRepoAnalysis' }
+
+    CodeRefactorFunction:
+      type: object
+      properties:
+        name: { type: string }
+        lines: { type: integer }
+        complexity: { type: number, format: float }
+        params: { type: integer }
+        needs_refactor: { type: boolean }
+
+    CodeRefactorCandidate:
+      type: object
+      properties:
+        path: { type: string }
+        language: { type: string }
+        lines: { type: integer }
+        code_lines: { type: integer }
+        complexity: { type: number, format: float }
+        maintainability: { type: number, format: float }
+        priority: { type: string }
+        top_functions:
+          type: array
+          items: { $ref: '#/components/schemas/CodeRefactorFunction' }
+
+    CodeFileDetail:
+      type: object
+      properties:
+        path: { type: string }
+        language: { type: string }
+        success: { type: boolean }
+        size_mb: { type: number, format: float }
+        analysis_time_ms: { type: integer }
+        metrics:
+          type: object
+          properties:
+            lines: { type: integer }
+            code_lines: { type: integer }
+            comments: { type: integer }
+            functions: { type: integer }
+            classes: { type: integer }
+            complexity: { type: number, format: float }
+            maintainability: { type: number, format: float }
+            priority: { type: string }
+            security_issues_count: { type: integer }
+            todos_count: { type: integer }
+        error: { type: string, nullable: true }
+
+    CodeAnalysisSummary:
+      type: object
+      properties:
+        success: { type: boolean }
+        path: { type: string }
+        total_files: { type: integer }
+        successful_files: { type: integer }
+        failed_files: { type: integer }
+        languages:
+          type: object
+          additionalProperties: { type: integer }
+        metrics:
+          type: object
+          properties:
+            total_lines: { type: integer }
+            total_code_lines: { type: integer }
+            total_comments: { type: integer }
+            total_functions: { type: integer }
+            total_classes: { type: integer }
+            average_complexity: { type: number, format: float }
+            average_maintainability: { type: number, format: float }
+        quality:
+          type: object
+          properties:
+            security_issues: { type: integer }
+            todos: { type: integer }
+            high_priority_files: { type: integer }
+            functions_needing_refactor: { type: integer }
+        refactor_candidates:
+          type: array
+          items: { $ref: '#/components/schemas/CodeRefactorCandidate' }
+        file_details:
+          type: array
+          items: { $ref: '#/components/schemas/CodeFileDetail' }
+
+    ContributionMetrics:
+      type: object
+      properties:
+        project_type: { type: string, enum: [individual, collaborative, unknown] }
+        total_contributors: { type: integer }
+        total_commits: { type: integer }
+        commit_frequency: { type: number, format: float, description: "commits per day" }
+        project_start_date: { type: string, format: date }
+        project_end_date: { type: string, format: date }
+        project_duration_days: { type: integer }
+        user_commit_share: { type: number, format: float }
+        primary_contributor: { type: string, nullable: true }
+        activity_breakdown:
+          type: object
+          properties:
+            code_lines: { type: integer }
+            test_lines: { type: integer }
+            documentation_lines: { type: integer }
+            design_lines: { type: integer }
+            config_lines: { type: integer }
+            total_lines: { type: integer }
+        contributors:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              email: { type: string, nullable: true }
+              commits: { type: integer }
+              commit_percentage: { type: number, format: float }
+              first_commit_date: { type: string, format: date-time, nullable: true }
+              last_commit_date: { type: string, format: date-time, nullable: true }
+              active_days: { type: integer }
+              contribution_frequency: { type: number, format: float }
+              activity_breakdown: { type: object }
+              languages_used:
+                type: array
+                items: { type: string }
+        timeline:
+          type: array
+          items:
+            type: object
+            properties:
+              date: { type: string, format: date }
+              commits: { type: integer }
+
+    SkillItem:
+      type: object
+      properties:
+        name: { type: string }
+        category: { type: string }
+        confidence: { type: number, format: float }
+        evidence:
+          type: array
+          items: { type: string }
+
+    SkillsAnalysis:
+      type: object
+      properties:
+        top_skills:
+          type: array
+          items: { $ref: '#/components/schemas/SkillItem' }
+        categories:
+          type: array
+          items: { type: string }
+        skills:
+          type: array
+          items: { $ref: '#/components/schemas/SkillItem' }
+
+    SkillsProgress:
+      type: object
+      properties:
+        timeline:
+          type: array
+          items:
+            type: object
+            properties:
+              period_label: { type: string, example: "2024-12" }
+              commits: { type: integer }
+              tests_changed: { type: integer }
+              top_skills:
+                type: array
+                items: { type: string }
+
+    MediaAnalysisSummary:
+      type: object
+      properties:
+        summary:
+          type: object
+          properties:
+            total_media_files: { type: integer }
+            image_files: { type: integer }
+            audio_files: { type: integer }
+            video_files: { type: integer }
+        metrics:
+          type: object
+          additionalProperties: { type: object }
+        insights:
+          type: array
+          items: { type: string }
+        issues:
+          type: array
+          items: { type: string }
+
+    PdfSummary:
+      type: object
+      properties:
+        path: { type: string }
+        num_pages: { type: integer }
+        keywords:
+          type: array
+          items: { type: string }
+        summary_text: { type: string }
+
+    PdfAnalysisSummary:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/PdfSummary' }
+
+    DocumentSummary:
+      type: object
+      properties:
+        path: { type: string }
+        word_count: { type: integer }
+        summary_text: { type: string }
+        keywords:
+          type: array
+          items: { type: string }
+        headings:
+          type: array
+          items: { type: string }
+
+    DocumentAnalysisSummary:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/DocumentSummary' }
+
+    TimelineItem:
+      type: object
+      properties:
+        project_id: { type: string }
+        name: { type: string }
+        start_date: { type: string, format: date }
+        end_date: { type: string, format: date, nullable: true }
+        duration_days: { type: integer, nullable: true }
+
+    DedupFile:
+      type: object
+      properties:
+        path: { type: string }
+        size_bytes: { type: integer }
+        mime_type: { type: string }
+
+    DedupGroup:
+      type: object
+      properties:
+        hash: { type: string }
+        file_count: { type: integer }
+        total_size_bytes: { type: integer }
+        wasted_bytes: { type: integer }
+        files:
+          type: array
+          items: { $ref: '#/components/schemas/DedupFile' }
+
+    DedupReport:
+      type: object
+      properties:
+        summary:
+          type: object
+          properties:
+            total_files_analyzed: { type: integer }
+            files_with_hash: { type: integer }
+            duplicate_groups_count: { type: integer }
+            total_duplicate_files: { type: integer }
+            total_wasted_bytes: { type: integer }
+            space_savings_percent: { type: number, format: float }
+        duplicate_groups:
+          type: array
+          items: { $ref: '#/components/schemas/DedupGroup' }
+
+    SearchItem:
+      type: object
+      properties:
+        id: { type: string }
+        type: { type: string, enum: [project, file, skill] }
+        project_id: { type: string }
+        name: { type: string }
+        path: { type: string }
+        summary: { type: string }
+
+    SearchResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/SearchItem' }
+        page: { $ref: '#/components/schemas/Pagination' }
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+
+  /api/consent:
+    get:
+      summary: Get consent status
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Consent status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConsentStatus' }
+    post:
+      summary: Record or update consent
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data_access: { type: boolean }
+                external_services: { type: boolean }
+                notice_acknowledged_at: { type: string, format: date-time }
+              required: [data_access, external_services]
+      responses:
+        '200':
+          description: Updated consent
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConsentStatus' }
+
+  /api/llm/verify-key:
+    post:
+      summary: Verify and cache LLM key
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                api_key: { type: string }
+                user_id: { type: string }
+              required: [api_key, user_id]
+      responses:
+        '200':
+          description: Validation result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LLMKeyStatus' }
+
+  /api/llm/clear-key:
+    post:
+      summary: Clear cached LLM key
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id: { type: string }
+              required: [user_id]
+      responses:
+        '200':
+          description: Cleared
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+
+  /api/llm/client-status:
+    post:
+      summary: Check if LLM client exists
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id: { type: string }
+              required: [user_id]
+      responses:
+        '200':
+          description: Status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  has_client: { type: boolean }
+                  message: { type: string }
+
+  /api/uploads:
+    post:
+      summary: Upload a zip archive
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          schema: { type: string }
+          required: false
+          description: Reuse to avoid duplicate uploads.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Upload stored
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Upload' }
+        '400':
+          description: Invalid format
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '413':
+          description: Upload too large
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/uploads/{upload_id}:
+    get:
+      summary: Get upload status/metadata
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: upload_id
+          schema: { type: string }
+          required: true
+      responses:
+        '200':
+          description: Upload
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Upload' }
+
+  /api/uploads/{upload_id}/parse:
+    post:
+      summary: Start parse on an upload
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: upload_id
+          schema: { type: string }
+          required: true
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ParseOptions' }
+      responses:
+        '202':
+          description: Parse started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  upload_id: { type: string }
+                  state: { $ref: '#/components/schemas/JobState' }
+                  progress: { $ref: '#/components/schemas/Progress' }
+
+  /api/scans:
+    post:
+      summary: One-shot scan (upload + parse + analysis)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          schema: { type: string }
+          required: false
+          description: Reuse to avoid duplicate scans for the same source/upload.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ScanRequest' }
+      responses:
+        '202':
+          description: Scan accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScanStatus' }
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/scans/{scan_id}:
+    get:
+      summary: Get scan progress/results
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: scan_id
+          schema: { type: string }
+          required: true
+      responses:
+        '200':
+          description: Scan status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScanStatus' }
+
+  /api/analysis/portfolio:
+    post:
+      summary: Run analysis for an upload or project
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                upload_id: { type: string }
+                project_id: { type: string }
+                use_llm: { type: boolean, default: false }
+                llm_media: { type: boolean, default: false }
+                profile_id: { type: string }
+              oneOf:
+                - required: [upload_id]
+                - required: [project_id]
+      responses:
+        '202':
+          description: Analysis started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id: { type: string }
+                  state: { $ref: '#/components/schemas/JobState' }
+                  progress: { $ref: '#/components/schemas/Progress' }
+
+  /api/projects:
+    get:
+      summary: List projects
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0 }
+        - in: query
+          name: sort
+          schema: { type: string, example: "-created_at" }
+      responses:
+        '200':
+          description: Projects
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ProjectSummary' }
+                  page: { $ref: '#/components/schemas/Pagination' }
+    post:
+      summary: Persist a project
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                upload_id: { type: string }
+                scan_id: { type: string }
+                analysis_payload:
+                  type: object
+              required: [name]
+      responses:
+        '200':
+          description: Created project
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectSummary' }
+
+  /api/projects/{project_id}:
+    get:
+      summary: Get project detail
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: project_id
+          schema: { type: string }
+          required: true
+      responses:
+        '200':
+          description: Project detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectDetail' }
+    delete:
+      summary: Delete project
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: project_id
+          schema: { type: string }
+          required: true
+      responses:
+        '204':
+          description: Deleted
+
+  /api/projects/{project_id}/insights:
+    delete:
+      summary: Delete insights but keep file records
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: project_id
+          schema: { type: string }
+          required: true
+      responses:
+        '204':
+          description: Insights cleared
+
+  /api/projects/{project_id}/append-upload/{upload_id}:
+    post:
+      summary: Append a new upload to an existing project
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: project_id
+          schema: { type: string }
+          required: true
+        - in: path
+          name: upload_id
+          schema: { type: string }
+          required: true
+      responses:
+        '202':
+          description: Append accepted
+
+  /api/projects/{project_id}/rank:
+    post:
+      summary: Compute ranking for a project
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: project_id
+          schema: { type: string }
+          required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RankRequest' }
+      responses:
+        '200':
+          description: Ranking result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RankResponse' }
+
+  /api/projects/top:
+    get:
+      summary: Top ranked projects
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, default: 3 }
+      responses:
+        '200':
+          description: Top projects
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ProjectSummary' }
+
+  /api/projects/timeline:
+    get:
+      summary: Project chronology
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Timeline
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TimelineItem' }
+
+  /api/resume/items:
+    get:
+      summary: List resume items
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: Items
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ResumeItem' }
+                  page: { $ref: '#/components/schemas/Pagination' }
+    post:
+      summary: Create or save resume item
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                project_id: { type: string }
+                title: { type: string }
+                role: { type: string }
+                summary: { type: string }
+                evidence: { type: array, items: { type: string } }
+                thumbnail_url: { type: string }
+              required: [project_id, title]
+      responses:
+        '200':
+          description: Resume item
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResumeItem' }
+
+  /api/resume/items/{id}:
+    get:
+      summary: Get resume item
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          schema: { type: string }
+          required: true
+      responses:
+        '200':
+          description: Item
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResumeItem' }
+    delete:
+      summary: Delete resume item
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          schema: { type: string }
+          required: true
+      responses:
+        '204':
+          description: Deleted
+
+  /api/config:
+    get:
+      summary: Get user config
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Config
+    put:
+      summary: Update user config
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Updated config
+
+  /api/config/profiles:
+    get:
+      summary: List scan profiles
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Profiles
+    post:
+      summary: Create or update a scan profile
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Saved profile
+
+  /api/search:
+    get:
+      summary: Search projects/files/skills
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: scope
+          schema:
+            type: string
+            enum: [projects, files, skills]
+        - in: query
+          name: project_id
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 50 }
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SearchResponse' }
+
+  /api/dedup:
+    get:
+      summary: Duplicate file report
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: project_id
+          schema: { type: string }
+          required: true
+      responses:
+        '200':
+          description: Dedup groups
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DedupReport' }
+
+  /api/selection:
+    post:
+      summary: Save user selection and ordering
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SelectionRequest' }
+      responses:
+        '200':
+          description: Saved

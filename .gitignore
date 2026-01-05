@@ -42,6 +42,7 @@ skill_summary_raw.txt
 # Python build metadata
 *.egg-info/
 
-# Frontend build artifacts
-frontend/.next*/
-frontend/out*/
+# Node/Next/Electron artifacts
+frontend/.next/
+frontend/out/
+electron/dist/
