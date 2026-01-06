@@ -46,6 +46,16 @@ components:
         updated_at: { type: string, format: date-time }
       required: [user_id, data_access, external_services, updated_at]
 
+    ConsentNotice:
+      type: object
+      properties:
+        service: { type: string }
+        privacy_notice: { type: string }
+        implications: { type: array, items: { type: string } }
+        options: { type: array, items: { type: string } }
+        version: { type: string }
+      required: [service, privacy_notice]
+
     LLMKeyStatus:
       type: object
       properties:
@@ -157,6 +167,23 @@ components:
         rank_score: { type: number, format: float }
         summary: { type: object }
         analysis: { $ref: '#/components/schemas/AnalysisSummary' }
+        user_overrides: { $ref: '#/components/schemas/ProjectOverrides' }
+
+    ProjectOverrides:
+      type: object
+      properties:
+        role: { type: string }
+        evidence: { type: array, items: { type: string } }
+        thumbnail_url: { type: string }
+        custom_rank: { type: number, format: float }
+        start_date_override: { type: string, format: date, nullable: true }
+        end_date_override: { type: string, format: date, nullable: true }
+        comparison_attributes:
+          type: object
+          additionalProperties: { type: string }
+        highlighted_skills:
+          type: array
+          items: { type: string }
 
     RankRequest:
       type: object
@@ -183,6 +210,65 @@ components:
         evidence: { type: array, items: { type: string } }
         thumbnail_url: { type: string }
         created_at: { type: string, format: date-time }
+
+    ResumeItemUpdate:
+      type: object
+      properties:
+        title: { type: string }
+        role: { type: string }
+        summary: { type: string }
+        evidence: { type: array, items: { type: string } }
+        thumbnail_url: { type: string }
+
+    PortfolioItem:
+      type: object
+      properties:
+        id: { type: string }
+        project_id: { type: string }
+        title: { type: string }
+        role: { type: string }
+        summary: { type: string }
+        evidence: { type: array, items: { type: string } }
+        thumbnail_url: { type: string }
+        highlighted_skills: { type: array, items: { type: string } }
+        comparison_attributes:
+          type: object
+          additionalProperties: { type: string }
+        start_date_override: { type: string, format: date, nullable: true }
+        end_date_override: { type: string, format: date, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    PortfolioItemRequest:
+      type: object
+      properties:
+        project_id: { type: string }
+        title: { type: string }
+        role: { type: string }
+        summary: { type: string }
+        evidence: { type: array, items: { type: string } }
+        thumbnail_url: { type: string }
+        highlighted_skills: { type: array, items: { type: string } }
+        comparison_attributes:
+          type: object
+          additionalProperties: { type: string }
+        start_date_override: { type: string, format: date, nullable: true }
+        end_date_override: { type: string, format: date, nullable: true }
+      required: [project_id, title]
+
+    PortfolioRefreshRequest:
+      type: object
+      properties:
+        project_id: { type: string }
+        upload_ids:
+          type: array
+          items: { type: string }
+        source_paths:
+          type: array
+          items: { type: string }
+        profile_id: { type: string }
+        relevance_only: { type: boolean, default: false }
+      required: [project_id]
 
     SelectionRequest:
       type: object
@@ -522,6 +608,24 @@ components:
         end_date: { type: string, format: date, nullable: true }
         duration_days: { type: integer, nullable: true }
 
+    SkillsTimelineItem:
+      type: object
+      properties:
+        period_label: { type: string }
+        skills: { type: array, items: { type: string } }
+        commits: { type: integer }
+        projects: { type: array, items: { type: string } }
+
+    PortfolioChronology:
+      type: object
+      properties:
+        projects:
+          type: array
+          items: { $ref: '#/components/schemas/TimelineItem' }
+        skills:
+          type: array
+          items: { $ref: '#/components/schemas/SkillsTimelineItem' }
+
     DedupFile:
       type: object
       properties:
@@ -618,6 +722,23 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ConsentStatus' }
+
+  /api/consent/notice:
+    get:
+      summary: Get privacy notice and implications for a service
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: service
+          schema: { type: string }
+          required: true
+          description: Service name (e.g., external_services).
+      responses:
+        '200':
+          description: Privacy notice payload
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConsentNotice' }
 
   /api/llm/verify-key:
     post:
@@ -915,6 +1036,41 @@ paths:
         '204':
           description: Deleted
 
+  /api/projects/{project_id}/overrides:
+    get:
+      summary: Get user overrides for a project
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: project_id
+          schema: { type: string }
+          required: true
+      responses:
+        '200':
+          description: Project overrides
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectOverrides' }
+    patch:
+      summary: Update user overrides for a project
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: project_id
+          schema: { type: string }
+          required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectOverrides' }
+      responses:
+        '200':
+          description: Updated overrides
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectOverrides' }
+
   /api/projects/{project_id}/insights:
     delete:
       summary: Delete insights but keep file records
@@ -996,6 +1152,135 @@ paths:
                 type: array
                 items: { $ref: '#/components/schemas/TimelineItem' }
 
+  /api/skills/timeline:
+    get:
+      summary: Skills chronology
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Skills timeline
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/SkillsTimelineItem' }
+
+  /api/portfolio/chronology:
+    get:
+      summary: Combined project and skill chronology
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Portfolio chronology
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PortfolioChronology' }
+
+  /api/portfolio/refresh:
+    post:
+      summary: Append new uploads and rebuild portfolio view
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PortfolioRefreshRequest' }
+      responses:
+        '202':
+          description: Refresh accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id: { type: string }
+                  state: { $ref: '#/components/schemas/JobState' }
+                  progress: { $ref: '#/components/schemas/Progress' }
+
+  /api/portfolio/items:
+    get:
+      summary: List portfolio showcase items
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: Portfolio items
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/PortfolioItem' }
+                  page: { $ref: '#/components/schemas/Pagination' }
+    post:
+      summary: Create or save portfolio showcase item
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PortfolioItemRequest' }
+      responses:
+        '200':
+          description: Portfolio item
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PortfolioItem' }
+
+  /api/portfolio/items/{id}:
+    get:
+      summary: Get portfolio showcase item
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          schema: { type: string }
+          required: true
+      responses:
+        '200':
+          description: Portfolio item
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PortfolioItem' }
+    patch:
+      summary: Update portfolio showcase item
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          schema: { type: string }
+          required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PortfolioItemRequest' }
+      responses:
+        '200':
+          description: Portfolio item
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PortfolioItem' }
+    delete:
+      summary: Delete portfolio showcase item
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          schema: { type: string }
+          required: true
+      responses:
+        '204':
+          description: Deleted
+
   /api/resume/items:
     get:
       summary: List resume items
@@ -1055,6 +1340,25 @@ paths:
       responses:
         '200':
           description: Item
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResumeItem' }
+    patch:
+      summary: Update resume item wording
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          schema: { type: string }
+          required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResumeItemUpdate' }
+      responses:
+        '200':
+          description: Updated item
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ResumeItem' }
