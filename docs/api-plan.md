@@ -1,5 +1,6 @@
 # Milestone 2 Backend API Plan
 
+
 ## Goals and Scope
 - Timeline: Milestone 2 (Jan–Mar 01; details finalized by Jan 05). Focus on service/API contracts and backend flows; defer UI/TUI/Electron changes to Milestone 3.
 - Tech: Python + FastAPI (existing). Emphasize explicit inputs/outputs, data flow, and extensibility to support human-in-the-loop workflows.
@@ -41,6 +42,16 @@ Content-Type: multipart/form-data
   "status": "stored"
 }
 ```
+
+
+#### ✅ Completed
+- **Upload and Parse Endpoints** (Jan 7, 2026)
+  - `POST /api/uploads`: ZIP validation, file storage, hash computation
+  - `GET /api/uploads/{upload_id}`: Upload status and metadata retrieval
+  - `POST /api/uploads/{upload_id}/parse`: File extraction, duplicate detection, metadata parsing
+  - Implementation: `backend/src/api/upload_routes.py`
+  - Tests: `tests/test_upload_api.py` (12 tests, all passing)
+  - Features: Magic byte validation, 200MB limit, SHA-256 hashing, scan preferences support
 
 ### Analysis (local-first, optional external)
 - `POST /api/analysis/portfolio`: Run combined analysis for an `upload_id` or stored project; params `use_llm` (requires consent+key), `llm_media` optional; if `use_llm=false`, use local-only pipeline.
