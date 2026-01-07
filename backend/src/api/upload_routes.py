@@ -8,9 +8,13 @@ import uuid
 import hashlib
 import magic
 from pathlib import Path
-from typing import Optional
-from fastapi import APIRouter, UploadFile, File, HTTPException, status
+from typing import Optional, List, Dict, Any
+from datetime import datetime
+from fastapi import APIRouter, UploadFile, File, HTTPException, status, Body
 from pydantic import BaseModel, Field
+
+from scanner.parser import parse_zip
+from scanner.models import ParseResult, ScanPreferences, FileMetadata as ScanFileMetadata, ParseIssue
 
 
 router = APIRouter(prefix="/api/uploads", tags=["uploads"])
@@ -37,6 +41,43 @@ class ErrorResponse(BaseModel):
     error: str
     message: str
     expected: Optional[str] = None
+
+
+class FileMetadata(BaseModel):
+    """File metadata from parse result"""
+    path: str
+    size_bytes: int
+    mime_type: str
+    created_at: str
+    modified_at: str
+    file_hash: Optional[str] = None
+    media_info: Optional[Dict[str, Any]] = None
+
+
+class ParseIssue(BaseModel):
+    """Parse issue/warning"""
+    path: str
+    code: str
+    message: str
+
+
+class ParseRequest(BaseModel):
+    """Request body for parse operation"""
+    profile_id: Optional[str] = Field(None, description="Optional profile ID for scan preferences")
+    relevance_only: bool = Field(False, description="Only include relevant files")
+    preferences: Optional[Dict[str, Any]] = Field(None, description="Custom scan preferences")
+
+
+class ParseResponse(BaseModel):
+    """Parse result response"""
+    upload_id: str
+    status: str = "parsed"
+    files: List[FileMetadata]
+    issues: List[ParseIssue]
+    summary: Dict[str, int]
+    parse_started_at: str
+    parse_completed_at: str
+    duplicate_count: int = 0
 
 
 # Configuration
@@ -199,3 +240,139 @@ async def get_upload_status(upload_id: str):
         created_at=upload_data["created_at"],
         metadata=upload_data.get("metadata")
     )
+
+
+@router.post("/{upload_id}/parse", response_model=ParseResponse)
+async def parse_upload(
+    upload_id: str,
+    parse_request: ParseRequest = Body(default=ParseRequest())
+):
+    """
+    Parse uploaded ZIP archive
+    
+    - Extracts file metadata, detects languages/frameworks
+    - Identifies duplicate files by hash
+    - Extracts media metadata if present
+    - Detects Git repositories
+    - Supports custom scan preferences
+    - Returns file list, issues, and summary statistics
+    """
+    # Verify upload exists
+    if upload_id not in uploads_store:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "error": "not_found",
+                "message": f"Upload with ID '{upload_id}' not found"
+            }
+        )
+    
+    upload_data = uploads_store[upload_id]
+    storage_path = Path(upload_data["storage_path"])
+    
+    if not storage_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "file_missing",
+                "message": "Upload file not found on disk"
+            }
+        )
+    
+    try:
+        parse_started = datetime.utcnow()
+        
+        # Build scan preferences from request
+        preferences = None
+        if parse_request.preferences:
+            prefs_dict = parse_request.preferences
+            preferences = ScanPreferences(
+                allowed_extensions=prefs_dict.get("allowed_extensions"),
+                excluded_dirs=prefs_dict.get("excluded_dirs"),
+                max_file_size_bytes=prefs_dict.get("max_file_size_bytes"),
+                follow_symlinks=prefs_dict.get("follow_symlinks")
+            )
+        
+        # Run parse
+        parse_result: ParseResult = parse_zip(
+            storage_path,
+            relevant_only=parse_request.relevance_only,
+            preferences=preferences
+        )
+        
+        parse_completed = datetime.utcnow()
+        
+        # Convert scanner models to API models
+        files = []
+        file_hashes = {}
+        for file_meta in parse_result.files:
+            file_dict = {
+                "path": file_meta.path,
+                "size_bytes": file_meta.size_bytes,
+                "mime_type": file_meta.mime_type,
+                "created_at": file_meta.created_at.isoformat() + "Z",
+                "modified_at": file_meta.modified_at.isoformat() + "Z",
+                "file_hash": file_meta.file_hash
+            }
+            
+            # Add media info if present
+            if file_meta.media_info:
+                file_dict["media_info"] = {
+                    "media_type": file_meta.media_info.media_type,
+                    "duration_seconds": getattr(file_meta.media_info, "duration_seconds", None),
+                    "width": getattr(file_meta.media_info, "width", None),
+                    "height": getattr(file_meta.media_info, "height", None),
+                    "format": getattr(file_meta.media_info, "format", None),
+                }
+            
+            files.append(FileMetadata(**file_dict))
+            
+            # Track duplicates by hash
+            if file_meta.file_hash:
+                if file_meta.file_hash in file_hashes:
+                    file_hashes[file_meta.file_hash] += 1
+                else:
+                    file_hashes[file_meta.file_hash] = 1
+        
+        # Count duplicates (files with same hash)
+        duplicate_count = sum(1 for count in file_hashes.values() if count > 1)
+        
+        # Convert issues
+        issues = [
+            ParseIssue(
+                path=issue.path,
+                code=issue.code,
+                message=issue.message
+            )
+            for issue in parse_result.issues
+        ]
+        
+        # Update upload status
+        upload_data["status"] = "parsed"
+        upload_data["parse_completed_at"] = parse_completed.isoformat() + "Z"
+        upload_data["file_count"] = len(files)
+        upload_data["duplicate_count"] = duplicate_count
+        
+        return ParseResponse(
+            upload_id=upload_id,
+            status="parsed",
+            files=files,
+            issues=issues,
+            summary=parse_result.summary,
+            parse_started_at=parse_started.isoformat() + "Z",
+            parse_completed_at=parse_completed.isoformat() + "Z",
+            duplicate_count=duplicate_count
+        )
+        
+    except Exception as e:
+        # Update status to failed
+        upload_data["status"] = "parse_failed"
+        upload_data["error"] = str(e)
+        
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "parse_failed",
+                "message": f"Failed to parse upload: {str(e)}"
+            }
+        )
