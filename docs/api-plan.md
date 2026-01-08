@@ -23,6 +23,12 @@
 - `POST /api/llm/verify-key`: Validate and cache LLM key (existing).
 - `POST /api/llm/clear-key`, `POST /api/llm/client-status`: Manage LLM key lifecycle (existing).
 
+#### Completed
+- Consent endpoints: `GET /api/consent`, `POST /api/consent`, `GET /api/consent/notice`
+- Supabase auth resolution: `backend/src/api/dependencies.py`
+- Implementation: `backend/src/api/consent_routes.py`
+- Tests: `tests/test_api_consent.py`
+
 ### Upload and Parse
 - `POST /api/uploads`: Receive zip (multipart or pre-signed URL); validate extension and magic; return `upload_id`.
 - `POST /api/uploads/{upload_id}/parse`: Run parse pipeline (scanner/parser); extract files/media/git metadata, detect languages/frameworks, find duplicates; support `profile_id` and `relevance_only`.
