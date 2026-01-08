@@ -1,5 +1,21 @@
 # Joaquin Almora / @joaquinalmora
 
+## Week 15 
+This week focused on implementing the Consent API as a standalone backend component, decoupled from any Textual or TUI assumptions. I implemented the consent endpoints (`GET /api/consent`, `POST /api/consent`, and `GET /api/consent/notice`) in `backend/src/api/consent_routes.py`, aligned with the updated OpenAPI specification. The routes resolve `user_id` via a shared auth-token dependency that queries Supabase `/auth/v1/user`, keeping consent enforcement centralized and reusable across services.
+
+To avoid confusion and route conflicts, I removed the stub consent handlers from `backend/src/api/spec_routes.py`. I added a focused test suite in `tests/test_api_consent.py` and validated it locally using the backend venv, with all five tests passing. I also added `python-multipart` to `backend/requirements.txt` to keep FastAPI route imports clean and prevent runtime import errors.
+
+### Reflection
+
+**What went well:**  
+The Consent API landed cleanly as a standalone module and aligns closely with the OpenAPI contract. Centralizing user resolution through a shared dependency keeps the design flexible and avoids frontend or TUI coupling. Tests are small, deterministic, and fast, and dependency overrides made it possible to validate Supabase-backed auth logic without relying on external services.
+
+**What didn’t go well:**  
+Initial test failures were caused by a missing `python-multipart` dependency and some wiring issues with async dependency overrides, which slowed validation. Supabase auth requirements (`SUPABASE_URL` and `SUPABASE_ANON_KEY`) add some setup overhead, though this was mitigated in tests via overrides. There is also a minor deprecation warning from `datetime.utcnow()` in `backend/src/auth/consent.py`, which is not blocking but should be addressed.
+
+### Next Steps
+Tackle more of the API routes specified in the API plan, continuing to replace scaffolded endpoints with real implementations and accompanying tests.
+
 ## Winter Break
 This winter break I focused on locking down the backend API direction while unblocking client and desktop development through scaffolding. I captured the Milestone 2 backend behavior, requirements, and delivery order in `docs/api-plan.md`, and drafted an OpenAPI specification in `docs/api-spec.yaml` aligned to the payload shapes currently used across the system. Together, these documents now serve as the shared contract for backend implementation and frontend/Desktop integration.
 
