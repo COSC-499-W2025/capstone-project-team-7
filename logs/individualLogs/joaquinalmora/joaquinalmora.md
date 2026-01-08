@@ -1,5 +1,23 @@
 # Joaquin Almora / @joaquinalmora
 
+## Winter Break
+This winter break I focused on locking down the backend API direction while unblocking client and desktop development through scaffolding. I captured the Milestone 2 backend behavior, requirements, and delivery order in `docs/api-plan.md`, and drafted an OpenAPI specification in `docs/api-spec.yaml` aligned to the payload shapes currently used across the system. Together, these documents now serve as the shared contract for backend implementation and frontend/Desktop integration.
+
+To support early integration work, I added a stub FastAPI router in `backend/src/api/spec_routes.py` and wired it into the application. These endpoints intentionally mirror the spec but use in-memory, unauthenticated logic so clients can integrate against stable shapes before real services are implemented. In parallel, I stood up minimal Electron, Next.js, and shadcn/ui scaffolds with IPC wiring and starter components, capturing dependency lockfiles to ensure reproducible installs across environments.
+
+I also added a small smoke test (`tests/test_api_scaffold.py`) to validate the shape of the stubbed `/api/scans` and `/api/projects` responses. The test is skip-safe when FastAPI dependencies are not installed, keeping CI flexible during this scaffold phase. Migration tracking documents (`docs/migration-plan.md` and `docs/feature-inventory.md`) were updated to keep the desktop transition and feature parity explicit.
+
+### Reflection
+
+**What went well:**  
+Documenting the API plan and OpenAPI draft significantly reduced ambiguity around backend responsibilities and payload structure. Stub routes unblocked client and desktop work without forcing premature backend decisions. The scaffold test provides early feedback that the API contract is being respected, and having lockfiles in place reduced setup friction across environments.
+
+**What didn’t go well:**  
+The OpenAPI draft and lockfiles added a large number of lines, making the diff heavier and harder to review. Because the stub routes are in-memory and unauthenticated, they need to be clearly labeled to avoid confusion about production readiness. Ensuring spec schemas matched real payloads required careful cross-checking against existing tests and fixtures, which took longer than expected.
+
+### Next Steps
+Replace stub routes with real implementations: uploads, parsing, and scans backed by parser and analysis services, and projects, résumé, and config backed by Supabase with auth, consent, and limits enforced. Implement the job and progress model and standardized error handling defined in the behavior guide. Add non-stub API tests once implementations land and make the scaffold smoke test non-skipping in CI when FastAPI dependencies are present.
+
 ## Week 14 (December 1st - 7th)
 This week focused on strengthening our system’s security layer through the implementation of AES-GCM encryption and improvements to team configuration workflows. I added a new `EncryptionService` and integrated it into résumé and project storage with backward-compatible envelopes. I updated the `.env.example` and README to document the required `ENCRYPTION_MASTER_KEY` and proper placement of `OPENAI_API_KEY`, and added `cryptography` to the project requirements. All focused pytest suites ran successfully within the repo’s venv.
 
