@@ -1,16 +1,13 @@
 from datetime import datetime
-from types import SimpleNamespace
 from pathlib import Path
+from types import SimpleNamespace
 
-import pytest
-
-from backend.src.cli import parse_zip
+from backend.src.analyzer import llm_media_helper
 
 
 class FakeAnalyzer:
     def __init__(self, *_, **__) -> None:
         self.calls = []
-        self.max_bytes = 30 * 1024 * 1024
 
     def analyze_image(self, path: Path) -> dict:
         self.calls.append(("image", path))
@@ -31,8 +28,7 @@ def _make_meta(path: str, mime: str = ""):
 
 
 def test_run_llm_media_analyzer_invokes_analyzer(monkeypatch, tmp_path: Path):
-    """Verify that images/audio/video are passed through to the remote analyzer."""
-    monkeypatch.setattr(parse_zip, "LLMRemoteMediaAnalyzer", lambda: FakeAnalyzer())
+    monkeypatch.setattr(llm_media_helper, "LLMRemoteMediaAnalyzer", lambda: FakeAnalyzer())
 
     img = tmp_path / "foo.jpg"
     img.write_bytes(b"img")
@@ -47,18 +43,17 @@ def test_run_llm_media_analyzer_invokes_analyzer(monkeypatch, tmp_path: Path):
         _make_meta("baz.mp4"),
     ])
 
-    results = parse_zip._run_llm_media_analyzer(tmp_path, parse_result, max_bytes=10 * 1024 * 1024)
+    results = llm_media_helper.run_llm_media_analyzer(tmp_path, parse_result, max_bytes=10 * 1024 * 1024)
     assert len(results) == 3
     paths = {entry["path"] for entry in results}
     assert {"foo.jpg", "bar.mp3", "baz.mp4"} == paths
 
 
 def test_run_llm_media_analyzer_skips_large(monkeypatch, tmp_path: Path):
-    """Files over the size limit should be skipped."""
-    monkeypatch.setattr(parse_zip, "LLMRemoteMediaAnalyzer", lambda: FakeAnalyzer())
+    monkeypatch.setattr(llm_media_helper, "LLMRemoteMediaAnalyzer", lambda: FakeAnalyzer())
     big = tmp_path / "huge.mp3"
     big.write_bytes(b"x" * (2 * 1024 * 1024))
     parse_result = SimpleNamespace(files=[_make_meta("huge.mp3")])
 
-    results = parse_zip._run_llm_media_analyzer(tmp_path, parse_result, max_bytes=1 * 1024 * 1024)
+    results = llm_media_helper.run_llm_media_analyzer(tmp_path, parse_result, max_bytes=1 * 1024 * 1024)
     assert results == []

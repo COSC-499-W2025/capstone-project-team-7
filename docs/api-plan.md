@@ -64,6 +64,7 @@ Content-Type: multipart/form-data
 - `POST /api/analysis/portfolio`: Run combined analysis for an `upload_id` or stored project; params `use_llm` (requires consent+key), `llm_media` optional; if `use_llm=false`, use local-only pipeline.
 - Output: project type (individual/collab), language/framework detection, contribution metrics, skill extraction, media/doc/pdf summaries, code metrics, project ranking scores, timelines.
 - External denied/missing key: return local results with `llm_status:"skipped"`.
+- Implementation note: reuse `backend/src/analyzer/llm_media_helper.py` when `llm_media=true`.
 
 ### Scans (desktop wiring)
 - `POST /api/scans`: One-shot convenience that wraps upload+parse(+analysis) for a local `source_path` (Electron sends path via IPC); returns `scan_id`, derived `project_id` (if persisted), and progress hooks.
