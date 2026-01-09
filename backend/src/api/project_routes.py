@@ -53,6 +53,28 @@ def get_encryption_service() -> Optional[EncryptionService]:
     return _encryption_service
 
 
+def normalize_project_data(project: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize project data from database to match model expectations.
+    
+    Handles None values for boolean and list fields by converting to defaults.
+    """
+    # Convert None boolean fields to False
+    boolean_fields = [
+        'has_media_analysis', 'has_pdf_analysis', 'has_code_analysis',
+        'has_git_analysis', 'has_contribution_metrics', 'has_skills_analysis',
+        'has_document_analysis', 'has_skills_progress'
+    ]
+    for field in boolean_fields:
+        if field in project and project[field] is None:
+            project[field] = False
+    
+    # Convert None languages list to empty list
+    if 'languages' in project and project['languages'] is None:
+        project['languages'] = []
+    
+    return project
+
+
 def verify_auth_token(authorization: Optional[str] = Header(None)) -> str:
     """
     Verify JWT token from Authorization header.
@@ -141,15 +163,15 @@ class ProjectMetadata(BaseModel):
     scan_timestamp: Optional[str] = None
     total_files: int = 0
     total_lines: int = 0
-    languages: List[str] = []
-    has_media_analysis: bool = False
-    has_pdf_analysis: bool = False
-    has_code_analysis: bool = False
-    has_git_analysis: bool = False
-    has_contribution_metrics: bool = False
-    has_skills_analysis: bool = False
-    has_document_analysis: bool = False
-    has_skills_progress: bool = False
+    languages: Optional[List[str]] = None
+    has_media_analysis: Optional[bool] = False
+    has_pdf_analysis: Optional[bool] = False
+    has_code_analysis: Optional[bool] = False
+    has_git_analysis: Optional[bool] = False
+    has_contribution_metrics: Optional[bool] = False
+    has_skills_analysis: Optional[bool] = False
+    has_document_analysis: Optional[bool] = False
+    has_skills_progress: Optional[bool] = False
     contribution_score: Optional[float] = None
     user_commit_share: Optional[float] = None
     total_commits: Optional[int] = None
@@ -287,9 +309,9 @@ async def list_projects(
         service = get_projects_service()
         projects = service.get_user_projects(user_id)
         
-        # Convert to ProjectMetadata objects for response
+        # Normalize and convert to ProjectMetadata objects for response
         metadata_projects = [
-            ProjectMetadata(**project) for project in projects
+            ProjectMetadata(**normalize_project_data(project)) for project in projects
         ]
         
         return ProjectListResponse(
@@ -344,6 +366,9 @@ async def get_project(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Project {project_id} not found",
             )
+        
+        # Normalize project data before converting to model
+        project = normalize_project_data(project)
         
         # Convert to ProjectDetail object for response
         return ProjectDetail(**project)
