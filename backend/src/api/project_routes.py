@@ -1,8 +1,8 @@
 # Project API Routes Helper Module
 # Provides models, services, and utilities for project scan CRUD operations
-# To be integrated into spec_routes.py
+# Endpoints are registered in this module's router
 
-from fastapi import HTTPException, status, Header
+from fastapi import APIRouter, HTTPException, status, Header, Depends
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
@@ -17,6 +17,9 @@ from cli.services.projects_service import ProjectsService, ProjectsServiceError
 from cli.services.encryption import EncryptionService
 
 logger = logging.getLogger(__name__)
+
+# Create router for project endpoints
+router = APIRouter(prefix="/api/projects", tags=["Projects"])
 
 # Initialize services
 _projects_service: Optional[ProjectsService] = None
@@ -181,10 +184,230 @@ class ErrorResponse(BaseModel):
 
 
 # ============================================================================
-# Note: Endpoint implementations are in spec_routes.py
+# API Endpoints
 # ============================================================================
-# This module provides reusable models, services, and utilities
-# The actual @router.post/@router.get/@router.delete endpoints
-# are registered in spec_routes.py and integrated with the shared router.
-# This keeps all API endpoints consolidated in one place per the team's
-# architecture while maintaining modular helper code here.
+
+@router.post(
+    "",
+    response_model=CreateProjectResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid request"},
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        500: {"model": ErrorResponse, "description": "Server error"},
+    },
+)
+async def create_project(
+    request: CreateProjectRequest,
+    user_id: str = Depends(verify_auth_token),
+) -> CreateProjectResponse:
+    """
+    Create a new project scan or update existing one.
+    
+    - **project_name**: Unique identifier for the project within user's account
+    - **project_path**: Original filesystem path that was scanned
+    - **scan_data**: Complete scan results (code analysis, skills, git, etc.)
+    
+    Acceptance Criteria:
+    - Saved scans persist in encrypted storage
+    - Scans are retrievable per user
+    """
+    try:
+        # Validate input
+        if not request.project_name.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="project_name cannot be empty",
+            )
+        
+        if not request.project_path.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="project_path cannot be empty",
+            )
+        
+        # Convert request to dictionary for service
+        scan_data_dict = request.scan_data.dict(exclude_none=True)
+        
+        # Get service and save scan
+        service = get_projects_service()
+        result = service.save_scan(
+            user_id=user_id,
+            project_name=request.project_name,
+            project_path=request.project_path,
+            scan_data=scan_data_dict,
+        )
+        
+        return CreateProjectResponse(
+            id=result.get("id", ""),
+            project_name=result.get("project_name", ""),
+            scan_timestamp=result.get("scan_timestamp", datetime.now().isoformat()),
+            message="Project scan saved successfully",
+        )
+    
+    except HTTPException:
+        raise
+    except ProjectsServiceError as exc:
+        logger.error(f"Projects service error: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to save project: {str(exc)}",
+        )
+    except Exception as exc:
+        logger.exception("Unexpected error creating project")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred",
+        )
+
+
+@router.get(
+    "",
+    response_model=ProjectListResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        500: {"model": ErrorResponse, "description": "Server error"},
+    },
+)
+async def list_projects(
+    user_id: str = Depends(verify_auth_token),
+) -> ProjectListResponse:
+    """
+    Get all projects for the authenticated user.
+    
+    Returns metadata for all saved scans (ordered by most recent first).
+    Does NOT include full scan_data to keep response lightweight.
+    
+    Acceptance Criteria:
+    - Projects are retrievable per user
+    - Only user's own projects are returned
+    - Results ordered by scan_timestamp (newest first)
+    """
+    try:
+        service = get_projects_service()
+        projects = service.get_user_projects(user_id)
+        
+        # Convert to ProjectMetadata objects for response
+        metadata_projects = [
+            ProjectMetadata(**project) for project in projects
+        ]
+        
+        return ProjectListResponse(
+            count=len(metadata_projects),
+            projects=metadata_projects,
+        )
+    
+    except ProjectsServiceError as exc:
+        logger.error(f"Projects service error: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve projects: {str(exc)}",
+        )
+    except Exception as exc:
+        logger.exception("Unexpected error listing projects")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred",
+        )
+
+
+@router.get(
+    "/{project_id}",
+    response_model=ProjectDetail,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Project not found"},
+        500: {"model": ErrorResponse, "description": "Server error"},
+    },
+)
+async def get_project(
+    project_id: str,
+    user_id: str = Depends(verify_auth_token),
+) -> ProjectDetail:
+    """
+    Get full details for a specific project including scan data.
+    
+    - **project_id**: UUID of the project to retrieve
+    
+    Returns encrypted scan data decrypted for display.
+    
+    Acceptance Criteria:
+    - Full scan data is retrievable by project ID
+    - Only project owner can access their projects
+    """
+    try:
+        service = get_projects_service()
+        project = service.get_project_scan(user_id, project_id)
+        
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Project {project_id} not found",
+            )
+        
+        # Convert to ProjectDetail object for response
+        return ProjectDetail(**project)
+    
+    except HTTPException:
+        raise
+    except ProjectsServiceError as exc:
+        logger.error(f"Projects service error: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve project: {str(exc)}",
+        )
+    except Exception as exc:
+        logger.exception("Unexpected error retrieving project")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred",
+        )
+
+
+@router.delete(
+    "/{project_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Project not found"},
+        500: {"model": ErrorResponse, "description": "Server error"},
+    },
+)
+async def delete_project(
+    project_id: str,
+    user_id: str = Depends(verify_auth_token),
+) -> None:
+    """
+    Delete a project scan.
+    
+    - **project_id**: UUID of the project to delete
+    
+    This removes the scan results and all associated data.
+    Only the project owner can delete their projects.
+    
+    Returns 204 No Content on success.
+    """
+    try:
+        service = get_projects_service()
+        success = service.delete_project(user_id, project_id)
+        
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Project {project_id} not found or already deleted",
+            )
+    
+    except HTTPException:
+        raise
+    except ProjectsServiceError as exc:
+        logger.error(f"Projects service error: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete project: {str(exc)}",
+        )
+    except Exception as exc:
+        logger.exception("Unexpected error deleting project")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred",
+        )

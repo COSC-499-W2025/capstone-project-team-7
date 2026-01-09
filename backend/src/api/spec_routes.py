@@ -505,8 +505,16 @@ def start_analysis(payload: Dict[str, Any] = Body(...)):
     }
 
 
-@router.get("/api/projects", response_model=Dict[str, Any])
-def list_projects(limit: int = 20, offset: int = 0, sort: Optional[str] = None):
+# ============================================================================
+# Project Management Endpoints (moved to project_routes.py)
+# ============================================================================
+# Project endpoints are now registered from project_routes.py
+# See src/api/project_routes.py for POST/GET/DELETE implementations
+
+
+# Legacy stub endpoints (kept for backward compatibility during migration)
+@router.get("/api/projects-stub", response_model=Dict[str, Any])
+def list_projects_stub(limit: int = 20, offset: int = 0, sort: Optional[str] = None):
     items = list(_project_store.values())[offset : offset + limit]
     return {
         "items": [p for p in items],
@@ -521,8 +529,8 @@ class ProjectCreateRequest(BaseModel):
     analysis_payload: Optional[Dict[str, Any]] = None
 
 
-@router.post("/api/projects", response_model=ProjectSummary)
-def create_project(payload: ProjectCreateRequest):
+@router.post("/api/projects-stub", response_model=ProjectSummary)
+def create_project_stub(payload: ProjectCreateRequest):
     project_id = str(uuid.uuid4())
     project = ProjectDetail(
         project_id=project_id,
@@ -546,21 +554,21 @@ def create_project(payload: ProjectCreateRequest):
     )
 
 
-@router.get("/api/projects/{project_id}", response_model=ProjectDetail)
-def get_project(project_id: str):
+@router.get("/api/projects-stub/{project_id}", response_model=ProjectDetail)
+def get_project_stub(project_id: str):
     project = _project_store.get(project_id)
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     return project
 
 
-@router.delete("/api/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_project(project_id: str):
+@router.delete("/api/projects-stub/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_project_stub(project_id: str):
     _project_store.pop(project_id, None)
     return
 
 
-@router.delete("/api/projects/{project_id}/insights", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/api/projects-stub/{project_id}/insights", status_code=status.HTTP_204_NO_CONTENT)
 def delete_insights(project_id: str):
     project = _project_store.get(project_id)
     if project:
