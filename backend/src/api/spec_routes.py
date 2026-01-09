@@ -8,13 +8,23 @@ services incrementally.
 
 from __future__ import annotations
 
+import logging
+import os
+import sys
+import threading
 from datetime import datetime
 from enum import Enum
+from pathlib import Path
 import uuid
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Body, File, Header, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Body, File, Header, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
+
+# Add parent directory to path for absolute imports (needed for lazy imports in background tasks)
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+logger = logging.getLogger(__name__)
 
 
 def _now_iso() -> str:
@@ -381,6 +391,168 @@ _resume_store: Dict[str, ResumeItem] = {}
 _config_store: Dict[str, Dict[str, Any]] = {}
 _selection_store: Dict[str, SelectionRequest] = {}
 
+# Thread lock for scan store access
+_scan_store_lock = threading.Lock()
+
+# Lazy-initialized scan service
+_scan_service = None
+
+
+def _get_scan_service():
+    """Get or create the singleton scan service instance."""
+    global _scan_service
+    if _scan_service is None:
+        from src.cli.services.scan_service import ScanService
+        _scan_service = ScanService()
+    return _scan_service
+
+
+def _update_scan_status(
+    scan_id: str,
+    state: JobState,
+    progress: Optional[Progress] = None,
+    error: Optional[ErrorResponse] = None,
+    result: Optional[Dict[str, Any]] = None,
+    project_id: Optional[str] = None,
+) -> None:
+    """Thread-safe update of scan status."""
+    with _scan_store_lock:
+        if scan_id in _scan_store:
+            scan = _scan_store[scan_id]
+            scan.state = state
+            if progress is not None:
+                scan.progress = progress
+            if error is not None:
+                scan.error = error
+            if result is not None:
+                scan.result = result
+            if project_id is not None:
+                scan.project_id = project_id
+
+
+def _run_scan_background(
+    scan_id: str,
+    source_path: str,
+    relevance_only: bool,
+    persist_project: bool,
+    profile_id: Optional[str],
+) -> None:
+    """Background task that executes the scan pipeline."""
+    try:
+        # Update status to running
+        _update_scan_status(
+            scan_id,
+            JobState.running,
+            progress=Progress(percent=5.0, message="Starting scan..."),
+        )
+
+        target = Path(source_path)
+        if not target.exists():
+            _update_scan_status(
+                scan_id,
+                JobState.failed,
+                error=ErrorResponse(
+                    code="PATH_NOT_FOUND",
+                    message=f"Source path does not exist: {source_path}",
+                ),
+            )
+            return
+
+        # Progress callback for scan service
+        def progress_callback(payload):
+            if isinstance(payload, str):
+                _update_scan_status(
+                    scan_id,
+                    JobState.running,
+                    progress=Progress(percent=30.0, message=payload),
+                )
+            elif isinstance(payload, dict) and payload.get("type") == "files":
+                processed = payload.get("processed", 0)
+                total = payload.get("total", 1)
+                percent = min(90.0, 30.0 + (processed / max(total, 1)) * 60.0)
+                _update_scan_status(
+                    scan_id,
+                    JobState.running,
+                    progress=Progress(
+                        percent=percent,
+                        message=f"Processing files ({processed}/{total})...",
+                    ),
+                )
+
+        # Run the scan
+        from src.scanner.models import ScanPreferences
+        preferences = ScanPreferences()
+        scan_service = _get_scan_service()
+        scan_result = scan_service.run_scan(
+            target=target,
+            relevant_only=relevance_only,
+            preferences=preferences,
+            progress_callback=progress_callback,
+        )
+
+        # Build result payload
+        parse_summary = dict(scan_result.parse_result.summary) if scan_result.parse_result else {}
+        files_data = []
+        for meta in scan_result.parse_result.files[:100]:  # Limit to first 100 for response
+            files_data.append({
+                "path": meta.path,
+                "size_bytes": meta.size_bytes,
+                "mime_type": meta.mime_type,
+            })
+
+        result_payload = {
+            "summary": {
+                "total_files": parse_summary.get("files_processed", len(scan_result.parse_result.files)),
+                "bytes_processed": parse_summary.get("bytes_processed", 0),
+                "issues_count": parse_summary.get("issues_count", 0),
+            },
+            "languages": scan_result.languages,
+            "has_media_files": scan_result.has_media_files,
+            "pdf_count": len(scan_result.pdf_candidates),
+            "document_count": len(scan_result.document_candidates),
+            "git_repos_count": len(scan_result.git_repos),
+            "files": files_data,
+            "timings": scan_result.timings,
+        }
+
+        # Optionally persist to database
+        project_id = None
+        if persist_project and profile_id:
+            try:
+                from src.cli.services.projects_service import ProjectsService
+                projects_service = ProjectsService()
+                project_name = target.name or "scan"
+                saved = projects_service.save_scan(
+                    user_id=profile_id,
+                    project_name=project_name,
+                    project_path=str(target),
+                    scan_data=result_payload,
+                )
+                project_id = saved.get("id")
+                result_payload["project_id"] = project_id
+            except Exception as persist_err:
+                logger.warning(f"Failed to persist scan to database: {persist_err}")
+                result_payload["persist_warning"] = str(persist_err)
+
+        _update_scan_status(
+            scan_id,
+            JobState.succeeded,
+            progress=Progress(percent=100.0, message="Scan completed"),
+            result=result_payload,
+            project_id=project_id,
+        )
+
+    except Exception as exc:
+        logger.exception(f"Scan {scan_id} failed with error: {exc}")
+        _update_scan_status(
+            scan_id,
+            JobState.failed,
+            error=ErrorResponse(
+                code="SCAN_ERROR",
+                message=str(exc),
+            ),
+        )
+
 
 router = APIRouter()
 
@@ -457,39 +629,73 @@ def parse_upload(upload_id: str, options: ParseOptions = Body(default=None)):
 @router.post("/api/scans", response_model=ScanStatus, status_code=status.HTTP_202_ACCEPTED)
 def create_scan(
     request: ScanRequest,
+    background_tasks: BackgroundTasks,
     idempotency_key: Optional[str] = Header(default=None, convert_underscores=True),
 ):
-    scan_id = idempotency_key or str(uuid.uuid4())
-    if scan_id in _scan_store:
-        return _scan_store[scan_id]
+    """
+    Start a new scan job for a source path.
 
-    project_id = str(uuid.uuid4()) if request.persist_project else None
-    upload_id = request.upload_id or (str(uuid.uuid4()) if request.source_path else None)
-    project = ProjectDetail(
-        project_id=project_id or str(uuid.uuid4()),
-        name=request.source_path or "scan",
-        project_type="unknown",
-        languages=[],
-        frameworks=[],
-        created_at=_now_iso(),
-        scan_timestamp=_now_iso(),
-    )
-    _project_store[project.project_id] = project
+    Returns immediately with a scan_id that can be polled via GET /api/scans/{scan_id}.
+    The scan runs in the background and updates its status as it progresses.
+    """
+    scan_id = idempotency_key or str(uuid.uuid4())
+
+    # Return existing scan if idempotency key matches
+    with _scan_store_lock:
+        if scan_id in _scan_store:
+            return _scan_store[scan_id]
+
+    # Validate request - must have source_path or upload_id
+    if not request.source_path and not request.upload_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Either source_path or upload_id must be provided",
+        )
+
+    # For now, only source_path is supported
+    if request.upload_id and not request.source_path:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Scanning from upload_id is not yet implemented. Please provide source_path.",
+        )
+
+    # Create initial scan status
     scan_status = ScanStatus(
         scan_id=scan_id,
-        project_id=project.project_id,
-        upload_id=upload_id,
-        state=JobState.succeeded,
-        progress=Progress(percent=100.0, message="Completed (stub)"),
-        result={"project": project.dict(), "analysis": AnalysisSummary().dict()},
+        project_id=None,
+        upload_id=request.upload_id,
+        state=JobState.queued,
+        progress=Progress(percent=0.0, message="Scan queued"),
+        error=None,
+        result=None,
     )
-    _scan_store[scan_id] = scan_status
+
+    with _scan_store_lock:
+        _scan_store[scan_id] = scan_status
+
+    # Schedule background scan
+    background_tasks.add_task(
+        _run_scan_background,
+        scan_id=scan_id,
+        source_path=request.source_path,
+        relevance_only=request.relevance_only,
+        persist_project=request.persist_project,
+        profile_id=request.profile_id,
+    )
+
     return scan_status
 
 
 @router.get("/api/scans/{scan_id}", response_model=ScanStatus)
 def get_scan(scan_id: str):
-    scan = _scan_store.get(scan_id)
+    """
+    Get the current status of a scan job.
+
+    Poll this endpoint to track scan progress. The scan is complete when
+    state is 'succeeded' or 'failed'.
+    """
+    with _scan_store_lock:
+        scan = _scan_store.get(scan_id)
     if not scan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scan not found")
     return scan
