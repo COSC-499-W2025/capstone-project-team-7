@@ -9,11 +9,30 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+import sys
+from pathlib import Path
 
-from src.main import app
+# Add backend/src to path
+sys.path.insert(0, str(Path(__file__).parent.parent / "backend" / "src"))
+
+from main import app
+from api.upload_routes import verify_auth_token
 
 
 client = TestClient(app)
+
+# Test user ID for mocked auth
+TEST_USER_ID = "test-user-123"
+
+
+# Mock authentication for testing
+async def mock_verify_auth_token():
+    """Mock auth function that returns test user ID"""
+    return TEST_USER_ID
+
+
+# Override the auth dependency for tests
+app.dependency_overrides[verify_auth_token] = mock_verify_auth_token
 
 
 @pytest.fixture
@@ -125,6 +144,23 @@ class TestUploadEndpoint:
         id1 = response1.json()["upload_id"]
         id2 = response2.json()["upload_id"]
         assert id1 != id2
+    
+    def test_upload_missing_auth_returns_401(self, valid_zip_bytes, cleanup_uploads):
+        """Test that missing Authorization header returns 401"""
+        # Temporarily remove auth override to test actual auth
+        app.dependency_overrides.clear()
+        
+        response = client.post(
+            "/api/uploads",
+            files={"file": ("test.zip", valid_zip_bytes, "application/zip")}
+            # No headers - missing auth
+        )
+        
+        assert response.status_code == 401
+        assert "detail" in response.json()
+        
+        # Restore auth override
+        app.dependency_overrides[verify_auth_token] = mock_verify_auth_token
 
 
 class TestGetUploadStatus:
@@ -260,7 +296,10 @@ class TestParseEndpoint:
         )
         upload_id = upload_response.json()["upload_id"]
         
-        parse_response = client.post(f"/api/uploads/{upload_id}/parse", json={})
+        parse_response = client.post(
+            f"/api/uploads/{upload_id}/parse",
+            json={}
+        )
         data = parse_response.json()
         
         # Check duplicate detection

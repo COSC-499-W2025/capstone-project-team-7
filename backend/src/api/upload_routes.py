@@ -10,14 +10,58 @@ import magic
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-from fastapi import APIRouter, UploadFile, File, HTTPException, status, Body
+from fastapi import APIRouter, UploadFile, File, HTTPException, status, Body, Header, Depends
 from pydantic import BaseModel, Field
 
 from scanner.parser import parse_zip
-from scanner.models import ParseResult, ScanPreferences, FileMetadata as ScanFileMetadata, ParseIssue
+from scanner.models import ParseResult, ScanPreferences, FileMetadata as ScanFileMetadata, ParseIssue as ScanParseIssue
 
 
 router = APIRouter(prefix="/api/uploads", tags=["uploads"])
+
+
+# Authentication helper
+def verify_auth_token(authorization: Optional[str] = Header(None)) -> str:
+    """
+    Verify JWT token from Authorization header.
+    Returns user_id from token.
+    """
+    if not authorization:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing authorization token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Extract token from "Bearer <token>" format
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authorization header format. Use 'Bearer <token>'",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    token = parts[1]
+    
+    # Basic JWT validation
+    try:
+        import jwt
+        # Decode without verification for development
+        # In production, verify against Supabase public key
+        payload = jwt.decode(token, options={"verify_signature": False})
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token: missing user ID",
+            )
+        return user_id
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
 
 
 # Pydantic models
@@ -54,8 +98,8 @@ class FileMetadata(BaseModel):
     media_info: Optional[Dict[str, Any]] = None
 
 
-class ParseIssue(BaseModel):
-    """Parse issue/warning"""
+class ParseIssueResponse(BaseModel):
+    """Parse issue/warning for API response"""
     path: str
     code: str
     message: str
@@ -73,7 +117,7 @@ class ParseResponse(BaseModel):
     upload_id: str
     status: str = "parsed"
     files: List[FileMetadata]
-    issues: List[ParseIssue]
+    issues: List[ParseIssueResponse]
     summary: Dict[str, int]
     parse_started_at: str
     parse_completed_at: str
@@ -81,9 +125,9 @@ class ParseResponse(BaseModel):
 
 
 # Configuration
-UPLOAD_DIR = Path("data/uploads")
+UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "data/uploads"))
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-MAX_UPLOAD_SIZE = 200 * 1024 * 1024  # 200 MB
+MAX_UPLOAD_SIZE = int(os.getenv("MAX_UPLOAD_SIZE_MB", "200")) * 1024 * 1024
 ALLOWED_MIME_TYPES = [
     "application/zip",
     "application/x-zip-compressed",
@@ -91,6 +135,8 @@ ALLOWED_MIME_TYPES = [
 
 
 # In-memory storage for upload metadata (will be replaced with DB)
+# TODO: Replace with Supabase database persistence for production
+# TODO: Implement file cleanup endpoint or TTL-based cleanup to prevent disk accumulation
 uploads_store = {}
 
 
@@ -98,6 +144,9 @@ def validate_zip_file(file_content: bytes, filename: str) -> tuple[bool, Optiona
     """
     Validate that uploaded file is a valid ZIP archive
     Returns (is_valid, error_message)
+    
+    Note: ZIP extraction safety (path traversal prevention) is handled by
+    the scanner.parser module during parse operation.
     """
     # Check file extension
     if not filename.lower().endswith('.zip'):
@@ -129,7 +178,8 @@ def compute_file_hash(content: bytes) -> str:
 
 @router.post("", response_model=UploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload_file(
-    file: UploadFile = File(..., description="ZIP archive to upload")
+    file: UploadFile = File(..., description="ZIP archive to upload"),
+    user_id: str = Depends(verify_auth_token)
 ):
     """
     Upload a ZIP archive
@@ -138,6 +188,7 @@ async def upload_file(
     - Stores file with unique upload_id
     - Returns upload metadata
     - Max size: 200 MB
+    - Requires authentication
     """
     try:
         # Read file content
@@ -181,6 +232,7 @@ async def upload_file(
         from datetime import datetime
         upload_metadata = {
             "upload_id": upload_id,
+            "user_id": user_id,
             "status": "stored",
             "filename": file.filename,
             "size_bytes": file_size,
@@ -215,11 +267,15 @@ async def upload_file(
 
 
 @router.get("/{upload_id}", response_model=UploadStatus)
-async def get_upload_status(upload_id: str):
+async def get_upload_status(
+    upload_id: str,
+    user_id: str = Depends(verify_auth_token)
+):
     """
     Get upload status and metadata
     
-    Returns stored metadata for the upload to allow polling without filesystem access
+    Returns stored metadata for the upload to allow polling without filesystem access.
+    Only returns uploads owned by the authenticated user.
     """
     if upload_id not in uploads_store:
         raise HTTPException(
@@ -231,6 +287,16 @@ async def get_upload_status(upload_id: str):
         )
     
     upload_data = uploads_store[upload_id]
+    
+    # Verify ownership
+    if upload_data.get("user_id") != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "forbidden",
+                "message": "Access denied to this upload"
+            }
+        )
     
     return UploadStatus(
         upload_id=upload_data["upload_id"],
@@ -245,7 +311,8 @@ async def get_upload_status(upload_id: str):
 @router.post("/{upload_id}/parse", response_model=ParseResponse)
 async def parse_upload(
     upload_id: str,
-    parse_request: ParseRequest = Body(default=ParseRequest())
+    parse_request: ParseRequest = Body(default=ParseRequest()),
+    user_id: str = Depends(verify_auth_token)
 ):
     """
     Parse uploaded ZIP archive
@@ -256,6 +323,7 @@ async def parse_upload(
     - Detects Git repositories
     - Supports custom scan preferences
     - Returns file list, issues, and summary statistics
+    - Requires authentication and upload ownership
     """
     # Verify upload exists
     if upload_id not in uploads_store:
@@ -268,6 +336,16 @@ async def parse_upload(
         )
     
     upload_data = uploads_store[upload_id]
+    
+    # Verify ownership
+    if upload_data.get("user_id") != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "forbidden",
+                "message": "Access denied to this upload"
+            }
+        )
     storage_path = Path(upload_data["storage_path"])
     
     if not storage_path.exists():
@@ -339,7 +417,7 @@ async def parse_upload(
         
         # Convert issues
         issues = [
-            ParseIssue(
+            ParseIssueResponse(
                 path=issue.path,
                 code=issue.code,
                 message=issue.message
