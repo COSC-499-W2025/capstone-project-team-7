@@ -383,7 +383,6 @@ class ScanStatus(BaseModel):
 
 
 # In-memory placeholders
-_consent_store: Dict[str, ConsentStatus] = {}
 _upload_store: Dict[str, Upload] = {}
 _scan_store: Dict[str, ScanStatus] = {}
 _project_store: Dict[str, ProjectDetail] = {}
@@ -555,33 +554,6 @@ def _run_scan_background(
 
 
 router = APIRouter()
-
-
-@router.get("/api/consent", response_model=ConsentStatus)
-def get_consent(user_id: str):
-    if user_id in _consent_store:
-        return _consent_store[user_id]
-    status_obj = ConsentStatus(
-        user_id=user_id,
-        data_access=False,
-        external_services=False,
-        updated_at=_now_iso(),
-    )
-    _consent_store[user_id] = status_obj
-    return status_obj
-
-
-@router.post("/api/consent", response_model=ConsentStatus)
-def set_consent(payload: Dict[str, Any] = Body(...)):
-    user_id = payload.get("user_id", "unknown-user")
-    status_obj = ConsentStatus(
-        user_id=user_id,
-        data_access=bool(payload.get("data_access", False)),
-        external_services=bool(payload.get("external_services", False)),
-        updated_at=_now_iso(),
-    )
-    _consent_store[user_id] = status_obj
-    return status_obj
 
 
 @router.post("/api/uploads", response_model=Upload)
