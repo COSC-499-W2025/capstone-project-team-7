@@ -388,6 +388,17 @@ class ProfileUpsertRequest(BaseModel):
     description: Optional[str] = None
 
 
+class ProfilesResponse(BaseModel):
+    current_profile: str
+    profiles: Dict[str, Dict[str, Any]]
+
+
+class ProfileSaveResponse(BaseModel):
+    name: str
+    profile: Dict[str, Any]
+    current_profile: str
+
+
 # In-memory placeholders
 _consent_store: Dict[str, ConsentStatus] = {}
 _upload_store: Dict[str, Upload] = {}
@@ -795,7 +806,7 @@ def update_config(payload: ConfigUpdateRequest, authorization: Optional[str] = H
     return manager.config
 
 
-@router.get("/api/config/profiles")
+@router.get("/api/config/profiles", response_model=ProfilesResponse)
 def list_profiles(user_id: Optional[str] = None, authorization: Optional[str] = Header(default=None)):
     resolved_user_id = _resolve_user_id(user_id, authorization)
     manager = _get_config_manager(resolved_user_id)
@@ -805,7 +816,7 @@ def list_profiles(user_id: Optional[str] = None, authorization: Optional[str] = 
     }
 
 
-@router.post("/api/config/profiles")
+@router.post("/api/config/profiles", response_model=ProfileSaveResponse)
 def save_profile(payload: ProfileUpsertRequest, authorization: Optional[str] = Header(default=None)):
     resolved_user_id = _resolve_user_id(payload.user_id, authorization)
     manager = _get_config_manager(resolved_user_id)
