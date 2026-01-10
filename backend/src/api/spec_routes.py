@@ -400,12 +400,12 @@ class ProfileSaveResponse(BaseModel):
 
 
 # In-memory placeholders
-_consent_store: Dict[str, ConsentStatus] = {}
 _upload_store: Dict[str, Upload] = {}
 _scan_store: Dict[str, ScanStatus] = {}
 _project_store: Dict[str, ProjectDetail] = {}
 _resume_store: Dict[str, ResumeItem] = {}
 _selection_store: Dict[str, SelectionRequest] = {}
+_consent_store: Dict[str, ConsentStatus] = {}
 
 
 router = APIRouter()
