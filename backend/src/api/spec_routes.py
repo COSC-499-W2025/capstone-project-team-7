@@ -384,46 +384,8 @@ _selection_store: Dict[str, SelectionRequest] = {}
 router = APIRouter()
 
 
-@router.post("/api/uploads", response_model=Upload)
-async def create_upload(
-    file: UploadFile = File(...),
-    idempotency_key: Optional[str] = Header(default=None, convert_underscores=True),
-):
-    if idempotency_key and idempotency_key in _upload_store:
-        return _upload_store[idempotency_key]
-    upload_id = idempotency_key or str(uuid.uuid4())
-    upload = Upload(
-        upload_id=upload_id,
-        filename=file.filename,
-        size_bytes=None,
-        status="stored",
-        created_at=_now_iso(),
-    )
-    _upload_store[upload_id] = upload
-    return upload
-
-
-@router.get("/api/uploads/{upload_id}", response_model=Upload)
-def get_upload(upload_id: str):
-    upload = _upload_store.get(upload_id)
-    if not upload:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found")
-    return upload
-
-
-@router.post("/api/uploads/{upload_id}/parse")
-def parse_upload(upload_id: str, options: ParseOptions = Body(default=None)):
-    upload = _upload_store.get(upload_id)
-    if not upload:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found")
-    # Stub: mark parsed
-    upload.status = "parsed"
-    _upload_store[upload_id] = upload
-    return {
-        "upload_id": upload_id,
-        "state": JobState.succeeded,
-        "progress": Progress(percent=100.0, message="Parsed (stub)"),
-    }
+# Consent endpoints moved to consent_routes.py
+# Upload endpoints moved to upload_routes.py
 
 
 @router.post("/api/scans", response_model=ScanStatus, status_code=status.HTTP_202_ACCEPTED)
