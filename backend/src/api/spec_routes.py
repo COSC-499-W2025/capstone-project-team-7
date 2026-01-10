@@ -18,13 +18,18 @@ from pathlib import Path
 import uuid
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Body, File, Header, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, File, Header, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
+
+from api.dependencies import AuthContext, get_auth_context
 
 # Add parent directory to path for absolute imports (needed for lazy imports in background tasks)
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 logger = logging.getLogger(__name__)
+
+# Configuration constants
+MAX_FILES_IN_RESPONSE = 100  # Maximum number of files to include in scan response
 
 
 def _now_iso() -> str:
@@ -374,6 +379,7 @@ class TimelineItem(BaseModel):
 
 class ScanStatus(BaseModel):
     scan_id: str
+    user_id: str  # Owner of the scan for user isolation
     project_id: Optional[str] = None
     upload_id: Optional[str] = None
     state: JobState
@@ -414,19 +420,88 @@ def _update_scan_status(
     result: Optional[Dict[str, Any]] = None,
     project_id: Optional[str] = None,
 ) -> None:
-    """Thread-safe update of scan status."""
+    """Thread-safe update of scan status using immutable pattern."""
     with _scan_store_lock:
         if scan_id in _scan_store:
-            scan = _scan_store[scan_id]
-            scan.state = state
+            current = _scan_store[scan_id]
+            updates: Dict[str, Any] = {"state": state}
             if progress is not None:
-                scan.progress = progress
+                updates["progress"] = progress
             if error is not None:
-                scan.error = error
+                updates["error"] = error
             if result is not None:
-                scan.result = result
+                updates["result"] = result
             if project_id is not None:
-                scan.project_id = project_id
+                updates["project_id"] = project_id
+            # Use model_copy instead of direct mutation (Pydantic v2 best practice)
+            _scan_store[scan_id] = current.model_copy(update=updates)
+
+
+def _validate_scan_path(source_path: str) -> Path:
+    """
+    Validate and sanitize the scan path to prevent directory traversal attacks.
+
+    Args:
+        source_path: The path to validate
+
+    Returns:
+        Resolved Path object
+
+    Raises:
+        HTTPException: If path is invalid or not allowed
+    """
+    # Block access to sensitive system directories (check input BEFORE resolution)
+    # This prevents bypassing via symlinks (e.g., /etc -> /private/etc on macOS)
+    blocked_prefixes = [
+        "/etc", "/var", "/usr", "/bin", "/sbin", "/lib", "/boot",
+        "/root", "/proc", "/sys", "/dev",
+        # macOS-specific paths (where symlinks resolve to)
+        "/private/etc", "/private/var",
+    ]
+
+    # Check the original input path first (before symlink resolution)
+    input_path = Path(source_path)
+    try:
+        # Make absolute without resolving symlinks
+        if not input_path.is_absolute():
+            input_path = Path.cwd() / input_path
+        input_str = str(input_path)
+    except (OSError, ValueError):
+        input_str = source_path
+
+    for blocked in blocked_prefixes:
+        if input_str.startswith(blocked) or source_path.startswith(blocked):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"code": "path_not_allowed", "message": f"Access to {blocked} is not allowed"},
+            )
+
+    try:
+        # Resolve to absolute path (handles ../ and symlinks)
+        target = Path(source_path).resolve()
+    except (OSError, ValueError) as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "invalid_path", "message": f"Invalid path: {e}"},
+        )
+
+    # Also check resolved path (catches symlink bypasses)
+    resolved_str = str(target)
+    for blocked in blocked_prefixes:
+        if resolved_str.startswith(blocked):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"code": "path_not_allowed", "message": f"Access to {blocked} is not allowed"},
+            )
+
+    # Ensure path exists
+    if not target.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "path_not_found", "message": f"Path does not exist: {source_path}"},
+        )
+
+    return target
 
 
 def _run_scan_background(
@@ -492,7 +567,7 @@ def _run_scan_background(
         # Build result payload
         parse_summary = dict(scan_result.parse_result.summary) if scan_result.parse_result else {}
         files_data = []
-        for meta in scan_result.parse_result.files[:100]:  # Limit to first 100 for response
+        for meta in scan_result.parse_result.files[:MAX_FILES_IN_RESPONSE]:
             files_data.append({
                 "path": meta.path,
                 "size_bytes": meta.size_bytes,
@@ -599,41 +674,64 @@ def parse_upload(upload_id: str, options: ParseOptions = Body(default=None)):
 
 
 @router.post("/api/scans", response_model=ScanStatus, status_code=status.HTTP_202_ACCEPTED)
-def create_scan(
+async def create_scan(
     request: ScanRequest,
     background_tasks: BackgroundTasks,
+    auth: AuthContext = Depends(get_auth_context),
     idempotency_key: Optional[str] = Header(default=None, convert_underscores=True),
 ):
     """
     Start a new scan job for a source path.
 
-    Returns immediately with a scan_id that can be polled via GET /api/scans/{scan_id}.
-    The scan runs in the background and updates its status as it progresses.
+    Requires authentication. Returns immediately with a scan_id that can be
+    polled via GET /api/scans/{scan_id}. The scan runs in the background and
+    updates its status as it progresses.
     """
     scan_id = idempotency_key or str(uuid.uuid4())
 
-    # Return existing scan if idempotency key matches
+    # Return existing scan if idempotency key matches AND belongs to this user
     with _scan_store_lock:
         if scan_id in _scan_store:
-            return _scan_store[scan_id]
+            existing = _scan_store[scan_id]
+            if existing.user_id != auth.user_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail={"code": "forbidden", "message": "Scan belongs to another user"},
+                )
+            return existing
 
     # Validate request - must have source_path or upload_id
     if not request.source_path and not request.upload_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Either source_path or upload_id must be provided",
+            detail={"code": "validation_error", "message": "Either source_path or upload_id must be provided"},
         )
 
     # For now, only source_path is supported
     if request.upload_id and not request.source_path:
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="Scanning from upload_id is not yet implemented. Please provide source_path.",
+            detail={"code": "not_implemented", "message": "Scanning from upload_id is not yet implemented. Please provide source_path."},
         )
 
-    # Create initial scan status
+    # Validate path before starting background task (security check)
+    _validate_scan_path(request.source_path)
+
+    # Validate profile_id if provided - must match authenticated user
+    profile_id = request.profile_id
+    if profile_id and profile_id != auth.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "forbidden", "message": "profile_id must match authenticated user"},
+        )
+    # Default profile_id to authenticated user if not provided
+    if not profile_id:
+        profile_id = auth.user_id
+
+    # Create initial scan status with user_id for isolation
     scan_status = ScanStatus(
         scan_id=scan_id,
+        user_id=auth.user_id,
         project_id=None,
         upload_id=request.upload_id,
         state=JobState.queued,
@@ -652,24 +750,37 @@ def create_scan(
         source_path=request.source_path,
         relevance_only=request.relevance_only,
         persist_project=request.persist_project,
-        profile_id=request.profile_id,
+        profile_id=profile_id,
     )
 
     return scan_status
 
 
 @router.get("/api/scans/{scan_id}", response_model=ScanStatus)
-def get_scan(scan_id: str):
+async def get_scan(
+    scan_id: str,
+    auth: AuthContext = Depends(get_auth_context),
+):
     """
     Get the current status of a scan job.
 
+    Requires authentication. Users can only access their own scans.
     Poll this endpoint to track scan progress. The scan is complete when
     state is 'succeeded' or 'failed'.
     """
     with _scan_store_lock:
         scan = _scan_store.get(scan_id)
     if not scan:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scan not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Scan not found"},
+        )
+    # User isolation - only return scans owned by the authenticated user
+    if scan.user_id != auth.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "forbidden", "message": "Access denied"},
+        )
     return scan
 
 
