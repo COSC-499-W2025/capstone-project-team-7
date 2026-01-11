@@ -1,4 +1,77 @@
 # Aaron Banerjee (@aaronbanerjee123)
+# Aaron Banerjee (@aaronbanerjee123)
+## Week [15]: January 4 - January 11
+This week, I focused on implementing and testing a comprehensive REST API for project scan management, integrating JWT authentication with Supabase, and ensuring secure, user-isolated data access through proper authentication and authorization mechanisms.
+
+**Key Accomplishments:**
+
+1. **Complete Project Routes API Implementation**: Designed and implemented a full CRUD API with four endpoints for managing project scans:
+   - POST `/api/projects` - Creates new project scans with complete analysis data (code, git, skills, contributions, media, documents)
+   - GET `/api/projects` - Retrieves all projects for authenticated user with metadata (contribution scores, languages, analysis flags)
+   - GET `/api/projects/{id}` - Fetches detailed project data including full scan results
+   - DELETE `/api/projects/{id}` - Removes projects with proper ownership verification
+   
+   Implemented comprehensive request/response models using Pydantic for type safety and validation, including `ProjectScanData`, `ProjectMetadata`, `ProjectDetail`, and error response schemas.
+
+2. **JWT Authentication Infrastructure**: Implemented the authentication layer with JWT token verification for Supabase integration. Created the `verify_auth_token()` dependency that extracts Bearer tokens from Authorization headers, decodes JWT payloads, and extracts user IDs from the `sub` claim for request authorization. The current implementation successfully validates token structure and expiration, though signature verification with Supabase's HS256-signed secrets requires additional debugging (currently operating with `verify_signature: False` for testing purposes).
+
+3. **Supabase Integration & RLS Configuration**: Integrated with Supabase for persistent storage with Row Level Security (RLS) policies enforcing user data isolation. Configured both anon and service role keys appropriately - using service role keys for backend operations to bypass RLS when needed, while maintaining security through JWT verification at the API layer. Ensured all database operations properly scope to the authenticated user's ID extracted from the JWT token.
+
+4. **Comprehensive API Testing in Postman**: Conducted thorough end-to-end testing of all project endpoints using Postman. Created test collections with proper Authorization headers containing valid JWT tokens. Validated that:
+   - JWT token extraction and payload decoding works correctly
+   - User ID extraction from the `sub` claim properly identifies authenticated users
+   - RLS policies correctly isolate user data (users can only access their own projects)
+   - Request validation catches invalid inputs (empty project names, missing fields)
+   - Response models return correct data structures with proper HTTP status codes (201 Created, 200 OK, 204 No Content, 401 Unauthorized, 404 Not Found)
+   - All CRUD operations function correctly for the authenticated user
+
+5. **Error Handling & Logging**: Implemented comprehensive error handling with specific HTTP exceptions for different failure scenarios (missing auth, invalid tokens, expired tokens, signature failures, not found, server errors). Added detailed logging throughout the authentication and service layers to aid in debugging and monitoring production issues. The logging infrastructure will be particularly useful for debugging the signature verification issues in the next iteration.
+
+**Challenges & Learning:**
+
+The primary challenge this week was debugging JWT signature verification with Supabase tokens. While I successfully implemented the basic authentication flow (token extraction, payload decoding, user ID extraction), enabling full signature verification with Supabase's JWT secrets proved more complex than anticipated. 
+
+I discovered that Supabase's JWT secrets with the `sb_secret_` prefix are base64url-encoded, requiring special decoding logic. Despite implementing base64 decoding with proper padding calculations, the signature verification still fails with "Invalid token signature" errors. I attempted multiple approaches:
+- Direct secret usage as a string
+- Converting the secret to bytes using `.encode('utf-8')`
+- Base64 decoding with standard padding
+- Base64url decoding with automatic padding
+
+The issue appears to be related to how Supabase encodes their JWT secrets versus how PyJWT expects the HMAC secret for HS256 verification. This debugging process taught me about the nuances of JWT signature algorithms, the difference between `base64.b64decode()` and `base64.urlsafe_b64decode()`, and the importance of understanding vendor-specific authentication implementations.
+
+For now, the API operates with `verify_signature: False`, which still validates token structure, expiration, and user claims - providing functional authentication for development and testing. However, this is not suitable for production deployment.
+
+Another learning experience was understanding FastAPI's dependency injection system. The `Depends()` mechanism provides an elegant way to inject authentication logic into route handlers, automatically handling token validation before endpoint code executes. This pattern keeps the authentication logic DRY and makes it easy to secure multiple endpoints consistently.
+
+**Next Steps:**
+
+Next week, my primary focus will be resolving the JWT signature verification issue to enable production-ready authentication. This will involve:
+- Consulting Supabase documentation on JWT secret formats and verification
+- Testing with Supabase's official Python client to see how they handle signature verification
+- Potentially reaching out to Supabase support or community forums for guidance on the `sb_secret_` format
+- Exploring alternative approaches like using PyJWT's key loading utilities
+- Ensuring the verification works consistently with both fresh and long-lived tokens
+
+Once signature verification is working, I'll also add integration tests for the authentication layer and document the JWT configuration process for other team members and future deployments.
+
+**Impact:**
+
+The project routes API provides a complete backend foundation for the application's core feature: saving and retrieving project scan results. This enables users to:
+- Persist their code analysis results permanently in the cloud
+- Access their scan history across different sessions and devices
+- Build a portfolio of analyzed projects over time
+- Track project metrics and contribution scores longitudinally
+
+The authentication infrastructure, once signature verification is fully enabled, will ensure secure, user-isolated data access - critical for a multi-user SaaS application. Each user can only view and manage their own projects, preventing unauthorized data access and maintaining privacy compliance.
+
+This work unblocks several downstream features including the frontend project dashboard, project comparison views, and portfolio generation, as they all depend on the ability to reliably save and retrieve project data through this authenticated API.
+
+Issues resolved include:[#197](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/197)
+
+PR [#213 - Project Routes](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/XXX)](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/213)
+<img width="1239" height="200" alt="image" src="https://github.com/user-attachments/assets/ceb88bd3-53dd-4ad7-b062-02a4a9e043b8" />
+
+
 ## Week 14: December 1 - December 7
 This week, I focused on implementing a comprehensive summary feature for the View Saved Projects screen and fixing critical navigation bugs to improve the user experience.
 
