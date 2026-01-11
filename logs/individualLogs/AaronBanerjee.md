@@ -42,7 +42,7 @@ For now, the API operates with `verify_signature: False`, which still validates 
 
 Another learning experience was understanding FastAPI's dependency injection system. The `Depends()` mechanism provides an elegant way to inject authentication logic into route handlers, automatically handling token validation before endpoint code executes. This pattern keeps the authentication logic DRY and makes it easy to secure multiple endpoints consistently.
 
-**Next Steps:**
+**Next Week Priorities:**
 
 Next week, my primary focus will be resolving the JWT signature verification issue to enable production-ready authentication. This will involve:
 - Consulting Supabase documentation on JWT secret formats and verification
@@ -68,7 +68,10 @@ This work unblocks several downstream features including the frontend project da
 Issues resolved include:[#197](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/197)
 
 PR[#213 - Project Routes](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/XXX)](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/213)
+
+
 <img width="1239" height="200" alt="image" src="https://github.com/user-attachments/assets/ceb88bd3-53dd-4ad7-b062-02a4a9e043b8" />
+<img width="1451" height="723" alt="image" src="https://github.com/user-attachments/assets/901f5895-dd8e-45e0-a549-67a816fa440f" />
 
 
 ## Week 14: December 1 - December 7
