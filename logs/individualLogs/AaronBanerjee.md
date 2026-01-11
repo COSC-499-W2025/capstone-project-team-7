@@ -1,5 +1,5 @@
 # Aaron Banerjee (@aaronbanerjee123)
-## Week 15: January 4 - January 11
+## Week 15: January 5 - January 11
 This week, I focused on implementing and testing a comprehensive REST API for project scan management, integrating JWT authentication with Supabase, and ensuring secure, user-isolated data access through proper authentication and authorization mechanisms.
 
 **Key Accomplishments:**
