@@ -49,6 +49,12 @@ class ConsentStatus(BaseModel):
     updated_at: str
 
 
+class ConsentUpdateRequest(BaseModel):
+    user_id: Optional[str] = None
+    data_access: bool = False
+    external_services: bool = False
+
+
 class Upload(BaseModel):
     upload_id: str
     filename: Optional[str] = None
@@ -399,6 +405,16 @@ class ProfileSaveResponse(BaseModel):
     current_profile: str
 
 
+class ConfigResponse(BaseModel):
+    scan_profiles: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    current_profile: Optional[str] = None
+    max_file_size_mb: Optional[int] = None
+    follow_symlinks: Optional[bool] = None
+
+    class Config:
+        extra = "allow"
+
+
 # In-memory placeholders
 _upload_store: Dict[str, Upload] = {}
 _scan_store: Dict[str, ScanStatus] = {}
@@ -449,7 +465,7 @@ def _get_supabase_user_id(token: str) -> str:
         ) from exc
 
     url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_ANON_KEY") or os.getenv("SUPABASE_KEY")
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_ANON_KEY")
     if not url or not key:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -490,6 +506,21 @@ def _resolve_user_id(user_id: Optional[str], authorization: Optional[str]) -> st
     return user_id
 
 
+def _default_config() -> Dict[str, Any]:
+    return {
+        "scan_profiles": {
+            "sample": {
+                "description": "Scan common code and doc file types.",
+                "extensions": [".py", ".md", ".json", ".txt", ".pdf", ".doc", ".docx"],
+                "exclude_dirs": ["__pycache__", "node_modules", ".git"],
+            }
+        },
+        "current_profile": "sample",
+        "max_file_size_mb": 10,
+        "follow_symlinks": False,
+    }
+
+
 @router.get("/api/consent", response_model=ConsentStatus)
 def get_consent(user_id: str):
     if user_id in _consent_store:
@@ -505,12 +536,17 @@ def get_consent(user_id: str):
 
 
 @router.post("/api/consent", response_model=ConsentStatus)
-def set_consent(payload: Dict[str, Any] = Body(...)):
-    user_id = payload.get("user_id", "unknown-user")
+def set_consent(payload: ConsentUpdateRequest = Body(...)):
+    if payload.external_services and not payload.data_access:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "validation_error", "message": "External services consent requires data_access"},
+        )
+    user_id = payload.user_id or "unknown-user"
     status_obj = ConsentStatus(
         user_id=user_id,
-        data_access=bool(payload.get("data_access", False)),
-        external_services=bool(payload.get("external_services", False)),
+        data_access=bool(payload.data_access),
+        external_services=bool(payload.external_services),
         updated_at=_now_iso(),
     )
     _consent_store[user_id] = status_obj
@@ -773,8 +809,10 @@ def delete_resume_item(item_id: str):
     return
 
 
-@router.get("/api/config")
+@router.get("/api/config", response_model=ConfigResponse)
 def get_config(user_id: Optional[str] = None, authorization: Optional[str] = Header(default=None)):
+    if not user_id and not authorization:
+        return _default_config()
     resolved_user_id = _resolve_user_id(user_id, authorization)
     manager = _get_config_manager(resolved_user_id)
     return manager.config
