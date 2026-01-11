@@ -8,14 +8,28 @@ services incrementally.
 
 from __future__ import annotations
 
+import logging
+import os
+import sys
+import threading
 from datetime import datetime
 from enum import Enum
-import os
+from pathlib import Path
 import uuid
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Body, File, Header, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, File, Header, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
+
+from api.dependencies import AuthContext, get_auth_context
+
+# Add parent directory to path for absolute imports (needed for lazy imports in background tasks)
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+logger = logging.getLogger(__name__)
+
+# Configuration constants
+MAX_FILES_IN_RESPONSE = 100  # Maximum number of files to include in scan response
 
 
 def _now_iso() -> str:
@@ -371,6 +385,7 @@ class TimelineItem(BaseModel):
 
 class ScanStatus(BaseModel):
     scan_id: str
+    user_id: str  # Owner of the scan for user isolation
     project_id: Optional[str] = None
     upload_id: Optional[str] = None
     state: JobState
@@ -423,8 +438,112 @@ _resume_store: Dict[str, ResumeItem] = {}
 _selection_store: Dict[str, SelectionRequest] = {}
 _consent_store: Dict[str, ConsentStatus] = {}
 
+# Thread lock for scan store access
+_scan_store_lock = threading.Lock()
 
-router = APIRouter()
+# Lazy-initialized scan service
+_scan_service = None
+
+
+def _get_scan_service():
+    """Get or create the singleton scan service instance."""
+    global _scan_service
+    if _scan_service is None:
+        from src.cli.services.scan_service import ScanService
+        _scan_service = ScanService()
+    return _scan_service
+
+
+def _update_scan_status(
+    scan_id: str,
+    state: JobState,
+    progress: Optional[Progress] = None,
+    error: Optional[ErrorResponse] = None,
+    result: Optional[Dict[str, Any]] = None,
+    project_id: Optional[str] = None,
+) -> None:
+    """Thread-safe update of scan status using immutable pattern."""
+    with _scan_store_lock:
+        if scan_id in _scan_store:
+            current = _scan_store[scan_id]
+            updates: Dict[str, Any] = {"state": state}
+            if progress is not None:
+                updates["progress"] = progress
+            if error is not None:
+                updates["error"] = error
+            if result is not None:
+                updates["result"] = result
+            if project_id is not None:
+                updates["project_id"] = project_id
+            # Use model_copy instead of direct mutation (Pydantic v2 best practice)
+            _scan_store[scan_id] = current.model_copy(update=updates)
+
+
+def _validate_scan_path(source_path: str) -> Path:
+    """
+    Validate and sanitize the scan path to prevent directory traversal attacks.
+
+    Args:
+        source_path: The path to validate
+
+    Returns:
+        Resolved Path object
+
+    Raises:
+        HTTPException: If path is invalid or not allowed
+    """
+    # Block access to sensitive system directories (check input BEFORE resolution)
+    # This prevents bypassing via symlinks (e.g., /etc -> /private/etc on macOS)
+    blocked_prefixes = [
+        "/etc", "/var", "/usr", "/bin", "/sbin", "/lib", "/boot",
+        "/root", "/proc", "/sys", "/dev",
+        # macOS-specific paths (where symlinks resolve to)
+        "/private/etc", "/private/var",
+    ]
+
+    # Check the original input path first (before symlink resolution)
+    input_path = Path(source_path)
+    try:
+        # Make absolute without resolving symlinks
+        if not input_path.is_absolute():
+            input_path = Path.cwd() / input_path
+        input_str = str(input_path)
+    except (OSError, ValueError):
+        input_str = source_path
+
+    for blocked in blocked_prefixes:
+        if input_str.startswith(blocked) or source_path.startswith(blocked):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"code": "path_not_allowed", "message": f"Access to {blocked} is not allowed"},
+            )
+
+    try:
+        # Resolve to absolute path (handles ../ and symlinks)
+        target = Path(source_path).resolve()
+    except (OSError, ValueError) as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "invalid_path", "message": f"Invalid path: {e}"},
+        )
+
+    # Also check resolved path (catches symlink bypasses)
+    resolved_str = str(target)
+    for blocked in blocked_prefixes:
+        if resolved_str.startswith(blocked):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"code": "path_not_allowed", "message": f"Access to {blocked} is not allowed"},
+            )
+
+    # Ensure path exists
+    if not target.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "path_not_found", "message": f"Path does not exist: {source_path}"},
+        )
+
+    return target
 
 
 def _get_config_manager(user_id: Optional[str]):
@@ -521,6 +640,137 @@ def _default_config() -> Dict[str, Any]:
     }
 
 
+def _run_scan_background(
+    scan_id: str,
+    source_path: str,
+    relevance_only: bool,
+    persist_project: bool,
+    profile_id: Optional[str],
+) -> None:
+    """Background task that executes the scan pipeline."""
+    try:
+        # Update status to running
+        _update_scan_status(
+            scan_id,
+            JobState.running,
+            progress=Progress(percent=5.0, message="Starting scan..."),
+        )
+
+        target = Path(source_path)
+        if not target.exists():
+            _update_scan_status(
+                scan_id,
+                JobState.failed,
+                error=ErrorResponse(
+                    code="PATH_NOT_FOUND",
+                    message=f"Source path does not exist: {source_path}",
+                ),
+            )
+            return
+
+        # Progress callback for scan service
+        def progress_callback(payload):
+            if isinstance(payload, str):
+                _update_scan_status(
+                    scan_id,
+                    JobState.running,
+                    progress=Progress(percent=30.0, message=payload),
+                )
+            elif isinstance(payload, dict) and payload.get("type") == "files":
+                processed = payload.get("processed", 0)
+                total = payload.get("total", 1)
+                percent = min(90.0, 30.0 + (processed / max(total, 1)) * 60.0)
+                _update_scan_status(
+                    scan_id,
+                    JobState.running,
+                    progress=Progress(
+                        percent=percent,
+                        message=f"Processing files ({processed}/{total})...",
+                    ),
+                )
+
+        # Run the scan
+        from src.scanner.models import ScanPreferences
+        preferences = ScanPreferences()
+        scan_service = _get_scan_service()
+        scan_result = scan_service.run_scan(
+            target=target,
+            relevant_only=relevance_only,
+            preferences=preferences,
+            progress_callback=progress_callback,
+        )
+
+        # Build result payload
+        parse_summary = dict(scan_result.parse_result.summary) if scan_result.parse_result else {}
+        files_data = []
+        for meta in scan_result.parse_result.files[:MAX_FILES_IN_RESPONSE]:
+            files_data.append({
+                "path": meta.path,
+                "size_bytes": meta.size_bytes,
+                "mime_type": meta.mime_type,
+            })
+
+        result_payload = {
+            "summary": {
+                "total_files": parse_summary.get("files_processed", len(scan_result.parse_result.files)),
+                "bytes_processed": parse_summary.get("bytes_processed", 0),
+                "issues_count": parse_summary.get("issues_count", 0),
+            },
+            "languages": scan_result.languages,
+            "has_media_files": scan_result.has_media_files,
+            "pdf_count": len(scan_result.pdf_candidates),
+            "document_count": len(scan_result.document_candidates),
+            "git_repos_count": len(scan_result.git_repos),
+            "files": files_data,
+            "timings": scan_result.timings,
+        }
+
+        # Optionally persist to database
+        project_id = None
+        if persist_project and profile_id:
+            try:
+                from src.cli.services.projects_service import ProjectsService
+                projects_service = ProjectsService()
+                project_name = target.name or "scan"
+                saved = projects_service.save_scan(
+                    user_id=profile_id,
+                    project_name=project_name,
+                    project_path=str(target),
+                    scan_data=result_payload,
+                )
+                project_id = saved.get("id")
+                result_payload["project_id"] = project_id
+            except Exception as persist_err:
+                logger.warning(f"Failed to persist scan to database: {persist_err}")
+                result_payload["persist_warning"] = str(persist_err)
+
+        _update_scan_status(
+            scan_id,
+            JobState.succeeded,
+            progress=Progress(percent=100.0, message="Scan completed"),
+            result=result_payload,
+            project_id=project_id,
+        )
+
+    except Exception as exc:
+        logger.exception(f"Scan {scan_id} failed with error: {exc}")
+        _update_scan_status(
+            scan_id,
+            JobState.failed,
+            error=ErrorResponse(
+                code="SCAN_ERROR",
+                message=str(exc),
+            ),
+        )
+
+
+router = APIRouter()
+
+
+# Consent endpoints moved to consent_routes.py
+# Upload endpoints moved to upload_routes.py
+
+
 @router.get("/api/consent", response_model=ConsentStatus)
 def get_consent(user_id: str):
     if user_id in _consent_store:
@@ -572,67 +822,114 @@ async def create_upload(
     return upload
 
 
-@router.get("/api/uploads/{upload_id}", response_model=Upload)
-def get_upload(upload_id: str):
-    upload = _upload_store.get(upload_id)
-    if not upload:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found")
-    return upload
-
-
-@router.post("/api/uploads/{upload_id}/parse")
-def parse_upload(upload_id: str, options: ParseOptions = Body(default=None)):
-    upload = _upload_store.get(upload_id)
-    if not upload:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found")
-    # Stub: mark parsed
-    upload.status = "parsed"
-    _upload_store[upload_id] = upload
-    return {
-        "upload_id": upload_id,
-        "state": JobState.succeeded,
-        "progress": Progress(percent=100.0, message="Parsed (stub)"),
-    }
-
-
 @router.post("/api/scans", response_model=ScanStatus, status_code=status.HTTP_202_ACCEPTED)
-def create_scan(
+async def create_scan(
     request: ScanRequest,
+    background_tasks: BackgroundTasks,
+    auth: AuthContext = Depends(get_auth_context),
     idempotency_key: Optional[str] = Header(default=None, convert_underscores=True),
 ):
-    scan_id = idempotency_key or str(uuid.uuid4())
-    if scan_id in _scan_store:
-        return _scan_store[scan_id]
+    """
+    Start a new scan job for a source path.
 
-    project_id = str(uuid.uuid4()) if request.persist_project else None
-    upload_id = request.upload_id or (str(uuid.uuid4()) if request.source_path else None)
-    project = ProjectDetail(
-        project_id=project_id or str(uuid.uuid4()),
-        name=request.source_path or "scan",
-        project_type="unknown",
-        languages=[],
-        frameworks=[],
-        created_at=_now_iso(),
-        scan_timestamp=_now_iso(),
-    )
-    _project_store[project.project_id] = project
+    Requires authentication. Returns immediately with a scan_id that can be
+    polled via GET /api/scans/{scan_id}. The scan runs in the background and
+    updates its status as it progresses.
+    """
+    scan_id = idempotency_key or str(uuid.uuid4())
+
+    # Return existing scan if idempotency key matches AND belongs to this user
+    with _scan_store_lock:
+        if scan_id in _scan_store:
+            existing = _scan_store[scan_id]
+            if existing.user_id != auth.user_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail={"code": "forbidden", "message": "Scan belongs to another user"},
+                )
+            return existing
+
+    # Validate request - must have source_path or upload_id
+    if not request.source_path and not request.upload_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "validation_error", "message": "Either source_path or upload_id must be provided"},
+        )
+
+    # For now, only source_path is supported
+    if request.upload_id and not request.source_path:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail={"code": "not_implemented", "message": "Scanning from upload_id is not yet implemented. Please provide source_path."},
+        )
+
+    # Validate path before starting background task (security check)
+    _validate_scan_path(request.source_path)
+
+    # Validate profile_id if provided - must match authenticated user
+    profile_id = request.profile_id
+    if profile_id and profile_id != auth.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "forbidden", "message": "profile_id must match authenticated user"},
+        )
+    # Default profile_id to authenticated user if not provided
+    if not profile_id:
+        profile_id = auth.user_id
+
+    # Create initial scan status with user_id for isolation
     scan_status = ScanStatus(
         scan_id=scan_id,
-        project_id=project.project_id,
-        upload_id=upload_id,
-        state=JobState.succeeded,
-        progress=Progress(percent=100.0, message="Completed (stub)"),
-        result={"project": project.dict(), "analysis": AnalysisSummary().dict()},
+        user_id=auth.user_id,
+        project_id=None,
+        upload_id=request.upload_id,
+        state=JobState.queued,
+        progress=Progress(percent=0.0, message="Scan queued"),
+        error=None,
+        result=None,
     )
-    _scan_store[scan_id] = scan_status
+
+    with _scan_store_lock:
+        _scan_store[scan_id] = scan_status
+
+    # Schedule background scan
+    background_tasks.add_task(
+        _run_scan_background,
+        scan_id=scan_id,
+        source_path=request.source_path,
+        relevance_only=request.relevance_only,
+        persist_project=request.persist_project,
+        profile_id=profile_id,
+    )
+
     return scan_status
 
 
 @router.get("/api/scans/{scan_id}", response_model=ScanStatus)
-def get_scan(scan_id: str):
-    scan = _scan_store.get(scan_id)
+async def get_scan(
+    scan_id: str,
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """
+    Get the current status of a scan job.
+
+    Requires authentication. Users can only access their own scans.
+    Poll this endpoint to track scan progress. The scan is complete when
+    state is 'succeeded' or 'failed'.
+    """
+    with _scan_store_lock:
+        scan = _scan_store.get(scan_id)
     if not scan:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scan not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": "Scan not found"},
+        )
+    # User isolation - only return scans owned by the authenticated user
+    if scan.user_id != auth.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "forbidden", "message": "Access denied"},
+        )
     return scan
 
 
@@ -646,8 +943,16 @@ def start_analysis(payload: Dict[str, Any] = Body(...)):
     }
 
 
-@router.get("/api/projects", response_model=Dict[str, Any])
-def list_projects(limit: int = 20, offset: int = 0, sort: Optional[str] = None):
+# ============================================================================
+# Project Management Endpoints (moved to project_routes.py)
+# ============================================================================
+# Project endpoints are now registered from project_routes.py
+# See src/api/project_routes.py for POST/GET/DELETE implementations
+
+
+# Legacy stub endpoints (kept for backward compatibility during migration)
+@router.get("/api/projects-stub", response_model=Dict[str, Any])
+def list_projects_stub(limit: int = 20, offset: int = 0, sort: Optional[str] = None):
     items = list(_project_store.values())[offset : offset + limit]
     return {
         "items": [p for p in items],
@@ -662,8 +967,8 @@ class ProjectCreateRequest(BaseModel):
     analysis_payload: Optional[Dict[str, Any]] = None
 
 
-@router.post("/api/projects", response_model=ProjectSummary)
-def create_project(payload: ProjectCreateRequest):
+@router.post("/api/projects-stub", response_model=ProjectSummary)
+def create_project_stub(payload: ProjectCreateRequest):
     project_id = str(uuid.uuid4())
     project = ProjectDetail(
         project_id=project_id,
@@ -687,21 +992,21 @@ def create_project(payload: ProjectCreateRequest):
     )
 
 
-@router.get("/api/projects/{project_id}", response_model=ProjectDetail)
-def get_project(project_id: str):
+@router.get("/api/projects-stub/{project_id}", response_model=ProjectDetail)
+def get_project_stub(project_id: str):
     project = _project_store.get(project_id)
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     return project
 
 
-@router.delete("/api/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_project(project_id: str):
+@router.delete("/api/projects-stub/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_project_stub(project_id: str):
     _project_store.pop(project_id, None)
     return
 
 
-@router.delete("/api/projects/{project_id}/insights", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/api/projects-stub/{project_id}/insights", status_code=status.HTTP_204_NO_CONTENT)
 def delete_insights(project_id: str):
     project = _project_store.get(project_id)
     if project:

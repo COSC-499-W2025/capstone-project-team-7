@@ -1,5 +1,6 @@
 # Milestone 2 Backend API Plan
 
+
 ## Goals and Scope
 - Timeline: Milestone 2 (Jan–Mar 01; details finalized by Jan 05). Focus on service/API contracts and backend flows; defer UI/TUI/Electron changes to Milestone 3.
 - Tech: Python + FastAPI (existing). Emphasize explicit inputs/outputs, data flow, and extensibility to support human-in-the-loop workflows.
@@ -49,6 +50,16 @@ Content-Type: multipart/form-data
 }
 ```
 
+
+#### ✅ Completed
+- **Upload and Parse Endpoints** (Jan 7, 2026)
+  - `POST /api/uploads`: ZIP validation, file storage, hash computation
+  - `GET /api/uploads/{upload_id}`: Upload status and metadata retrieval
+  - `POST /api/uploads/{upload_id}/parse`: File extraction, duplicate detection, metadata parsing
+  - Implementation: `backend/src/api/upload_routes.py`
+  - Tests: `tests/test_upload_api.py` (12 tests, all passing)
+  - Features: Magic byte validation, 200MB limit, SHA-256 hashing, scan preferences support
+
 ### Analysis (local-first, optional external)
 - `POST /api/analysis/portfolio`: Run combined analysis for an `upload_id` or stored project; params `use_llm` (requires consent+key), `llm_media` optional; if `use_llm=false`, use local-only pipeline.
 - Output: project type (individual/collab), language/framework detection, contribution metrics, skill extraction, media/doc/pdf summaries, code metrics, project ranking scores, timelines.
@@ -59,7 +70,7 @@ Content-Type: multipart/form-data
 - `GET /api/scans/{scan_id}`: Progress and results (parse + analysis) so the renderer can poll instead of reading local files.
 - Internally reuses uploads/analysis endpoints to keep a single pipeline; prefer this from the Electron app instead of invoking CLI directly.
 
-### Projects and Storage
+### (Completed) - Projects and Storage
 - `POST /api/projects`: Persist parse+analysis results (optional encryption), return `project_id`.
 - `GET /api/projects`: List with search/filter/sort and timeline views.
 - `GET /api/projects/{project_id}`: Retrieve full summary (ranking, skills, contribution).
