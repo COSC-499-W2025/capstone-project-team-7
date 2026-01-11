@@ -70,7 +70,7 @@ Content-Type: multipart/form-data
 - `GET /api/scans/{scan_id}`: Progress and results (parse + analysis) so the renderer can poll instead of reading local files.
 - Internally reuses uploads/analysis endpoints to keep a single pipeline; prefer this from the Electron app instead of invoking CLI directly.
 
-### Projects and Storage
+### (Completed) - Projects and Storage
 - `POST /api/projects`: Persist parse+analysis results (optional encryption), return `project_id`.
 - `GET /api/projects`: List with search/filter/sort and timeline views.
 - `GET /api/projects/{project_id}`: Retrieve full summary (ranking, skills, contribution).
