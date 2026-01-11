@@ -1,5 +1,32 @@
 # Om Mistry (@OM200401)
 
+## Week 15: January 5 - January 11
+This week, I concentrated on developing and delivering the Upload & Parse API functionality (PR [#210 - Upload and Parse API](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/210)). The implementation involved creating a complete file upload system with parsing capabilities, starting with the foundational POST and GET endpoints in `upload_routes.py`. The work progressed through multiple commits: initial endpoint creation, replacing stub implementations with real functionality, building comprehensive test coverage, adding API documentation, and finally addressing code review feedback and authentication issues before merging.
+
+The feature included 200+ lines of new backend code, integration with the main application, updates to project dependencies, and thorough documentation in both code and the API plan. I also created `test_upload_api.py` with full test coverage for the new endpoints.
+
+Issue resolved: [#193 - Implement Uploads API with ZIP validation](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/193)
+
+**What Went Well**
+- **Incremental Development:** Breaking the work into focused commits (endpoints → implementation → tests → docs) made code review easier and helped catch issues early
+- **Test-Driven Approach:** Writing comprehensive tests exposed edge cases before they became production issues
+- **Documentation:** Maintaining both inline documentation and updating the API plan ensures the team can easily understand and use the new endpoints
+- **Code Review Response:** Quick turnaround on addressing review feedback kept the PR moving and demonstrated good collaboration
+- **Clean Integration:** Successfully integrated the new routes into the existing API structure without breaking existing functionality
+
+**What Didn't Go Well**
+- **Authentication Complexity:** Spent more time than anticipated debugging authentication issues - the integration between our auth system and file upload endpoints required additional troubleshooting and refinement
+- **Merge Conflicts:** Encountered conflicts that required manual resolution, suggesting I should have synced with main more frequently during development
+- **Initial Approach:** Had to remove and rewrite stub implementations, indicating the initial planning could have been more thorough before coding began
+
+**Next Steps**
+- Monitor the upload API in production for performance with large files and edge cases
+- Add file validation and size limits based on real-world usage patterns
+- Implement progress tracking for large file uploads to improve user experience
+- Begin work on the next phase of API development based on team priorities
+
+![Tasks Completed](./assets/Omistry_T2_Week1.png)
+
 ## Week 14: December 1 - December 7
 This week, I focused on finalizing the documentation and preparing for the project presentation. Additionally, I worked on polishing the presentation slides and rehearsing for the final demo. Furthermore, I assisted in addressing any last-minute bugs and ensuring the overall stability of the system.
 
