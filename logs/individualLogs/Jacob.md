@@ -1,5 +1,52 @@
 
 # Jacob Damery
+
+## Week 15
+
+# Individual Weekly Report – Config & Profiles API (Ticket #202)
+
+## Overview
+
+This week focused on implementing the **Config and Profiles APIs** as outlined in **Ticket #202**, with an emphasis on persistence, clean API design, and alignment with scan preferences across the system.  
+
+The first couple of days were spent collaboratively reviewing the API plan as a team, clarifying requirements, and ensuring we had a shared understanding of how configuration and profiles should interact with existing components. During this planning phase, responsibilities were gradually distributed, and I took ownership of implementing the backend logic and tests related to config profiles.
+
+I implemented the following endpoints, backed by the `ConfigManager`:
+
+- `GET /api/config`
+- `PUT /api/config`
+- `GET /api/config/profiles`
+- `POST /api/config/profiles`
+
+The profiles API was designed to return and persist **single-object JSON responses** to avoid ambiguity and to align cleanly with frontend and downstream consumers. Profiles now persist correctly in Supabase and directly drive scan preferences, ensuring configuration changes are reflected consistently throughout the application.
+
+To validate real-world behavior, I added an **environment-gated Supabase integration test** rather than relying on monkeypatching. This ensured that profile persistence and retrieval behave correctly against an actual Supabase instance. I also added unit-level tests to validate JSON response structure and response models, helping enforce API contract consistency. Tests were organized using a pytest `integration` marker to clearly separate local/unit tests from Supabase-backed integration tests.
+
+Overall, this work closes **Ticket #202** by ensuring profiles persist, are retrievable via the API, and actively influence scan behavior through the `ConfigManager`.
+
+---
+
+## Reflection
+
+### What went well
+- Early API planning discussions helped prevent rework later in the week.
+- Clear acceptance criteria made implementation straightforward.
+- Supabase-backed integration testing provided strong confidence that persistence works as expected.
+- Using response models to enforce single-object JSON output improved API reliability and consistency.
+
+### What didn’t go well
+- Some time was lost initially aligning test setup with environment-gated Supabase credentials.
+- Debugging early integration test failures took longer than expected.
+
+---
+
+## Next Steps
+
+- Continue implementing additional API routes from the API plan.
+- Maintain the same pattern of clear response models, real persistence where appropriate, and accompanying tests.
+- Further refine integration testing patterns to reduce setup friction for future contributors.
+
+
 ## Week 14 (Dec 1 – 7)
 **Week 14: December 1 - December 7**
 
