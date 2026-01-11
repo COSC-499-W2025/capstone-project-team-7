@@ -63,6 +63,12 @@ class ConsentStatus(BaseModel):
     updated_at: str
 
 
+class ConsentUpdateRequest(BaseModel):
+    user_id: Optional[str] = None
+    data_access: bool = False
+    external_services: bool = False
+
+
 class Upload(BaseModel):
     upload_id: str
     filename: Optional[str] = None
@@ -388,13 +394,49 @@ class ScanStatus(BaseModel):
     result: Optional[Dict[str, Any]] = None
 
 
+class ConfigUpdateRequest(BaseModel):
+    user_id: Optional[str] = None
+    current_profile: Optional[str] = None
+    max_file_size_mb: Optional[int] = None
+    follow_symlinks: Optional[bool] = None
+
+
+class ProfileUpsertRequest(BaseModel):
+    user_id: Optional[str] = None
+    name: str
+    extensions: Optional[List[str]] = None
+    exclude_dirs: Optional[List[str]] = None
+    description: Optional[str] = None
+
+
+class ProfilesResponse(BaseModel):
+    current_profile: str
+    profiles: Dict[str, Dict[str, Any]]
+
+
+class ProfileSaveResponse(BaseModel):
+    name: str
+    profile: Dict[str, Any]
+    current_profile: str
+
+
+class ConfigResponse(BaseModel):
+    scan_profiles: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    current_profile: Optional[str] = None
+    max_file_size_mb: Optional[int] = None
+    follow_symlinks: Optional[bool] = None
+
+    class Config:
+        extra = "allow"
+
+
 # In-memory placeholders
 _upload_store: Dict[str, Upload] = {}
 _scan_store: Dict[str, ScanStatus] = {}
 _project_store: Dict[str, ProjectDetail] = {}
 _resume_store: Dict[str, ResumeItem] = {}
-_config_store: Dict[str, Dict[str, Any]] = {}
 _selection_store: Dict[str, SelectionRequest] = {}
+_consent_store: Dict[str, ConsentStatus] = {}
 
 # Thread lock for scan store access
 _scan_store_lock = threading.Lock()
@@ -502,6 +544,100 @@ def _validate_scan_path(source_path: str) -> Path:
         )
 
     return target
+
+
+def _get_config_manager(user_id: Optional[str]):
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="user_id is required")
+    try:
+        from config.config_manager import ConfigManager
+    except Exception as exc:  # pragma: no cover - optional dependency
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Config service unavailable: {exc}",
+        ) from exc
+    try:
+        return ConfigManager(user_id)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unable to load config: {exc}",
+        ) from exc
+
+
+def _parse_bearer_token(authorization: Optional[str]) -> Optional[str]:
+    if not authorization:
+        return None
+    parts = authorization.split()
+    if len(parts) == 2 and parts[0].lower() == "bearer":
+        return parts[1]
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authorization header")
+
+
+def _get_supabase_user_id(token: str) -> str:
+    try:
+        from supabase import create_client
+    except Exception as exc:  # pragma: no cover - optional dependency
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Supabase client unavailable: {exc}",
+        ) from exc
+
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_ANON_KEY")
+    if not url or not key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Supabase credentials missing",
+        )
+
+    try:
+        client = create_client(url, key)
+        response = client.auth.get_user(token)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+
+    user = getattr(response, "user", None) or (response or {}).get("user")
+    user_id = getattr(user, "id", None) or (user or {}).get("id")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+    return user_id
+
+
+def _resolve_user_id(user_id: Optional[str], authorization: Optional[str]) -> str:
+    token = _parse_bearer_token(authorization)
+    if token:
+        authed_user_id = _get_supabase_user_id(token)
+        if user_id and user_id != authed_user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User mismatch",
+            )
+        return authed_user_id
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="user_id is required")
+    return user_id
+
+
+def _default_config() -> Dict[str, Any]:
+    return {
+        "scan_profiles": {
+            "sample": {
+                "description": "Scan common code and doc file types.",
+                "extensions": [".py", ".md", ".json", ".txt", ".pdf", ".doc", ".docx"],
+                "exclude_dirs": ["__pycache__", "node_modules", ".git"],
+            }
+        },
+        "current_profile": "sample",
+        "max_file_size_mb": 10,
+        "follow_symlinks": False,
+    }
 
 
 def _run_scan_background(
@@ -633,6 +769,57 @@ router = APIRouter()
 
 # Consent endpoints moved to consent_routes.py
 # Upload endpoints moved to upload_routes.py
+
+
+@router.get("/api/consent", response_model=ConsentStatus)
+def get_consent(user_id: str):
+    if user_id in _consent_store:
+        return _consent_store[user_id]
+    status_obj = ConsentStatus(
+        user_id=user_id,
+        data_access=False,
+        external_services=False,
+        updated_at=_now_iso(),
+    )
+    _consent_store[user_id] = status_obj
+    return status_obj
+
+
+@router.post("/api/consent", response_model=ConsentStatus)
+def set_consent(payload: ConsentUpdateRequest = Body(...)):
+    if payload.external_services and not payload.data_access:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "validation_error", "message": "External services consent requires data_access"},
+        )
+    user_id = payload.user_id or "unknown-user"
+    status_obj = ConsentStatus(
+        user_id=user_id,
+        data_access=bool(payload.data_access),
+        external_services=bool(payload.external_services),
+        updated_at=_now_iso(),
+    )
+    _consent_store[user_id] = status_obj
+    return status_obj
+
+
+@router.post("/api/uploads", response_model=Upload)
+async def create_upload(
+    file: UploadFile = File(...),
+    idempotency_key: Optional[str] = Header(default=None, convert_underscores=True),
+):
+    if idempotency_key and idempotency_key in _upload_store:
+        return _upload_store[idempotency_key]
+    upload_id = idempotency_key or str(uuid.uuid4())
+    upload = Upload(
+        upload_id=upload_id,
+        filename=file.filename,
+        size_bytes=None,
+        status="stored",
+        created_at=_now_iso(),
+    )
+    _upload_store[upload_id] = upload
+    return upload
 
 
 @router.post("/api/scans", response_model=ScanStatus, status_code=status.HTTP_202_ACCEPTED)
@@ -927,31 +1114,85 @@ def delete_resume_item(item_id: str):
     return
 
 
-@router.get("/api/config")
-def get_config(user_id: Optional[str] = None):
-    return _config_store.get(user_id or "default", {})
+@router.get("/api/config", response_model=ConfigResponse)
+def get_config(user_id: Optional[str] = None, authorization: Optional[str] = Header(default=None)):
+    if not user_id and not authorization:
+        return _default_config()
+    resolved_user_id = _resolve_user_id(user_id, authorization)
+    manager = _get_config_manager(resolved_user_id)
+    return manager.config
 
 
 @router.put("/api/config")
-def update_config(payload: Dict[str, Any] = Body(...)):
-    user_id = payload.get("user_id", "default")
-    _config_store[user_id] = payload
-    return payload
+def update_config(payload: ConfigUpdateRequest, authorization: Optional[str] = Header(default=None)):
+    resolved_user_id = _resolve_user_id(payload.user_id, authorization)
+    manager = _get_config_manager(resolved_user_id)
+
+    if payload.current_profile:
+        if not manager.set_current_profile(payload.current_profile):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unknown profile '{payload.current_profile}'",
+            )
+
+    if payload.max_file_size_mb is not None or payload.follow_symlinks is not None:
+        ok = manager.update_settings(
+            max_file_size_mb=payload.max_file_size_mb,
+            follow_symlinks=payload.follow_symlinks,
+        )
+        if not ok:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Unable to update settings",
+            )
+
+    return manager.config
 
 
-@router.get("/api/config/profiles")
-def list_profiles(user_id: Optional[str] = None):
-    cfg = _config_store.get(user_id or "default", {})
-    return cfg.get("profiles", [])
+@router.get("/api/config/profiles", response_model=ProfilesResponse)
+def list_profiles(user_id: Optional[str] = None, authorization: Optional[str] = Header(default=None)):
+    resolved_user_id = _resolve_user_id(user_id, authorization)
+    manager = _get_config_manager(resolved_user_id)
+    return {
+        "current_profile": manager.get_current_profile(),
+        "profiles": manager.config.get("scan_profiles", {}) or {},
+    }
 
 
-@router.post("/api/config/profiles")
-def save_profile(payload: Dict[str, Any] = Body(...)):
-    user_id = payload.get("user_id", "default")
-    cfg = _config_store.setdefault(user_id, {})
-    profiles = cfg.setdefault("profiles", [])
-    profiles.append(payload)
-    return payload
+@router.post("/api/config/profiles", response_model=ProfileSaveResponse)
+def save_profile(payload: ProfileUpsertRequest, authorization: Optional[str] = Header(default=None)):
+    resolved_user_id = _resolve_user_id(payload.user_id, authorization)
+    manager = _get_config_manager(resolved_user_id)
+    scan_profiles = manager.config.get("scan_profiles", {}) or {}
+    exists = payload.name in scan_profiles
+
+    if exists:
+        ok = manager.update_profile(
+            payload.name,
+            extensions=payload.extensions,
+            exclude_dirs=payload.exclude_dirs,
+            description=payload.description,
+        )
+    else:
+        ok = manager.create_custom_profile(
+            payload.name,
+            payload.extensions or [],
+            payload.exclude_dirs or [],
+            payload.description or "Custom profile",
+        )
+
+    if not ok:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unable to {'update' if exists else 'create'} profile '{payload.name}'",
+        )
+
+    scan_profiles = manager.config.get("scan_profiles", {}) or {}
+    return {
+        "name": payload.name,
+        "profile": scan_profiles.get(payload.name, {}),
+        "current_profile": manager.get_current_profile(),
+    }
 
 
 @router.get("/api/search")
