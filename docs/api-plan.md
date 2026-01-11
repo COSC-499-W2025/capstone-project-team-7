@@ -1,5 +1,6 @@
 # Milestone 2 Backend API Plan
 
+
 ## Goals and Scope
 - Timeline: Milestone 2 (Jan–Mar 01; details finalized by Jan 05). Focus on service/API contracts and backend flows; defer UI/TUI/Electron changes to Milestone 3.
 - Tech: Python + FastAPI (existing). Emphasize explicit inputs/outputs, data flow, and extensibility to support human-in-the-loop workflows.
@@ -19,8 +20,15 @@
 ### Consent and Session
 - `POST /api/consent`: Record/update user consent for data access and external services (include privacy notice text).
 - `GET /api/consent`: Return current consent state and timestamps.
+- `GET /api/consent/notice`: Return the privacy notice + implications for a given service (external services, file analysis, metadata).
 - `POST /api/llm/verify-key`: Validate and cache LLM key (existing).
 - `POST /api/llm/clear-key`, `POST /api/llm/client-status`: Manage LLM key lifecycle (existing).
+
+#### Completed
+- Consent endpoints: `GET /api/consent`, `POST /api/consent`, `GET /api/consent/notice`
+- Supabase auth resolution: `backend/src/api/dependencies.py`
+- Implementation: `backend/src/api/consent_routes.py`
+- Tests: `tests/test_api_consent.py`
 
 ### Upload and Parse
 - `POST /api/uploads`: Receive zip (multipart or pre-signed URL); validate extension and magic; return `upload_id`.
@@ -42,6 +50,16 @@ Content-Type: multipart/form-data
 }
 ```
 
+
+#### ✅ Completed
+- **Upload and Parse Endpoints** (Jan 7, 2026)
+  - `POST /api/uploads`: ZIP validation, file storage, hash computation
+  - `GET /api/uploads/{upload_id}`: Upload status and metadata retrieval
+  - `POST /api/uploads/{upload_id}/parse`: File extraction, duplicate detection, metadata parsing
+  - Implementation: `backend/src/api/upload_routes.py`
+  - Tests: `tests/test_upload_api.py` (12 tests, all passing)
+  - Features: Magic byte validation, 200MB limit, SHA-256 hashing, scan preferences support
+
 ### Analysis (local-first, optional external)
 - `POST /api/analysis/portfolio`: Run combined analysis for an `upload_id` or stored project; params `use_llm` (requires consent+key), `llm_media` optional; if `use_llm=false`, use local-only pipeline.
 - Output: project type (individual/collab), language/framework detection, contribution metrics, skill extraction, media/doc/pdf summaries, code metrics, project ranking scores, timelines.
@@ -56,11 +74,13 @@ Content-Type: multipart/form-data
 - `POST /api/projects`: Persist parse+analysis results (optional encryption), return `project_id`.
 - `GET /api/projects`: List with search/filter/sort and timeline views.
 - `GET /api/projects/{project_id}`: Retrieve full summary (ranking, skills, contribution).
+- `GET/PATCH /api/projects/{project_id}/overrides`: User overrides for chronology corrections, comparison attributes, highlighted skills, role/evidence/thumbnail.
 - `DELETE /api/projects/{project_id}/insights`: Delete analysis results but keep file records; shared files not removed.
 - `DELETE /api/projects/{project_id}`: Full delete.
 - `POST /api/projects/{project_id}/rank`: Return ranking score and rationale; accepts custom weights for human-in-the-loop tuning.
 - `GET /api/projects/top`: Summaries of top-ranked projects.
 - `GET /api/projects/timeline`: Chronological list of projects.
+ - `GET /api/skills/timeline`: Chronological list of skills exercised.
 
 ### Configurations and Preferences
 - `GET/PUT /api/config`: Read/write user config (scan prefs, ignore rules, ranking weights, skill preferences).
@@ -68,14 +88,16 @@ Content-Type: multipart/form-data
 
 ### Resume and Portfolio
 - `POST /api/resume/items`: Generate or save resume items from projects/analysis; allow custom wording and role description; optional thumbnail URL.
-- `GET /api/resume/items`, `GET /api/resume/items/{id}`, `DELETE /api/resume/items/{id}`: CRUD.
+- `GET /api/resume/items`, `GET /api/resume/items/{id}`, `PATCH /api/resume/items/{id}`, `DELETE /api/resume/items/{id}`: CRUD + edits.
+- `GET /api/portfolio/items`, `POST /api/portfolio/items`: CRUD for portfolio showcase items (custom title/summary/role/evidence/thumbnail).
+- `GET/PATCH/DELETE /api/portfolio/items/{id}`: Fetch/edit/delete showcase item.
 - `GET /api/portfolio/chronology`: Chronological list of projects and exercised skills.
 - `POST /api/portfolio/refresh`: Append new zip(s) and rebuild combined view.
 
 ### Search, Dedup, and Selection
 - `GET /api/search`: Query across projects/files/skills with filters.
 - `GET /api/dedup`: Report duplicate files and recommendations to retain a single copy.
-- `POST /api/selection`: Save user selections (projects/skills/ranking order); supports reordering.
+- `POST /api/selection`: Save user selections (projects/skills/ranking order); supports reordering and showcase selection.
 
 ### Health and Meta
 - `GET /health`: Health check (existing).
@@ -92,7 +114,14 @@ Content-Type: multipart/form-data
 - Path safety: when `source_path` is used, validate it is absolute, exists, and stays within allowed roots; block traversal, symlinks if configured off.
 
 ## Data Flow (overview)
-1) Consent captured → 2) Upload zip (format validation) → 3) Parse (language/framework/dup/media/git) → 4) Local analysis; if allowed and keyed, optionally add LLM analysis → 5) Merge metrics (contribution, skills, ranking, timeline) → 6) Persist project/config → 7) Generate/update resume items and portfolio views → 8) User may reorder/edit → 9) Delete or refresh.
+1) Consent captured → 2) Upload zip (format validation) → 3) Parse (language/framework/dup/media/git) → 4) Local analysis; if allowed and keyed, optionally add LLM analysis → 5) Merge metrics (contribution, skills, ranking, timeline) → 6) Persist project/config → 7) Generate/update resume items and portfolio views (showcase + overrides) → 8) User may reorder/edit → 9) Delete or refresh.
+
+## Testing Strategy (API)
+- Primary framework: `pytest` with FastAPI `TestClient` or `httpx.AsyncClient` for endpoint coverage.
+- Async support: add `pytest-asyncio` if async route tests are needed.
+- Contract checks (optional): `schemathesis` against `docs/api-spec.yaml` to catch schema drift.
+- Manual/exploratory: Postman collections generated from OpenAPI, optional Newman in CI.
+- Mocking: dependency overrides for Supabase, scan/analysis pipelines, and LLM calls to keep tests deterministic.
 
 ## Requirement Coverage
 - Consent and privacy: `/api/consent`; enforce before external calls; respond with privacy implications.
@@ -104,8 +133,8 @@ Content-Type: multipart/form-data
 - Skill extraction and ranking: skill list, timelines, project ranking and summaries.
 - Data storage/retrieval: project, portfolio, resume item CRUD; historical retrieval.
 - Incremental and dedup: append zip, duplicate detection, shared files not deleted when removing insights.
-- Human-in-the-loop: adjustable weights, selection/reordering endpoints, editable wording/roles, optional thumbnails.
-- Project/skill chronology: timeline endpoints.
+- Human-in-the-loop: adjustable weights, selection/reordering endpoints, editable wording/roles, optional thumbnails, user overrides.
+- Project/skill chronology: timeline endpoints (/api/projects/timeline, /api/skills/timeline, /api/portfolio/chronology).
 - Safe deletion: delete insights without affecting shared files; distinct full delete.
 - Portfolio/resume display: endpoints expose textual summaries suitable for portfolio showcase and resume items.
 - Desktop migration alignment: `/health` for renderer wiring, `/api/llm/*` for settings, `/api/scans` (upload+parse+analysis) for IPC-triggered scans, `/api/projects/*` and `/api/resume/*` for pages, `/api/config` for settings, `/api/search` and `/api/dedup` for table views; no filesystem reads from renderer.
