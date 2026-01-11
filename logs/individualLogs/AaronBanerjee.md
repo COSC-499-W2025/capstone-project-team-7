@@ -1,5 +1,5 @@
 # Aaron Banerjee (@aaronbanerjee123)
-## Week [15]: January 4 - January 11
+## Week 15: January 4 - January 11
 This week, I focused on implementing and testing a comprehensive REST API for project scan management, integrating JWT authentication with Supabase, and ensuring secure, user-isolated data access through proper authentication and authorization mechanisms.
 
 **Key Accomplishments:**
@@ -67,7 +67,7 @@ This work unblocks several downstream features including the frontend project da
 
 Issues resolved include:[#197](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/197)
 
-PR [#213 - Project Routes](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/XXX)](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/213)
+PR[#213 - Project Routes](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/XXX)](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/213)
 <img width="1239" height="200" alt="image" src="https://github.com/user-attachments/assets/ceb88bd3-53dd-4ad7-b062-02a4a9e043b8" />
 
 
