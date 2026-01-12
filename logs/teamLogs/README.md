@@ -1,6 +1,9 @@
 # Capstone Team 7 Logs
 
+
 ## Week 15 (January 5th - 11th)
+This week we focused on defining our API and implementing the first routes.
+
 **Jacob** This week I focused primarily on advancing the backend configuration and profile management APIs, contributing to the team’s broader Milestone #2 goals. Early in the week, the team reviewed the API plan together and gradually distributed tasks, after which I took ownership of implementing and stabilizing the Config and Profiles endpoints. This work ensures user configuration profiles persist correctly via Supabase and directly influence scan behavior across the system, helping establish a reliable foundation for frontend integration and downstream analysis features.
 In addition to implementation work, I contributed through code review on the Portfolio Analysis API with optional LLM support ([PR #215](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/215)). I reviewed the proposed POST /api/analysis/portfolio endpoint and provided blocking feedback to improve security, robustness, and consistency before merge. Key review points included identifying a potential zip-slip vulnerability during archive extraction, correcting unsafe mutable defaults in Pydantic models, normalizing contributor percentage field naming, guarding heavy optional imports, and recommending additional defensive checks and tests for malformed ZIP inputs. This review helped ensure the analysis pipeline aligns with project security and architectural standards.
 Overall, my work this week supported both feature delivery and code quality, helping the team move toward a cohesive, well-tested backend API ecosystem for Milestone #2.
@@ -13,6 +16,27 @@ This week marked significant progress on the backend API infrastructure as the t
 **Vlad:**
 The team delivered PRs ([#209](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/209)), ([#210](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/210)), ([#212](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/212)), ([#213](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/213)), and ([#214] (https://github.com/COSC-499-W2025/capstone-project-team-7/pull/214)) to expand the Milestone #2 backend APIs. PR ([#209](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/209)) added consent management endpoints with request/response models and tests. PR ([#210](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/210)) implemented upload + parse API routes for handling file inputs and returning parse results, with test coverage. PR ([#212](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/212)) added the one‑shot scan workflow with authenticated scan creation, polling, progress/result payloads, idempotency handling, path validation, and tests. PR ([#213](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/213)) introduced project routes to save scans and retrieve project data, with schemas, auth
 handling, and tests. PR ([#214](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/214)) implemented the config/profile API so user scan preferences and profiles can be created/ updated and used consistently across scans, with associated tests.
+
+**Joaquin:** 
+This week, in addition to continuing work on my own feature and keeping pace with our milestone timeline, I focused on reviewing pull requests. I reviewed Om’s **PR [#210](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/210)**, which implements the new upload and parse API flow. The structure closely follows the API plan, with clean separation between routing and validation. The upload and parse lifecycle is easy to follow, error handling is consistent, and the tests are both readable and comprehensive. The accompanying documentation updates clearly reflect the new flow. Overall, it is a strong, production-ready implementation.  I also reviewed Jacob’s **PR [#214](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/214)**, which introduces Supabase-backed configuration profiles and routes the existing configuration logic through a unified `ConfigManager`. The profile APIs are clear and consistent, the error envelopes are predictable, and the overall design aligns well with the project’s direction. I particularly appreciated the testing strategy: integration tests for Supabase behavior paired with unit tests using a fake `ConfigManager`, making the system easy to reason about without depending on external services. The changes significantly clean up the config layer and set a solid foundation for future features.
+
+## Reflection
+
+### What went well
+- The initial API layer, with uploads, parsing, consent, profiles, project storage, and one-shot scans now in place.
+- PRs were clean, well-scoped, and integrated smoothly, keeping the architecture consistent across all endpoints.
+
+### Challenges
+- Merging several interdependent backend features required careful coordination and occasional conflict resolution.
+- Authentication and Supabase configuration introduced friction and slowed parts of the workflow.
+
+## **Next Steps**
+- Tackle the next API routes.
+
+<p align="center">
+  <img src="./charts/w15burnup.png" alt="Week 15 Burnup Chart width="400"/>
+</p>
+
 
 ## Week 14 (December 1st - 7th)
 This week the team focused on finalizing any last Milestone #1 requirements, adding some useful features, fixing bugs, and recording our demo and writing up the team contract.
