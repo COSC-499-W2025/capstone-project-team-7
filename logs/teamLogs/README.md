@@ -10,6 +10,15 @@ Overall, my work this week supported both feature delivery and code quality, hel
 **Om:**   
 This week marked significant progress on the backend API infrastructure as the team delivered five major pull requests focused on core functionality for Milestone #2. The API layer saw substantial expansion with the implementation of upload and parse endpoints ([PR #210](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/210)), consent management routes ([PR #209](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/209)), profile management endpoints ([PR #211](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/211)), project CRUD operations ([PR #213](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/213)), and analysis API routes integrated into the main application. The upload system now handles secure file uploads with proper authentication and parsing capabilities, complete with comprehensive test coverage and documentation. Consent workflows were successfully integrated to manage user permissions for external service interactions, while the profile management system enables users to persist and retrieve their configuration preferences through Supabase. The project routes provide full CRUD functionality for saving and managing analyzed projects with proper field normalization and validation. Additionally, a one-shot scan API ([PR #212](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/212)) was delivered to streamline the scanning process into a single cohesive endpoint. Each feature followed consistent patterns with dedicated route files, comprehensive test suites, and updated documentation. The team addressed code review feedback promptly, resolving authentication issues, merge conflicts, and architectural concerns to ensure production-ready code. This sprint successfully transformed our backend from isolated services into a cohesive, well-tested API ecosystem ready for frontend integration, setting a strong foundation for the remaining milestone deliverables.
 
+**Vlad:**
+The team delivered PRs #209, #210, #212, #213, and #214 to expand the Milestone #2 backend
+APIs. PR #209 added consent management endpoints with request/response models and tests. PR #210 implemented upload +
+parse API routes for handling file inputs and returning parse results, with test coverage. PR #212 added the one‑shot
+scan workflow with authenticated scan creation, polling, progress/result payloads, idempotency handling, path
+validation, and tests. PR #213 introduced project routes to save scans and retrieve project data, with schemas, auth
+handling, and tests. PR #214 implemented the config/profile API so user scan preferences and profiles can be created/
+updated and used consistently across scans, with associated tests.
+
 ## Week 14 (December 1st - 7th)
 This week the team focused on finalizing any last Milestone #1 requirements, adding some useful features, fixing bugs, and recording our demo and writing up the team contract.
 
