@@ -20,6 +20,7 @@ This week I implemented PR ([212](https://github.com/COSC-499-W2025/capstone-pro
 
 In addition to these changes, i reviewed PR's ([214](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/214), ([213](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/213)), and ([209](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/209)).
 
+<img width="1089" height="640" alt="Screenshot 2026-01-11 at 4 57 25 PM" src="https://github.com/user-attachments/assets/b0638a30-07b7-444b-b421-8a1b2281dd87" />
 
 # Week 14: December 1 - December 7
 This week I completed a targeted UI bug fix and contributed to our demo recording. I opened **PR [#186](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/186)**, which resolved a visual issue in the settings and user-preferences menu where text labels and toggle switches were partially hidden, preventing proper user interaction. I also reviewed **PR [#190](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/190)** from Aaron, providing feedback on his UI refresh that improves overall usability and consistency across the interface.
