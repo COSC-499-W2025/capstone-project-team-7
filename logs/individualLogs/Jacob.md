@@ -7,8 +7,7 @@
 
 ## Overview
 
-This week focused on implementing the **Config and Profiles APIs** as outlined in **Ticket #202**, with an emphasis on persistence, clean API design, and alignment with scan preferences across the system.  
-
+This week focused on implementing the **Config and Profiles APIs** as outlined in **Ticket** [#202](https://github.com/orgs/COSC-499-W2025/projects/44/views/1?pane=issue&itemId=148050351&issue=COSC-499-W2025%7Ccapstone-project-team-7%7C202), with an emphasis on persistence, clean API design, and alignment with scan preferences across the system.  
 The first couple of days were spent collaboratively reviewing the API plan as a team, clarifying requirements, and ensuring we had a shared understanding of how configuration and profiles should interact with existing components. During this planning phase, responsibilities were gradually distributed, and I took ownership of implementing the backend logic and tests related to config profiles.
 
 I implemented the following endpoints, backed by the `ConfigManager`:
@@ -46,6 +45,7 @@ Overall, this work closes **Ticket #202** by ensuring profiles persist, are retr
 - Maintain the same pattern of clear response models, real persistence where appropriate, and accompanying tests.
 - Further refine integration testing patterns to reduce setup friction for future contributors.
 
+<img width="889" height="622" alt="image" src="https://github.com/user-attachments/assets/e779a899-5f7e-4c48-863a-ab73db14557f" />
 
 ## Week 14 (Dec 1 – 7)
 **Week 14: December 1 - December 7**
