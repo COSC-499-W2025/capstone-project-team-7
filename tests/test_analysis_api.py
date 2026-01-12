@@ -399,6 +399,70 @@ class TestAnalysisEndpoint:
         app.dependency_overrides[verify_auth_token] = mock_verify_auth_token
 
 
+class TestAnalysisZipSecurity:
+    """Tests for ZIP security (zip-slip prevention)"""
+    
+    def test_analysis_rejects_zip_slip_path_traversal(self, cleanup_uploads):
+        """Test that analysis rejects ZIP files with path traversal attacks"""
+        # Create a malicious ZIP with path traversal
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+            # Add a normal file
+            zf.writestr("safe/file.txt", "safe content")
+            # Add a malicious file with path traversal
+            info = zipfile.ZipInfo("../../etc/passwd")
+            zf.writestr(info, "malicious content")
+        zip_buffer.seek(0)
+        
+        # Upload the malicious ZIP
+        response = client.post(
+            "/api/uploads",
+            files={"file": ("evil.zip", zip_buffer.getvalue(), "application/zip")}
+        )
+        assert response.status_code == 201
+        upload_id = response.json()["upload_id"]
+        
+        # Attempt to analyze - should be rejected
+        response = client.post(
+            "/api/analysis/portfolio",
+            json={"upload_id": upload_id}
+        )
+        
+        assert response.status_code == 400
+        data = response.json()
+        assert data["detail"]["error"] == "malicious_archive"
+        assert "traversal" in data["detail"]["message"].lower()
+    
+    def test_analysis_rejects_absolute_paths_in_zip(self, cleanup_uploads):
+        """Test that analysis rejects ZIP files with absolute paths"""
+        # Create a malicious ZIP with absolute path
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+            # Add a malicious file with absolute path
+            info = zipfile.ZipInfo("/tmp/evil.txt")
+            zf.writestr(info, "malicious content")
+        zip_buffer.seek(0)
+        
+        # Upload the malicious ZIP
+        response = client.post(
+            "/api/uploads",
+            files={"file": ("evil.zip", zip_buffer.getvalue(), "application/zip")}
+        )
+        assert response.status_code == 201
+        upload_id = response.json()["upload_id"]
+        
+        # Attempt to analyze - should be rejected
+        response = client.post(
+            "/api/analysis/portfolio",
+            json={"upload_id": upload_id}
+        )
+        
+        assert response.status_code == 400
+        data = response.json()
+        assert data["detail"]["error"] == "malicious_archive"
+        assert "absolute" in data["detail"]["message"].lower()
+
+
 class TestAnalysisLLMFallback:
     """Tests for LLM fallback behavior (acceptance criteria)"""
     

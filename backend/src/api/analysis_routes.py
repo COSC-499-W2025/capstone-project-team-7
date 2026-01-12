@@ -14,10 +14,6 @@ from pydantic import BaseModel, Field
 from scanner.parser import parse_zip
 from scanner.models import ParseResult, ScanPreferences
 
-from cli.services.code_analysis_service import CodeAnalysisService, CodeAnalysisUnavailableError
-from cli.services.contribution_analysis_service import ContributionAnalysisService
-from cli.services.skills_analysis_service import SkillsAnalysisService
-from cli.services.duplicate_detection_service import DuplicateDetectionService
 
 from auth.consent_validator import ConsentValidator
 from api.llm_routes import get_user_client
@@ -64,7 +60,7 @@ class GitAnalysisResult(BaseModel):
     contributors: List[ContributorInfo]
     project_type: str
     date_range: Optional[Dict[str, str]] = None
-    branches: List[str] = []
+    branches: List[str] = Field(default_factory=list)
 
 
 class CodeMetrics(BaseModel):
@@ -94,7 +90,7 @@ class ContributionMetrics(BaseModel):
     total_contributors: int
     commit_frequency: float
     project_duration_days: Optional[int] = None
-    languages_detected: List[str] = []
+    languages_detected: List[str] = Field(default_factory=list)
 
 
 class DuplicateInfo(BaseModel):
@@ -126,12 +122,12 @@ class AnalysisResponse(BaseModel):
     )
     
     project_type: str = Field(description="'individual', 'collaborative', or 'unknown'")
-    languages: List[LanguageStats] = []
+    languages: List[LanguageStats] = Field(default_factory=list)
     git_analysis: Optional[List[GitAnalysisResult]] = None
     code_metrics: Optional[CodeMetrics] = None
-    skills: List[SkillInfo] = []
+    skills: List[SkillInfo] = Field(default_factory=list)
     contribution_metrics: Optional[ContributionMetrics] = None
-    duplicates: List[DuplicateInfo] = []
+    duplicates: List[DuplicateInfo] = Field(default_factory=list)
     
     total_files: int = 0
     total_size_bytes: int = 0
@@ -210,6 +206,12 @@ def _extract_languages_from_parse(parse_result: ParseResult) -> List[Dict[str, A
 def _run_code_analysis(target_path: Path, preferences: Optional[ScanPreferences]) -> Optional[Dict[str, Any]]:
     """Run code analysis using tree-sitter."""
     try:
+        from cli.services.code_analysis_service import CodeAnalysisService, CodeAnalysisUnavailableError
+    except ImportError:
+        logger.info("Code analysis unavailable (cli.services.code_analysis_service not installed)")
+        return None
+    
+    try:
         service = CodeAnalysisService()
         result = service.run_analysis(target_path, preferences)
         
@@ -224,11 +226,11 @@ def _run_code_analysis(target_path: Path, preferences: Optional[ScanPreferences]
             "avg_complexity": summary.get("avg_complexity"),
             "avg_maintainability": summary.get("avg_maintainability"),
         }
-    except CodeAnalysisUnavailableError:
-        logger.info("Code analysis unavailable (tree-sitter not installed)")
-        return None
     except Exception as e:
-        logger.warning(f"Code analysis failed: {e}")
+        if "CodeAnalysisUnavailableError" in type(e).__name__ or "tree-sitter" in str(e).lower():
+            logger.info("Code analysis unavailable (tree-sitter not installed)")
+        else:
+            logger.warning(f"Code analysis failed: {e}")
         return None
 
 
@@ -239,6 +241,7 @@ def _run_skills_extraction(
 ) -> List[Dict[str, Any]]:
     """Extract skills from the project."""
     try:
+        from cli.services.skills_analysis_service import SkillsAnalysisService
         service = SkillsAnalysisService()
         
         git_data = git_analysis[0] if git_analysis else None
@@ -273,6 +276,7 @@ def _run_contribution_analysis(
         return None
     
     try:
+        from cli.services.contribution_analysis_service import ContributionAnalysisService
         service = ContributionAnalysisService()
         git_data = git_analysis[0] if git_analysis else {}
         
@@ -298,6 +302,7 @@ def _run_contribution_analysis(
 def _run_duplicate_detection(parse_result: ParseResult) -> List[Dict[str, Any]]:
     """Detect duplicate files."""
     try:
+        from cli.services.duplicate_detection_service import DuplicateDetectionService
         service = DuplicateDetectionService()
         result = service.analyze_duplicates(parse_result)
         
@@ -476,16 +481,57 @@ async def analyze_portfolio(
         # Parse the archive (or use cached result)
         parse_result = parse_zip(storage_path, preferences=preferences)
         
+        if parse_result is None or not hasattr(parse_result, 'files'):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={
+                    "error": "parse_failed",
+                    "message": "Failed to parse archive: invalid parse result",
+                }
+            )
+        
         # Extract to temp directory for analysis
         import tempfile
         import zipfile
+        from pathlib import PurePosixPath
         
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
             
-            # Extract ZIP contents
             with zipfile.ZipFile(storage_path, 'r') as zf:
-                zf.extractall(temp_path)
+                for member in zf.namelist():
+                    # Validate path: reject absolute paths and traversal attempts
+                    member_path = PurePosixPath(member)
+                    if member_path.is_absolute():
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail={
+                                "error": "malicious_archive",
+                                "message": f"Archive contains absolute path: {member}",
+                            }
+                        )
+                    if any(part == ".." for part in member_path.parts):
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail={
+                                "error": "malicious_archive",
+                                "message": f"Archive contains path traversal: {member}",
+                            }
+                        )
+                    
+                    target_path_member = temp_path / member
+                    try:
+                        target_path_member.resolve().relative_to(temp_path.resolve())
+                    except ValueError:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail={
+                                "error": "malicious_archive",
+                                "message": f"Archive member escapes target directory: {member}",
+                            }
+                        )
+                    
+                    zf.extract(member, temp_path)
             
             # Find the actual content directory (handle nested folders)
             content_dirs = list(temp_path.iterdir())
