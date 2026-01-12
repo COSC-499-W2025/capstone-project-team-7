@@ -1,3 +1,26 @@
+# Week 15: December 4 - December 11
+This week I implemented PR ([212](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/212)) the one‑shot scan API in the main backend, delivering authenticated POST /api/scans and GET /api/scans/{scan_id} endpoints with background execution, progress polling, and result payloads. The implementation integrates auth via get_auth_context, enforces per‑user scan isolation, and validates input early to protect the system.
+
+  Key achievements:
+
+  - Added user_id to ScanStatus and enforced ownership checks on both create/retrieve so users can only access their own
+    scans.
+  - Implemented strict path validation to block sensitive system directories, reject invalid/unsafe paths, and return
+    clear code/message errors (403/404/400) before any background work starts.
+  - Hardened request handling with idempotency key support, profile_id authorization (must match the authenticated user),
+    and a default profile_id derived from auth for downstream persistence.
+  - Limited response payload size by capping returned file metadata to a constant (MAX_FILES_IN_RESPONSE) to keep
+    responses predictable.
+  - Switched scan status updates to immutable model_copy updates for safer concurrency in the in‑memory scan store.
+  - Expanded tests to cover auth requirements, idempotency behavior, scan completion/progress, path validation (blocked +
+    nonexistent paths), and profile_id enforcement.
+
+  This PR stabilizes the scan workflow end‑to‑end in backend/src/api/spec_routes.py and adds robust coverage in tests/
+  test_scan_api.py, making the scan API secure, testable, and ready for frontend polling integration.
+
+In addition to these changes, i reviewed PR's ([214](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/214), ([213](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/213)), and ([209](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/209)).
+
+
 # Week 14: December 1 - December 7
 This week I completed a targeted UI bug fix and contributed to our demo recording. I opened **PR [#186](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/186)**, which resolved a visual issue in the settings and user-preferences menu where text labels and toggle switches were partially hidden, preventing proper user interaction. I also reviewed **PR [#190](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/190)** from Aaron, providing feedback on his UI refresh that improves overall usability and consistency across the interface.
 
