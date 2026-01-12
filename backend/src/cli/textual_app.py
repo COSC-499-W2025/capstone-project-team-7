@@ -3612,7 +3612,20 @@ class PortfolioTextualApp(App):
             return self._projects_service
         
         try:
-            self._projects_service = ProjectsService()
+            # Check if API mode is enabled via environment variable
+            use_api = os.getenv("PORTFOLIO_USE_API", "false").lower() == "true"
+            
+            if use_api:
+                from .services.projects_api_service import ProjectsAPIService
+                self._projects_service = ProjectsAPIService()
+                # Set access token if user is already logged in
+                if self._session_state.session and hasattr(self._projects_service, 'set_access_token'):
+                    self._projects_service.set_access_token(self._session_state.session.access_token)
+                self._debug_log("Using ProjectsAPIService (API mode)")
+            else:
+                self._projects_service = ProjectsService()
+                self._debug_log("Using ProjectsService (direct Supabase mode)")
+            
             return self._projects_service
         except ProjectsServiceError as exc:
             raise ProjectsServiceError(f"Unable to initialize projects service: {exc}") from exc
@@ -4099,6 +4112,11 @@ class PortfolioTextualApp(App):
 
         consent_storage.set_session_token(session.access_token)
         consent_storage.load_user_consents(session.user_id, session.access_token)
+
+        # Update API service token if using API mode
+        if self._projects_service and hasattr(self._projects_service, 'set_access_token'):
+            self._projects_service.set_access_token(session.access_token)
+            self._debug_log(f"Updated ProjectsAPIService token for {session.email}")
 
         self._invalidate_cached_state()
         self._refresh_consent_state()
