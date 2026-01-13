@@ -5,13 +5,14 @@ from dataclasses import dataclass
 import sys
 from pathlib import Path
 import time
-from typing import Callable, Dict, List, Optional, Tuple, TypeVar
+from typing import Callable, Dict, List, Optional, Tuple, TypeVar, Any
 
 from ..archive_utils import ensure_zip
 from ..language_stats import summarize_languages
 from ..state import ScanState
 from ...scanner.models import FileMetadata, ParseResult, ScanPreferences
 from ...scanner.parser import parse_zip
+from .upload_api_service import UploadAPIService, UploadAPIError, AuthenticationError
 
 T = TypeVar("T")
 
@@ -36,6 +37,21 @@ class ScanRunResult:
 
 class ScanService:
     """Utility helpers that encapsulate scan execution and formatting."""
+    
+    def __init__(self, use_api: bool = False, api_service: Optional[UploadAPIService] = None):
+        """
+        Initialize ScanService.
+        
+        Args:
+            use_api: If True, use upload/parse API instead of direct parsing
+            api_service: Optional pre-configured API service (creates default if None)
+        """
+        self.use_api = use_api
+        self.api_service = api_service or UploadAPIService()
+    
+    def set_auth_token(self, token: str) -> None:
+        """Set authentication token for API service"""
+        self.api_service.set_auth_token(token)
 
     def run_scan(
         self,
@@ -47,7 +63,12 @@ class ScanService:
         cached_files: Dict[str, Dict[str, Any]] | None = None,
     ) -> ScanRunResult:
         """Execute the scan pipeline (zip preparation + parsing + metadata)."""
+        
+        # Use API mode if configured
+        if self.use_api:
+            return self._run_scan_via_api(target, relevant_only, preferences, progress_callback)
 
+        # Original local parsing mode
         timings: list[Tuple[str, float]] = []
 
         def _emit_progress(payload: str | Dict[str, object]) -> None:
@@ -234,6 +255,7 @@ class ScanService:
             if value < 1024 or unit == units[-1]:
                 return f"{value:.1f} {unit}" if unit != "B" else f"{int(value)} {unit}"
             value /= 1024
+        return "unknown size"  # Fallback, though loop should always return
 
     def _perform_scan(
         self,
@@ -276,3 +298,141 @@ class ScanService:
                 return repos
 
         return repos
+    
+    def _run_scan_via_api(
+        self,
+        target: Path,
+        relevant_only: bool,
+        preferences: ScanPreferences,
+        progress_callback: Callable[[str | Dict[str, object]], None] | None = None,
+    ) -> ScanRunResult:
+        """
+        Execute scan using the upload and parse API instead of local parsing.
+        
+        This method:
+        1. Prepares a ZIP archive (if needed)
+        2. Uploads it to the API
+        3. Calls the parse endpoint
+        4. Converts API response to ScanRunResult
+        """
+        timings: list[Tuple[str, float]] = []
+        
+        def _emit_progress(payload: str | Dict[str, object]) -> None:
+            if progress_callback:
+                try:
+                    progress_callback(payload)
+                except Exception:
+                    pass
+        
+        def _report_progress(message: str) -> None:
+            _emit_progress(message)
+        
+        def _run_step(message: str, label: str, func: Callable[[], T]) -> T:
+            _report_progress(message)
+            start = time.perf_counter()
+            result = func()
+            timings.append((label, time.perf_counter() - start))
+            return result
+        
+        # Step 1: Prepare archive (same as local mode)
+        archive_path = _run_step(
+            "Preparing archive…",
+            "Archive preparation",
+            lambda: self._perform_scan(target, relevant_only, preferences),
+        )
+        
+        # Step 2: Upload to API
+        def _upload() -> str:
+            try:
+                upload_resp = self.api_service.upload_file(archive_path)
+                return upload_resp.upload_id
+            except AuthenticationError as e:
+                raise PermissionError(f"API authentication failed: {e}")
+            except UploadAPIError as e:
+                raise OSError(f"Upload failed: {e}")
+        
+        upload_id = _run_step(
+            "Uploading to API…",
+            "API upload",
+            _upload,
+        )
+        
+        # Step 3: Parse via API
+        def _parse_via_api() -> ParseResult:
+            try:
+                parse_resp = self.api_service.parse_upload(
+                    upload_id,
+                    relevant_only=relevant_only,
+                    preferences=preferences
+                )
+                
+                # Emit file processing progress
+                total_files = len(parse_resp.files)
+                _emit_progress({
+                    "type": "files",
+                    "processed": total_files,
+                    "total": total_files,
+                })
+                
+                # Convert API response to ParseResult
+                return ParseResult(
+                    files=parse_resp.files,
+                    issues=parse_resp.issues,
+                    summary=parse_resp.summary
+                )
+            except AuthenticationError as e:
+                raise PermissionError(f"API authentication failed: {e}")
+            except UploadAPIError as e:
+                raise OSError(f"Parse failed: {e}")
+        
+        parse_result = _run_step(
+            "Parsing via API…",
+            "API parsing",
+            _parse_via_api,
+        )
+        
+        # Step 4: Collect metadata (same as local mode)
+        languages: List[Dict[str, object]] = []
+        has_media_files = False
+        pdf_candidates: List[FileMetadata] = []
+
+        def _collect_metadata() -> Tuple[List[Dict[str, object]], bool, List[FileMetadata]]:
+            lang_summary = summarize_languages(parse_result.files) if parse_result.files else []
+            media_present = any(getattr(meta, "media_info", None) for meta in parse_result.files)
+            pdfs = [
+                meta for meta in parse_result.files if (meta.mime_type or "").lower() == "application/pdf"
+            ]
+            return lang_summary, media_present, pdfs
+
+        languages, has_media_files, pdf_candidates = _run_step(
+            "Analyzing metadata and summaries…",
+            "Metadata & summaries",
+            _collect_metadata,
+        )
+        
+        document_candidates = [
+            meta
+            for meta in parse_result.files
+            if Path(meta.path).suffix.lower() in _DOCUMENT_EXTENSIONS
+        ]
+        
+        git_repos = _run_step(
+            "Detecting git repositories…",
+            "Git discovery",
+            lambda: self._detect_git_repositories(target),
+        )
+        
+        if timings:
+            total_duration = sum(duration for _, duration in timings)
+            timings.append(("Total duration", total_duration))
+        
+        return ScanRunResult(
+            archive_path=archive_path,
+            parse_result=parse_result,
+            languages=languages,
+            git_repos=git_repos,
+            has_media_files=has_media_files,
+            pdf_candidates=pdf_candidates,
+            document_candidates=document_candidates,
+            timings=timings,
+        )
