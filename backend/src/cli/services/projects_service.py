@@ -184,6 +184,28 @@ class ProjectsService:
                     project.setdefault("has_skills_progress", False)
                 return projects
             raise ProjectsServiceError(f"Failed to get projects: {exc}") from exc
+
+    def get_user_projects_with_scan_data(self, user_id: str) -> List[Dict[str, Any]]:
+        """
+        Get all projects for a user, including decrypted scan_data.
+
+        Returns:
+            List of project records with scan_data field.
+        """
+        try:
+            response = (
+                self.client.table("projects")
+                .select("id, project_name, scan_timestamp, project_end_date, created_at, scan_data")
+                .eq("user_id", user_id)
+                .execute()
+            )
+        except Exception as exc:
+            raise ProjectsServiceError(f"Failed to get projects with scan data: {exc}") from exc
+
+        projects = response.data or []
+        for project in projects:
+            project["scan_data"] = self._decrypt_scan_data(project.get("scan_data"))
+        return projects
     
     def get_project_scan(self, user_id: str, project_id: str) -> Optional[Dict[str, Any]]:
         """
