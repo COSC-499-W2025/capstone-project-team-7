@@ -1672,11 +1672,12 @@ class ProjectsScreen(ModalScreen[None]):
     .status-success { color: $success; }
     """
     
-    def __init__(self, projects: List[Dict[str, Any]], projects_service: Optional[Any] = None, user_id: Optional[str] = None) -> None:
+    def __init__(self, projects: List[Dict[str, Any]], projects_service: Optional[Any] = None, user_id: Optional[str] = None, top_projects: Optional[List[Dict[str, Any]]] = None) -> None:
         super().__init__()
         self.projects = projects
         self.projects_service = projects_service
         self.user_id = user_id
+        self.top_projects = top_projects  # Top ranked projects from API
         self.selected_project: Optional[Dict[str, Any]] = None
         # Track whether projects are ordered by contribution importance or scan recency
         self.sort_mode: str = "importance"
@@ -1760,18 +1761,20 @@ class ProjectsScreen(ModalScreen[None]):
         if not self.projects:
             return "No projects to summarize."
         
-        # Get top projects sorted by importance
-        sorted_projects = sorted(
-            self.projects,
-            key=lambda p: (
-                p.get("contribution_score") is None,
-                -(p.get("contribution_score") or 0),
-                p.get("scan_timestamp") or "",
-            ),
-        )
-        
-        # Take top 3
-        top_projects = sorted_projects[:3]
+        # Use API-fetched top projects if available, otherwise fall back to local sorting
+        if self.top_projects:
+            top_projects = self.top_projects[:3]
+        else:
+            # Fallback: local sorting if API data unavailable
+            sorted_projects = sorted(
+                self.projects,
+                key=lambda p: (
+                    p.get("contribution_score") is None,
+                    -(p.get("contribution_score") or 0),
+                    p.get("scan_timestamp") or "",
+                ),
+            )
+            top_projects = sorted_projects[:3]
         
         summary_lines = ["🌟 TOP PROJECTS SUMMARY (ranked by importance):\n"]
         

@@ -268,6 +268,9 @@ class PortfolioTextualApp(App):
         self._search_service = SearchService()
         self._resume_service = ResumeGenerationService()
         self._projects_service: Optional[ProjectsService] = None
+        
+        # Feature flag: Use API endpoints for ranking/timeline (True) or local CLI methods (False)
+        self._use_ranking_api = os.getenv("PORTFOLIO_USE_API", "true").lower() in ("true", "1", "yes")
         self._resume_storage_service: Optional[ResumeStorageService] = None
         self._media_analyzer: Optional[MediaAnalyzer] = None
         try:
@@ -3204,14 +3207,8 @@ class PortfolioTextualApp(App):
             contribution_data = self._contribution_service.export_data(metrics_obj)
             payload["contribution_metrics"] = contribution_data
 
-            # Compute contribution-based ranking signals for UI and persistence
-            user_email = self._preferred_user_email()
-            ranking = self._contribution_service.compute_contribution_score(
-                metrics_obj,
-                user_email=user_email,
-                user_name=None,
-            )
-            payload["contribution_ranking"] = ranking
+            # Ranking will be computed via API after project is saved
+            # This ensures the score is calculated by the API endpoint and stored in DB
         
         # ✨ DOCUMENT ANALYSIS (DOCX, etc.) ✨
         if self._scan_state.document_results:
@@ -5295,23 +5292,60 @@ class PortfolioTextualApp(App):
             self._show_status(f"Projects unavailable: {exc}", "error")
             return
         
-        try:
-            projects = await asyncio.to_thread(
-                projects_service.get_user_projects,
-                self._session_state.session.user_id
-            )
-        except ProjectsServiceError as exc:
-            self._show_status(f"Failed to load projects: {exc}", "error")
-            return
-        except Exception as exc:
-            self._show_status(f"Unexpected error loading projects: {exc}", "error")
-            return
+        # Fetch timeline-ordered projects and top projects via API (if flag enabled)
+        timeline_projects = None
+        top_projects = None
+        
+        if self._use_ranking_api and self._session_state.session.access_token:
+            try:
+                from .services.projects_api_service import ProjectsAPIService
+                api_service = ProjectsAPIService(auth_token=self._session_state.session.access_token)
+                
+                # Fetch timeline (chronologically ordered projects)
+                try:
+                    timeline_result = await asyncio.to_thread(api_service.get_project_timeline)
+                    timeline_entries = timeline_result.get("timeline", [])
+                    # Extract project objects from timeline entries
+                    timeline_projects = [entry.get("project") for entry in timeline_entries if entry.get("project")]
+                    self._debug_log(f"Fetched {len(timeline_projects)} projects via timeline API")
+                except Exception as timeline_exc:
+                    self._debug_log(f"Failed to fetch timeline via API: {timeline_exc}")
+                
+                # Fetch top projects (for ranked summary)
+                try:
+                    top_result = await asyncio.to_thread(api_service.get_top_projects, limit=3)
+                    top_projects = top_result.get("projects", [])
+                    self._debug_log(f"Fetched top {len(top_projects)} projects via API")
+                except Exception as top_exc:
+                    self._debug_log(f"Failed to fetch top projects via API: {top_exc}")
+                    
+            except Exception as exc:
+                self._debug_log(f"Failed to initialize API service: {exc}")
+        
+        # Use timeline-ordered projects if available (and flag enabled), otherwise fetch from database
+        if timeline_projects and self._use_ranking_api:
+            projects = timeline_projects
+            self._debug_log("Using timeline-ordered projects from API")
+        else:
+            # Fallback: fetch from database with local ordering
+            try:
+                projects = await asyncio.to_thread(
+                    projects_service.get_user_projects,
+                    self._session_state.session.user_id
+                )
+                self._debug_log("Using locally-ordered projects from database")
+            except ProjectsServiceError as exc:
+                self._show_status(f"Failed to load projects: {exc}", "error")
+                return
+            except Exception as exc:
+                self._show_status(f"Unexpected error loading projects: {exc}", "error")
+                return
 
         self._projects_state.projects_list = projects or []
         self._projects_state.error = None
         self._refresh_current_detail()
         user_id = self._session_state.session.user_id if self._session_state.session else None
-        self.push_screen(ProjectsScreen(projects or [], projects_service=projects_service, user_id=user_id))
+        self.push_screen(ProjectsScreen(projects or [], projects_service=projects_service, user_id=user_id, top_projects=top_projects))
         self._show_status(f"Loaded {len(projects or [])} project(s).", "success")
 
     async def _load_and_show_resumes(self, *, show_modal: bool = True) -> None:
@@ -5604,6 +5638,45 @@ class PortfolioTextualApp(App):
             if self._is_expired_token_error(exc):
                 self._handle_session_expired()
             return
+
+        # Calculate and save contribution score (API or local CLI method)
+        project_id = project_record.get("id")
+        if project_id and self._scan_state.contribution_metrics and session.access_token and self._use_ranking_api:
+            # Use API endpoint for ranking
+            try:
+                self._show_status("Calculating project ranking via API...", "info")
+                from .services.projects_api_service import ProjectsAPIService
+                api_service = ProjectsAPIService(auth_token=session.access_token)
+                
+                user_email = self._preferred_user_email()
+                ranking_result = await asyncio.to_thread(
+                    api_service.rank_project,
+                    project_id,
+                    user_email=user_email,
+                )
+                
+                score = ranking_result.get('score', 0)
+                self._debug_log(f"Project ranked via API: score={score:.2f}")
+                self._show_status(f"Project ranked: {score:.2f}", "success")
+            except Exception as rank_exc:
+                # Don't fail the export if ranking fails
+                self._debug_log(f"Failed to rank project via API: {rank_exc}")
+                self._show_status(f"Ranking failed: {rank_exc}", "error")
+        elif project_id and self._scan_state.contribution_metrics and not self._use_ranking_api:
+            # Use local CLI method for ranking (already saved in scan_data by export service)
+            contribution_ranking = scan_data.get("contribution_ranking", {})
+            if contribution_ranking:
+                score = contribution_ranking.get("score", 0)
+                self._debug_log(f"Project ranked via local CLI: score={score:.2f}")
+                self._show_status(f"Project ranked (local): {score:.2f}", "success")
+        else:
+            # Log why ranking was skipped
+            if not project_id:
+                self._debug_log("Ranking skipped: no project_id")
+            elif not self._scan_state.contribution_metrics:
+                self._debug_log("Ranking skipped: no contribution_metrics")
+            elif not session.access_token:
+                self._debug_log("Ranking skipped: no access_token")
 
         try:
             await self._save_project_scan(
