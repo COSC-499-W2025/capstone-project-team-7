@@ -47,9 +47,10 @@ Priority key: P0 = launch-critical parity; P1 = nice-to-have once P0 is stable; 
 - Migration notes: Settings page to edit profiles (extensions/excluded dirs), toggle follow_symlinks/max size; show active profile summary; keep defaults when Supabase missing; convert to forms with validation.
 
 ### Portfolio scan pipeline
-- Current behavior: “Run Portfolio Scan” zips target via `ensure_zip`, parses with `parse_zip`, emits progress, collects language stats, media/PDF/document candidates, Git repo detection.
-- Components: `backend/src/cli/services/scan_service.py`, `backend/src/scanner/parser.py`, `backend/src/cli/language_stats.py`.
-- Data: Reads local FS; outputs `ParseResult` (files, summary, issues), file hashes/media info, git repo list; respects `ScanPreferences`.
+- Current behavior: "Run Portfolio Scan" zips target via `ensure_zip`, parses with `parse_zip`, emits progress, collects language stats, media/PDF/document candidates, Git repo detection. **API mode available**: Set `SCAN_USE_API=true` to use the One-Shot Scan API instead of local scanning.
+- Components: `backend/src/cli/services/scan_service.py`, `backend/src/cli/services/scan_api_client.py`, `backend/src/scanner/parser.py`, `backend/src/cli/language_stats.py`.
+- Data: Reads local FS (or via API); outputs `ParseResult` (files, summary, issues), file hashes/media info, git repo list; respects `ScanPreferences`.
+- API mode: `ScanApiClient` calls `POST /api/scans` to start background scan, polls `GET /api/scans/{scan_id}` for progress. Enabled via `SCAN_USE_API=true` environment variable.
 - Migration notes: Renderer should trigger scan via IPC/HTTP (no direct FS), show progress + timings, persist `ParseResult` in memory or Supabase via project save; keep relevant_only flag and preferences profile.
 
 ### Project storage & cached files
