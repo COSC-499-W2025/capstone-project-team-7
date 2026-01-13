@@ -205,6 +205,50 @@ class ErrorResponse(BaseModel):
     error_code: Optional[str] = None
 
 
+class RankProjectRequest(BaseModel):
+    """Request to compute ranking for a specific project."""
+    user_email: Optional[str] = Field(None, description="User's email for contribution matching")
+    user_name: Optional[str] = Field(None, description="User's name for contribution matching")
+
+
+class RankingComponents(BaseModel):
+    """Detailed breakdown of ranking score components."""
+    volume: float = Field(..., description="Commit volume score (0-1)")
+    user_share: float = Field(..., description="User's share of commits (0-1)")
+    recency: float = Field(..., description="Project recency score (0-1)")
+    frequency: float = Field(..., description="Commit frequency score (0-1)")
+    activity_mix: float = Field(..., description="Activity diversity score (0-1)")
+
+
+class RankProjectResponse(BaseModel):
+    """Response with project ranking details."""
+    project_id: str
+    project_name: str
+    score: float = Field(..., description="Overall ranking score (0-100)")
+    user_commit_share: float = Field(..., description="User's percentage of commits (0-1)")
+    total_commits: int = Field(..., description="Total commits in the project")
+    components: RankingComponents = Field(..., description="Score component breakdown")
+    reasons: List[str] = Field(..., description="Human-readable ranking reasons")
+
+
+class TopProjectsResponse(BaseModel):
+    """Response with top-ranked projects."""
+    count: int
+    projects: List[ProjectMetadata]
+
+
+class ProjectTimelineEntry(BaseModel):
+    """Single entry in project timeline."""
+    project: Dict[str, Any] = Field(..., description="Full project object with all metadata")
+    display_date: str = Field(..., description="Date to use for timeline display (end_date or scan_timestamp)")
+
+
+class ProjectTimelineResponse(BaseModel):
+    """Response with chronologically ordered projects."""
+    count: int
+    timeline: List[ProjectTimelineEntry]
+
+
 # ============================================================================
 # API Endpoints
 # ============================================================================
@@ -333,6 +377,121 @@ async def list_projects(
         )
 
 
+@router.get("/top", response_model=TopProjectsResponse, status_code=200)
+async def get_top_projects(
+    limit: int = 10,
+    user_id: str = Depends(verify_auth_token),
+) -> TopProjectsResponse:
+    """
+    Get top-ranked projects sorted by contribution score.
+    
+    - **limit**: Maximum number of projects to return (default: 10)
+    
+    Returns projects sorted by contribution_score in descending order.
+    Only includes projects that have been ranked (have contribution_score).
+    """
+    try:
+        service = get_projects_service()
+        
+        # Get all user projects
+        projects = service.get_user_projects(user_id)
+        
+        # Filter to only projects with contribution scores and sort
+        ranked_projects = [
+            p for p in projects
+            if p.get("contribution_score") is not None
+        ]
+        
+        ranked_projects.sort(
+            key=lambda p: p.get("contribution_score", 0),
+            reverse=True
+        )
+        
+        # Apply limit
+        top_projects = ranked_projects[:limit]
+        
+        return TopProjectsResponse(
+            count=len(top_projects),
+            projects=top_projects,
+        )
+    
+    except Exception as exc:
+        logger.exception(f"Error fetching top projects: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch top projects: {str(exc)}",
+        )
+
+
+@router.get("/timeline", response_model=ProjectTimelineResponse, status_code=200)
+async def get_project_timeline(
+    user_id: str = Depends(verify_auth_token),
+) -> ProjectTimelineResponse:
+    """
+    Get projects ordered chronologically by scan timestamp.
+    
+    Returns projects sorted by scan_timestamp (newest first).
+    """
+    try:
+        service = get_projects_service()
+        
+        # Get all user projects
+        projects = service.get_user_projects(user_id)
+        
+        # Build timeline entries with full project objects
+        timeline_entries = []
+        for project in projects:
+            scan_timestamp = project.get("scan_timestamp") or project.get("created_at")
+            
+            if not scan_timestamp:
+                # Skip projects without timestamps
+                continue
+            
+            # Parse to datetime for proper sorting
+            try:
+                # Handle various timestamp formats
+                ts_str = scan_timestamp.replace("Z", "+00:00")
+                dt = datetime.fromisoformat(ts_str)
+            except Exception as e:
+                # If parsing fails, try to use it as-is and log error
+                print(f"Failed to parse timestamp for {project.get('project_name')}: {scan_timestamp}, error: {e}")
+                continue
+            
+            timeline_entries.append({
+                "project": project,
+                "display_date": scan_timestamp,
+                "_sort_key": dt,  # Use datetime object for sorting
+            })
+        
+        # Sort by datetime object (newest first) - explicit comparison
+        timeline_entries.sort(
+            key=lambda e: e["_sort_key"],
+            reverse=True
+        )
+        
+        # Debug: Print order to console
+        print("\n=== Timeline Order ===")
+        for i, entry in enumerate(timeline_entries, 1):
+            print(f"{i}. {entry['project'].get('project_name')} - {entry['display_date']} (dt: {entry['_sort_key']})")
+        print("=====================\n")
+        
+        # Remove sort key before returning
+        for entry in timeline_entries:
+            entry.pop("_sort_key", None)
+        
+        return ProjectTimelineResponse(
+            count=len(timeline_entries),
+            timeline=timeline_entries,
+        )
+    
+    except Exception as exc:
+        logger.exception(f"Error fetching project timeline: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch project timeline: {str(exc)}",
+        )
+
+
 @router.get(
     "/{project_id}",
     response_model=ProjectDetail,
@@ -436,3 +595,210 @@ async def delete_project(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred",
         )
+
+
+# ============================================================================
+# Project Ranking Endpoints
+# ============================================================================
+
+@router.post("/{project_id}/rank", response_model=RankProjectResponse, status_code=200)
+async def rank_project(
+    project_id: str,
+    request: RankProjectRequest,
+    user_id: str = Depends(verify_auth_token),
+) -> RankProjectResponse:
+    """
+    Compute contribution-based ranking for a specific project.
+    
+    - **project_id**: UUID of the project to rank
+    - **user_email**: Optional email to match against contributors
+    - **user_name**: Optional name to match against contributors
+    
+    Returns a score (0-100) with detailed component breakdown and human-readable reasons.
+    
+    The ranking algorithm considers:
+    - 50% commit volume (log-scaled)
+    - 20% user's share of commits
+    - 15% project recency
+    - 10% commit frequency
+    - 5% activity diversity (tests/docs/design)
+    """
+    try:
+        import sys
+        from pathlib import Path
+        
+        # Add src to path if needed
+        src_path = Path(__file__).parent.parent
+        if str(src_path) not in sys.path:
+            sys.path.insert(0, str(src_path))
+        
+        from local_analysis.contribution_analyzer import (
+            ProjectContributionMetrics,
+            ContributorMetrics,
+            ActivityBreakdown,
+        )
+        from cli.services.contribution_analysis_service import ContributionAnalysisService
+        from datetime import datetime, timezone
+        
+        service = get_projects_service()
+        
+        # Get full project with scan data
+        project = service.get_project_scan(user_id, project_id)
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Project {project_id} not found",
+            )
+        
+        # Extract contribution metrics from scan_data
+        scan_data = project.get("scan_data", {})
+        contribution_metrics_dict = scan_data.get("contribution_metrics")
+        
+        if not contribution_metrics_dict:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Project does not have contribution metrics. Run a scan with git analysis first.",
+            )
+        
+        # Reconstruct metrics object from dict
+        def dict_to_metrics(data: Dict[str, Any]) -> ProjectContributionMetrics:
+            """Convert dictionary to ProjectContributionMetrics object."""
+            contributors = []
+            for c in data.get("contributors", []):
+                # Reconstruct activity breakdown for contributor
+                c_activity = c.get("activity_breakdown", {})
+                contributor_activity = ActivityBreakdown(
+                    code_lines=c_activity.get("code_lines", 0),
+                    test_lines=c_activity.get("test_lines", 0),
+                    documentation_lines=c_activity.get("documentation_lines", 0),
+                    design_lines=c_activity.get("design_lines", 0),
+                    config_lines=c_activity.get("config_lines", 0),
+                )
+                
+                contributor = ContributorMetrics(
+                    name=c.get("name", ""),
+                    email=c.get("email"),
+                    commits=c.get("commits", 0),
+                    commit_percentage=c.get("commit_percentage", 0.0),
+                    first_commit_date=c.get("first_commit_date"),
+                    last_commit_date=c.get("last_commit_date"),
+                    active_days=c.get("active_days", 0),
+                    activity_breakdown=contributor_activity,
+                    files_touched=set(c.get("files_touched", [])),
+                    languages_used=set(c.get("languages_used", [])),
+                )
+                contributors.append(contributor)
+            
+            # Reconstruct project activity breakdown
+            activity = data.get("activity_breakdown", {})
+            activity_breakdown = ActivityBreakdown(
+                code_lines=activity.get("code_lines", 0),
+                test_lines=activity.get("test_lines", 0),
+                documentation_lines=activity.get("documentation_lines", 0),
+                design_lines=activity.get("design_lines", 0),
+                config_lines=activity.get("config_lines", 0),
+            )
+            
+            return ProjectContributionMetrics(
+                project_path=data.get("project_path", ""),
+                project_type=data.get("project_type", "unknown"),
+                total_commits=data.get("total_commits", 0),
+                total_contributors=data.get("total_contributors", 0),
+                project_duration_days=data.get("project_duration_days"),
+                project_start_date=data.get("project_start_date"),
+                project_end_date=data.get("project_end_date"),
+                contributors=contributors,
+                overall_activity_breakdown=activity_breakdown,
+                commit_frequency=data.get("commit_frequency", 0.0),
+                languages_detected=set(data.get("languages_detected", [])),
+                timeline=data.get("timeline", []),
+            )
+        
+        metrics = dict_to_metrics(contribution_metrics_dict)
+        
+        # Use the CLI service to compute the score (single source of truth)
+        analysis_service = ContributionAnalysisService()
+        ranking = analysis_service.compute_contribution_score(
+            metrics,
+            user_email=request.user_email,
+            user_name=request.user_name,
+        )
+        
+        # Log the computed score
+        logger.info(f"Computed contribution score for project {project_id}: {ranking['score']:.2f}")
+        
+        # Update the database with the contribution score
+        try:
+            service = get_projects_service()
+            service.update_project_score(
+                user_id=user_id,
+                project_id=project_id,
+                contribution_score=ranking["score"],
+                user_commit_share=ranking["user_commit_share"],
+            )
+            logger.info(f"Successfully saved contribution score {ranking['score']:.2f} to database for project {project_id}")
+        except Exception as db_exc:
+            logger.error(f"Failed to save contribution score to database: {db_exc}")
+            # Continue anyway - return the score even if DB update fails
+        
+        # Generate human-readable reasons
+        reasons = []
+        score = ranking["score"]
+        components = ranking["components"]
+        
+        if score >= 70:
+            reasons.append("🌟 High-impact project")
+        elif score >= 40:
+            reasons.append("✨ Moderate-impact project")
+        else:
+            reasons.append("📝 Lower-impact project")
+        
+        if components["volume"] > 0.7:
+            reasons.append(f"Large codebase with {ranking['total_commits']} commits")
+        elif components["volume"] > 0.4:
+            reasons.append(f"Medium-sized project with {ranking['total_commits']} commits")
+        
+        user_share = ranking["user_commit_share"]
+        if user_share >= 0.8:
+            reasons.append(f"Primary author ({user_share*100:.0f}% of commits)")
+        elif user_share >= 0.5:
+            reasons.append(f"Major contributor ({user_share*100:.0f}% of commits)")
+        elif user_share >= 0.2:
+            reasons.append(f"Contributing member ({user_share*100:.0f}% of commits)")
+        elif user_share > 0:
+            reasons.append(f"Minor contributor ({user_share*100:.0f}% of commits)")
+        
+        if components["recency"] > 0.8:
+            reasons.append("Recent activity (within 6 months)")
+        elif components["recency"] > 0.5:
+            reasons.append("Moderate recency (6-12 months)")
+        elif components["recency"] > 0.2:
+            reasons.append("Older project (1-2 years)")
+        
+        if components["frequency"] > 0.6:
+            reasons.append("High commit frequency")
+        
+        if components["activity_mix"] > 0.4:
+            reasons.append("Good test/documentation coverage")
+        
+        return RankProjectResponse(
+            project_id=project_id,
+            project_name=project.get("project_name", "Unknown"),
+            score=ranking["score"],
+            user_commit_share=ranking["user_commit_share"],
+            total_commits=ranking["total_commits"],
+            components=RankingComponents(**components),
+            reasons=reasons,
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception(f"Error computing project rank: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to compute ranking: {str(exc)}",
+        )
+
+
+
