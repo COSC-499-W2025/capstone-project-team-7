@@ -35,6 +35,7 @@ from .message_utils import dispatch_message
 
 from .services.projects_service import ProjectsService, ProjectsServiceError 
 from .services.preferences_service import PreferencesService
+from .services.consent_api_service import ConsentAPIService, ConsentAPIServiceError
 from .services.ai_service import (
     AIService,
     AIDependencyError,
@@ -165,6 +166,11 @@ MEDIA_EXTENSIONS = tuple(
 )
 
 
+def _env_flag(name: str) -> bool:
+    value = os.getenv(name, "")
+    return value.lower() in {"1", "true", "yes", "on"}
+
+
 def _maybe_patch_threading_timer() -> None:
     """Log Timer creation stacks when TEXTUAL_CLI_DEBUG_TIMERS is set."""
 
@@ -269,6 +275,8 @@ class PortfolioTextualApp(App):
         self._scan_service = ScanService(use_api=use_api_mode)
         
         self._session_service = SessionService(reporter=self._report_filesystem_issue)
+        self._use_api_mode = _env_flag("PORTFOLIO_USE_API")
+        self._consent_api_service = ConsentAPIService() if self._use_api_mode else None
         self._preferences_service = PreferencesService(media_extensions=MEDIA_EXTENSIONS)
         self._ai_service = AIService()
         self._code_service = CodeAnalysisService()
@@ -3719,7 +3727,28 @@ class PortfolioTextualApp(App):
         self._preferences_screen = None
 
     def _show_privacy_notice(self) -> None:
+        if self._use_api_mode and self._session_state.session:
+            asyncio.create_task(self._show_privacy_notice_api())
+            return
         notice = consent_storage.PRIVACY_NOTICE.strip()
+        self.push_screen(NoticeScreen(notice))
+
+    async def _show_privacy_notice_api(self) -> None:
+        session = self._session_state.session
+        if not session or not self._consent_api_service:
+            notice = consent_storage.PRIVACY_NOTICE.strip()
+            self.push_screen(NoticeScreen(notice))
+            return
+        try:
+            notice_payload = await asyncio.to_thread(
+                self._consent_api_service.fetch_notice,
+                session.access_token,
+                ConsentValidator.SERVICE_EXTERNAL,
+            )
+            notice = (notice_payload.get("privacy_notice") or consent_storage.PRIVACY_NOTICE).strip()
+        except ConsentAPIServiceError as exc:
+            self._show_status(f"Unable to fetch consent notice: {exc}", "warning")
+            notice = consent_storage.PRIVACY_NOTICE.strip()
         self.push_screen(NoticeScreen(notice))
 
     def on_scan_results_screen_closed(self) -> None:
@@ -3862,6 +3891,7 @@ class PortfolioTextualApp(App):
     def _invalidate_cached_state(self) -> None:
         self._consent_state.record = None
         self._consent_state.error = None
+        self._consent_state.external_services = False
         self._preferences_state.summary = None
         self._preferences_state.profiles = {}
         self._preferences_state.error = None
@@ -3932,11 +3962,20 @@ class PortfolioTextualApp(App):
         self._refresh_current_detail()
         return False
 
+    def _read_external_consent(self) -> bool:
+        if not self._session_state.session:
+            return False
+        record = consent_storage.get_consent(
+            self._session_state.session.user_id, ConsentValidator.SERVICE_EXTERNAL
+        )
+        return bool(record and record.get("consent_given"))
+
     def _has_external_consent(self) -> bool:
         if not self._session_state.session:
             return False
-        record = consent_storage.get_consent(self._session_state.session.user_id, ConsentValidator.SERVICE_EXTERNAL)
-        return bool(record and record.get("consent_given"))
+        if self._use_api_mode:
+            return self._consent_state.external_services
+        return self._read_external_consent()
 
     async def _handle_toggle_required(self) -> None:
         if not self._session_state.session:
@@ -3978,6 +4017,9 @@ class PortfolioTextualApp(App):
         self._update_consent_dialog_state(message="Updating external services consent…", tone="info")
         try:
             message = await asyncio.to_thread(self._toggle_external_consent_sync)
+        except ConsentError as exc:
+            self._show_status(f"Consent error: {exc}", "error")
+            self._update_consent_dialog_state(message=f"Consent error: {exc}", tone="error")
         except Exception as exc:  # pragma: no cover - defensive fallback
             self._show_status(f"Unexpected consent error: {exc}", "error")
             self._update_consent_dialog_state(message=f"Unexpected consent error: {exc}", tone="error")
@@ -3991,6 +4033,23 @@ class PortfolioTextualApp(App):
         if not self._session_state.session:
             raise ConsentError("No active session")
         user_id = self._session_state.session.user_id
+        if self._use_api_mode:
+            if not self._consent_api_service:
+                raise ConsentError("Consent API service unavailable")
+            enabling = self._consent_state.record is None
+            external_services = self._consent_state.external_services if enabling else False
+            try:
+                status = self._consent_api_service.update_status(
+                    self._session_state.session.access_token,
+                    data_access=enabling,
+                    external_services=external_services,
+                )
+            except ConsentAPIServiceError as exc:
+                raise ConsentError(str(exc)) from exc
+            self._consent_state.external_services = bool(status.get("external_services"))
+            self._consent_state.record = self._consent_api_service.status_to_record(status)
+            return "Required consent granted." if enabling else "Required consent withdrawn."
+
         if self._consent_state.record:
             consent_storage.withdraw_consent(user_id, ConsentValidator.SERVICE_FILE_ANALYSIS)
             return "Required consent withdrawn."
@@ -4007,6 +4066,24 @@ class PortfolioTextualApp(App):
         if not self._session_state.session:
             raise ConsentError("No active session")
         user_id = self._session_state.session.user_id
+        if self._use_api_mode:
+            if not self._consent_api_service:
+                raise ConsentError("Consent API service unavailable")
+            if not self._consent_state.record:
+                raise ConsentError("Required consent must be enabled first.")
+            enabling = not self._consent_state.external_services
+            try:
+                status = self._consent_api_service.update_status(
+                    self._session_state.session.access_token,
+                    data_access=True,
+                    external_services=enabling,
+                )
+            except ConsentAPIServiceError as exc:
+                raise ConsentError(str(exc)) from exc
+            self._consent_state.external_services = bool(status.get("external_services"))
+            self._consent_state.record = self._consent_api_service.status_to_record(status)
+            return "External services consent granted." if enabling else "External services consent withdrawn."
+
         if self._has_external_consent():
             consent_storage.withdraw_consent(user_id, ConsentValidator.SERVICE_EXTERNAL)
             return "External services consent withdrawn."
@@ -4110,8 +4187,9 @@ class PortfolioTextualApp(App):
         self._session_state.auth_error = None
         self._persist_session()
 
-        consent_storage.set_session_token(session.access_token)
-        consent_storage.load_user_consents(session.user_id, session.access_token)
+        if not self._use_api_mode:
+            consent_storage.set_session_token(session.access_token)
+            consent_storage.load_user_consents(session.user_id, session.access_token)
 
         # Update API service token if using API mode
         if self._projects_service and hasattr(self._projects_service, 'set_access_token'):
@@ -4518,11 +4596,13 @@ class PortfolioTextualApp(App):
             elif self._consent_state.error:
                 consent_badge = "[#9ca3af]Consent required[/#9ca3af]"
 
-            external = consent_storage.get_consent(
-                self._session_state.session.user_id, ConsentValidator.SERVICE_EXTERNAL
+            external_enabled = (
+                self._consent_state.external_services
+                if self._use_api_mode
+                else self._read_external_consent()
             )
             external_badge = "[#9ca3af]External off[/#9ca3af]"
-            if external and external.get("consent_given"):
+            if external_enabled:
                 external_badge = "[green]External on[/green]"
 
             ai_badge = "[#9ca3af]AI off[/#9ca3af]"
@@ -4718,8 +4798,9 @@ class PortfolioTextualApp(App):
             return
         self._session_state.last_email = session.email
         # Restore consent persistence with the loaded session
-        consent_storage.set_session_token(session.access_token)
-        consent_storage.load_user_consents(session.user_id, session.access_token)
+        if not self._use_api_mode:
+            consent_storage.set_session_token(session.access_token)
+            consent_storage.load_user_consents(session.user_id, session.access_token)
         # Sync auth token to scan service for API mode
         self._sync_auth_token_to_services()
 
@@ -4751,8 +4832,9 @@ class PortfolioTextualApp(App):
 
         self._session_state.session = refreshed
         self._session_state.last_email = refreshed.email
-        consent_storage.set_session_token(refreshed.access_token)
-        consent_storage.load_user_consents(refreshed.user_id, refreshed.access_token)
+        if not self._use_api_mode:
+            consent_storage.set_session_token(refreshed.access_token)
+            consent_storage.load_user_consents(refreshed.user_id, refreshed.access_token)
         self._persist_session()
         # Sync refreshed auth token to scan service for API mode
         self._sync_auth_token_to_services()
@@ -4761,14 +4843,34 @@ class PortfolioTextualApp(App):
     def _refresh_consent_state(self) -> None:
         self._consent_state.record = None
         self._consent_state.error = None
+        self._consent_state.external_services = False
         if not self._session_state.session:
             return
-        record, error = self._session_service.refresh_consent(
-            self._consent_state.validator,
-            self._session_state.session.user_id,
-        )
-        self._consent_state.record = record
-        self._consent_state.error = error
+
+        if self._use_api_mode and self._consent_api_service:
+            try:
+                status = self._consent_api_service.fetch_status(
+                    self._session_state.session.access_token
+                )
+            except ConsentAPIServiceError as exc:
+                self._consent_state.error = str(exc)
+                return
+
+            self._consent_state.external_services = bool(status.get("external_services"))
+            record = self._consent_api_service.status_to_record(status)
+            if record:
+                self._consent_state.record = record
+            else:
+                self._consent_state.error = "Required consent has not been granted yet."
+        else:
+            record, error = self._session_service.refresh_consent(
+                self._consent_state.validator,
+                self._session_state.session.user_id,
+            )
+            self._consent_state.record = record
+            self._consent_state.error = error
+            self._consent_state.external_services = self._read_external_consent()
+
         if getattr(self, "is_mounted", False):
             try:
                 self._update_session_status()
@@ -4905,10 +5007,12 @@ class PortfolioTextualApp(App):
             consent_status = "[green]granted[/green]" if self._consent_state.record else "[#9ca3af]pending[/#9ca3af]"
             if self._consent_state.error:
                 consent_status = f"[#9ca3af]pending[/#9ca3af] — {self._consent_state.error}"
-            external = consent_storage.get_consent(
-                self._session_state.session.user_id, ConsentValidator.SERVICE_EXTERNAL
+            external_enabled = (
+                self._consent_state.external_services
+                if self._use_api_mode
+                else self._read_external_consent()
             )
-            external_status = "[green]enabled[/green]" if external and external.get("consent_given") else "[#9ca3af]disabled[/#9ca3af]"
+            external_status = "[green]enabled[/green]" if external_enabled else "[#9ca3af]disabled[/#9ca3af]"
             lines.extend(
                 [
                     "",
@@ -5188,10 +5292,12 @@ class PortfolioTextualApp(App):
         self._refresh_consent_state()
         record = self._consent_state.record
         required = "[green]granted[/green]" if record else "[#9ca3af]missing[/#9ca3af]"
-        external = consent_storage.get_consent(
-            self._session_state.session.user_id, ConsentValidator.SERVICE_EXTERNAL
+        external_enabled = (
+            self._consent_state.external_services
+            if self._use_api_mode
+            else self._read_external_consent()
         )
-        external_status = "[green]enabled[/green]" if external and external.get("consent_given") else "[#9ca3af]disabled[/#9ca3af]"
+        external_status = "[green]enabled[/green]" if external_enabled else "[#9ca3af]disabled[/#9ca3af]"
         lines.extend(
             [
                 "",
