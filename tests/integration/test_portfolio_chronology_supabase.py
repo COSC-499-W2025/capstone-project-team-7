@@ -13,9 +13,6 @@ TEST_USER_ID = os.getenv("TEST_USER_ID")
 TEST_USER_ID_2 = os.getenv("TEST_USER_ID_2")
 TEST_JWT = os.getenv("TEST_JWT")
 
-if SUPABASE_SERVICE_ROLE_KEY and SUPABASE_KEY != SUPABASE_SERVICE_ROLE_KEY:
-    os.environ["SUPABASE_KEY"] = SUPABASE_SERVICE_ROLE_KEY
-
 if not (SUPABASE_URL and (SUPABASE_SERVICE_ROLE_KEY or SUPABASE_KEY) and TEST_USER_ID and TEST_USER_ID_2 and TEST_JWT):
     pytest.skip("Supabase integration env vars not set.", allow_module_level=True)
 
@@ -39,8 +36,9 @@ def _cleanup_project(client, user_id: str, project_name: str) -> None:
 @pytest.mark.integration
 def test_portfolio_chronology_scoped_to_user():
     client = TestClient(app)
-    service = ProjectsService()
-    supabase = create_client(SUPABASE_URL, os.environ["SUPABASE_KEY"])
+    cleanup_key = SUPABASE_SERVICE_ROLE_KEY or SUPABASE_KEY
+    service = ProjectsService(supabase_url=SUPABASE_URL, supabase_key=cleanup_key)
+    supabase = create_client(SUPABASE_URL, cleanup_key)
 
     project_name_user1 = f"it_user1_{uuid.uuid4().hex}"
     project_name_user2 = f"it_user2_{uuid.uuid4().hex}"

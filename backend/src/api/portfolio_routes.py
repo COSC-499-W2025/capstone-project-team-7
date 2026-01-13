@@ -70,7 +70,7 @@ def get_skills_timeline(
     service: PortfolioTimelineService = Depends(get_portfolio_timeline_service),
 ) -> SkillsTimelineResponse:
     try:
-        items = service.get_skills_timeline(auth.user_id)
+        items = [SkillsTimelineItem(**item) for item in service.get_skills_timeline(auth.user_id)]
     except PortfolioTimelineServiceError as exc:
         logger.exception("Failed to build skills timeline")
         raise HTTPException(
@@ -100,4 +100,7 @@ def get_portfolio_chronology(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"code": "timeline_error", "message": str(exc)},
         ) from exc
-    return PortfolioChronology(**chronology)
+    return PortfolioChronology(
+        projects=[TimelineItem(**item) for item in chronology.get("projects", [])],
+        skills=[SkillsTimelineItem(**item) for item in chronology.get("skills", [])],
+    )
