@@ -5298,8 +5298,8 @@ class PortfolioTextualApp(App):
         
         if self._use_ranking_api and self._session_state.session.access_token:
             try:
-                from .services.projects_api_service import ProjectsAPIService
-                api_service = ProjectsAPIService(auth_token=self._session_state.session.access_token)
+                from .services.projects_api_service import ProjectsRankingAPIService
+                api_service = ProjectsRankingAPIService(auth_token=self._session_state.session.access_token)
                 
                 # Fetch timeline (chronologically ordered projects)
                 try:
@@ -5645,8 +5645,8 @@ class PortfolioTextualApp(App):
             # Use API endpoint for ranking
             try:
                 self._show_status("Calculating project ranking via API...", "info")
-                from .services.projects_api_service import ProjectsAPIService
-                api_service = ProjectsAPIService(auth_token=session.access_token)
+                from .services.projects_api_service import ProjectsRankingAPIService
+                api_service = ProjectsRankingAPIService(auth_token=session.access_token)
                 
                 user_email = self._preferred_user_email()
                 ranking_result = await asyncio.to_thread(

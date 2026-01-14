@@ -9,12 +9,12 @@ import httpx
 logger = logging.getLogger(__name__)
 
 
-class ProjectsAPIServiceError(Exception):
-    """Base error for projects API service."""
+class ProjectsRankingAPIServiceError(Exception):
+    """Base error for projects ranking API service."""
 
 
-class ProjectsAPIService:
-    """Client for project ranking API endpoints."""
+class ProjectsRankingAPIService:
+    """Client for project ranking API endpoints (rank, top, timeline)."""
     
     def __init__(
         self,
@@ -32,7 +32,7 @@ class ProjectsAPIService:
         self.auth_token = auth_token
         
         if not self.auth_token:
-            raise ProjectsAPIServiceError("Authentication token is required")
+            raise ProjectsRankingAPIServiceError("Authentication token is required")
         
         self.headers = {
             "Authorization": f"Bearer {self.auth_token}",
@@ -57,7 +57,7 @@ class ProjectsAPIService:
             Dict with score, components, and ranking reasons
             
         Raises:
-            ProjectsAPIServiceError: If API call fails
+            ProjectsRankingAPIServiceError: If API call fails
         """
         url = f"{self.base_url}/api/projects/{project_id}/rank"
         
@@ -78,15 +78,15 @@ class ProjectsAPIService:
         except httpx.HTTPStatusError as exc:
             error_detail = exc.response.text
             logger.error(f"Rank API failed: {exc.response.status_code} - {error_detail}")
-            raise ProjectsAPIServiceError(
+            raise ProjectsRankingAPIServiceError(
                 f"Failed to rank project {project_id}: {exc.response.status_code} - {error_detail}"
             ) from exc
         except httpx.RequestError as exc:
-            raise ProjectsAPIServiceError(
+            raise ProjectsRankingAPIServiceError(
                 f"Network error ranking project {project_id}: {exc}"
             ) from exc
         except Exception as exc:
-            raise ProjectsAPIServiceError(
+            raise ProjectsRankingAPIServiceError(
                 f"Unexpected error ranking project {project_id}: {exc}"
             ) from exc
     
@@ -101,7 +101,7 @@ class ProjectsAPIService:
             Dict with count and list of top projects
             
         Raises:
-            ProjectsAPIServiceError: If API call fails
+            ProjectsRankingAPIServiceError: If API call fails
         """
         url = f"{self.base_url}/api/projects/top"
         params = {"limit": limit}
@@ -113,15 +113,15 @@ class ProjectsAPIService:
                 return response.json()
         except httpx.HTTPStatusError as exc:
             error_detail = exc.response.text
-            raise ProjectsAPIServiceError(
+            raise ProjectsRankingAPIServiceError(
                 f"Failed to fetch top projects: {exc.response.status_code} - {error_detail}"
             ) from exc
         except httpx.RequestError as exc:
-            raise ProjectsAPIServiceError(
+            raise ProjectsRankingAPIServiceError(
                 f"Network error fetching top projects: {exc}"
             ) from exc
         except Exception as exc:
-            raise ProjectsAPIServiceError(
+            raise ProjectsRankingAPIServiceError(
                 f"Unexpected error fetching top projects: {exc}"
             ) from exc
     
@@ -133,7 +133,7 @@ class ProjectsAPIService:
             Dict with count and timeline entries (sorted by display_date)
             
         Raises:
-            ProjectsAPIServiceError: If API call fails
+            ProjectsRankingAPIServiceError: If API call fails
         """
         url = f"{self.base_url}/api/projects/timeline"
         
@@ -144,14 +144,14 @@ class ProjectsAPIService:
                 return response.json()
         except httpx.HTTPStatusError as exc:
             error_detail = exc.response.text
-            raise ProjectsAPIServiceError(
+            raise ProjectsRankingAPIServiceError(
                 f"Failed to fetch project timeline: {exc.response.status_code} - {error_detail}"
             ) from exc
         except httpx.RequestError as exc:
-            raise ProjectsAPIServiceError(
+            raise ProjectsRankingAPIServiceError(
                 f"Network error fetching project timeline: {exc}"
             ) from exc
         except Exception as exc:
-            raise ProjectsAPIServiceError(
+            raise ProjectsRankingAPIServiceError(
                 f"Unexpected error fetching project timeline: {exc}"
             ) from exc
