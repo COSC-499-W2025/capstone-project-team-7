@@ -25,7 +25,11 @@ except ImportError:
 
 # Initialize Supabase client for consent persistence
 SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_ANON_KEY")
+SUPABASE_KEY = (
+    os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    or os.getenv("SUPABASE_KEY")
+    or os.getenv("SUPABASE_ANON_KEY")
+)
 
 _supabase_client = None
 _authenticated_client: Optional[Client] = None

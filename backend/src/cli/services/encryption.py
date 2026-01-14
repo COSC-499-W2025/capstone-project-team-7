@@ -21,8 +21,13 @@ else:
 class EncryptionError(Exception):
     """Raised when encryption or decryption fails."""
 
+try:
+    _dataclass = dataclass(slots=True)
+except TypeError:  # pragma: no cover - Python < 3.10
+    _dataclass = dataclass
 
-@dataclass(slots=True)
+
+@_dataclass
 class EncryptionEnvelope:
     """Serialized payload for storage."""
 
