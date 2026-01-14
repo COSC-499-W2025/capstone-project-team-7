@@ -11,10 +11,14 @@ import sys
 import os
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from cli.services.projects_service import ProjectsService, ProjectsServiceError
-from cli.services.encryption import EncryptionService
+try:
+    from cli.services.projects_service import ProjectsService, ProjectsServiceError
+    from cli.services.encryption import EncryptionService
+except ModuleNotFoundError:  # pragma: no cover - test/import fallback
+    from backend.src.cli.services.projects_service import ProjectsService, ProjectsServiceError
+    from backend.src.cli.services.encryption import EncryptionService
 
 logger = logging.getLogger(__name__)
 
