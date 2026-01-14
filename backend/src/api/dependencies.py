@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import os
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import httpx
 from fastapi import Header, HTTPException, status
@@ -12,6 +12,7 @@ from fastapi import Header, HTTPException, status
 class AuthContext:
     user_id: str
     access_token: str
+    email: Optional[str] = None
 
 
 def _raise_auth_error(message: str, status_code: int = status.HTTP_401_UNAUTHORIZED) -> None:
@@ -21,7 +22,7 @@ def _raise_auth_error(message: str, status_code: int = status.HTTP_401_UNAUTHORI
     )
 
 
-async def _resolve_user_id(access_token: str) -> str:
+async def _fetch_user(access_token: str) -> Dict[str, Any]:
     supabase_url = os.getenv("SUPABASE_URL")
     supabase_key = os.getenv("SUPABASE_ANON_KEY") or os.getenv("SUPABASE_KEY")
     if not supabase_url or not supabase_key:
@@ -50,7 +51,16 @@ async def _resolve_user_id(access_token: str) -> str:
     user_id = payload.get("id")
     if not user_id:
         _raise_auth_error("Access token missing user id")
-    return user_id
+    return payload
+
+
+async def _resolve_user_id(access_token: str) -> str:
+    payload = await _fetch_user(access_token)
+    return payload["id"]
+
+
+async def get_user_profile(access_token: str) -> Dict[str, Any]:
+    return await _fetch_user(access_token)
 
 
 async def get_auth_context(authorization: Optional[str] = Header(default=None)) -> AuthContext:
@@ -65,5 +75,9 @@ async def get_auth_context(authorization: Optional[str] = Header(default=None)) 
     if not access_token:
         _raise_auth_error("Access token missing")
 
-    user_id = await _resolve_user_id(access_token)
-    return AuthContext(user_id=user_id, access_token=access_token)
+    user = await get_user_profile(access_token)
+    return AuthContext(
+        user_id=user["id"],
+        access_token=access_token,
+        email=user.get("email"),
+    )

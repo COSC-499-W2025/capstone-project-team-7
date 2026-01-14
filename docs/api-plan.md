@@ -16,6 +16,12 @@
 - **Reviewable and editable**: All generated rankings, summaries, deletions should be user-adjustable and reversible.
 
 ## Core API Surface (draft)
+### Authentication
+- `POST /api/auth/signup`: Create a new user session via Supabase auth.
+- `POST /api/auth/login`: Issue an access/refresh token pair.
+- `POST /api/auth/refresh`: Exchange a refresh token for a new session.
+- `GET /api/auth/session`: Validate the bearer token and return user identity.
+
 ### Consent and Session
 - `POST /api/consent`: Record/update user consent for data access and external services (include privacy notice text).
 - `GET /api/consent`: Return current consent state and timestamps.
@@ -24,6 +30,7 @@
 - `POST /api/llm/clear-key`, `POST /api/llm/client-status`: Manage LLM key lifecycle (existing).
 
 #### Completed
+- Auth endpoints: `POST /api/auth/signup`, `POST /api/auth/login`, `POST /api/auth/refresh`, `GET /api/auth/session`
 - Consent endpoints: `GET /api/consent`, `POST /api/consent`, `GET /api/consent/notice`
 - Supabase auth resolution: `backend/src/api/dependencies.py`
 - Implementation: `backend/src/api/consent_routes.py`
