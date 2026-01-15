@@ -187,6 +187,7 @@ class ScanApiClient:
         llm_media: bool = False,
         idempotency_key: Optional[str] = None,
         user_id: Optional[str] = None,
+        access_token: Optional[str] = None,
     ) -> str:
         """Start a new scan job.
 
@@ -199,6 +200,7 @@ class ScanApiClient:
             llm_media: If True, use LLM for media file analysis.
             idempotency_key: Optional key for idempotent requests.
             user_id: Optional user ID for user isolation.
+            access_token: Optional JWT access token for API authentication.
 
         Returns:
             The scan_id for polling status.
@@ -218,6 +220,8 @@ class ScanApiClient:
             payload["profile_id"] = profile_id
 
         headers = {}
+        if access_token:
+            headers["Authorization"] = f"Bearer {access_token}"
         if idempotency_key:
             headers["idempotency-key"] = idempotency_key
         if user_id:
@@ -256,12 +260,18 @@ class ScanApiClient:
             detail=detail,
         )
 
-    def get_scan_status(self, scan_id: str, user_id: Optional[str] = None) -> ScanStatusResponse:
+    def get_scan_status(
+        self,
+        scan_id: str,
+        user_id: Optional[str] = None,
+        access_token: Optional[str] = None,
+    ) -> ScanStatusResponse:
         """Get the current status of a scan job.
 
         Args:
             scan_id: The scan ID returned from start_scan().
             user_id: Optional user ID for user isolation.
+            access_token: Optional JWT access token for API authentication.
 
         Returns:
             ScanStatusResponse with current state, progress, and results.
@@ -271,6 +281,8 @@ class ScanApiClient:
             ScanApiRequestError: If the API returns an error response.
         """
         headers = {}
+        if access_token:
+            headers["Authorization"] = f"Bearer {access_token}"
         if user_id:
             headers["x-user-id"] = user_id
 
@@ -318,6 +330,7 @@ class ScanApiClient:
         poll_interval: float = 0.5,
         progress_callback: Optional[Callable[[ScanStatusResponse], None]] = None,
         user_id: Optional[str] = None,
+        access_token: Optional[str] = None,
     ) -> ScanStatusResponse:
         """Poll the scan status until it completes.
 
@@ -326,6 +339,7 @@ class ScanApiClient:
             poll_interval: Time in seconds between polls.
             progress_callback: Optional callback called on each poll with current status.
             user_id: Optional user ID for user isolation.
+            access_token: Optional JWT access token for API authentication.
 
         Returns:
             Final ScanStatusResponse when scan completes.
@@ -333,7 +347,7 @@ class ScanApiClient:
         import time
 
         while True:
-            status = self.get_scan_status(scan_id, user_id=user_id)
+            status = self.get_scan_status(scan_id, user_id=user_id, access_token=access_token)
 
             if progress_callback:
                 try:

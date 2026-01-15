@@ -1483,13 +1483,15 @@ class PortfolioTextualApp(App):
 
         self._reset_scan_state()
 
-        # Get user ID for API calls if logged in
+        # Get user ID and access token for API calls if logged in
         user_id = None
         profile_id = None
+        access_token = None
         session = self._session_state.session
         if session:
             user_id = session.user_id
             profile_id = session.user_id  # Use user_id as profile_id for persistence
+            access_token = session.access_token
 
         # Initialize API client
         api_client = ScanApiClient()
@@ -1506,6 +1508,7 @@ class PortfolioTextualApp(App):
                 persist_project=bool(session),  # Only persist if logged in
                 profile_id=profile_id,
                 user_id=user_id,
+                access_token=access_token,
             )
 
             self._debug_log(f"Started API scan with ID: {scan_id}")
@@ -1519,6 +1522,7 @@ class PortfolioTextualApp(App):
                     api_client.get_scan_status,
                     scan_id,
                     user_id=user_id,
+                    access_token=access_token,
                 )
 
                 # Update progress UI
@@ -1556,6 +1560,7 @@ class PortfolioTextualApp(App):
 
             if status.state == ScanJobState.canceled:
                 self._show_status("Scan was canceled.", "warning")
+                self.notify("Scan was canceled and did not complete.", severity="warning")
                 return
 
             # Process successful result
