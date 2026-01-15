@@ -1652,6 +1652,7 @@ class ProjectsScreen(ModalScreen[None]):
         width: 100%;
         height: auto;
         align: center middle;
+        overflow-x: auto;
     }
     
     Button {
@@ -1963,6 +1964,9 @@ class ProjectsScreen(ModalScreen[None]):
             index = event.control.index or 0
             if 0 <= index < len(self.projects):
                 self.selected_project = self.projects[index]
+                # Clear the last status message when navigating to a different project
+                self._last_status_msg = ""
+                self._set_status("", "info")
                 self._update_detail(self.selected_project)
     
     def on_list_view_selected(self, event: ListView.Selected) -> None:
@@ -2128,6 +2132,17 @@ class ProjectsScreen(ModalScreen[None]):
                         self._set_status("File not found.", "error")
                         return
                     
+                    # Check if file is accessible (not being downloaded from cloud)
+                    try:
+                        with open(image_path, 'rb') as f:
+                            # Try to read first byte to ensure file is accessible
+                            f.read(1)
+                    except (IOError, OSError) as file_err:
+                        self._last_status_msg = f"❌ File not accessible: {file_err}"
+                        self._update_detail(self.selected_project)
+                        self._set_status("File is not accessible. It may be downloading from cloud storage. Try a local file.", "error")
+                        return
+                    
                     # Step 4: Upload to Supabase
                     self._last_status_msg = f"⏳ Uploading {os.path.basename(image_path)}..."
                     self._update_detail(self.selected_project)
@@ -2169,15 +2184,22 @@ class ProjectsScreen(ModalScreen[None]):
                 thumbnail_url = self.selected_project.get("thumbnail_url")
                 if thumbnail_url:
                     try:
+                        print(f"[DEBUG] Attempting to open thumbnail URL: {thumbnail_url}")
                         self._set_status("Opening thumbnail...", "info")
+                        
+                        # Check if URL looks correct
+                        if "storage/v1/object/public" not in thumbnail_url:
+                            self._set_status("Warning: Thumbnail URL may be incorrect. Try re-uploading.", "warning")
+                        
                         # Open in default browser/viewer
                         import webbrowser
                         webbrowser.open(thumbnail_url)
                         self._set_status("Thumbnail opened in browser", "success")
                     except Exception as e:
+                        print(f"[DEBUG] Error opening thumbnail: {e}")
                         self._set_status(f"Failed to open thumbnail: {e}", "error")
                 else:
-                    self._set_status("No thumbnail set for this project", "warning")
+                    self._set_status("No thumbnail set for this project. Click 'Set Thumbnail' to upload one.", "warning")
             else:
                 self._set_status("Please select a project first", "error")
 
@@ -2240,32 +2262,9 @@ class ProjectsScreen(ModalScreen[None]):
             print(f"Connecting to Supabase: {supabase_url}")
             supabase = create_client(supabase_url, supabase_key)
             
-            # Try different bucket name variations
-            possible_bucket_names = ["thumbnail bucket", "thumbnail-bucket", "thumbnailbucket", "thumbnails"]
-            bucket_name = None
-            
-            # List all buckets to verify the bucket exists
-            try:
-                buckets = supabase.storage.list_buckets()
-                bucket_list = [b.name for b in buckets]
-                print(f"Available buckets: {bucket_list}")
-                
-                # Find which bucket name exists
-                for name in possible_bucket_names:
-                    if name in bucket_list:
-                        bucket_name = name
-                        print(f"Found and using bucket: '{bucket_name}'")
-                        break
-                
-                if not bucket_name:
-                    error = f"No thumbnail bucket found. Available buckets: {bucket_list}. Please create one named 'thumbnail bucket' or 'thumbnail-bucket'"
-                    print(f"ERROR: {error}")
-                    return None, error
-            except Exception as list_exc:
-                print(f"Warning: Could not list buckets: {list_exc}")
-                # Fallback to default name
-                bucket_name = "thumbnail bucket"
-                print(f"Using default bucket name: '{bucket_name}'")
+            # Use the "thumbnails" bucket directly
+            bucket_name = "thumbnails"
+            print(f"Using bucket: '{bucket_name}'")
             
             # Convert image to JPG if needed and put in public folder
             file_name = f"public/{project_id}_{uuid.uuid4().hex[:8]}.jpg"

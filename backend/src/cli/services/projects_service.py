@@ -166,8 +166,8 @@ class ProjectsService:
                 "total_files, total_lines, languages, "
                 "has_media_analysis, has_pdf_analysis, has_code_analysis, has_git_analysis, "
                 "has_contribution_metrics, contribution_score, user_commit_share, total_commits, "
-                "primary_contributor, project_end_date, has_skills_progress, has_skills_analysis, has_document_analysis,"
-                "created_at"
+                "primary_contributor, project_end_date, has_skills_progress, has_skills_analysis, has_document_analysis, "
+                "thumbnail_url, created_at"
             ).eq("user_id", user_id).order("scan_timestamp", desc=True).execute()
             
             return response.data or []
@@ -180,7 +180,7 @@ class ProjectsService:
                     "total_files, total_lines, languages, "
                     "has_media_analysis, has_pdf_analysis, has_code_analysis, has_git_analysis, "
                     "has_contribution_metrics, contribution_score, user_commit_share, total_commits, "
-                    "primary_contributor, project_end_date, "
+                    "primary_contributor, project_end_date, thumbnail_url, "
                     "created_at"
                 ).eq("user_id", user_id).order("scan_timestamp", desc=True).execute()
                 # Ensure callers can safely read the flag even if absent
