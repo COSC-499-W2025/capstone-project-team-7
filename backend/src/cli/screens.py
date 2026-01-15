@@ -34,6 +34,7 @@ except ImportError:  # pragma: no cover
     TextLog = None  # type: ignore[assignment]
 
 from .message_utils import dispatch_message
+from .services.thumbnails_service import ThumbnailsService
 
 class ScanParametersChosen(Message):
     """Raised when the user submits scan parameters from the dialog."""
@@ -2241,121 +2242,13 @@ class ProjectsScreen(ModalScreen[None]):
 
     async def _upload_thumbnail_to_supabase(self, image_path: str, project_id: str) -> tuple[Optional[str], Optional[str]]:
         """Upload image to Supabase storage and return (public_url, error_message)"""
-        try:
-            from supabase import create_client
-            import os
-            import uuid
-            from PIL import Image
-            import io
-            
-            print(f"Starting upload for project {project_id}...")
-            
-            supabase_url = os.getenv("SUPABASE_URL")
-            # SUPABASE_KEY is the service_role key which bypasses RLS
-            supabase_key = os.getenv("SUPABASE_KEY")
-            
-            if not supabase_url or not supabase_key:
-                error = "Missing SUPABASE_URL or SUPABASE_KEY in environment"
-                print(f"ERROR: {error}")
-                return None, error
-            
-            print(f"Connecting to Supabase: {supabase_url}")
-            supabase = create_client(supabase_url, supabase_key)
-            
-            # Use the "thumbnails" bucket directly
-            bucket_name = "thumbnails"
-            print(f"Using bucket: '{bucket_name}'")
-            
-            # Convert image to JPG if needed and put in public folder
-            file_name = f"public/{project_id}_{uuid.uuid4().hex[:8]}.jpg"
-            
-            print(f"Reading and converting file: {image_path}")
-            # Load image and convert to JPG
-            img = Image.open(image_path)
-            if img.mode in ('RGBA', 'LA', 'P'):
-                # Convert RGBA/LA/P to RGB
-                background = Image.new('RGB', img.size, (255, 255, 255))
-                if img.mode == 'P':
-                    img = img.convert('RGBA')
-                background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
-                img = background
-            elif img.mode != 'RGB':
-                img = img.convert('RGB')
-            
-            # Save as JPG to bytes
-            jpg_buffer = io.BytesIO()
-            img.save(jpg_buffer, format='JPEG', quality=85)
-            data = jpg_buffer.getvalue()
-            print(f"Converted to JPG, size: {len(data)} bytes")
-            
-            # Upload to Supabase storage with correct content type
-            print(f"Uploading to bucket '{bucket_name}' as '{file_name}'...")
-            file_options = {"content-type": "image/jpg", "upsert": "false"}
-            result = supabase.storage.from_(bucket_name).upload(
-                path=file_name,
-                file=data,
-                file_options=file_options
-            )
-            print(f"Upload result: {result}")
-            
-            # Get the public URL using the get_public_url method
-            try:
-                public_url_response = supabase.storage.from_(bucket_name).get_public_url(file_name)
-                print(f"Public URL response: {public_url_response}")
-                # The response is just a string with the URL
-                public_url = public_url_response
-            except Exception as url_exc:
-                print(f"Error getting public URL: {url_exc}")
-                # Fallback to manual construction with URL encoding
-                from urllib.parse import quote
-                encoded_bucket = quote(bucket_name)
-                encoded_file = quote(file_name)
-                public_url = f"{supabase_url}/storage/v1/object/public/{encoded_bucket}/{encoded_file}"
-            
-            print(f"Final public URL: {public_url}")
-            return public_url, None
-            
-        except Exception as exc:
-            error = f"{type(exc).__name__}: {exc}"
-            print(f"Thumbnail upload error: {error}")
-            import traceback
-            traceback.print_exc()
-            return None, error
+        thumbnails_service = ThumbnailsService()
+        return thumbnails_service.upload_thumbnail(image_path, project_id)
 
     async def _update_project_thumbnail(self, project_id: str, thumbnail_url: str) -> Optional[str]:
         """Update project's thumbnail_url in Supabase database. Returns error message or None"""
-        try:
-            from supabase import create_client
-            import os
-            
-            print(f"Updating database for project {project_id} with URL: {thumbnail_url}")
-            
-            supabase_url = os.getenv("SUPABASE_URL")
-            # SUPABASE_KEY is the service_role key which bypasses RLS
-            supabase_key = os.getenv("SUPABASE_KEY")
-            
-            if not supabase_url or not supabase_key:
-                error = "Missing SUPABASE_URL or SUPABASE_KEY"
-                print(f"ERROR: {error}")
-                return error
-            
-            supabase = create_client(supabase_url, supabase_key)
-            
-            # Update the projects table
-            print(f"Executing update query...")
-            result = supabase.table("projects").update({
-                "thumbnail_url": thumbnail_url
-            }).eq("id", project_id).execute()
-            
-            print(f"Database update result: {result}")
-            return None
-            
-        except Exception as exc:
-            error = f"{type(exc).__name__}: {exc}"
-            print(f"Database update error: {error}")
-            import traceback
-            traceback.print_exc()
-            return error
+        thumbnails_service = ThumbnailsService()
+        return thumbnails_service.update_project_thumbnail_url(project_id, thumbnail_url)
     
     def _set_status(self, message: str, status_type: str = "info") -> None:
         """Update the status message at the bottom of the screen."""
