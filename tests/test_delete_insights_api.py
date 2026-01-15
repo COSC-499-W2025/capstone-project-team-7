@@ -128,7 +128,8 @@ class TestDeleteProjectInsights:
             headers={"Authorization": f"Bearer {TEST_TOKEN}"},
         )
         assert get_after.status_code == 200
-        assert get_after.json()["scan_data"] is None
+        # scan_data should be empty (cleared) - empty dict due to NOT NULL constraint
+        assert get_after.json()["scan_data"] == {}
 
     def test_delete_insights_resets_analysis_flags(self):
         """Test that all analysis flags are reset to false"""
