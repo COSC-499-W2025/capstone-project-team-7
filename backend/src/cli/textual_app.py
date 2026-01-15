@@ -5641,6 +5641,8 @@ class PortfolioTextualApp(App):
 
         # Calculate and save contribution score (API or local CLI method)
         project_id = project_record.get("id")
+        api_ranking_succeeded = False
+        
         if project_id and self._scan_state.contribution_metrics and session.access_token and self._use_ranking_api:
             # Use API endpoint for ranking
             try:
@@ -5658,19 +5660,24 @@ class PortfolioTextualApp(App):
                 score = ranking_result.get('score', 0)
                 self._debug_log(f"Project ranked via API: score={score:.2f}")
                 self._show_status(f"Project ranked: {score:.2f}", "success")
+                api_ranking_succeeded = True
             except Exception as rank_exc:
-                # Don't fail the export if ranking fails
-                self._debug_log(f"Failed to rank project via API: {rank_exc}")
-                self._show_status(f"Ranking failed: {rank_exc}", "error")
-        elif project_id and self._scan_state.contribution_metrics and not self._use_ranking_api:
+                # Fall back to local ranking method
+                self._debug_log(f"Failed to rank project via API: {rank_exc}, falling back to local method")
+                self._show_status(f"API ranking failed, using local calculation...", "warning")
+        
+        # Use local CLI method for ranking (fallback or primary method)
+        if project_id and self._scan_state.contribution_metrics and not api_ranking_succeeded:
             # Use local CLI method for ranking (already saved in scan_data by export service)
             contribution_ranking = scan_data.get("contribution_ranking", {})
             if contribution_ranking:
                 score = contribution_ranking.get("score", 0)
                 self._debug_log(f"Project ranked via local CLI: score={score:.2f}")
                 self._show_status(f"Project ranked (local): {score:.2f}", "success")
-        else:
-            # Log why ranking was skipped
+            else:
+                self._debug_log("Local ranking skipped: no contribution_ranking in scan_data")
+        elif not project_id or not self._scan_state.contribution_metrics:
+            # Log why ranking was skipped completely
             if not project_id:
                 self._debug_log("Ranking skipped: no project_id")
             elif not self._scan_state.contribution_metrics:
