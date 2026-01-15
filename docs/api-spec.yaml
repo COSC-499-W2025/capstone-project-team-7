@@ -30,6 +30,17 @@ components:
           type: object
       required: [code, message]
 
+    DeleteInsightsResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Insights cleared successfully
+        insights_deleted_at:
+          type: string
+          format: date-time
+      required: [message, insights_deleted_at]
+
     Pagination:
       type: object
       properties:
@@ -1081,8 +1092,26 @@ paths:
           schema: { type: string }
           required: true
       responses:
-        '204':
+        '200':
           description: Insights cleared
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeleteInsightsResponse' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   /api/projects/{project_id}/append-upload/{upload_id}:
     post:

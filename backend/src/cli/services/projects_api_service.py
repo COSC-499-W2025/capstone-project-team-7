@@ -254,16 +254,35 @@ class ProjectsAPIService:
     
     def delete_project_insights(self, user_id: str, project_id: str) -> bool:
         """
-        Remove stored scan insights for a project.
-        
-        Note: This operation is not yet implemented in the API.
-        Falls back to returning False (not supported).
+        Clear stored scan insights for a project via API.
+
+        Args:
+            user_id: User's UUID (extracted from JWT by API, kept for interface compatibility)
+            project_id: Project's UUID
+
+        Returns:
+            True if insights cleared successfully, False if project not found
         """
-        self.logger.warning(
-            "delete_project_insights not implemented in API mode. "
-            "Consider adding DELETE /api/projects/{id}/insights endpoint."
-        )
-        return False
+        try:
+            response = self.client.delete(
+                f"{self.api_base_url}/api/projects/{project_id}/insights",
+                headers=self._get_headers(),
+            )
+
+            if response.status_code == 200:
+                return True
+            elif response.status_code == 404:
+                return False
+            else:
+                self._handle_error_response(response, "delete_project_insights")
+                return False
+
+        except httpx.HTTPError as exc:
+            raise ProjectsServiceError(f"Network error clearing insights: {exc}") from exc
+        except ProjectsServiceError:
+            raise
+        except Exception as exc:
+            raise ProjectsServiceError(f"Failed to clear project insights: {exc}") from exc
     
     def get_project_by_name(self, user_id: str, project_name: str) -> Optional[Dict[str, Any]]:
         """
