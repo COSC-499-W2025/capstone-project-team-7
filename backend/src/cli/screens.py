@@ -34,7 +34,6 @@ except ImportError:  # pragma: no cover
     TextLog = None  # type: ignore[assignment]
 
 from .message_utils import dispatch_message
-from .services.thumbnails_service import ThumbnailsService
 
 class ScanParametersChosen(Message):
     """Raised when the user submits scan parameters from the dialog."""
@@ -2242,13 +2241,16 @@ class ProjectsScreen(ModalScreen[None]):
 
     async def _upload_thumbnail_to_supabase(self, image_path: str, project_id: str) -> tuple[Optional[str], Optional[str]]:
         """Upload image to Supabase storage and return (public_url, error_message)"""
-        thumbnails_service = ThumbnailsService()
-        return thumbnails_service.upload_thumbnail(image_path, project_id)
+        if self.projects_service:
+            return self.projects_service.upload_thumbnail(image_path, project_id)
+        return None, "Projects service not available"
 
     async def _update_project_thumbnail(self, project_id: str, thumbnail_url: str) -> Optional[str]:
         """Update project's thumbnail_url in Supabase database. Returns error message or None"""
-        thumbnails_service = ThumbnailsService()
-        return thumbnails_service.update_project_thumbnail_url(project_id, thumbnail_url)
+        if self.projects_service:
+            success, error_msg = self.projects_service.update_project_thumbnail_url(project_id, thumbnail_url)
+            return error_msg if not success else None
+        return "Projects service not available"
     
     def _set_status(self, message: str, status_type: str = "info") -> None:
         """Update the status message at the bottom of the screen."""
