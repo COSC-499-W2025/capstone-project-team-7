@@ -70,18 +70,38 @@ Content-Type: multipart/form-data
 - `GET /api/scans/{scan_id}`: Progress and results (parse + analysis) so the renderer can poll instead of reading local files.
 - Internally reuses uploads/analysis endpoints to keep a single pipeline; prefer this from the Electron app instead of invoking CLI directly.
 
-### (Completed) - Projects and Storage
+### ✅ (Completed) Projects and Storage endpoints
 - `POST /api/projects`: Persist parse+analysis results (optional encryption), return `project_id`.
 - `GET /api/projects`: List with search/filter/sort and timeline views.
 - `GET /api/projects/{project_id}`: Retrieve full summary (ranking, skills, contribution).
+`DELETE /api/projects/{project_id}`: Full delete.
+### ✅ (Completed) - Project Ranking and Timeline, and Top endpoints
+- `POST /api/projects/{project_id}/rank`: Compute contribution-based ranking score (0-100) with detailed component breakdown and human-readable reasons
+    - Uses `ContributionAnalysisService` as single source of truth for scoring algorithm
+    - Considers: 50% commit volume (log-scaled), 20% user commit share, 15% project recency, 10% commit frequency, 5% activity diversity
+    - Accepts optional `user_email` and `user_name` for contributor matching
+    - Persists `contribution_score` and `user_commit_share` to database
+    - Returns: score, components breakdown, user commit share, total commits, and contextual reasons
+  - `GET /api/projects/top?limit=N`: Get top-ranked projects sorted by contribution score (descending)
+    - Filters to projects with computed `contribution_score`
+    - Configurable limit (default: 10)
+    - Used for portfolio summary panels and "best projects" views
+  - `GET /api/projects/timeline`: Get all projects in chronological order (newest first) by `scan_timestamp`
+    - Returns timeline entries with full project objects and display dates
+    - Proper datetime parsing with timezone handling for accurate sorting
+  - Implementation: `backend/src/api/project_routes.py`
+  - HTTP Client: `backend/src/cli/services/projects_api_service.py` (ProjectsRankingAPIService)
+  - TUI Integration: Feature flag `PORTFOLIO_USE_API` for hybrid mode (API calls vs local CLI calculations)
+  - All blocking operations wrapped in `asyncio.to_thread()` to prevent event loop blocking
+  - Tests: Manual testing via Postman and TUI (with uvicorn server)
+
+### (Not Completed)
+
 - `GET/PATCH /api/projects/{project_id}/overrides`: User overrides for chronology corrections, comparison attributes, highlighted skills, role/evidence/thumbnail.
 - `DELETE /api/projects/{project_id}/insights`: Delete analysis results but keep file records; shared files not removed.
-- `DELETE /api/projects/{project_id}`: Full delete.
-- `POST /api/projects/{project_id}/rank`: Return ranking score and rationale; accepts custom weights for human-in-the-loop tuning.
-- `GET /api/projects/top`: Summaries of top-ranked projects.
-- `GET /api/projects/timeline`: Chronological list of projects.
- - `GET /api/skills/timeline`: Chronological list of skills exercised.
 
+
+  
 ### Configurations and Preferences
 - `GET/PUT /api/config`: Read/write user config (scan prefs, ignore rules, ranking weights, skill preferences).
 - `GET/POST /api/config/profiles`: Manage scan/analysis profiles.
