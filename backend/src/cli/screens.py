@@ -1896,6 +1896,7 @@ class ProjectsScreen(ModalScreen[None]):
                     yield Button("View Project", id="view-btn", variant="primary")
                     yield Button("Clear insights", id="clear-insights-btn", variant="warning")
                     yield Button("Delete", id="delete-btn", variant="error")
+                    yield Button("Set Thumbnail", id="set-thumbnail-btn", variant="default")
                     yield Button(self._sort_label(), id="sort-toggle-btn", variant="default")
                 yield Button("Close", id="close-btn")
             
@@ -1990,7 +1991,7 @@ class ProjectsScreen(ModalScreen[None]):
         """Update the detail panel with project info."""
         try:
             detail = self.query_one("#projects-detail", Static)
-            
+
             name = project.get("project_name", "Unknown")
             path = project.get("project_path", "Unknown")
             timestamp = project.get("scan_timestamp", "Unknown")
@@ -2000,7 +2001,7 @@ class ProjectsScreen(ModalScreen[None]):
             score = project.get("contribution_score")
             user_share = project.get("user_commit_share")
             total_commits = project.get("total_commits")
-            
+
             # Format timestamp
             if timestamp and timestamp != "Unknown":
                 try:
@@ -2010,7 +2011,7 @@ class ProjectsScreen(ModalScreen[None]):
                         timestamp = dt.strftime("%Y-%m-%d at %H:%M:%S")
                 except:
                     timestamp = str(timestamp)[:19]
-            
+
             # Handle languages
             if not languages:
                 langs_str = "None detected"
@@ -2023,7 +2024,7 @@ class ProjectsScreen(ModalScreen[None]):
                     langs_str = "None detected"
             else:
                 langs_str = str(languages)
-            
+
             ranking_lines = []
             if isinstance(score, (int, float)):
                 ranking_lines.append(f"Score: {score:.1f}")
@@ -2035,7 +2036,13 @@ class ProjectsScreen(ModalScreen[None]):
             if ranking_text:
                 ranking_text = f"\n{ranking_text}"
 
-            text = (
+            # Step 1: Display thumbnail above project title if available
+            thumbnail_url = project.get("thumbnail_url")
+            thumb_img = f"🖼️ [link={thumbnail_url}]Thumbnail[/link]\n" if thumbnail_url else ""
+
+            # Compose detail panel content
+            detail_text = (
+                f"{thumb_img}"
                 f"[b]{name}[/b]\n"
                 f"Path: {path}\n"
                 f"Scanned: {timestamp}\n"
@@ -2043,8 +2050,7 @@ class ProjectsScreen(ModalScreen[None]):
                 f"Languages: {langs_str}"
                 f"{ranking_text}"
             )
-            
-            detail.update(text)
+            detail.update(detail_text)
             
         except Exception as e:
             try:
@@ -2053,19 +2059,17 @@ class ProjectsScreen(ModalScreen[None]):
             except:
                 pass
     
-    def on_button_pressed(self, event: Button.Pressed) -> None:
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button clicks - this makes buttons clickable!"""
         button_id = event.button.id
         
         if button_id == "close-btn":
             self.dismiss(None)
-        
         elif button_id == "view-btn":
             if self.selected_project:
                 dispatch_message(self, ProjectSelected(self.selected_project))
             else:
                 self._set_status("Please select a project first", "error")
-        
         elif button_id == "delete-btn":
             if self.selected_project:
                 project_id = self.selected_project.get("id")
@@ -2092,6 +2096,126 @@ class ProjectsScreen(ModalScreen[None]):
             except Exception:
                 pass
             self._refresh_list()
+        elif button_id == "set-thumbnail-btn":
+            if self.selected_project:
+                # Step 3: File picker dialog
+                try:
+                    image_path = await self._open_file_picker(accept="image/jpeg,image/png,image/jpg")
+                    if not image_path or not image_path.strip():
+                        self._set_status("No image selected.", "warning")
+                        return
+                    
+                    # Validate file exists
+                    import os
+                    if not os.path.exists(image_path):
+                        self._set_status("File not found.", "error")
+                        return
+                    
+                    # Step 4: Upload to Supabase
+                    self._set_status("Uploading thumbnail...", "info")
+                    thumbnail_url = await self._upload_thumbnail_to_supabase(image_path, self.selected_project["id"])
+                    if thumbnail_url:
+                        # Step 5: Update project thumbnail_url and refresh view
+                        await self._update_project_thumbnail(self.selected_project["id"], thumbnail_url)
+                        self.selected_project["thumbnail_url"] = thumbnail_url
+                        self._update_detail(self.selected_project)
+                        self._set_status("Thumbnail updated!", "success")
+                    else:
+                        self._set_status("Failed to upload thumbnail.", "error")
+                except Exception as e:
+                    self._set_status(f"Error setting thumbnail: {e}", "error")
+            else:
+                self._set_status("Please select a project first", "error")
+
+    async def _open_file_picker(self, accept: str = "*") -> Optional[str]:
+        """Open file picker dialog for image selection"""
+        try:
+            import tkinter as tk
+            from tkinter import filedialog
+            import asyncio
+            
+            # Run file dialog in executor to avoid blocking
+            def _show_dialog():
+                root = tk.Tk()
+                root.withdraw()
+                root.attributes('-topmost', True)
+                file_path = filedialog.askopenfilename(
+                    title="Select Thumbnail Image",
+                    filetypes=[
+                        ("Image files", "*.jpg *.jpeg *.png *.gif *.bmp"),
+                        ("JPEG files", "*.jpg *.jpeg"),
+                        ("PNG files", "*.png"),
+                        ("All files", "*.*")
+                    ]
+                )
+                root.destroy()
+                return file_path if file_path else None
+            
+            # Run in thread pool to not block Textual
+            loop = asyncio.get_event_loop()
+            file_path = await loop.run_in_executor(None, _show_dialog)
+            return file_path
+            
+        except ImportError:
+            # Fallback to console input if tkinter not available
+            return input("Enter path to image file: ").strip()
+        except Exception as e:
+            print(f"File picker error: {e}")
+            return None
+
+    async def _upload_thumbnail_to_supabase(self, image_path: str, project_id: str) -> Optional[str]:
+        """Upload image to Supabase storage and return public URL"""
+        try:
+            from supabase import create_client
+            import os
+            import uuid
+            
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_key = os.getenv("SUPABASE_KEY")
+            if not supabase_url or not supabase_key:
+                return None
+                
+            supabase = create_client(supabase_url, supabase_key)
+            bucket_name = "thumbnail bucket"
+            
+            # Use unique filename to avoid conflicts
+            file_extension = os.path.splitext(image_path)[1] or ".jpg"
+            file_name = f"{project_id}_{uuid.uuid4().hex[:8]}{file_extension}"
+            
+            with open(image_path, "rb") as f:
+                data = f.read()
+                
+            # Upload to Supabase storage
+            result = supabase.storage.from_(bucket_name).upload(file_name, data)
+            
+            # Generate public URL
+            public_url = f"{supabase_url}/storage/v1/object/public/{bucket_name}/{file_name}"
+            return public_url
+            
+        except Exception as exc:
+            print(f"Thumbnail upload error: {exc}")
+            return None
+
+    async def _update_project_thumbnail(self, project_id: str, thumbnail_url: str) -> None:
+        """Update project's thumbnail_url in Supabase database"""
+        try:
+            from supabase import create_client
+            import os
+            
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_key = os.getenv("SUPABASE_KEY")
+            if not supabase_url or not supabase_key:
+                return
+                
+            supabase = create_client(supabase_url, supabase_key)
+            
+            # Update the projects table
+            supabase.table("projects").update({
+                "thumbnail_url": thumbnail_url
+            }).eq("id", project_id).execute()
+            
+        except Exception as exc:
+            print(f"Database update error: {exc}")
     
     def on_key(self, event: Key) -> None:
         """Handle keyboard shortcuts."""
