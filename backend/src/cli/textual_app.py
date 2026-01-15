@@ -4797,17 +4797,21 @@ class PortfolioTextualApp(App):
         self._session_state.session = session
         if not session:
             return
+
         await self._ensure_session_token_fresh()
         session = self._session_state.session
         if not session:
             return
+
         self._session_state.last_email = session.email
-        # Restore consent persistence with the loaded session
+
+        # Sync auth token to scan service for API mode
+        self._sync_auth_token_to_services()
+
         if not self._use_api_mode:
             consent_storage.set_session_token(session.access_token)
             consent_storage.load_user_consents(session.user_id, session.access_token)
-        # Sync auth token to scan service for API mode
-        self._sync_auth_token_to_services()
+
 
     async def _ensure_session_token_fresh(self, *, force_refresh: bool = False) -> bool:
         session = self._session_state.session
