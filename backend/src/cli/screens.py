@@ -1670,6 +1670,7 @@ class ProjectsScreen(ModalScreen[None]):
     .status-info { color: $text; }
     .status-error { color: $error; }
     .status-success { color: $success; }
+    .status-warning { color: $warning; }
     """
     
     def __init__(self, projects: List[Dict[str, Any]], projects_service: Optional[Any] = None, user_id: Optional[str] = None) -> None:
@@ -1897,6 +1898,7 @@ class ProjectsScreen(ModalScreen[None]):
                     yield Button("Clear insights", id="clear-insights-btn", variant="warning")
                     yield Button("Delete", id="delete-btn", variant="error")
                     yield Button("Set Thumbnail", id="set-thumbnail-btn", variant="default")
+                    yield Button("View Thumbnail", id="view-thumbnail-btn", variant="default")
                     yield Button(self._sort_label(), id="sort-toggle-btn", variant="default")
                 yield Button("Close", id="close-btn")
             
@@ -2038,7 +2040,15 @@ class ProjectsScreen(ModalScreen[None]):
 
             # Step 1: Display thumbnail above project title if available
             thumbnail_url = project.get("thumbnail_url")
-            thumb_img = f"🖼️ [link={thumbnail_url}]Thumbnail[/link]\n" if thumbnail_url else ""
+            if thumbnail_url:
+                thumb_img = "🖼️ [green]Thumbnail Set[/green] - Click 'View Thumbnail' to open\n"
+            else:
+                thumb_img = "[dim]No thumbnail set[/dim]\n"
+            
+            # Show last status/error if exists
+            status_msg = getattr(self, '_last_status_msg', '')
+            if status_msg:
+                thumb_img += f"[yellow]{status_msg}[/yellow]\n"
 
             # Compose detail panel content
             detail_text = (
@@ -2100,30 +2110,74 @@ class ProjectsScreen(ModalScreen[None]):
             if self.selected_project:
                 # Step 3: File picker dialog
                 try:
+                    self._last_status_msg = "Opening file picker..."
+                    self._update_detail(self.selected_project)
+                    
                     image_path = await self._open_file_picker(accept="image/jpeg,image/png,image/jpg")
                     if not image_path or not image_path.strip():
+                        self._last_status_msg = "❌ No image selected"
+                        self._update_detail(self.selected_project)
                         self._set_status("No image selected.", "warning")
                         return
                     
                     # Validate file exists
                     import os
                     if not os.path.exists(image_path):
+                        self._last_status_msg = "❌ File not found"
+                        self._update_detail(self.selected_project)
                         self._set_status("File not found.", "error")
                         return
                     
                     # Step 4: Upload to Supabase
+                    self._last_status_msg = f"⏳ Uploading {os.path.basename(image_path)}..."
+                    self._update_detail(self.selected_project)
                     self._set_status("Uploading thumbnail...", "info")
-                    thumbnail_url = await self._upload_thumbnail_to_supabase(image_path, self.selected_project["id"])
+                    
+                    thumbnail_url, error_msg = await self._upload_thumbnail_to_supabase(image_path, self.selected_project["id"])
+                    print(f"Upload result: {thumbnail_url}")
                     if thumbnail_url:
                         # Step 5: Update project thumbnail_url and refresh view
-                        await self._update_project_thumbnail(self.selected_project["id"], thumbnail_url)
-                        self.selected_project["thumbnail_url"] = thumbnail_url
+                        self._last_status_msg = "⏳ Updating database..."
                         self._update_detail(self.selected_project)
-                        self._set_status("Thumbnail updated!", "success")
+                        
+                        db_error = await self._update_project_thumbnail(self.selected_project["id"], thumbnail_url)
+                        if db_error:
+                            self._last_status_msg = f"❌ Upload OK but DB failed: {db_error}"
+                            self._update_detail(self.selected_project)
+                            self._set_status(f"Upload OK but DB update failed: {db_error}", "error")
+                        else:
+                            print(f"Database updated for project {self.selected_project['id']}")
+                            self.selected_project["thumbnail_url"] = thumbnail_url
+                            self._last_status_msg = "✅ Thumbnail updated successfully!"
+                            self._update_detail(self.selected_project)
+                            self._set_status(f"Thumbnail updated successfully!", "success")
                     else:
-                        self._set_status("Failed to upload thumbnail.", "error")
+                        self._last_status_msg = f"❌ Upload failed: {error_msg or 'Unknown error'}"
+                        self._update_detail(self.selected_project)
+                        self._set_status(f"Upload failed: {error_msg or 'Unknown error'}", "error")
                 except Exception as e:
-                    self._set_status(f"Error setting thumbnail: {e}", "error")
+                    self._last_status_msg = f"❌ Error: {str(e)}"
+                    self._update_detail(self.selected_project)
+                    self._set_status(f"Error: {str(e)}", "error")
+                    import traceback
+                    traceback.print_exc()
+            else:
+                self._last_status_msg = "❌ Please select a project first"
+                self._set_status("Please select a project first", "error")
+        elif button_id == "view-thumbnail-btn":
+            if self.selected_project:
+                thumbnail_url = self.selected_project.get("thumbnail_url")
+                if thumbnail_url:
+                    try:
+                        self._set_status("Opening thumbnail...", "info")
+                        # Open in default browser/viewer
+                        import webbrowser
+                        webbrowser.open(thumbnail_url)
+                        self._set_status("Thumbnail opened in browser", "success")
+                    except Exception as e:
+                        self._set_status(f"Failed to open thumbnail: {e}", "error")
+                else:
+                    self._set_status("No thumbnail set for this project", "warning")
             else:
                 self._set_status("Please select a project first", "error")
 
@@ -2163,59 +2217,164 @@ class ProjectsScreen(ModalScreen[None]):
             print(f"File picker error: {e}")
             return None
 
-    async def _upload_thumbnail_to_supabase(self, image_path: str, project_id: str) -> Optional[str]:
-        """Upload image to Supabase storage and return public URL"""
+    async def _upload_thumbnail_to_supabase(self, image_path: str, project_id: str) -> tuple[Optional[str], Optional[str]]:
+        """Upload image to Supabase storage and return (public_url, error_message)"""
         try:
             from supabase import create_client
             import os
             import uuid
+            from PIL import Image
+            import io
+            
+            print(f"Starting upload for project {project_id}...")
             
             supabase_url = os.getenv("SUPABASE_URL")
+            # SUPABASE_KEY is the service_role key which bypasses RLS
             supabase_key = os.getenv("SUPABASE_KEY")
+            
             if not supabase_url or not supabase_key:
-                return None
-                
+                error = "Missing SUPABASE_URL or SUPABASE_KEY in environment"
+                print(f"ERROR: {error}")
+                return None, error
+            
+            print(f"Connecting to Supabase: {supabase_url}")
             supabase = create_client(supabase_url, supabase_key)
-            bucket_name = "thumbnail bucket"
             
-            # Use unique filename to avoid conflicts
-            file_extension = os.path.splitext(image_path)[1] or ".jpg"
-            file_name = f"{project_id}_{uuid.uuid4().hex[:8]}{file_extension}"
+            # Try different bucket name variations
+            possible_bucket_names = ["thumbnail bucket", "thumbnail-bucket", "thumbnailbucket", "thumbnails"]
+            bucket_name = None
             
-            with open(image_path, "rb") as f:
-                data = f.read()
+            # List all buckets to verify the bucket exists
+            try:
+                buckets = supabase.storage.list_buckets()
+                bucket_list = [b.name for b in buckets]
+                print(f"Available buckets: {bucket_list}")
                 
-            # Upload to Supabase storage
-            result = supabase.storage.from_(bucket_name).upload(file_name, data)
+                # Find which bucket name exists
+                for name in possible_bucket_names:
+                    if name in bucket_list:
+                        bucket_name = name
+                        print(f"Found and using bucket: '{bucket_name}'")
+                        break
+                
+                if not bucket_name:
+                    error = f"No thumbnail bucket found. Available buckets: {bucket_list}. Please create one named 'thumbnail bucket' or 'thumbnail-bucket'"
+                    print(f"ERROR: {error}")
+                    return None, error
+            except Exception as list_exc:
+                print(f"Warning: Could not list buckets: {list_exc}")
+                # Fallback to default name
+                bucket_name = "thumbnail bucket"
+                print(f"Using default bucket name: '{bucket_name}'")
             
-            # Generate public URL
-            public_url = f"{supabase_url}/storage/v1/object/public/{bucket_name}/{file_name}"
-            return public_url
+            # Convert image to JPG if needed and put in public folder
+            file_name = f"public/{project_id}_{uuid.uuid4().hex[:8]}.jpg"
+            
+            print(f"Reading and converting file: {image_path}")
+            # Load image and convert to JPG
+            img = Image.open(image_path)
+            if img.mode in ('RGBA', 'LA', 'P'):
+                # Convert RGBA/LA/P to RGB
+                background = Image.new('RGB', img.size, (255, 255, 255))
+                if img.mode == 'P':
+                    img = img.convert('RGBA')
+                background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+                img = background
+            elif img.mode != 'RGB':
+                img = img.convert('RGB')
+            
+            # Save as JPG to bytes
+            jpg_buffer = io.BytesIO()
+            img.save(jpg_buffer, format='JPEG', quality=85)
+            data = jpg_buffer.getvalue()
+            print(f"Converted to JPG, size: {len(data)} bytes")
+            
+            # Upload to Supabase storage with correct content type
+            print(f"Uploading to bucket '{bucket_name}' as '{file_name}'...")
+            file_options = {"content-type": "image/jpg", "upsert": "false"}
+            result = supabase.storage.from_(bucket_name).upload(
+                path=file_name,
+                file=data,
+                file_options=file_options
+            )
+            print(f"Upload result: {result}")
+            
+            # Get the public URL using the get_public_url method
+            try:
+                public_url_response = supabase.storage.from_(bucket_name).get_public_url(file_name)
+                print(f"Public URL response: {public_url_response}")
+                # The response is just a string with the URL
+                public_url = public_url_response
+            except Exception as url_exc:
+                print(f"Error getting public URL: {url_exc}")
+                # Fallback to manual construction with URL encoding
+                from urllib.parse import quote
+                encoded_bucket = quote(bucket_name)
+                encoded_file = quote(file_name)
+                public_url = f"{supabase_url}/storage/v1/object/public/{encoded_bucket}/{encoded_file}"
+            
+            print(f"Final public URL: {public_url}")
+            return public_url, None
             
         except Exception as exc:
-            print(f"Thumbnail upload error: {exc}")
-            return None
+            error = f"{type(exc).__name__}: {exc}"
+            print(f"Thumbnail upload error: {error}")
+            import traceback
+            traceback.print_exc()
+            return None, error
 
-    async def _update_project_thumbnail(self, project_id: str, thumbnail_url: str) -> None:
-        """Update project's thumbnail_url in Supabase database"""
+    async def _update_project_thumbnail(self, project_id: str, thumbnail_url: str) -> Optional[str]:
+        """Update project's thumbnail_url in Supabase database. Returns error message or None"""
         try:
             from supabase import create_client
             import os
             
+            print(f"Updating database for project {project_id} with URL: {thumbnail_url}")
+            
             supabase_url = os.getenv("SUPABASE_URL")
+            # SUPABASE_KEY is the service_role key which bypasses RLS
             supabase_key = os.getenv("SUPABASE_KEY")
+            
             if not supabase_url or not supabase_key:
-                return
-                
+                error = "Missing SUPABASE_URL or SUPABASE_KEY"
+                print(f"ERROR: {error}")
+                return error
+            
             supabase = create_client(supabase_url, supabase_key)
             
             # Update the projects table
-            supabase.table("projects").update({
+            print(f"Executing update query...")
+            result = supabase.table("projects").update({
                 "thumbnail_url": thumbnail_url
             }).eq("id", project_id).execute()
             
+            print(f"Database update result: {result}")
+            return None
+            
         except Exception as exc:
-            print(f"Database update error: {exc}")
+            error = f"{type(exc).__name__}: {exc}"
+            print(f"Database update error: {error}")
+            import traceback
+            traceback.print_exc()
+            return error
+    
+    def _set_status(self, message: str, status_type: str = "info") -> None:
+        """Update the status message at the bottom of the screen."""
+        try:
+            status = self.query_one("#projects-status", Static)
+            status.update(message)
+            # Update CSS class based on status type
+            status.remove_class("status-info", "status-error", "status-success", "status-warning")
+            if status_type == "error":
+                status.add_class("status-error")
+            elif status_type == "success":
+                status.add_class("status-success")
+            elif status_type == "warning":
+                status.add_class("status-warning")
+            else:
+                status.add_class("status-info")
+        except Exception:
+            pass
     
     def on_key(self, event: Key) -> None:
         """Handle keyboard shortcuts."""
