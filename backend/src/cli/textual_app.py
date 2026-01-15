@@ -262,7 +262,11 @@ class PortfolioTextualApp(App):
         self._preferences_state = PreferencesState()
         self._scan_state = ScanState()
         self._ai_state = AIState()
-        self._scan_service = ScanService()
+        
+        # Check if API mode is enabled via environment variable
+        use_api_mode = os.getenv("PORTFOLIO_USE_API", "false").lower() in ("true", "1", "yes")
+        self._scan_service = ScanService(use_api=use_api_mode)
+        
         self._session_service = SessionService(reporter=self._report_filesystem_issue)
         self._use_api_mode = _env_flag("PORTFOLIO_USE_API")
         self._consent_api_service = ConsentAPIService() if self._use_api_mode else None
@@ -3954,6 +3958,8 @@ class PortfolioTextualApp(App):
         self._refresh_consent_state()
         self._load_preferences()
         self._update_session_status()
+        # Sync auth token to scan service for API mode
+        self._sync_auth_token_to_services()
         self._show_status(success_message, "success")
         self._refresh_current_detail()
 
@@ -4132,6 +4138,12 @@ class PortfolioTextualApp(App):
     def _persist_session(self) -> None:
         if self._session_state.session:
             self._session_service.persist_session(self._session_state.session_path, self._session_state.session)
+    
+    def _sync_auth_token_to_services(self) -> None:
+        """Sync current session auth token to services that need it (e.g., API client)"""
+        if self._session_state.session and self._session_state.session.access_token:
+            # Sync to scan service for API mode
+            self._scan_service.set_auth_token(self._session_state.session.access_token)
 
     def _persist_ai_output(self, structured_result: Dict[str, Any], raw_result: Dict[str, Any]) -> bool:
         """Write the latest AI analysis to disk as JSON for easier reading.
@@ -4530,15 +4542,21 @@ class PortfolioTextualApp(App):
         self._session_state.session = session
         if not session:
             return
+
         await self._ensure_session_token_fresh()
         session = self._session_state.session
         if not session:
             return
+
         self._session_state.last_email = session.email
-        # Restore consent persistence with the loaded session
+
+        # Sync auth token to scan service for API mode
+        self._sync_auth_token_to_services()
+
         if not self._use_api_mode:
             consent_storage.set_session_token(session.access_token)
             consent_storage.load_user_consents(session.user_id, session.access_token)
+
 
     async def _ensure_session_token_fresh(self, *, force_refresh: bool = False) -> bool:
         session = self._session_state.session
@@ -4572,6 +4590,8 @@ class PortfolioTextualApp(App):
             consent_storage.set_session_token(refreshed.access_token)
             consent_storage.load_user_consents(refreshed.user_id, refreshed.access_token)
         self._persist_session()
+        # Sync refreshed auth token to scan service for API mode
+        self._sync_auth_token_to_services()
         return True
 
     def _refresh_consent_state(self) -> None:
