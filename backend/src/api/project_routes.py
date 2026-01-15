@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, status, Header, Depends
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+import asyncio
 import logging
 import sys
 import os
@@ -393,8 +394,8 @@ async def get_top_projects(
     try:
         service = get_projects_service()
         
-        # Get all user projects
-        projects = service.get_user_projects(user_id)
+        # Get all user projects (run in thread pool to avoid blocking event loop)
+        projects = await asyncio.to_thread(service.get_user_projects, user_id)
         
         # Filter to only projects with contribution scores and sort
         ranked_projects = [
@@ -435,8 +436,8 @@ async def get_project_timeline(
     try:
         service = get_projects_service()
         
-        # Get all user projects
-        projects = service.get_user_projects(user_id)
+        # Get all user projects (run in thread pool to avoid blocking event loop)
+        projects = await asyncio.to_thread(service.get_user_projects, user_id)
         
         # Build timeline entries with full project objects
         timeline_entries = []
@@ -624,14 +625,8 @@ async def rank_project(
     - 5% activity diversity (tests/docs/design)
     """
     try:
-        import sys
-        from pathlib import Path
-        
-        # Add src to path if needed
-        src_path = Path(__file__).parent.parent
-        if str(src_path) not in sys.path:
-            sys.path.insert(0, str(src_path))
-        
+        # Note: sys.path is already configured in main.py at startup
+        # No need for runtime path manipulation
         from local_analysis.contribution_analyzer import (
             ProjectContributionMetrics,
             ContributorMetrics,
@@ -642,8 +637,8 @@ async def rank_project(
         
         service = get_projects_service()
         
-        # Get full project with scan data
-        project = service.get_project_scan(user_id, project_id)
+        # Get full project with scan data (run in thread pool to avoid blocking event loop)
+        project = await asyncio.to_thread(service.get_project_scan, user_id, project_id)
         if not project:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -717,8 +712,10 @@ async def rank_project(
         metrics = dict_to_metrics(contribution_metrics_dict)
         
         # Use the CLI service to compute the score (single source of truth)
+        # Run in thread pool since this is CPU-intensive computation
         analysis_service = ContributionAnalysisService()
-        ranking = analysis_service.compute_contribution_score(
+        ranking = await asyncio.to_thread(
+            analysis_service.compute_contribution_score,
             metrics,
             user_email=request.user_email,
             user_name=request.user_name,
@@ -727,10 +724,11 @@ async def rank_project(
         # Log the computed score
         logger.info(f"Computed contribution score for project {project_id}: {ranking['score']:.2f}")
         
-        # Update the database with the contribution score
+        # Update the database with the contribution score (run in thread pool)
         try:
             service = get_projects_service()
-            service.update_project_score(
+            await asyncio.to_thread(
+                service.update_project_score,
                 user_id=user_id,
                 project_id=project_id,
                 contribution_score=ranking["score"],
