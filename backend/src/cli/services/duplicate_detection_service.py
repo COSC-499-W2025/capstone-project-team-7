@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from ...scanner.models import FileMetadata, ParseResult
 
@@ -226,6 +226,91 @@ class DuplicateDetectionService:
                 for group in result.duplicate_groups
             ],
         }
+
+    def format_duplicate_report(
+        self,
+        report: Dict[str, Any],
+        *,
+        max_groups: int = 20,
+        max_files_per_group: int = 10,
+    ) -> str:
+        """Format an API dedup report for display in the TUI."""
+        summary = report.get("summary", {}) if isinstance(report, dict) else {}
+        duplicate_groups = report.get("duplicate_groups", []) if isinstance(report, dict) else []
+        if not isinstance(duplicate_groups, list):
+            duplicate_groups = []
+
+        total_files_analyzed = int(summary.get("total_files_analyzed", 0) or 0)
+        files_with_hash = int(summary.get("files_with_hash", 0) or 0)
+        duplicate_groups_count = int(
+            summary.get("duplicate_groups_count", len(duplicate_groups)) or 0
+        )
+        total_duplicate_files = int(summary.get("total_duplicate_files", 0) or 0)
+        total_wasted_bytes = int(summary.get("total_wasted_bytes", 0) or 0)
+        space_savings_percent = float(summary.get("space_savings_percent", 0.0) or 0.0)
+
+        lines = ["[b]Duplicate File Analysis[/b]", ""]
+
+        if total_files_analyzed == 0:
+            lines.append("No files to analyze.")
+            return "\n".join(lines)
+
+        lines.append(f"Files analyzed: {total_files_analyzed}")
+        lines.append(f"Files with hash: {files_with_hash}")
+        lines.append("")
+
+        if not duplicate_groups:
+            lines.append("[green]✓ No duplicate files found![/green]")
+            return "\n".join(lines)
+
+        lines.append(
+            f"[yellow]⚠ Found {duplicate_groups_count} sets of duplicate files[/yellow]"
+        )
+        lines.append(f"Total duplicate files: {total_duplicate_files}")
+        lines.append(f"Potential space savings: {self._format_size(total_wasted_bytes)}")
+        lines.append(f"Space savings: {space_savings_percent:.1f}%")
+
+        lines.append("")
+        lines.append("[b]Duplicate Groups[/b]")
+        lines.append("")
+
+        displayed_groups = duplicate_groups[:max_groups]
+        for idx, group in enumerate(displayed_groups, 1):
+            if not isinstance(group, dict):
+                continue
+            files = group.get("files") or []
+            if not isinstance(files, list):
+                files = []
+
+            file_count = int(group.get("file_count", len(files)) or len(files))
+            wasted_bytes = int(group.get("wasted_bytes", 0) or 0)
+            file_hash = group.get("hash") or ""
+
+            lines.append(
+                f"[b]Group {idx}[/b] — {file_count} files, "
+                f"wasted: {self._format_size(wasted_bytes)}"
+            )
+            if file_hash:
+                lines.append(f"  Hash: {file_hash[:12]}...")
+
+            displayed_files = files[:max_files_per_group]
+            for file_entry in displayed_files:
+                if not isinstance(file_entry, dict):
+                    continue
+                path = file_entry.get("path") or "unknown"
+                size_bytes = int(file_entry.get("size_bytes") or 0)
+                lines.append(f"  • {path} ({self._format_size(size_bytes)})")
+
+            if len(files) > max_files_per_group:
+                remaining = len(files) - max_files_per_group
+                lines.append(f"  ...and {remaining} more files")
+            lines.append("")
+
+        if len(duplicate_groups) > max_groups:
+            remaining_groups = len(duplicate_groups) - max_groups
+            lines.append(f"...and {remaining_groups} more duplicate groups")
+
+        return "\n".join(lines)
 
     @staticmethod
     def _format_size(size: int) -> str:

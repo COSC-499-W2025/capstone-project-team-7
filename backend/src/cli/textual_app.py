@@ -2165,6 +2165,59 @@ class PortfolioTextualApp(App):
 
     async def _handle_duplicate_detection_action(self, screen: ScanResultsScreen) -> None:
         """Handle duplicate file detection action from the scan results screen."""
+        allow_api = self._use_api_mode and bool(self._scan_state.project_id)
+
+        if self._scan_state.parse_result is None and not allow_api:
+            screen.display_output(
+                "No scan data available. Run a scan first.", context="Duplicate detection"
+            )
+            screen.set_message("No scan data available.", tone="warning")
+            return
+
+        if allow_api:
+            screen.set_message("Fetching duplicate report…", tone="info")
+            try:
+                projects_service = self._get_projects_service()
+            except ProjectsServiceError as exc:
+                screen.display_output(
+                    f"Failed to fetch duplicates from API: {exc}",
+                    context="Duplicate detection",
+                )
+                screen.set_message("Falling back to local duplicate analysis…", tone="warning")
+            else:
+                if hasattr(projects_service, "get_dedup_report"):
+                    try:
+                        report = await asyncio.to_thread(
+                            projects_service.get_dedup_report,
+                            self._scan_state.project_id,
+                        )
+                        output = self._duplicate_service.format_duplicate_report(report)
+                        screen.display_output(output, context="Duplicate detection")
+                        summary = report.get("summary", {}) if isinstance(report, dict) else {}
+                        groups = report.get("duplicate_groups", []) if isinstance(report, dict) else []
+                        if groups:
+                            groups_count = int(
+                                summary.get("duplicate_groups_count", len(groups)) or len(groups)
+                            )
+                            wasted_bytes = int(summary.get("total_wasted_bytes", 0) or 0)
+                            screen.set_message(
+                                f"Found {groups_count} sets of duplicate files "
+                                f"({self._duplicate_service._format_size(wasted_bytes)} wasted).",
+                                tone="warning",
+                            )
+                        else:
+                            screen.set_message("No duplicate files found.", tone="success")
+                        return
+                    except Exception as exc:
+                        screen.display_output(
+                            f"Failed to fetch duplicates from API: {exc}",
+                            context="Duplicate detection",
+                        )
+                        screen.set_message(
+                            "Falling back to local duplicate analysis…",
+                            tone="warning",
+                        )
+
         if self._scan_state.parse_result is None:
             screen.display_output(
                 "No scan data available. Run a scan first.", context="Duplicate detection"
@@ -2190,7 +2243,7 @@ class PortfolioTextualApp(App):
         result = self._scan_state.duplicate_analysis_result
         output = self._duplicate_service.format_duplicate_details(result)
         screen.display_output(output, context="Duplicate detection")
-        
+
         if result.duplicate_groups:
             screen.set_message(
                 f"Found {result.unique_files_duplicated} sets of duplicate files "
@@ -3035,6 +3088,7 @@ class PortfolioTextualApp(App):
                     "mime_type": meta.mime_type,
                     "created_at": meta.created_at.isoformat(),
                     "modified_at": meta.modified_at.isoformat(),
+                    "file_hash": meta.file_hash,
                     "media_info": getattr(meta, "media_info", None),
                 }
                 for meta in result.files

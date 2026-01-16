@@ -106,6 +106,12 @@ Content-Type: multipart/form-data
 - `GET /api/dedup`: Report duplicate files and recommendations to retain a single copy.
 - `POST /api/selection`: Save user selections (projects/skills/ranking order); supports reordering and showcase selection.
 
+#### ✅ Completed
+- `GET /api/dedup`: Hash-based duplicate report backed by project scan data.
+- Implementation: `backend/src/api/spec_routes.py`
+- TUI integration: `backend/src/cli/textual_app.py` + `ProjectsAPIService.get_dedup_report`
+- Tests: `tests/test_dedup_api.py`
+
 ### Health and Meta
 - `GET /health`: Health check (existing).
 - `GET /`: Root status (existing).
