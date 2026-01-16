@@ -25,6 +25,7 @@ class ConsentState:
     validator: ConsentValidator = field(default_factory=ConsentValidator)
     record: Optional[ConsentRecord] = None
     error: Optional[str] = None
+    external_services: bool = False
 
 
 @dataclass
