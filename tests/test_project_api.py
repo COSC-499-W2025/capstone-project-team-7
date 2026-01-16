@@ -12,7 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 import uuid
 
-from src.main import app
+from main import app
 
 
 client = TestClient(app)

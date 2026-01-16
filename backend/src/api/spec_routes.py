@@ -373,13 +373,6 @@ class ResumeItem(BaseModel):
     created_at: str
 
 
-class SelectionRequest(BaseModel):
-    project_order: List[str] = Field(default_factory=list)
-    skill_order: List[str] = Field(default_factory=list)
-    selected_project_ids: List[str] = Field(default_factory=list)
-    selected_skill_ids: List[str] = Field(default_factory=list)
-
-
 class TimelineItem(BaseModel):
     project_id: str
     name: str
@@ -440,7 +433,6 @@ _upload_store: Dict[str, Upload] = {}
 _scan_store: Dict[str, ScanStatus] = {}
 _project_store: Dict[str, ProjectDetail] = {}
 _resume_store: Dict[str, ResumeItem] = {}
-_selection_store: Dict[str, SelectionRequest] = {}
 _consent_store: Dict[str, ConsentStatus] = {}
 
 # Thread lock for scan store access
@@ -1314,10 +1306,3 @@ def dedup(project_id: str, auth: AuthContext = Depends(get_auth_context)):
         files = []
 
     return _build_dedup_report(files)
-
-
-@router.post("/api/selection")
-def save_selection(payload: SelectionRequest):
-    key = "default"
-    _selection_store[key] = payload
-    return {"status": "saved"}

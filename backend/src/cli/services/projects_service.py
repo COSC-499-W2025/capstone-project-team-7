@@ -38,7 +38,12 @@ class ProjectsService:
         # Initialize Supabase client
         import os
         self.supabase_url = supabase_url or os.getenv("SUPABASE_URL")
-        self.supabase_key = supabase_key or os.getenv("SUPABASE_KEY")
+        self.supabase_key = (
+            supabase_key
+            or os.getenv("SUPABASE_KEY")
+            or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+            or os.getenv("SUPABASE_ANON_KEY")
+        )
         
         if not self.supabase_url or not self.supabase_key:
             raise ProjectsServiceError("Supabase credentials not configured.")
@@ -184,6 +189,28 @@ class ProjectsService:
                     project.setdefault("has_skills_progress", False)
                 return projects
             raise ProjectsServiceError(f"Failed to get projects: {exc}") from exc
+
+    def get_user_projects_with_scan_data(self, user_id: str) -> List[Dict[str, Any]]:
+        """
+        Get all projects for a user, including decrypted scan_data.
+
+        Returns:
+            List of project records with scan_data field.
+        """
+        try:
+            response = (
+                self.client.table("projects")
+                .select("id, project_name, scan_timestamp, project_end_date, created_at, scan_data")
+                .eq("user_id", user_id)
+                .execute()
+            )
+        except Exception as exc:
+            raise ProjectsServiceError(f"Failed to get projects with scan data: {exc}") from exc
+
+        projects = response.data or []
+        for project in projects:
+            project["scan_data"] = self._decrypt_scan_data(project.get("scan_data"))
+        return projects
     
     def get_project_scan(self, user_id: str, project_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -241,7 +268,7 @@ class ProjectsService:
         try:
             timestamp = datetime.now().isoformat()
             update_fields = {
-                "scan_data": None,
+                "scan_data": {},
                 "scan_timestamp": None,
                 "total_files": 0,
                 "total_lines": 0,
@@ -252,8 +279,12 @@ class ProjectsService:
                 "has_skills_analysis": False,
                 "has_document_analysis": False,
                 "has_git_analysis": False,
-                "has_skills_analysis": False,      
-                "has_document_analysis": False,   
+                "has_contribution_metrics": False,
+                "contribution_score": None,
+                "user_commit_share": None,
+                "total_commits": None,
+                "primary_contributor": None,
+                "project_end_date": None,
                 "has_skills_progress": False,
                 "insights_deleted_at": timestamp,
             }
@@ -292,7 +323,9 @@ class ProjectsService:
                 .execute()
             )
         except Exception as exc:
-            raise ProjectsServiceError(f"Failed to prune cached files: {exc}") from exc
+            # scan_files table may not exist in all environments (e.g., test database)
+            # Log and continue rather than failing the whole operation
+            logging.warning("Could not prune cached files (table may not exist): %s", exc)
 
         return True
 

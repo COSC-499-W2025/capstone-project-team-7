@@ -77,6 +77,21 @@ Content-Type: multipart/form-data
 - `GET /api/scans/{scan_id}`: Progress and results (parse + analysis) so the renderer can poll instead of reading local files.
 - Internally reuses uploads/analysis endpoints to keep a single pipeline; prefer this from the Electron app instead of invoking CLI directly.
 
+#### Completed
+- **One-Shot Scan API** (Jan 8, 2026)
+  - `POST /api/scans`: Start background scan with `source_path`, returns `scan_id` (HTTP 202)
+  - `GET /api/scans/{scan_id}`: Poll scan status (queued → running → succeeded/failed)
+  - Implementation: `backend/src/api/spec_routes.py`
+  - Tests: `tests/test_scan_api.py`
+  - Features: Background task execution, progress tracking, idempotency support, user isolation
+
+- **TUI Scan API Integration** (Jan 13, 2026)
+  - `ScanApiClient`: HTTP client for scan API endpoints
+  - Implementation: `backend/src/cli/services/scan_api_client.py`
+  - TUI Integration: `backend/src/cli/textual_app.py` (`_run_scan_via_api` method)
+  - Tests: `tests/cli/test_scan_api_client.py`
+  - Usage: Set `SCAN_USE_API=true` environment variable to enable API mode in TUI
+
 ### (Completed) - Projects and Storage
 - `POST /api/projects`: Persist parse+analysis results (optional encryption), return `project_id`.
 - `GET /api/projects`: List with search/filter/sort and timeline views.
