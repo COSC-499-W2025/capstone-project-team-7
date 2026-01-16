@@ -182,6 +182,7 @@ class ProjectMetadata(BaseModel):
     total_commits: Optional[int] = None
     primary_contributor: Optional[str] = None
     project_end_date: Optional[str] = None
+    thumbnail_url: Optional[str] = None
     created_at: Optional[str] = None
 
 

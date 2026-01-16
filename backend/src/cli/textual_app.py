@@ -284,6 +284,7 @@ class PortfolioTextualApp(App):
         self._use_api_mode = _env_flag("PORTFOLIO_USE_API")
         self._auth_api_service = AuthAPIService() if self._use_api_mode else None
         self._consent_api_service = ConsentAPIService() if self._use_api_mode else None
+        self._scan_service = ScanService(use_api=self._use_api_mode)
         self._preferences_service = PreferencesService(media_extensions=MEDIA_EXTENSIONS)
         self._ai_service = AIService()
         self._code_service = CodeAnalysisService()

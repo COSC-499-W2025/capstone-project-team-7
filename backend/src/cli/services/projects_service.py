@@ -539,7 +539,17 @@ class ProjectsService:
             If failed, public_url is None and error_message contains the error.
         """
         try:
-            bucket_name = "thumbnails"
+            # Validate file size (5MB max to prevent DoS)
+            MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
+            file_size = os.path.getsize(image_path)
+            if file_size > MAX_FILE_SIZE:
+                return None, f"File size exceeds 5MB limit (got {file_size / 1024 / 1024:.2f}MB)"
+            
+            # Use configurable bucket name from environment
+            bucket_name = os.getenv("THUMBNAIL_BUCKET", "thumbnails")
+            
+            # Delete old thumbnail before uploading new one
+            self._delete_old_thumbnail(project_id, bucket_name)
             
             # Convert image to JPG format
             file_name = f"public/{project_id}_{uuid.uuid4().hex[:8]}.jpg"
@@ -603,6 +613,13 @@ class ProjectsService:
             
             img = Image.open(image_path)
             
+            # Validate dimensions (4096x4096 max to prevent DoS)
+            MAX_DIMENSION = 4096
+            width, height = img.size
+            if width > MAX_DIMENSION or height > MAX_DIMENSION:
+                logging.error(f"Image dimensions exceed {MAX_DIMENSION}x{MAX_DIMENSION} (got {width}x{height})")
+                return None
+            
             # Convert to RGB if necessary
             if img.mode in ('RGBA', 'LA', 'P'):
                 # Convert RGBA/LA/P to RGB
@@ -643,3 +660,35 @@ class ProjectsService:
             encoded_bucket = quote(bucket_name)
             encoded_file = quote(file_name)
             return f"{self.supabase_url}/storage/v1/object/public/{encoded_bucket}/{encoded_file}"
+    
+    def _delete_old_thumbnail(self, project_id: str, bucket_name: str) -> None:
+        """Delete existing thumbnail for a project before uploading a new one.
+        
+        Args:
+            project_id: ID of the project
+            bucket_name: Name of the storage bucket
+        """
+        try:
+            # Get current thumbnail URL from database
+            result = self.client.table("projects").select("thumbnail_url").eq("id", project_id).execute()
+            
+            if not result.data or not result.data[0].get("thumbnail_url"):
+                return  # No existing thumbnail to delete
+            
+            thumbnail_url = result.data[0]["thumbnail_url"]
+            
+            # Extract file path from URL (format: .../storage/v1/object/public/bucket_name/file_path)
+            if "/storage/v1/object/public/" in thumbnail_url:
+                parts = thumbnail_url.split("/storage/v1/object/public/", 1)
+                if len(parts) == 2:
+                    # Remove bucket name prefix to get just the file path
+                    path_with_bucket = parts[1]
+                    if "/" in path_with_bucket:
+                        file_path = path_with_bucket.split("/", 1)[1]
+                        
+                        # Delete the old thumbnail from storage
+                        self.client.storage.from_(bucket_name).remove([file_path])
+                        logging.info(f"Deleted old thumbnail: {file_path}")
+        except Exception as exc:
+            # Log but don't fail the upload if cleanup fails
+            logging.warning(f"Failed to delete old thumbnail: {exc}")
