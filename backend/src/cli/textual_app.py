@@ -40,6 +40,7 @@ from .message_utils import dispatch_message
 
 from .services.projects_service import ProjectsService, ProjectsServiceError 
 from .services.preferences_service import PreferencesService
+from .services.auth_api_service import AuthAPIService
 from .services.consent_api_service import ConsentAPIService, ConsentAPIServiceError
 from .services.ai_service import (
     AIService,
@@ -281,6 +282,7 @@ class PortfolioTextualApp(App):
           
         self._session_service = SessionService(reporter=self._report_filesystem_issue)
         self._use_api_mode = _env_flag("PORTFOLIO_USE_API")
+        self._auth_api_service = AuthAPIService() if self._use_api_mode else None
         self._consent_api_service = ConsentAPIService() if self._use_api_mode else None
         self._preferences_service = PreferencesService(media_extensions=MEDIA_EXTENSIONS)
         self._ai_service = AIService()
@@ -3626,10 +3628,13 @@ class PortfolioTextualApp(App):
     def _show_ai_key_dialog(self) -> None:
         self.push_screen(AIKeyScreen(default_key=self._ai_state.api_key or ""))
 
-    def _get_auth(self) -> SupabaseAuth:
+    def _get_auth(self) -> Any:
         if self._session_state.auth is not None:
             return self._session_state.auth
-        self._session_state.auth = SupabaseAuth()
+        if self._use_api_mode:
+            self._session_state.auth = self._auth_api_service or AuthAPIService()
+        else:
+            self._session_state.auth = SupabaseAuth()
         self._session_state.auth_error = None
         return self._session_state.auth
     

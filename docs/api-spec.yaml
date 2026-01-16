@@ -67,6 +67,35 @@ components:
         version: { type: string }
       required: [service, privacy_notice]
 
+    AuthCredentials:
+      type: object
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+      required: [email, password]
+
+    AuthRefreshRequest:
+      type: object
+      properties:
+        refresh_token: { type: string }
+      required: [refresh_token]
+
+    AuthSession:
+      type: object
+      properties:
+        user_id: { type: string }
+        email: { type: string }
+        access_token: { type: string }
+        refresh_token: { type: string, nullable: true }
+      required: [user_id, email, access_token]
+
+    AuthSessionInfo:
+      type: object
+      properties:
+        user_id: { type: string }
+        email: { type: string, nullable: true }
+      required: [user_id]
+
     LLMKeyStatus:
       type: object
       properties:
@@ -709,6 +738,90 @@ paths:
                 type: object
                 properties:
                   status: { type: string, example: ok }
+
+  /api/auth/signup:
+    post:
+      summary: Create a new user session
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AuthCredentials' }
+      responses:
+        '200':
+          description: Authenticated session
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthSession' }
+        '401':
+          description: Authentication failed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/auth/login:
+    post:
+      summary: Login with email/password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AuthCredentials' }
+      responses:
+        '200':
+          description: Authenticated session
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthSession' }
+        '401':
+          description: Authentication failed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/auth/refresh:
+    post:
+      summary: Refresh an access token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AuthRefreshRequest' }
+      responses:
+        '200':
+          description: Refreshed session
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthSession' }
+        '400':
+          description: Missing refresh token
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Authentication failed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/auth/session:
+    get:
+      summary: Validate bearer token and return identity
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Current user identity
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthSessionInfo' }
+        '401':
+          description: Invalid or missing token
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   /api/consent:
     get:
