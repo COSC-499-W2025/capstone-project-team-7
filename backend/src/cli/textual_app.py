@@ -18,11 +18,16 @@ import time
 from typing import Optional, Dict, Any, List, Sequence, Type
 import os
 import weakref
+import httpx
 try:
     from dotenv import load_dotenv
 except Exception:  # pragma: no cover - optional dependency
     def load_dotenv(*args, **kwargs):  # type: ignore
         return False
+else:
+    for env_path in (Path.cwd() / ".env", Path(__file__).resolve().parents[2] / ".env"):
+        if env_path.exists():
+            load_dotenv(env_path, override=False)
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -246,6 +251,7 @@ class PortfolioTextualApp(App):
         ("View Last AI Analysis", "View the results from the most recent AI analysis."),
         ("AI Auto-Suggestion", "Let AI suggest and apply code improvements automatically."), 
         ("Skill progression", "View skill progression timeline and optionally generate an AI summary."),
+        ("API Timeline Check", "Call /api/skills/timeline and /api/portfolio/chronology to confirm API responses."),
         ("Exit", "Quit the Textual interface."),
     ]
     BINDINGS = [
@@ -269,11 +275,10 @@ class PortfolioTextualApp(App):
         self._preferences_state = PreferencesState()
         self._scan_state = ScanState()
         self._ai_state = AIState()
-        
-        # Check if API mode is enabled via environment variable
-        use_api_mode = os.getenv("PORTFOLIO_USE_API", "false").lower() in ("true", "1", "yes")
-        self._scan_service = ScanService(use_api=use_api_mode)
-        
+        # Timeline API state
+        self._timeline_api_snapshot: Optional[Dict[str, Any]] = None
+        self._timeline_api_error: Optional[str] = None
+          
         self._session_service = SessionService(reporter=self._report_filesystem_issue)
         self._use_api_mode = _env_flag("PORTFOLIO_USE_API")
         self._consent_api_service = ConsentAPIService() if self._use_api_mode else None
@@ -402,6 +407,8 @@ class PortfolioTextualApp(App):
             detail_panel.update(self._render_ai_detail())
         elif label == "Skill progression":
             detail_panel.update(self._render_skill_progress_detail())
+        elif label == "API Timeline Check":
+            detail_panel.update(self._render_timeline_api_detail())
         else:
             detail_panel.update(
                 f"[b]{label}[/b]\n\n{description}\n\nPress Enter to continue or select another option."
@@ -424,6 +431,13 @@ class PortfolioTextualApp(App):
             return
         if label == "Skill progression":
             asyncio.create_task(self._show_skill_progress_modal())
+            return
+        if label == "API Timeline Check":
+            if not self._session_state.session:
+                self._show_status("Sign in to call timeline APIs.", "warning")
+                self._update_detail(index)
+                return
+            asyncio.create_task(self._run_timeline_api_check())
             return
         
         if label == "View Last AI Analysis":
@@ -5084,6 +5098,110 @@ class PortfolioTextualApp(App):
             lines.append(f"• Most recent: {name} ({timestamp_str})")
         
         return "\n".join(lines)
+
+    def _render_timeline_api_detail(self) -> str:
+        lines = ["[b]API Timeline Check[/b]"]
+        base_url = self._get_api_base_url()
+
+        if not self._session_state.session:
+            lines.extend(
+                [
+                    "",
+                    "• Sign in (Ctrl+L) to call the authenticated API routes.",
+                    f"• Base URL: {base_url}",
+                ]
+            )
+            return "\n".join(lines)
+
+        lines.extend(
+            [
+                "",
+                f"• Base URL: {base_url}",
+                "• Press Enter to run the API checks.",
+                "• Endpoints: /api/skills/timeline, /api/portfolio/chronology",
+            ]
+        )
+
+        if self._timeline_api_error:
+            lines.extend(
+                [
+                    "",
+                    f"• Last error: {self._timeline_api_error}",
+                ]
+            )
+            return "\n".join(lines)
+
+        if self._timeline_api_snapshot:
+            snapshot = self._timeline_api_snapshot
+            lines.extend(
+                [
+                    "",
+                    f"• Last check: {snapshot.get('checked_at', 'unknown')}",
+                    f"• Skills timeline: {snapshot.get('skills_status')} ({snapshot.get('skills_count')} items)",
+                    f"• Portfolio chronology: {snapshot.get('portfolio_status')} "
+                    f"({snapshot.get('projects_count')} projects, {snapshot.get('portfolio_skills_count')} skills)",
+                ]
+            )
+        return "\n".join(lines)
+
+    def _get_api_base_url(self) -> str:
+        return os.getenv("API_BASE_URL") or os.getenv("PORTFOLIO_API_URL") or "http://localhost:8000"
+
+    async def _run_timeline_api_check(self) -> None:
+        session = self._session_state.session
+        if not session:
+            self._show_status("Sign in to call timeline APIs.", "warning")
+            return
+        if not await self._ensure_session_token_fresh():
+            self._handle_session_expired()
+            return
+
+        base_url = self._get_api_base_url().rstrip("/")
+        headers = {"Authorization": f"Bearer {session.access_token}"}
+        self._timeline_api_error = None
+        self._show_status("Checking timeline APIs…", "info")
+
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                skills_res = await client.get(f"{base_url}/api/skills/timeline", headers=headers)
+                portfolio_res = await client.get(f"{base_url}/api/portfolio/chronology", headers=headers)
+        except Exception as exc:
+            self._timeline_api_error = str(exc)
+            self._show_status("Timeline API check failed.", "error")
+            self._refresh_current_detail()
+            return
+
+        skills_count = 0
+        portfolio_projects = 0
+        portfolio_skills = 0
+        try:
+            skills_payload = skills_res.json()
+            skills_count = len(skills_payload.get("items") or []) if skills_res.status_code == 200 else 0
+        except Exception:
+            pass
+
+        try:
+            portfolio_payload = portfolio_res.json()
+            if portfolio_res.status_code == 200:
+                portfolio_projects = len(portfolio_payload.get("projects") or [])
+                portfolio_skills = len(portfolio_payload.get("skills") or [])
+        except Exception:
+            pass
+
+        self._timeline_api_snapshot = {
+            "checked_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ"),
+            "skills_status": skills_res.status_code,
+            "skills_count": skills_count,
+            "portfolio_status": portfolio_res.status_code,
+            "projects_count": portfolio_projects,
+            "portfolio_skills_count": portfolio_skills,
+        }
+
+        if skills_res.status_code == 200 and portfolio_res.status_code == 200:
+            self._show_status("Timeline API check completed.", "success")
+        else:
+            self._show_status("Timeline API check returned errors.", "warning")
+        self._refresh_current_detail()
 
     def _render_saved_resumes_detail(self) -> str:
         """Render the saved resumes detail panel."""

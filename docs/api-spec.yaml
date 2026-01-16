@@ -616,6 +616,13 @@ components:
         commits: { type: integer }
         projects: { type: array, items: { type: string } }
 
+    SkillsTimelineResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/SkillsTimelineItem' }
+
     PortfolioChronology:
       type: object
       properties:
@@ -1161,9 +1168,7 @@ paths:
           description: Skills timeline
           content:
             application/json:
-              schema:
-                type: array
-                items: { $ref: '#/components/schemas/SkillsTimelineItem' }
+              schema: { $ref: '#/components/schemas/SkillsTimelineResponse' }
 
   /api/portfolio/chronology:
     get:
