@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from cli.services.projects_service import ProjectsService, ProjectsServiceError
 from cli.services.encryption import EncryptionService
+from cli.services.merge_service import MergeDeduplicationService, MergeResult
 
 logger = logging.getLogger(__name__)
 
@@ -209,6 +210,48 @@ class DeleteInsightsResponse(BaseModel):
     """Response model for insights deletion."""
     message: str = "Insights cleared successfully"
     insights_deleted_at: str
+
+
+class AppendUploadRequest(BaseModel):
+    """Request model for appending upload to project."""
+    deduplication_strategy: str = Field(
+        "hash",
+        description="Strategy for detecting duplicates: 'hash', 'path', or 'both'"
+    )
+    conflict_resolution: str = Field(
+        "newer",
+        description="How to resolve conflicts: 'newer', 'keep_existing', or 'replace'"
+    )
+    dry_run: bool = Field(
+        False,
+        description="If true, return what would happen without applying changes"
+    )
+
+
+class DuplicateDetail(BaseModel):
+    """Details about a detected duplicate."""
+    new_file_path: str
+    existing_file_path: Optional[str] = None
+    resolution: str
+    reason: str
+
+
+class MergeResultModel(BaseModel):
+    """Summary of merge operation results."""
+    files_added: int = 0
+    files_updated: int = 0
+    duplicates_skipped: int = 0
+    total_project_files: int = 0
+
+
+class AppendUploadResponse(BaseModel):
+    """Response model for append-upload operation."""
+    project_id: str
+    upload_id: str
+    merge_result: MergeResultModel
+    duplicate_details: List[DuplicateDetail] = []
+    merge_timestamp: str
+    dry_run: bool = False
 
 
 # ============================================================================
@@ -496,6 +539,203 @@ async def delete_project_insights(
         )
     except Exception as exc:
         logger.exception("Unexpected error clearing project insights")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred",
+        )
+
+
+# In-memory uploads store reference (shared with upload_routes)
+# This will be replaced with database in production
+_uploads_store: Optional[Dict] = None
+
+
+def get_uploads_store() -> Dict:
+    """Get the uploads store (shared with upload_routes module)."""
+    global _uploads_store
+    if _uploads_store is None:
+        # Import from upload_routes to share the same store
+        try:
+            from api.upload_routes import uploads_store
+            _uploads_store = uploads_store
+        except ImportError:
+            _uploads_store = {}
+    return _uploads_store
+
+
+@router.post(
+    "/{project_id}/append-upload/{upload_id}",
+    response_model=AppendUploadResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid request"},
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Project or upload not found"},
+        409: {"model": ErrorResponse, "description": "Upload already merged"},
+        500: {"model": ErrorResponse, "description": "Server error"},
+    },
+)
+async def append_upload_to_project(
+    project_id: str,
+    upload_id: str,
+    request: AppendUploadRequest = AppendUploadRequest(),
+    user_id: str = Depends(verify_auth_token),
+) -> AppendUploadResponse:
+    """
+    Merge files from an upload into an existing project with deduplication.
+
+    - **project_id**: UUID of the target project
+    - **upload_id**: ID of the upload to merge
+    - **deduplication_strategy**: 'hash', 'path', or 'both'
+    - **conflict_resolution**: 'newer', 'keep_existing', or 'replace'
+    - **dry_run**: If true, return preview without applying changes
+
+    Acceptance Criteria:
+    - New uploads merge correctly
+    - No duplicate files created
+    """
+    # Validate deduplication strategy
+    valid_strategies = {"hash", "path", "both"}
+    if request.deduplication_strategy not in valid_strategies:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid deduplication_strategy. Must be one of: {valid_strategies}",
+        )
+
+    # Validate conflict resolution
+    valid_resolutions = {"newer", "keep_existing", "replace"}
+    if request.conflict_resolution not in valid_resolutions:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid conflict_resolution. Must be one of: {valid_resolutions}",
+        )
+
+    try:
+        service = get_projects_service()
+
+        # Verify project exists and belongs to user
+        project = service.get_project_scan(user_id, project_id)
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Project {project_id} not found",
+            )
+
+        # Verify upload exists and belongs to user
+        uploads_store = get_uploads_store()
+        if upload_id not in uploads_store:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Upload {upload_id} not found",
+            )
+
+        upload_data = uploads_store[upload_id]
+        if upload_data.get("user_id") != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied to this upload",
+            )
+
+        # Check upload status
+        if upload_data.get("status") not in ("stored", "parsed"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Upload status is '{upload_data.get('status')}', expected 'stored' or 'parsed'",
+            )
+
+        # Parse the upload if not already parsed
+        from pathlib import Path as FilePath
+        from scanner.parser import parse_zip
+        from scanner.models import FileMetadata as ScanFileMetadata
+
+        storage_path = FilePath(upload_data.get("storage_path", ""))
+        if not storage_path.exists():
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Upload file not found on disk",
+            )
+
+        # Parse the upload to get file metadata
+        parse_result = parse_zip(storage_path)
+        new_files = parse_result.files
+
+        # Get existing cached files for the project
+        try:
+            existing_files = service.get_cached_files(user_id, project_id)
+        except Exception:
+            existing_files = {}
+
+        # Analyze merge with deduplication
+        merge_service = MergeDeduplicationService()
+        merge_result = merge_service.analyze_merge(
+            existing_files=existing_files,
+            new_files=new_files,
+            strategy=request.deduplication_strategy,
+            conflict_resolution=request.conflict_resolution,
+        )
+
+        merge_timestamp = datetime.now().isoformat()
+
+        # Apply merge if not dry run
+        if not request.dry_run:
+            # Prepare files to upsert
+            files_to_upsert = []
+            for candidate in merge_result.candidates:
+                if candidate.resolution in ("add", "update"):
+                    # Find the corresponding FileMetadata
+                    file_meta = next(
+                        (f for f in new_files if f.path == candidate.file_path),
+                        None
+                    )
+                    if file_meta:
+                        files_to_upsert.append({
+                            "relative_path": file_meta.path,
+                            "size_bytes": file_meta.size_bytes,
+                            "mime_type": file_meta.mime_type,
+                            "sha256": file_meta.file_hash,
+                            "metadata": {},
+                            "last_seen_modified_at": file_meta.modified_at.isoformat() + "Z",
+                            "last_scanned_at": merge_timestamp + "Z",
+                        })
+
+            if files_to_upsert:
+                service.upsert_cached_files(user_id, project_id, files_to_upsert)
+
+        # Build response
+        duplicate_details = [
+            DuplicateDetail(
+                new_file_path=d["new_file_path"],
+                existing_file_path=d["existing_file_path"],
+                resolution=d["resolution"],
+                reason=d["reason"],
+            )
+            for d in merge_service.export_merge_details(merge_result)
+        ]
+
+        return AppendUploadResponse(
+            project_id=project_id,
+            upload_id=upload_id,
+            merge_result=MergeResultModel(
+                files_added=merge_result.files_added,
+                files_updated=merge_result.files_updated,
+                duplicates_skipped=merge_result.duplicates_skipped,
+                total_project_files=merge_result.total_project_files,
+            ),
+            duplicate_details=duplicate_details,
+            merge_timestamp=merge_timestamp,
+            dry_run=request.dry_run,
+        )
+
+    except HTTPException:
+        raise
+    except ProjectsServiceError as exc:
+        logger.error(f"Projects service error: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to merge upload: {str(exc)}",
+        )
+    except Exception as exc:
+        logger.exception("Unexpected error merging upload")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred",

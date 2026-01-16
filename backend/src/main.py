@@ -16,6 +16,7 @@ from api.llm_routes import router as llm_router
 from api.spec_routes import router as spec_router
 from api.project_routes import router as project_router
 from api.upload_routes import router as upload_router
+from api.portfolio_routes import router as portfolio_router
 
 app = FastAPI(
     title="Capstone Backend API",
@@ -49,6 +50,7 @@ app.include_router(llm_router)
 app.include_router(spec_router)
 app.include_router(project_router)
 app.include_router(upload_router)
+app.include_router(portfolio_router)
 
 if __name__ == "__main__":
     import uvicorn

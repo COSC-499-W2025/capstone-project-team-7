@@ -94,6 +94,33 @@ Content-Type: multipart/form-data
 - `GET /api/portfolio/chronology`: Chronological list of projects and exercised skills.
 - `POST /api/portfolio/refresh`: Append new zip(s) and rebuild combined view.
 
+#### ✅ Completed - Incremental Portfolio Refresh with Deduplication (Jan 15, 2026)
+- **`POST /api/portfolio/refresh`**: Refresh portfolio view by re-scanning cached file metadata
+  - Accepts optional `project_ids` to refresh specific projects (empty = all)
+  - Supports `force_rescan` to ignore cache and recalculate
+  - Returns `refreshed_projects` list with file change statistics and `summary`
+  - Implementation: `backend/src/api/portfolio_routes.py`
+
+- **`POST /api/projects/{project_id}/append-upload/{upload_id}`**: Merge new uploads into existing projects
+  - Deduplication strategies: `hash`, `path`, or `both`
+  - Conflict resolution: `newer`, `keep_existing`, or `replace`
+  - Supports `dry_run` to preview changes without applying
+  - Returns `merge_result` with files_added, files_updated, duplicates_skipped
+  - Implementation: `backend/src/api/project_routes.py`
+
+- **Deduplication Service**: `backend/src/cli/services/merge_service.py`
+  - `MergeDeduplicationService` class for analyzing merge candidates
+  - Groups files by hash for duplicate detection
+  - Supports configurable conflict resolution strategies
+
+- **TUI Integration**: `backend/src/cli/screens.py`, `backend/src/cli/textual_app.py`
+  - "Refresh" and "Append Upload" buttons in ProjectsScreen
+  - `PortfolioRefreshRequested` and `AppendUploadRequested` messages
+
+- **Tests**:
+  - `tests/test_portfolio_refresh_api.py`: API endpoint tests
+  - `tests/test_merge_deduplication_service.py`: Service unit tests
+
 ### Search, Dedup, and Selection
 - `GET /api/search`: Query across projects/files/skills with filters.
 - `GET /api/dedup`: Report duplicate files and recommendations to retain a single copy.

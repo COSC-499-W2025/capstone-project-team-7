@@ -1574,6 +1574,22 @@ class ProjectInsightsCleared(Message):
         self.project_id = project_id
 
 
+class PortfolioRefreshRequested(Message):
+    """Message sent when user requests portfolio refresh."""
+
+    def __init__(self, project_ids: Optional[List[str]] = None) -> None:
+        super().__init__()
+        self.project_ids = project_ids
+
+
+class AppendUploadRequested(Message):
+    """Message sent when user wants to append an upload to a project."""
+
+    def __init__(self, project_id: str) -> None:
+        super().__init__()
+        self.project_id = project_id
+
+
 class ResumeSelected(Message):
     """Message sent when user wants to view a saved resume."""
 
@@ -1894,6 +1910,8 @@ class ProjectsScreen(ModalScreen[None]):
             with Horizontal(id="projects-buttons"):
                 if self.projects:
                     yield Button("View Project", id="view-btn", variant="primary")
+                    yield Button("Append Upload", id="append-upload-btn", variant="default")
+                    yield Button("Refresh", id="refresh-btn", variant="default")
                     yield Button("Clear insights", id="clear-insights-btn", variant="warning")
                     yield Button("Delete", id="delete-btn", variant="error")
                     yield Button(self._sort_label(), id="sort-toggle-btn", variant="default")
@@ -2092,6 +2110,27 @@ class ProjectsScreen(ModalScreen[None]):
             except Exception:
                 pass
             self._refresh_list()
+
+        elif button_id == "refresh-btn":
+            # Refresh the selected project or all projects
+            if self.selected_project:
+                project_id = self.selected_project.get("id")
+                if project_id:
+                    dispatch_message(self, PortfolioRefreshRequested([project_id]))
+                else:
+                    dispatch_message(self, PortfolioRefreshRequested())
+            else:
+                dispatch_message(self, PortfolioRefreshRequested())
+
+        elif button_id == "append-upload-btn":
+            if self.selected_project:
+                project_id = self.selected_project.get("id")
+                if project_id:
+                    dispatch_message(self, AppendUploadRequested(project_id))
+                else:
+                    self._set_status("Invalid project ID", "error")
+            else:
+                self._set_status("Please select a project first", "error")
     
     def on_key(self, event: Key) -> None:
         """Handle keyboard shortcuts."""

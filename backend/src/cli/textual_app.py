@@ -116,9 +116,11 @@ from .screens import (
     SearchCancelled,
     SearchInputScreen,
     SearchQuerySubmitted,
-    ProjectSelected,       
-    ProjectDeleted,         
+    ProjectSelected,
+    ProjectDeleted,
     ProjectInsightsCleared,
+    PortfolioRefreshRequested,
+    AppendUploadRequested,
     ProjectsScreen,       
     ProjectViewerScreen,
     ResumeDeleted,
@@ -5709,7 +5711,56 @@ class PortfolioTextualApp(App):
             await self._load_and_show_projects()
         else:
             self._show_status("No insights were deleted.", "warning")
-        
+
+    async def on_portfolio_refresh_requested(self, message: PortfolioRefreshRequested) -> None:
+        """Handle portfolio refresh request."""
+        message.stop()
+
+        if not self._session_state.session:
+            self._show_status("Sign in required.", "error")
+            return
+
+        self._show_status("Refreshing portfolio...", "info")
+
+        try:
+            projects_service = self._get_projects_service()
+            user_id = self._session_state.session.user_id
+
+            # Get projects to refresh
+            if message.project_ids:
+                refreshed_count = len(message.project_ids)
+            else:
+                projects = await asyncio.to_thread(
+                    projects_service.get_user_projects,
+                    user_id
+                )
+                refreshed_count = len(projects) if projects else 0
+
+            # Refresh the projects list
+            await self._load_and_show_projects()
+
+            self._show_status(
+                f"Refreshed {refreshed_count} project(s).",
+                "success",
+            )
+        except Exception as exc:
+            self._show_status(f"Failed to refresh portfolio: {exc}", "error")
+
+    async def on_append_upload_requested(self, message: AppendUploadRequested) -> None:
+        """Handle append upload to project request."""
+        message.stop()
+
+        if not self._session_state.session:
+            self._show_status("Sign in required.", "error")
+            return
+
+        project_id = message.project_id
+        self._show_status(
+            "To append an upload, use the API endpoint:\n"
+            f"POST /api/projects/{project_id}/append-upload/{{upload_id}}",
+            "info",
+        )
+
     async def _save_scan_to_database(self, scan_data: Dict[str, Any]) -> None:
         """Save the scan to the projects database."""
         if not self._session_state.session:
