@@ -23,6 +23,12 @@ This project uses Supabase for persisted user data and synced scan artifacts. Be
   - Purpose: Per-user scan preferences/profiles.
   - Code: `backend/src/config/config_manager.py`.
 
+- **public.user_selections**
+  - Purpose: User preferences for project/skill ordering and showcase selection.
+  - Key fields: `user_id`, `project_order` (text[]), `skill_order` (text[]), `selected_project_ids` (text[]), `selected_skill_ids` (text[]).
+  - Code: `backend/src/api/selection_routes.py` (to be implemented).
+  - Notes: One record per user; supports custom ordering and selection state for portfolio display.
+
 - **public.consents_v1**
   - Purpose: Service-level consent storage with metadata per service.
   - Key fields: `user_id` (PK, refs auth.users), `accepted`, `accepted_at`, `version`, `metadata` JSONB (e.g., per-service consent_given/timestamp).
@@ -46,6 +52,7 @@ Do not modify; managed by Supabase:
 - `20251119000000_add_resume_items.sql`: Adds `resume_items`.
 - `20251123000000_add_contribution_ranking.sql`: Adds contribution ranking fields to `projects`.
 - `20251124000000_drop_unused_tables.sql`: Drops `consents` and `uploads` (legacy/unused).
+- `20260115000000_add_user_selections.sql`: Adds `user_selections` table for portfolio/skill ordering and showcase preferences.
 
 ## Environment Keys (per .env)
 
@@ -61,6 +68,7 @@ Using the service key means RLS is bypassed. If you enable RLS on `projects`, en
 - Saved projects: `projects` (JSON exports + summary fields), with cached files in `scan_files`.
 - Resumes: `resume_items`.
 - User preferences: `user_configs`.
+- User selections: `user_selections` (portfolio/skill ordering and showcase preferences).
 - Consents: `consents_v1` (not `consents`).
 
 If you add/remove tables, do it via a migration in `supabase/migrations` so all environments stay in sync.

@@ -1,1 +1,1 @@
-# CLI services package
+"""Services module for CLI functionality."""
