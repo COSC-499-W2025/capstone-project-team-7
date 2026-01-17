@@ -12,10 +12,14 @@ import sys
 import os
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from cli.services.projects_service import ProjectsService, ProjectsServiceError
-from cli.services.encryption import EncryptionService
+try:
+    from cli.services.projects_service import ProjectsService, ProjectsServiceError
+    from cli.services.encryption import EncryptionService
+except ModuleNotFoundError:  # pragma: no cover - test/import fallback
+    from backend.src.cli.services.projects_service import ProjectsService, ProjectsServiceError
+    from backend.src.cli.services.encryption import EncryptionService
 
 logger = logging.getLogger(__name__)
 
@@ -204,6 +208,12 @@ class ErrorResponse(BaseModel):
     """Standard error response."""
     detail: str
     error_code: Optional[str] = None
+
+
+class DeleteInsightsResponse(BaseModel):
+    """Response model for insights deletion."""
+    message: str = "Insights cleared successfully"
+    insights_deleted_at: str
 
 
 class RankProjectRequest(BaseModel):
@@ -800,3 +810,61 @@ async def rank_project(
 
 
 
+
+
+@router.delete(
+    "/{project_id}/insights",
+    response_model=DeleteInsightsResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Project not found"},
+        500: {"model": ErrorResponse, "description": "Server error"},
+    },
+)
+async def delete_project_insights(
+    project_id: str,
+    user_id: str = Depends(verify_auth_token),
+) -> DeleteInsightsResponse:
+    """
+    Clear analysis data (insights) for a project while keeping the project record intact.
+
+    - **project_id**: UUID of the project
+
+    This operation:
+    - Clears the scan_data JSONB column
+    - Resets all analysis flags to false
+    - Sets insights_deleted_at timestamp
+    - Preserves the project record and file records
+
+    Only the project owner can clear their project's insights.
+    """
+    try:
+        service = get_projects_service()
+        success = service.delete_project_insights(user_id, project_id)
+
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Project {project_id} not found or has no insights to clear",
+            )
+
+        return DeleteInsightsResponse(
+            message="Insights cleared successfully",
+            insights_deleted_at=datetime.now().isoformat(),
+        )
+
+    except HTTPException:
+        raise
+    except ProjectsServiceError as exc:
+        logger.error(f"Projects service error: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to clear insights: {str(exc)}",
+        )
+    except Exception as exc:
+        logger.exception("Unexpected error clearing project insights")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred",
+        )

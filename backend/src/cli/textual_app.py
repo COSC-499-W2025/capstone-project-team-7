@@ -18,11 +18,16 @@ import time
 from typing import Optional, Dict, Any, List, Sequence, Type
 import os
 import weakref
+import httpx
 try:
     from dotenv import load_dotenv
 except Exception:  # pragma: no cover - optional dependency
     def load_dotenv(*args, **kwargs):  # type: ignore
         return False
+else:
+    for env_path in (Path.cwd() / ".env", Path(__file__).resolve().parents[2] / ".env"):
+        if env_path.exists():
+            load_dotenv(env_path, override=False)
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -35,6 +40,8 @@ from .message_utils import dispatch_message
 
 from .services.projects_service import ProjectsService, ProjectsServiceError 
 from .services.preferences_service import PreferencesService
+from .services.auth_api_service import AuthAPIService
+from .services.consent_api_service import ConsentAPIService, ConsentAPIServiceError
 from .services.ai_service import (
     AIService,
     AIDependencyError,
@@ -42,6 +49,13 @@ from .services.ai_service import (
     InvalidAPIKeyError,
 )
 from .services.scan_service import ScanService
+from .services.scan_api_client import (
+    ScanApiClient,
+    ScanApiClientError,
+    ScanApiConnectionError,
+    ScanStatusResponse,
+    ScanJobState,
+)
 from .services.session_service import SessionService
 from .services.code_analysis_service import (
     CodeAnalysisError,
@@ -158,6 +172,11 @@ MEDIA_EXTENSIONS = tuple(
 )
 
 
+def _env_flag(name: str) -> bool:
+    value = os.getenv(name, "")
+    return value.lower() in {"1", "true", "yes", "on"}
+
+
 def _maybe_patch_threading_timer() -> None:
     """Log Timer creation stacks when TEXTUAL_CLI_DEBUG_TIMERS is set."""
 
@@ -233,6 +252,7 @@ class PortfolioTextualApp(App):
         ("View Last AI Analysis", "View the results from the most recent AI analysis."),
         ("AI Auto-Suggestion", "Let AI suggest and apply code improvements automatically."), 
         ("Skill progression", "View skill progression timeline and optionally generate an AI summary."),
+        ("API Timeline Check", "Call /api/skills/timeline and /api/portfolio/chronology to confirm API responses."),
         ("Exit", "Quit the Textual interface."),
     ]
     BINDINGS = [
@@ -256,9 +276,16 @@ class PortfolioTextualApp(App):
         self._preferences_state = PreferencesState()
         self._scan_state = ScanState()
         self._ai_state = AIState()
-        self._scan_service = ScanService()
+        # Timeline API state
+        self._timeline_api_snapshot: Optional[Dict[str, Any]] = None
+        self._timeline_api_error: Optional[str] = None
+          
         self._session_service = SessionService(reporter=self._report_filesystem_issue)
+        self._use_api_mode = _env_flag("PORTFOLIO_USE_API")
+        self._auth_api_service = AuthAPIService() if self._use_api_mode else None
+        self._consent_api_service = ConsentAPIService() if self._use_api_mode else None
         self._preferences_service = PreferencesService(media_extensions=MEDIA_EXTENSIONS)
+        self._scan_service = ScanService()
         self._ai_service = AIService()
         self._code_service = CodeAnalysisService()
         self._skills_service = SkillsAnalysisService()
@@ -386,6 +413,8 @@ class PortfolioTextualApp(App):
             detail_panel.update(self._render_ai_detail())
         elif label == "Skill progression":
             detail_panel.update(self._render_skill_progress_detail())
+        elif label == "API Timeline Check":
+            detail_panel.update(self._render_timeline_api_detail())
         else:
             detail_panel.update(
                 f"[b]{label}[/b]\n\n{description}\n\nPress Enter to continue or select another option."
@@ -408,6 +437,13 @@ class PortfolioTextualApp(App):
             return
         if label == "Skill progression":
             asyncio.create_task(self._show_skill_progress_modal())
+            return
+        if label == "API Timeline Check":
+            if not self._session_state.session:
+                self._show_status("Sign in to call timeline APIs.", "warning")
+                self._update_detail(index)
+                return
+            asyncio.create_task(self._run_timeline_api_check())
             return
         
         if label == "View Last AI Analysis":
@@ -1444,6 +1480,246 @@ class PortfolioTextualApp(App):
         overview_text = self._format_scan_overview_with_projects()
         detail_panel.update(overview_text)
         self._show_scan_results_dialog()
+
+    async def _run_scan_via_api(self, target: Path, relevant_only: bool) -> None:
+        """Run a scan using the One-Shot Scan API instead of local ScanService.
+
+        This method calls POST /api/scans to start a background scan, then polls
+        GET /api/scans/{scan_id} for progress updates until completion.
+        """
+        if not self._ensure_data_access_consent():
+            return
+
+        self._show_status("Scanning project via API – please wait…", "info")
+        detail_panel = self.query_one("#detail", Static)
+        progress_bar = self._scan_progress_bar
+        if progress_bar:
+            progress_bar.display = True
+            progress_bar.update(progress=0)
+        progress_label = self._scan_progress_label
+        if progress_label:
+            progress_label.remove_class("hidden")
+            progress_label.update("Connecting to scan API…")
+
+        self._reset_scan_state()
+
+        # Get user ID and access token for API calls if logged in
+        user_id = None
+        profile_id = None
+        access_token = None
+        session = self._session_state.session
+        if session:
+            user_id = session.user_id
+            profile_id = session.user_id  # Use user_id as profile_id for persistence
+            access_token = session.access_token
+
+        # Initialize API client
+        api_client = ScanApiClient()
+
+        try:
+            # Start the scan
+            if progress_label:
+                progress_label.update("Starting scan…")
+
+            scan_id = await asyncio.to_thread(
+                api_client.start_scan,
+                str(target),
+                relevance_only=relevant_only,
+                persist_project=bool(session),  # Only persist if logged in
+                profile_id=profile_id,
+                user_id=user_id,
+                access_token=access_token,
+            )
+
+            self._debug_log(f"Started API scan with ID: {scan_id}")
+
+            # Poll for completion
+            poll_interval = 0.5
+            last_percent = 0.0
+
+            while True:
+                status = await asyncio.to_thread(
+                    api_client.get_scan_status,
+                    scan_id,
+                    user_id=user_id,
+                    access_token=access_token,
+                )
+
+                # Update progress UI
+                if status.progress:
+                    percent = status.progress.percent
+                    message = status.progress.message or "Processing…"
+
+                    if progress_bar:
+                        progress_bar.update(progress=percent)
+                    if progress_label:
+                        progress_label.update(message)
+
+                    # Update detail panel with progress
+                    if percent != last_percent:
+                        detail_panel.update(f"[b]Scan Progress[/b]\n\n{message}\n\nProgress: {percent:.1f}%")
+                        last_percent = percent
+
+                # Check if complete
+                if status.is_complete:
+                    break
+
+                await asyncio.sleep(poll_interval)
+
+            # Handle completion
+            if status.state == ScanJobState.failed:
+                error_msg = "Scan failed"
+                if status.error:
+                    error_msg = f"{status.error.code}: {status.error.message}"
+                self._surface_error(
+                    "Run Portfolio Scan",
+                    f"API scan failed: {error_msg}",
+                    "Check the scan path and try again, or use local scan mode.",
+                )
+                return
+
+            if status.state == ScanJobState.canceled:
+                self._show_status("Scan was canceled.", "warning")
+                self.notify("Scan was canceled and did not complete.", severity="warning")
+                return
+
+            # Process successful result
+            result = status.result or {}
+
+            # Build FileMetadata objects from API response
+            from ..scanner.models import FileMetadata, ParseResult
+            from datetime import datetime
+
+            files_data = result.get("files", [])
+            file_metadata_list: List[FileMetadata] = []
+            pdf_candidates: List[FileMetadata] = []
+            document_candidates: List[FileMetadata] = []
+
+            document_extensions = {".txt", ".md", ".markdown", ".rst", ".log"}
+
+            for file_info in files_data:
+                # Create FileMetadata with available data
+                meta = FileMetadata(
+                    path=file_info.get("path", ""),
+                    size_bytes=file_info.get("size_bytes", 0),
+                    mime_type=file_info.get("mime_type", "application/octet-stream"),
+                    created_at=datetime.now(),
+                    modified_at=datetime.now(),
+                )
+                file_metadata_list.append(meta)
+
+                # Categorize files
+                if (meta.mime_type or "").lower() == "application/pdf":
+                    pdf_candidates.append(meta)
+
+                file_path = Path(meta.path)
+                if file_path.suffix.lower() in document_extensions:
+                    document_candidates.append(meta)
+
+            # Build ParseResult
+            summary = result.get("summary", {})
+            parse_result = ParseResult(
+                files=file_metadata_list,
+                issues=[],
+                summary={
+                    "files_processed": summary.get("total_files", len(file_metadata_list)),
+                    "bytes_processed": summary.get("bytes_processed", 0),
+                    "issues_count": summary.get("issues_count", 0),
+                },
+            )
+
+            # Update scan state
+            self._scan_state.target = target
+            self._scan_state.archive = None  # Not available via API
+            self._scan_state.parse_result = parse_result
+            self._scan_state.relevant_only = relevant_only
+            self._scan_state.scan_timings = result.get("timings", [])
+            self._scan_state.languages = result.get("languages", [])
+            self._scan_state.git_repos = []  # API only returns count
+            self._scan_state.git_analysis = []
+            self._scan_state.has_media_files = result.get("has_media_files", False)
+            self._scan_state.media_analysis = None
+            self._scan_state.pdf_candidates = pdf_candidates
+            self._scan_state.pdf_results = []
+            self._scan_state.pdf_summaries = []
+            self._scan_state.document_candidates = document_candidates
+            self._scan_state.document_results = []
+            self._scan_state.code_file_count = len(self._code_service.code_file_candidates(parse_result))
+            self._scan_state.code_analysis_result = None
+            self._scan_state.code_analysis_error = None
+            self._scan_state.skills_analysis_result = None
+            self._scan_state.skills_analysis_error = None
+            self._scan_state.contribution_metrics = None
+            self._scan_state.contribution_analysis_error = None
+            self._scan_state.duplicate_analysis_result = None
+            self._scan_state.resume_item_path = None
+            self._scan_state.resume_item_content = None
+            self._scan_state.resume_item = None
+
+            # Store project_id if returned by API
+            if status.project_id:
+                self._scan_state.project_id = status.project_id
+
+            # Detect projects within scanned directory
+            try:
+                from ..analyzer.project_detector import ProjectDetector
+                detector = ProjectDetector()
+                projects = detector.detect_projects(target)
+                self._scan_state.detected_projects = projects
+                self._scan_state.is_monorepo = detector.is_monorepo(projects)
+                self._debug_log(f"Detected {len(projects)} project(s), monorepo: {self._scan_state.is_monorepo}")
+            except Exception as e:
+                self._debug_log(f"Project detection failed: {e}")
+                self._scan_state.detected_projects = []
+                self._scan_state.is_monorepo = False
+
+            # Auto-extract skills in background if code files are present
+            if self._scan_state.code_file_count > 0:
+                try:
+                    skills = await asyncio.to_thread(self._perform_skills_analysis)
+                    self._scan_state.skills_analysis_result = skills
+                except Exception:
+                    pass
+
+            # Auto-extract contribution metrics if code files or git repos are present
+            if self._scan_state.code_file_count > 0 or result.get("git_repos_count", 0) > 0:
+                try:
+                    contribution_metrics = await asyncio.to_thread(self._perform_contribution_analysis)
+                    self._scan_state.contribution_metrics = contribution_metrics
+                except Exception:
+                    pass
+
+            self._show_status("Scan completed successfully via API.", "success")
+            overview_text = self._format_scan_overview_with_projects()
+            detail_panel.update(overview_text)
+            self._show_scan_results_dialog()
+
+        except ScanApiConnectionError as exc:
+            self._surface_error(
+                "Run Portfolio Scan",
+                f"Cannot connect to scan API: {exc}",
+                "Ensure the API server is running or disable API mode with SCAN_USE_API=false.",
+            )
+        except ScanApiClientError as exc:
+            self._surface_error(
+                "Run Portfolio Scan",
+                f"Scan API error: {exc}",
+                "Check the scan configuration and try again.",
+            )
+        except Exception as exc:
+            self._surface_error(
+                "Run Portfolio Scan",
+                f"Unexpected error ({exc.__class__.__name__}): {exc}",
+                "Re-run the scan or try local scan mode.",
+            )
+        finally:
+            api_client.close()
+            if progress_bar:
+                progress_bar.update(progress=0)
+                progress_bar.display = False
+            if progress_label:
+                progress_label.add_class("hidden")
+                progress_label.update("")
 
     def _format_scan_overview_with_projects(self) -> str:
         """Format scan overview with project detection information."""
@@ -3350,10 +3626,13 @@ class PortfolioTextualApp(App):
     def _show_ai_key_dialog(self) -> None:
         self.push_screen(AIKeyScreen(default_key=self._ai_state.api_key or ""))
 
-    def _get_auth(self) -> SupabaseAuth:
+    def _get_auth(self) -> Any:
         if self._session_state.auth is not None:
             return self._session_state.auth
-        self._session_state.auth = SupabaseAuth()
+        if self._use_api_mode:
+            self._session_state.auth = self._auth_api_service or AuthAPIService()
+        else:
+            self._session_state.auth = SupabaseAuth()
         self._session_state.auth_error = None
         return self._session_state.auth
     
@@ -3363,7 +3642,20 @@ class PortfolioTextualApp(App):
             return self._projects_service
         
         try:
-            self._projects_service = ProjectsService()
+            # Check if API mode is enabled via environment variable
+            use_api = os.getenv("PORTFOLIO_USE_API", "false").lower() == "true"
+            
+            if use_api:
+                from .services.projects_api_service import ProjectsAPIService
+                self._projects_service = ProjectsAPIService()
+                # Set access token if user is already logged in
+                if self._session_state.session and hasattr(self._projects_service, 'set_access_token'):
+                    self._projects_service.set_access_token(self._session_state.session.access_token)
+                self._debug_log("Using ProjectsAPIService (API mode)")
+            else:
+                self._projects_service = ProjectsService()
+                self._debug_log("Using ProjectsService (direct Supabase mode)")
+            
             return self._projects_service
         except ProjectsServiceError as exc:
             raise ProjectsServiceError(f"Unable to initialize projects service: {exc}") from exc
@@ -3457,7 +3749,28 @@ class PortfolioTextualApp(App):
         self._preferences_screen = None
 
     def _show_privacy_notice(self) -> None:
+        if self._use_api_mode and self._session_state.session:
+            asyncio.create_task(self._show_privacy_notice_api())
+            return
         notice = consent_storage.PRIVACY_NOTICE.strip()
+        self.push_screen(NoticeScreen(notice))
+
+    async def _show_privacy_notice_api(self) -> None:
+        session = self._session_state.session
+        if not session or not self._consent_api_service:
+            notice = consent_storage.PRIVACY_NOTICE.strip()
+            self.push_screen(NoticeScreen(notice))
+            return
+        try:
+            notice_payload = await asyncio.to_thread(
+                self._consent_api_service.fetch_notice,
+                session.access_token,
+                ConsentValidator.SERVICE_EXTERNAL,
+            )
+            notice = (notice_payload.get("privacy_notice") or consent_storage.PRIVACY_NOTICE).strip()
+        except ConsentAPIServiceError as exc:
+            self._show_status(f"Unable to fetch consent notice: {exc}", "warning")
+            notice = consent_storage.PRIVACY_NOTICE.strip()
         self.push_screen(NoticeScreen(notice))
 
     def on_scan_results_screen_closed(self) -> None:
@@ -3600,6 +3913,7 @@ class PortfolioTextualApp(App):
     def _invalidate_cached_state(self) -> None:
         self._consent_state.record = None
         self._consent_state.error = None
+        self._consent_state.external_services = False
         self._preferences_state.summary = None
         self._preferences_state.profiles = {}
         self._preferences_state.error = None
@@ -3670,11 +3984,20 @@ class PortfolioTextualApp(App):
         self._refresh_current_detail()
         return False
 
+    def _read_external_consent(self) -> bool:
+        if not self._session_state.session:
+            return False
+        record = consent_storage.get_consent(
+            self._session_state.session.user_id, ConsentValidator.SERVICE_EXTERNAL
+        )
+        return bool(record and record.get("consent_given"))
+
     def _has_external_consent(self) -> bool:
         if not self._session_state.session:
             return False
-        record = consent_storage.get_consent(self._session_state.session.user_id, ConsentValidator.SERVICE_EXTERNAL)
-        return bool(record and record.get("consent_given"))
+        if self._use_api_mode:
+            return self._consent_state.external_services
+        return self._read_external_consent()
 
     async def _handle_toggle_required(self) -> None:
         if not self._session_state.session:
@@ -3716,6 +4039,9 @@ class PortfolioTextualApp(App):
         self._update_consent_dialog_state(message="Updating external services consent…", tone="info")
         try:
             message = await asyncio.to_thread(self._toggle_external_consent_sync)
+        except ConsentError as exc:
+            self._show_status(f"Consent error: {exc}", "error")
+            self._update_consent_dialog_state(message=f"Consent error: {exc}", tone="error")
         except Exception as exc:  # pragma: no cover - defensive fallback
             self._show_status(f"Unexpected consent error: {exc}", "error")
             self._update_consent_dialog_state(message=f"Unexpected consent error: {exc}", tone="error")
@@ -3729,6 +4055,23 @@ class PortfolioTextualApp(App):
         if not self._session_state.session:
             raise ConsentError("No active session")
         user_id = self._session_state.session.user_id
+        if self._use_api_mode:
+            if not self._consent_api_service:
+                raise ConsentError("Consent API service unavailable")
+            enabling = self._consent_state.record is None
+            external_services = self._consent_state.external_services if enabling else False
+            try:
+                status = self._consent_api_service.update_status(
+                    self._session_state.session.access_token,
+                    data_access=enabling,
+                    external_services=external_services,
+                )
+            except ConsentAPIServiceError as exc:
+                raise ConsentError(str(exc)) from exc
+            self._consent_state.external_services = bool(status.get("external_services"))
+            self._consent_state.record = self._consent_api_service.status_to_record(status)
+            return "Required consent granted." if enabling else "Required consent withdrawn."
+
         if self._consent_state.record:
             consent_storage.withdraw_consent(user_id, ConsentValidator.SERVICE_FILE_ANALYSIS)
             return "Required consent withdrawn."
@@ -3745,6 +4088,24 @@ class PortfolioTextualApp(App):
         if not self._session_state.session:
             raise ConsentError("No active session")
         user_id = self._session_state.session.user_id
+        if self._use_api_mode:
+            if not self._consent_api_service:
+                raise ConsentError("Consent API service unavailable")
+            if not self._consent_state.record:
+                raise ConsentError("Required consent must be enabled first.")
+            enabling = not self._consent_state.external_services
+            try:
+                status = self._consent_api_service.update_status(
+                    self._session_state.session.access_token,
+                    data_access=True,
+                    external_services=enabling,
+                )
+            except ConsentAPIServiceError as exc:
+                raise ConsentError(str(exc)) from exc
+            self._consent_state.external_services = bool(status.get("external_services"))
+            self._consent_state.record = self._consent_api_service.status_to_record(status)
+            return "External services consent granted." if enabling else "External services consent withdrawn."
+
         if self._has_external_consent():
             consent_storage.withdraw_consent(user_id, ConsentValidator.SERVICE_EXTERNAL)
             return "External services consent withdrawn."
@@ -3848,13 +4209,21 @@ class PortfolioTextualApp(App):
         self._session_state.auth_error = None
         self._persist_session()
 
-        consent_storage.set_session_token(session.access_token)
-        consent_storage.load_user_consents(session.user_id, session.access_token)
+        if not self._use_api_mode:
+            consent_storage.set_session_token(session.access_token)
+            consent_storage.load_user_consents(session.user_id, session.access_token)
+
+        # Update API service token if using API mode
+        if self._projects_service and hasattr(self._projects_service, 'set_access_token'):
+            self._projects_service.set_access_token(session.access_token)
+            self._debug_log(f"Updated ProjectsAPIService token for {session.email}")
 
         self._invalidate_cached_state()
         self._refresh_consent_state()
         self._load_preferences()
         self._update_session_status()
+        # Sync auth token to scan service for API mode
+        self._sync_auth_token_to_services()
         self._show_status(success_message, "success")
         self._refresh_current_detail()
 
@@ -4033,6 +4402,12 @@ class PortfolioTextualApp(App):
     def _persist_session(self) -> None:
         if self._session_state.session:
             self._session_service.persist_session(self._session_state.session_path, self._session_state.session)
+    
+    def _sync_auth_token_to_services(self) -> None:
+        """Sync current session auth token to services that need it (e.g., API client)"""
+        if self._session_state.session and self._session_state.session.access_token:
+            # Sync to scan service for API mode
+            self._scan_service.set_auth_token(self._session_state.session.access_token)
 
     def _persist_ai_output(self, structured_result: Dict[str, Any], raw_result: Dict[str, Any]) -> bool:
         """Write the latest AI analysis to disk as JSON for easier reading.
@@ -4243,11 +4618,13 @@ class PortfolioTextualApp(App):
             elif self._consent_state.error:
                 consent_badge = "[#9ca3af]Consent required[/#9ca3af]"
 
-            external = consent_storage.get_consent(
-                self._session_state.session.user_id, ConsentValidator.SERVICE_EXTERNAL
+            external_enabled = (
+                self._consent_state.external_services
+                if self._use_api_mode
+                else self._read_external_consent()
             )
             external_badge = "[#9ca3af]External off[/#9ca3af]"
-            if external and external.get("consent_given"):
+            if external_enabled:
                 external_badge = "[green]External on[/green]"
 
             ai_badge = "[#9ca3af]AI off[/#9ca3af]"
@@ -4281,7 +4658,15 @@ class PortfolioTextualApp(App):
             self._show_status(f"Path not found: {target}", "error")
             return
 
-        asyncio.create_task(self._run_scan(target, event.relevant_only))
+        # Check if API mode is enabled via environment variable
+        use_api = os.getenv("SCAN_USE_API", "false").lower() == "true"
+
+        if use_api:
+            self._debug_log("Using scan API mode")
+            asyncio.create_task(self._run_scan_via_api(target, event.relevant_only))
+        else:
+            self._debug_log("Using local scan mode")
+            asyncio.create_task(self._run_scan(target, event.relevant_only))
 
     def on_login_cancelled(self, event: LoginCancelled) -> None:
         event.stop()
@@ -4429,14 +4814,21 @@ class PortfolioTextualApp(App):
         self._session_state.session = session
         if not session:
             return
+
         await self._ensure_session_token_fresh()
         session = self._session_state.session
         if not session:
             return
+
         self._session_state.last_email = session.email
-        # Restore consent persistence with the loaded session
-        consent_storage.set_session_token(session.access_token)
-        consent_storage.load_user_consents(session.user_id, session.access_token)
+
+        # Sync auth token to scan service for API mode
+        self._sync_auth_token_to_services()
+
+        if not self._use_api_mode:
+            consent_storage.set_session_token(session.access_token)
+            consent_storage.load_user_consents(session.user_id, session.access_token)
+
 
     async def _ensure_session_token_fresh(self, *, force_refresh: bool = False) -> bool:
         session = self._session_state.session
@@ -4466,22 +4858,45 @@ class PortfolioTextualApp(App):
 
         self._session_state.session = refreshed
         self._session_state.last_email = refreshed.email
-        consent_storage.set_session_token(refreshed.access_token)
-        consent_storage.load_user_consents(refreshed.user_id, refreshed.access_token)
+        if not self._use_api_mode:
+            consent_storage.set_session_token(refreshed.access_token)
+            consent_storage.load_user_consents(refreshed.user_id, refreshed.access_token)
         self._persist_session()
+        # Sync refreshed auth token to scan service for API mode
+        self._sync_auth_token_to_services()
         return True
 
     def _refresh_consent_state(self) -> None:
         self._consent_state.record = None
         self._consent_state.error = None
+        self._consent_state.external_services = False
         if not self._session_state.session:
             return
-        record, error = self._session_service.refresh_consent(
-            self._consent_state.validator,
-            self._session_state.session.user_id,
-        )
-        self._consent_state.record = record
-        self._consent_state.error = error
+
+        if self._use_api_mode and self._consent_api_service:
+            try:
+                status = self._consent_api_service.fetch_status(
+                    self._session_state.session.access_token
+                )
+            except ConsentAPIServiceError as exc:
+                self._consent_state.error = str(exc)
+                return
+
+            self._consent_state.external_services = bool(status.get("external_services"))
+            record = self._consent_api_service.status_to_record(status)
+            if record:
+                self._consent_state.record = record
+            else:
+                self._consent_state.error = "Required consent has not been granted yet."
+        else:
+            record, error = self._session_service.refresh_consent(
+                self._consent_state.validator,
+                self._session_state.session.user_id,
+            )
+            self._consent_state.record = record
+            self._consent_state.error = error
+            self._consent_state.external_services = self._read_external_consent()
+
         if getattr(self, "is_mounted", False):
             try:
                 self._update_session_status()
@@ -4618,10 +5033,12 @@ class PortfolioTextualApp(App):
             consent_status = "[green]granted[/green]" if self._consent_state.record else "[#9ca3af]pending[/#9ca3af]"
             if self._consent_state.error:
                 consent_status = f"[#9ca3af]pending[/#9ca3af] — {self._consent_state.error}"
-            external = consent_storage.get_consent(
-                self._session_state.session.user_id, ConsentValidator.SERVICE_EXTERNAL
+            external_enabled = (
+                self._consent_state.external_services
+                if self._use_api_mode
+                else self._read_external_consent()
             )
-            external_status = "[green]enabled[/green]" if external and external.get("consent_given") else "[#9ca3af]disabled[/#9ca3af]"
+            external_status = "[green]enabled[/green]" if external_enabled else "[#9ca3af]disabled[/#9ca3af]"
             lines.extend(
                 [
                     "",
@@ -4684,6 +5101,110 @@ class PortfolioTextualApp(App):
             lines.append(f"• Most recent: {name} ({timestamp_str})")
         
         return "\n".join(lines)
+
+    def _render_timeline_api_detail(self) -> str:
+        lines = ["[b]API Timeline Check[/b]"]
+        base_url = self._get_api_base_url()
+
+        if not self._session_state.session:
+            lines.extend(
+                [
+                    "",
+                    "• Sign in (Ctrl+L) to call the authenticated API routes.",
+                    f"• Base URL: {base_url}",
+                ]
+            )
+            return "\n".join(lines)
+
+        lines.extend(
+            [
+                "",
+                f"• Base URL: {base_url}",
+                "• Press Enter to run the API checks.",
+                "• Endpoints: /api/skills/timeline, /api/portfolio/chronology",
+            ]
+        )
+
+        if self._timeline_api_error:
+            lines.extend(
+                [
+                    "",
+                    f"• Last error: {self._timeline_api_error}",
+                ]
+            )
+            return "\n".join(lines)
+
+        if self._timeline_api_snapshot:
+            snapshot = self._timeline_api_snapshot
+            lines.extend(
+                [
+                    "",
+                    f"• Last check: {snapshot.get('checked_at', 'unknown')}",
+                    f"• Skills timeline: {snapshot.get('skills_status')} ({snapshot.get('skills_count')} items)",
+                    f"• Portfolio chronology: {snapshot.get('portfolio_status')} "
+                    f"({snapshot.get('projects_count')} projects, {snapshot.get('portfolio_skills_count')} skills)",
+                ]
+            )
+        return "\n".join(lines)
+
+    def _get_api_base_url(self) -> str:
+        return os.getenv("API_BASE_URL") or os.getenv("PORTFOLIO_API_URL") or "http://localhost:8000"
+
+    async def _run_timeline_api_check(self) -> None:
+        session = self._session_state.session
+        if not session:
+            self._show_status("Sign in to call timeline APIs.", "warning")
+            return
+        if not await self._ensure_session_token_fresh():
+            self._handle_session_expired()
+            return
+
+        base_url = self._get_api_base_url().rstrip("/")
+        headers = {"Authorization": f"Bearer {session.access_token}"}
+        self._timeline_api_error = None
+        self._show_status("Checking timeline APIs…", "info")
+
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                skills_res = await client.get(f"{base_url}/api/skills/timeline", headers=headers)
+                portfolio_res = await client.get(f"{base_url}/api/portfolio/chronology", headers=headers)
+        except Exception as exc:
+            self._timeline_api_error = str(exc)
+            self._show_status("Timeline API check failed.", "error")
+            self._refresh_current_detail()
+            return
+
+        skills_count = 0
+        portfolio_projects = 0
+        portfolio_skills = 0
+        try:
+            skills_payload = skills_res.json()
+            skills_count = len(skills_payload.get("items") or []) if skills_res.status_code == 200 else 0
+        except Exception:
+            pass
+
+        try:
+            portfolio_payload = portfolio_res.json()
+            if portfolio_res.status_code == 200:
+                portfolio_projects = len(portfolio_payload.get("projects") or [])
+                portfolio_skills = len(portfolio_payload.get("skills") or [])
+        except Exception:
+            pass
+
+        self._timeline_api_snapshot = {
+            "checked_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ"),
+            "skills_status": skills_res.status_code,
+            "skills_count": skills_count,
+            "portfolio_status": portfolio_res.status_code,
+            "projects_count": portfolio_projects,
+            "portfolio_skills_count": portfolio_skills,
+        }
+
+        if skills_res.status_code == 200 and portfolio_res.status_code == 200:
+            self._show_status("Timeline API check completed.", "success")
+        else:
+            self._show_status("Timeline API check returned errors.", "warning")
+        self._refresh_current_detail()
 
     def _render_saved_resumes_detail(self) -> str:
         """Render the saved resumes detail panel."""
@@ -4901,10 +5422,12 @@ class PortfolioTextualApp(App):
         self._refresh_consent_state()
         record = self._consent_state.record
         required = "[green]granted[/green]" if record else "[#9ca3af]missing[/#9ca3af]"
-        external = consent_storage.get_consent(
-            self._session_state.session.user_id, ConsentValidator.SERVICE_EXTERNAL
+        external_enabled = (
+            self._consent_state.external_services
+            if self._use_api_mode
+            else self._read_external_consent()
         )
-        external_status = "[green]enabled[/green]" if external and external.get("consent_given") else "[#9ca3af]disabled[/#9ca3af]"
+        external_status = "[green]enabled[/green]" if external_enabled else "[#9ca3af]disabled[/#9ca3af]"
         lines.extend(
             [
                 "",

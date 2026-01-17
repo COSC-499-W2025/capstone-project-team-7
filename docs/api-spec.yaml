@@ -30,6 +30,17 @@ components:
           type: object
       required: [code, message]
 
+    DeleteInsightsResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Insights cleared successfully
+        insights_deleted_at:
+          type: string
+          format: date-time
+      required: [message, insights_deleted_at]
+
     Pagination:
       type: object
       properties:
@@ -55,6 +66,35 @@ components:
         options: { type: array, items: { type: string } }
         version: { type: string }
       required: [service, privacy_notice]
+
+    AuthCredentials:
+      type: object
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+      required: [email, password]
+
+    AuthRefreshRequest:
+      type: object
+      properties:
+        refresh_token: { type: string }
+      required: [refresh_token]
+
+    AuthSession:
+      type: object
+      properties:
+        user_id: { type: string }
+        email: { type: string }
+        access_token: { type: string }
+        refresh_token: { type: string, nullable: true }
+      required: [user_id, email, access_token]
+
+    AuthSessionInfo:
+      type: object
+      properties:
+        user_id: { type: string }
+        email: { type: string, nullable: true }
+      required: [user_id]
 
     LLMKeyStatus:
       type: object
@@ -616,6 +656,13 @@ components:
         commits: { type: integer }
         projects: { type: array, items: { type: string } }
 
+    SkillsTimelineResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/SkillsTimelineItem' }
+
     PortfolioChronology:
       type: object
       properties:
@@ -691,6 +738,90 @@ paths:
                 type: object
                 properties:
                   status: { type: string, example: ok }
+
+  /api/auth/signup:
+    post:
+      summary: Create a new user session
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AuthCredentials' }
+      responses:
+        '200':
+          description: Authenticated session
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthSession' }
+        '401':
+          description: Authentication failed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/auth/login:
+    post:
+      summary: Login with email/password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AuthCredentials' }
+      responses:
+        '200':
+          description: Authenticated session
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthSession' }
+        '401':
+          description: Authentication failed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/auth/refresh:
+    post:
+      summary: Refresh an access token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AuthRefreshRequest' }
+      responses:
+        '200':
+          description: Refreshed session
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthSession' }
+        '400':
+          description: Missing refresh token
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Authentication failed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/auth/session:
+    get:
+      summary: Validate bearer token and return identity
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Current user identity
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthSessionInfo' }
+        '401':
+          description: Invalid or missing token
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   /api/consent:
     get:
@@ -1081,8 +1212,26 @@ paths:
           schema: { type: string }
           required: true
       responses:
-        '204':
+        '200':
           description: Insights cleared
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeleteInsightsResponse' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   /api/projects/{project_id}/append-upload/{upload_id}:
     post:
@@ -1161,9 +1310,7 @@ paths:
           description: Skills timeline
           content:
             application/json:
-              schema:
-                type: array
-                items: { $ref: '#/components/schemas/SkillsTimelineItem' }
+              schema: { $ref: '#/components/schemas/SkillsTimelineResponse' }
 
   /api/portfolio/chronology:
     get:

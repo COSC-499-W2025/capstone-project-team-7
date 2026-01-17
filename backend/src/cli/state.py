@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..auth.consent_validator import ConsentRecord, ConsentValidator
-from ..auth.session import Session, SupabaseAuth
+from ..auth.session import Session
 from ..scanner.models import FileMetadata, ParseResult
 
 
@@ -15,7 +15,7 @@ class SessionState:
     session_path: Path = field(default_factory=lambda: Path.home() / ".portfolio_cli_session.json")
     session: Optional[Session] = None
     last_email: str = ""
-    auth: Optional[SupabaseAuth] = None
+    auth: Optional[Any] = None
     auth_error: Optional[str] = None
     login_task: Optional[asyncio.Task[Any]] = None
 
@@ -25,6 +25,7 @@ class ConsentState:
     validator: ConsentValidator = field(default_factory=ConsentValidator)
     record: Optional[ConsentRecord] = None
     error: Optional[str] = None
+    external_services: bool = False
 
 
 @dataclass

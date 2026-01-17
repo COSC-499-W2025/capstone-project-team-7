@@ -17,6 +17,12 @@
 - **Reviewable and editable**: All generated rankings, summaries, deletions should be user-adjustable and reversible.
 
 ## Core API Surface (draft)
+### Authentication
+- `POST /api/auth/signup`: Create a new user session via Supabase auth.
+- `POST /api/auth/login`: Issue an access/refresh token pair.
+- `POST /api/auth/refresh`: Exchange a refresh token for a new session.
+- `GET /api/auth/session`: Validate the bearer token and return user identity.
+
 ### Consent and Session
 - `POST /api/consent`: Record/update user consent for data access and external services (include privacy notice text).
 - `GET /api/consent`: Return current consent state and timestamps.
@@ -25,6 +31,7 @@
 - `POST /api/llm/clear-key`, `POST /api/llm/client-status`: Manage LLM key lifecycle (existing).
 
 #### Completed
+- Auth endpoints: `POST /api/auth/signup`, `POST /api/auth/login`, `POST /api/auth/refresh`, `GET /api/auth/session`
 - Consent endpoints: `GET /api/consent`, `POST /api/consent`, `GET /api/consent/notice`
 - Supabase auth resolution: `backend/src/api/dependencies.py`
 - Implementation: `backend/src/api/consent_routes.py`
@@ -69,6 +76,21 @@ Content-Type: multipart/form-data
 - `POST /api/scans`: One-shot convenience that wraps upload+parse(+analysis) for a local `source_path` (Electron sends path via IPC); returns `scan_id`, derived `project_id` (if persisted), and progress hooks.
 - `GET /api/scans/{scan_id}`: Progress and results (parse + analysis) so the renderer can poll instead of reading local files.
 - Internally reuses uploads/analysis endpoints to keep a single pipeline; prefer this from the Electron app instead of invoking CLI directly.
+
+#### Completed
+- **One-Shot Scan API** (Jan 8, 2026)
+  - `POST /api/scans`: Start background scan with `source_path`, returns `scan_id` (HTTP 202)
+  - `GET /api/scans/{scan_id}`: Poll scan status (queued → running → succeeded/failed)
+  - Implementation: `backend/src/api/spec_routes.py`
+  - Tests: `tests/test_scan_api.py`
+  - Features: Background task execution, progress tracking, idempotency support, user isolation
+
+- **TUI Scan API Integration** (Jan 13, 2026)
+  - `ScanApiClient`: HTTP client for scan API endpoints
+  - Implementation: `backend/src/cli/services/scan_api_client.py`
+  - TUI Integration: `backend/src/cli/textual_app.py` (`_run_scan_via_api` method)
+  - Tests: `tests/cli/test_scan_api_client.py`
+  - Usage: Set `SCAN_USE_API=true` environment variable to enable API mode in TUI
 
 ### ✅ (Completed) Projects and Storage endpoints
 - `POST /api/projects`: Persist parse+analysis results (optional encryption), return `project_id`.
