@@ -13,12 +13,22 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Dict, Any
 
-from ...local_analysis.contribution_analyzer import (
-    ContributionAnalyzer,
-    ProjectContributionMetrics,
-    ContributorMetrics,
-    ActivityBreakdown,
-)
+try:
+    # Try absolute import first (for API context)
+    from local_analysis.contribution_analyzer import (
+        ContributionAnalyzer,
+        ProjectContributionMetrics,
+        ContributorMetrics,
+        ActivityBreakdown,
+    )
+except ImportError:
+    # Fall back to relative import (for CLI context)
+    from ...local_analysis.contribution_analyzer import (
+        ContributionAnalyzer,
+        ProjectContributionMetrics,
+        ContributorMetrics,
+        ActivityBreakdown,
+    )
 
 logger = logging.getLogger(__name__)
 
