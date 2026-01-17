@@ -1,5 +1,36 @@
 # Capstone Team 7 Logs
 
+## Quick Navigation
+- [Week 16 (January 12th - 18th)](#week-16-january-12th---18th)
+- [Week 15 (January 5th - 11th)](#week-15-january-5th---11th)
+- [Week 14 (December 1st - 7th)](#week-14-december-1st---7th)
+- [Week 13 (November 24th - 30th)](#week-13-november-24th---30th)
+- [Week 12 (November 17th - 23rd)](#week-12-november-17th---23rd)
+- [Reading Break (November 10 - 16)](#reading-break-november-10---16)
+- [Week 10 (November 3rd - 9th)](#week-10-november-3rd---9th)
+- [Week 9 (October 27 - November 2)](#week-9-october-27---november-2)
+- [Week 8 (October 20 - 26)](#week-8-october-20---26)
+- [Week 7 (October 13 - 19)](#week-7-october-13---19)
+- [Week 6 (October 6 - 12)](#week-6-october-6---12)
+- [Week 5 (September 29 - October 5)](#week-5-september-29---october-5)
+- [Week 4 (September 22 - 28)](#week-4-september-22---28)
+- [Week 3 (September 15 - 21)](#week-3-september-15---21)
+
+## Week 16 (January 12th - 18th)
+This week, the team continued building out the backend API and integrating it with the Textual UI. Key accomplishments include connecting the API routes implemented last week to the TUI and also adding other new API routes that are needed by the frontend.
+
+**Joaquin:**
+
+**Aaron:**
+
+**Jacob:**
+
+**Om:** This week I delivered two major integration efforts connecting backend APIs to the TUI. For [PR #223](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/223), I implemented the project routes API integration into the TUI by creating `projects_api_service.py` that handles all project CRUD operations through API endpoints rather than direct database calls. This service layer provides methods for saving projects, retrieving project lists, fetching individual project details, and deleting projects, with proper authentication token handling and error management. The integration modified `textual_app.py` to use the new service layer, ensuring clean separation between UI and API communication. Additionally, I developed the Selection API feature branch with [PR #234](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/234), adding multiple lines of functionality for managing user preferences around project and skill ordering. I designed the database schema with the `user_selections` table migration, implemented `selection_service.py` for business logic, created `selection_routes.py` with GET/POST endpoints, and developed comprehensive test coverage with `test_selection_api.py`. The feature includes proper RLS policies, CASCADE delete constraints, automatic timestamp updates, and Pydantic models for request/response validation. I also reviewed multiple PRs including [PR #228](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/228), [PR #231](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/231), and [PR #236](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/236), providing feedback on architecture, async handling, and storage patterns.
+
+**Vlad:**
+
+**Samarth:**
+
 
 ## Week 15 (January 5th - 11th)
 This week we focused on defining our API and implementing the first routes.
