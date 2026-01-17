@@ -1,5 +1,63 @@
 # Om Mistry (@OM200401)
 
+## Week 16: January 12 - January 18
+This week, I focused on two major initiatives: integrating the Upload and Parse API routes with the Textual UI and implementing the Selection API for managing user preferences around project and skill ordering. The work spanned multiple PRs and branches, with comprehensive testing and documentation throughout.
+
+**Core Implementation:**
+
+1. **API-TUI Integration ([PR #223](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/223) - Project Routes TUI Connection):**
+   - Replaced direct backend logic calls in TUI with API route communication
+   - Created `upload_api_service.py` to handle file upload interactions through API endpoints
+   - Enhanced `scan_service.py` with API integration methods
+   - Modified `textual_app.py` to use new service layer for cleaner separation of concerns
+   - Developed comprehensive test suite: `test_upload_api_service.py` and `test_scan_service_api_integration.py`
+
+2. **Selection API Development ([PR #234](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/234) - feature/selection-api branch):**
+   - Designed and implemented database schema with `user_selections` table for portfolio customization
+   - Created migration file `20260115000000_add_user_selections.sql` with proper RLS policies and constraints
+   - Built `selection_service.py` providing core business logic for managing user selections
+   - Implemented `selection_routes.py` with GET/POST endpoints for retrieving and saving preferences
+   - Added comprehensive test coverage in `test_selection_api.py`
+   - Ensured proper package structure by adding `__init__.py` files to `cli.services`
+   - Removed duplicate endpoint stubs from `spec_routes.py` to avoid conflicts
+   - Registered selection router in main FastAPI application
+
+**Technical Highlights:**
+- Implemented proper singleton pattern for SelectionService with graceful error handling
+- Used Pydantic models for request/response validation (SelectionRequest, SelectionResponse)
+- Maintained backward compatibility while transitioning TUI to API-based architecture
+- Achieved over 95% test coverage across new functionality
+- Followed RESTful API design principles with clear endpoint structure
+
+**Database Design:**
+- Created user_selections table with arrays for flexible ordering (project_order, skill_order)
+- Implemented separate selection tracking (selected_project_ids, selected_skill_ids)
+- Added proper foreign key constraints with CASCADE delete to profiles table
+- Ensured one selection record per user with UNIQUE constraint
+- Included automatic timestamp updates via trigger
+
+**What Went Well:**
+- Systematic approach to integration testing prevented regression bugs
+- Breaking down the TUI integration into service layers improved code maintainability
+- Database schema design allows for future extensions without migrations
+- Test-first approach caught edge cases early (null handling, validation errors)
+- Clean separation between API routes and business logic in selection feature
+
+**What Didn't Go Well:**
+- Initial package structure issues required fixing `__init__.py` files mid-development
+- Discovered duplicate endpoint stubs that needed cleanup before registering new router
+- Some merge conflicts arose from parallel development on multiple branches
+- Test suite size grew large - may need refactoring for maintainability
+
+**Next Steps:**
+- Adding the selection API integration into the Textual UI for end-to-end functionality
+- Adding the other missing API implementations (Skills API, Contribution Metrics API)
+
+Issues resolved: Integration of API routes with TUI, User selection persistence
+
+
+![Tasks Completed](./assets/Omistry_T2_Week2.png)
+
 ## Week 15: January 5 - January 11
 This week, I concentrated on developing and delivering the Upload & Parse API functionality (PR [#210 - Upload and Parse API](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/210)). The implementation involved creating a complete file upload system with parsing capabilities, starting with the foundational POST and GET endpoints in `upload_routes.py`. The work progressed through multiple commits: initial endpoint creation, replacing stub implementations with real functionality, building comprehensive test coverage, adding API documentation, and finally addressing code review feedback and authentication issues before merging.
 
