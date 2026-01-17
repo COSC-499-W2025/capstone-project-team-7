@@ -221,6 +221,28 @@ class ProjectsAPIService:
         except Exception as exc:
             raise ProjectsServiceError(f"Failed to get project scan: {exc}") from exc
     
+    def get_dedup_report(self, project_id: str) -> Dict[str, Any]:
+        """Fetch the deduplication report for a project via API."""
+        try:
+            response = self.client.get(
+                f"{self.api_base_url}/api/dedup",
+                params={"project_id": project_id},
+                headers=self._get_headers(),
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                return data if isinstance(data, dict) else {}
+            else:
+                self._handle_error_response(response, "get_dedup_report")
+
+        except httpx.HTTPError as exc:
+            raise ProjectsServiceError(f"Network error getting dedup report: {exc}") from exc
+        except ProjectsServiceError:
+            raise
+        except Exception as exc:
+            raise ProjectsServiceError(f"Failed to get dedup report: {exc}") from exc
+
     def delete_project(self, user_id: str, project_id: str) -> bool:
         """
         Delete a project scan via API.
