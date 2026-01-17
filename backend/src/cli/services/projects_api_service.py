@@ -302,6 +302,85 @@ class ProjectsAPIService:
         except Exception as exc:
             raise ProjectsServiceError(f"Failed to get project by name: {exc}") from exc
     
+    def upload_thumbnail(self, image_path: str, project_id: str) -> tuple[Optional[str], Optional[str]]:
+        """
+        Upload a thumbnail image for a project via API.
+        
+        Args:
+            image_path: Local filesystem path to the image file
+            project_id: Project's UUID
+        
+        Returns:
+            Tuple of (thumbnail_url, error_message)
+            On success: (url, None)
+            On failure: (None, error_message)
+        """
+        try:
+            # Open the image file
+            with open(image_path, 'rb') as f:
+                files = {'file': (os.path.basename(image_path), f, 'image/*')}
+                
+                # Build headers without Content-Type (httpx sets it automatically for multipart)
+                headers = {}
+                if self._access_token:
+                    headers["Authorization"] = f"Bearer {self._access_token}"
+                
+                # POST multipart/form-data to thumbnail upload endpoint
+                response = self.client.post(
+                    f"{self.api_base_url}/api/projects/{project_id}/thumbnail",
+                    files=files,
+                    headers=headers,
+                )
+            
+            if response.status_code == 200:
+                result = response.json()
+                return result.get("thumbnail_url"), None
+            else:
+                self._handle_error_response(response, "upload_thumbnail")
+                
+        except FileNotFoundError:
+            return None, f"Image file not found: {image_path}"
+        except httpx.HTTPError as exc:
+            return None, f"Network error uploading thumbnail: {exc}"
+        except ProjectsServiceError as exc:
+            return None, str(exc)
+        except Exception as exc:
+            return None, f"Failed to upload thumbnail: {exc}"
+    
+    def update_project_thumbnail_url(self, project_id: str, thumbnail_url: str) -> tuple[bool, Optional[str]]:
+        """
+        Update the thumbnail URL for a project via API.
+        
+        Args:
+            project_id: Project's UUID
+            thumbnail_url: Public URL of the thumbnail image
+        
+        Returns:
+            Tuple of (success, error_message)
+            On success: (True, None)
+            On failure: (False, error_message)
+        """
+        try:
+            payload = {"thumbnail_url": thumbnail_url}
+            
+            response = self.client.patch(
+                f"{self.api_base_url}/api/projects/{project_id}/thumbnail",
+                json=payload,
+                headers=self._get_headers(),
+            )
+            
+            if response.status_code == 200:
+                return True, None
+            else:
+                self._handle_error_response(response, "update_thumbnail_url")
+                
+        except httpx.HTTPError as exc:
+            return False, f"Network error updating thumbnail URL: {exc}"
+        except ProjectsServiceError as exc:
+            return False, str(exc)
+        except Exception as exc:
+            return False, f"Failed to update thumbnail URL: {exc}"
+    
     def close(self) -> None:
         """Close the HTTP client."""
         if self.client:

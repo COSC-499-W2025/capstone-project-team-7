@@ -3,9 +3,12 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 import json
 import logging
+import os
+import uuid
+import io
 
 try:
     from supabase import Client, create_client
@@ -199,8 +202,8 @@ class ProjectsService:
                 "total_files, total_lines, languages, "
                 "has_media_analysis, has_pdf_analysis, has_code_analysis, has_git_analysis, "
                 "has_contribution_metrics, contribution_score, user_commit_share, total_commits, "
-                "primary_contributor, project_end_date, has_skills_progress, has_skills_analysis, has_document_analysis,"
-                "created_at"
+                "primary_contributor, project_end_date, has_skills_progress, has_skills_analysis, has_document_analysis, "
+                "thumbnail_url, created_at"
             ).eq("user_id", user_id).order("scan_timestamp", desc=True).execute()
             
             return response.data or []
@@ -213,7 +216,7 @@ class ProjectsService:
                     "total_files, total_lines, languages, "
                     "has_media_analysis, has_pdf_analysis, has_code_analysis, has_git_analysis, "
                     "has_contribution_metrics, contribution_score, user_commit_share, total_commits, "
-                    "primary_contributor, project_end_date, "
+                    "primary_contributor, project_end_date, thumbnail_url, "
                     "created_at"
                 ).eq("user_id", user_id).order("scan_timestamp", desc=True).execute()
                 # Ensure callers can safely read the flag even if absent
@@ -554,3 +557,171 @@ class ProjectsService:
                 )
                 return {}
         return metadata if isinstance(metadata, dict) else {}
+
+    # --- Thumbnail management -------------------------------------------------
+
+    def upload_thumbnail(self, image_path: str, project_id: str) -> Tuple[Optional[str], Optional[str]]:
+        """Upload an image as a project thumbnail to Supabase storage.
+        
+        Args:
+            image_path: Path to the local image file
+            project_id: ID of the project to associate the thumbnail with
+            
+        Returns:
+            Tuple of (public_url, error_message). If successful, public_url is set and error_message is None.
+            If failed, public_url is None and error_message contains the error.
+        """
+        try:
+            # Validate file size (5MB max to prevent DoS)
+            MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
+            file_size = os.path.getsize(image_path)
+            if file_size > MAX_FILE_SIZE:
+                return None, f"File size exceeds 5MB limit (got {file_size / 1024 / 1024:.2f}MB)"
+            
+            # Use configurable bucket name from environment
+            bucket_name = os.getenv("THUMBNAIL_BUCKET", "thumbnails")
+            
+            # Delete old thumbnail before uploading new one
+            self._delete_old_thumbnail(project_id, bucket_name)
+            
+            # Convert image to JPG format
+            file_name = f"public/{project_id}_{uuid.uuid4().hex[:8]}.jpg"
+            jpg_data = self._convert_image_to_jpg(image_path)
+            
+            if jpg_data is None:
+                return None, "Failed to convert image to JPG format"
+            
+            # Upload to Supabase storage
+            file_options = {"content-type": "image/jpg", "upsert": "false"}
+            result = self.client.storage.from_(bucket_name).upload(
+                path=file_name,
+                file=jpg_data,
+                file_options=file_options
+            )
+            
+            # Get the public URL
+            public_url = self._get_thumbnail_public_url(bucket_name, file_name)
+            
+            return public_url, None
+            
+        except Exception as exc:
+            error = f"{type(exc).__name__}: {exc}"
+            logging.error(f"Thumbnail upload error: {error}")
+            return None, error
+    
+    def update_project_thumbnail_url(self, project_id: str, thumbnail_url: str) -> Tuple[bool, Optional[str]]:
+        """Update a project's thumbnail_url in the database.
+        
+        Args:
+            project_id: ID of the project to update
+            thumbnail_url: Public URL of the uploaded thumbnail
+            
+        Returns:
+            Tuple of (success, error_message). If successful, (True, None).
+            If failed, (False, error_message).
+        """
+        try:
+            result = self.client.table("projects").update({
+                "thumbnail_url": thumbnail_url
+            }).eq("id", project_id).execute()
+            
+            return True, None
+            
+        except Exception as exc:
+            error = f"{type(exc).__name__}: {exc}"
+            logging.error(f"Database update error: {error}")
+            return False, error
+    
+    def _convert_image_to_jpg(self, image_path: str) -> Optional[bytes]:
+        """Convert an image file to JPG format.
+        
+        Args:
+            image_path: Path to the image file
+            
+        Returns:
+            JPG image data as bytes, or None if conversion failed
+        """
+        try:
+            from PIL import Image
+            
+            img = Image.open(image_path)
+            
+            # Validate dimensions (4096x4096 max to prevent DoS)
+            MAX_DIMENSION = 4096
+            width, height = img.size
+            if width > MAX_DIMENSION or height > MAX_DIMENSION:
+                logging.error(f"Image dimensions exceed {MAX_DIMENSION}x{MAX_DIMENSION} (got {width}x{height})")
+                return None
+            
+            # Convert to RGB if necessary
+            if img.mode in ('RGBA', 'LA', 'P'):
+                # Convert RGBA/LA/P to RGB
+                background = Image.new('RGB', img.size, (255, 255, 255))
+                if img.mode == 'P':
+                    img = img.convert('RGBA')
+                background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+                img = background
+            elif img.mode != 'RGB':
+                img = img.convert('RGB')
+            
+            # Save as JPG to bytes
+            jpg_buffer = io.BytesIO()
+            img.save(jpg_buffer, format='JPEG', quality=85)
+            return jpg_buffer.getvalue()
+            
+        except Exception as e:
+            logging.error(f"Error converting image: {e}")
+            return None
+    
+    def _get_thumbnail_public_url(self, bucket_name: str, file_name: str) -> str:
+        """Get the public URL for an uploaded file.
+        
+        Args:
+            bucket_name: Name of the storage bucket
+            file_name: Name/path of the file in storage
+            
+        Returns:
+            Public URL for the file
+        """
+        try:
+            public_url_response = self.client.storage.from_(bucket_name).get_public_url(file_name)
+            return public_url_response
+        except Exception as url_exc:
+            logging.warning(f"Error getting public URL: {url_exc}")
+            # Fallback to manual construction with URL encoding
+            from urllib.parse import quote
+            encoded_bucket = quote(bucket_name)
+            encoded_file = quote(file_name)
+            return f"{self.supabase_url}/storage/v1/object/public/{encoded_bucket}/{encoded_file}"
+    
+    def _delete_old_thumbnail(self, project_id: str, bucket_name: str) -> None:
+        """Delete existing thumbnail for a project before uploading a new one.
+        
+        Args:
+            project_id: ID of the project
+            bucket_name: Name of the storage bucket
+        """
+        try:
+            # Get current thumbnail URL from database
+            result = self.client.table("projects").select("thumbnail_url").eq("id", project_id).execute()
+            
+            if not result.data or not result.data[0].get("thumbnail_url"):
+                return  # No existing thumbnail to delete
+            
+            thumbnail_url = result.data[0]["thumbnail_url"]
+            
+            # Extract file path from URL (format: .../storage/v1/object/public/bucket_name/file_path)
+            if "/storage/v1/object/public/" in thumbnail_url:
+                parts = thumbnail_url.split("/storage/v1/object/public/", 1)
+                if len(parts) == 2:
+                    # Remove bucket name prefix to get just the file path
+                    path_with_bucket = parts[1]
+                    if "/" in path_with_bucket:
+                        file_path = path_with_bucket.split("/", 1)[1]
+                        
+                        # Delete the old thumbnail from storage
+                        self.client.storage.from_(bucket_name).remove([file_path])
+                        logging.info(f"Deleted old thumbnail: {file_path}")
+        except Exception as exc:
+            # Log but don't fail the upload if cleanup fails
+            logging.warning(f"Failed to delete old thumbnail: {exc}")

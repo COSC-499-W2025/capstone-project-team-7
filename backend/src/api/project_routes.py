@@ -2,7 +2,7 @@
 # Provides models, services, and utilities for project scan CRUD operations
 # Endpoints are registered in this module's router
 
-from fastapi import APIRouter, HTTPException, status, Header, Depends
+from fastapi import APIRouter, HTTPException, status, Header, Depends, File, UploadFile
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
@@ -11,6 +11,7 @@ import logging
 import sys
 import os
 from pathlib import Path
+import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -182,6 +183,7 @@ class ProjectMetadata(BaseModel):
     total_commits: Optional[int] = None
     primary_contributor: Optional[str] = None
     project_end_date: Optional[str] = None
+    thumbnail_url: Optional[str] = None
     created_at: Optional[str] = None
 
 
@@ -216,6 +218,20 @@ class DeleteInsightsResponse(BaseModel):
     insights_deleted_at: str
 
 
+class ThumbnailUploadResponse(BaseModel):
+    """Response model for thumbnail upload."""
+    thumbnail_url: str
+    message: str = "Thumbnail uploaded successfully"
+
+
+class ThumbnailUpdateRequest(BaseModel):
+    """Request model for updating thumbnail URL."""
+    thumbnail_url: str = Field(..., description="Public URL of the thumbnail image")
+
+
+class ThumbnailUpdateResponse(BaseModel):
+    """Response model for thumbnail URL update."""
+    message: str = "Thumbnail URL updated successfully"
 class RankProjectRequest(BaseModel):
     """Request to compute ranking for a specific project."""
     user_email: Optional[str] = Field(None, description="User's email for contribution matching")
@@ -867,4 +883,146 @@ async def delete_project_insights(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred",
+        )
+
+
+@router.post(
+    "/{project_id}/thumbnail",
+    response_model=ThumbnailUploadResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Project not found"},
+        400: {"model": ErrorResponse, "description": "Invalid file or upload error"},
+        500: {"model": ErrorResponse, "description": "Server error"},
+    },
+)
+async def upload_project_thumbnail(
+    project_id: str,
+    file: UploadFile = File(...),
+    user_id: str = Depends(verify_auth_token),
+) -> ThumbnailUploadResponse:
+    """
+    Upload a thumbnail image for a project.
+    
+    - **project_id**: UUID of the project
+    - **file**: Image file to upload (JPEG, PNG, GIF, BMP, etc.)
+    
+    Accepts multipart/form-data with image file.
+    Converts image to JPG format and uploads to Supabase storage.
+    Updates project record with thumbnail URL.
+    
+    Returns the public URL of the uploaded thumbnail.
+    """
+    try:
+        # Verify project exists and user owns it
+        service = get_projects_service()
+        project = service.get_project_scan(user_id, project_id)
+        
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Project {project_id} not found",
+            )
+        
+        # Save uploaded file to temporary location
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as tmp_file:
+            content = await file.read()
+            tmp_file.write(content)
+            tmp_file_path = tmp_file.name
+        
+        try:
+            # Upload thumbnail using ProjectsService
+            thumbnail_url, error_msg = service.upload_thumbnail(tmp_file_path, project_id)
+            
+            if error_msg:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Failed to upload thumbnail: {error_msg}",
+                )
+            
+            # Update project with thumbnail URL
+            success, update_error = service.update_project_thumbnail_url(project_id, thumbnail_url)
+            
+            if not success:
+                logger.error(f"Failed to update project thumbnail URL: {update_error}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Thumbnail uploaded but database update failed: {update_error}",
+                )
+            
+            return ThumbnailUploadResponse(thumbnail_url=thumbnail_url)
+            
+        finally:
+            # Clean up temporary file
+            try:
+                os.unlink(tmp_file_path)
+            except Exception as cleanup_exc:
+                logger.warning(f"Failed to cleanup temp file: {cleanup_exc}")
+    
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Unexpected error uploading thumbnail")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An unexpected error occurred: {str(exc)}",
+        )
+
+
+@router.patch(
+    "/{project_id}/thumbnail",
+    response_model=ThumbnailUpdateResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Project not found"},
+        400: {"model": ErrorResponse, "description": "Invalid request"},
+        500: {"model": ErrorResponse, "description": "Server error"},
+    },
+)
+async def update_project_thumbnail_url(
+    project_id: str,
+    request: ThumbnailUpdateRequest,
+    user_id: str = Depends(verify_auth_token),
+) -> ThumbnailUpdateResponse:
+    """
+    Update the thumbnail URL for a project.
+    
+    - **project_id**: UUID of the project
+    - **thumbnail_url**: Public URL of the thumbnail image
+    
+    Updates the project's thumbnail_url field in the database.
+    Use this endpoint if you've already uploaded the image to storage
+    and just need to update the database reference.
+    """
+    try:
+        # Verify project exists and user owns it
+        service = get_projects_service()
+        project = service.get_project_scan(user_id, project_id)
+        
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Project {project_id} not found",
+            )
+        
+        # Update thumbnail URL
+        success, error_msg = service.update_project_thumbnail_url(
+            project_id, request.thumbnail_url
+        )
+        
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to update thumbnail URL: {error_msg}",
+            )
+        
+        return ThumbnailUpdateResponse()
+    
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Unexpected error updating thumbnail URL")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An unexpected error occurred: {str(exc)}",
         )
