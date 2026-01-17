@@ -27,7 +27,7 @@ from api import spec_routes
 
 TEST_USER_ID = "test-user-123"
 TEST_ACCESS_TOKEN = "test-token"
-TEST_PROJECT_ID = "proj-123"
+TEST_PROJECT_ID = "550e8400-e29b-41d4-a716-446655440000"
 
 
 async def _override_auth() -> AuthContext:
@@ -109,8 +109,16 @@ def test_dedup_report_returns_groups(client):
 
 
 def test_dedup_missing_project_returns_404(client):
-    response = client.get("/api/dedup", params={"project_id": "missing"})
+    response = client.get("/api/dedup", params={"project_id": "550e8400-e29b-41d4-a716-446655440001"})
     assert response.status_code == 404
+
+
+def test_dedup_invalid_uuid_returns_400(client):
+    response = client.get("/api/dedup", params={"project_id": "not-a-uuid"})
+    assert response.status_code == 400
+    body = response.json()
+    assert body["detail"]["code"] == "validation_error"
+    assert "project_id must be a valid UUID" in body["detail"]["message"]
 
 
 def test_dedup_requires_auth(unauthenticated_client):

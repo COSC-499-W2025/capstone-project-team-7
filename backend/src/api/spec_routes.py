@@ -443,6 +443,7 @@ _scan_service = None
 
 # Lazy-initialized projects service for dedup reports
 _projects_service: Optional[ProjectsService] = None
+_projects_service_lock = threading.Lock()
 
 
 def _get_scan_service():
@@ -455,10 +456,12 @@ def _get_scan_service():
 
 
 def _get_projects_service() -> ProjectsService:
-    """Get or create the singleton projects service instance."""
+    """Get or create the singleton projects service instance (thread-safe)."""
     global _projects_service
     if _projects_service is None:
-        _projects_service = ProjectsService()
+        with _projects_service_lock:
+            if _projects_service is None:
+                _projects_service = ProjectsService()
     return _projects_service
 
 
@@ -1273,6 +1276,18 @@ def _build_dedup_report(files: List[Dict[str, Any]]) -> DedupReport:
 @router.get("/api/dedup", response_model=DedupReport)
 def dedup(project_id: str, auth: AuthContext = Depends(get_auth_context)):
     if not project_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "validation_error", "message": "project_id is required"},
+        )
+
+    try:
+        uuid.UUID(project_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "validation_error", "message": "project_id must be a valid UUID"},
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"code": "validation_error", "message": "project_id is required"},
