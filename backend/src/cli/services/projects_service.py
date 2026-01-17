@@ -156,6 +156,39 @@ class ProjectsService:
         except Exception as exc:
             raise ProjectsServiceError(f"Failed to save scan: {exc}") from exc
     
+    def update_project_score(
+        self,
+        user_id: str,
+        project_id: str,
+        contribution_score: float,
+        user_commit_share: float,
+    ) -> Dict[str, Any]:
+        """
+        Update the contribution score for a project.
+        
+        Args:
+            user_id: User's UUID
+            project_id: Project's UUID
+            contribution_score: Computed ranking score (0-100)
+            user_commit_share: User's percentage of total commits
+        
+        Returns:
+            Updated project record
+        """
+        try:
+            response = self.client.table("projects").update({
+                "contribution_score": contribution_score,
+                "user_commit_share": user_commit_share,
+            }).eq("id", project_id).eq("user_id", user_id).execute()
+            
+            if not response.data:
+                raise ProjectsServiceError(f"Project {project_id} not found or not owned by user")
+            
+            return response.data[0]
+            
+        except Exception as exc:
+            raise ProjectsServiceError(f"Failed to update project score: {exc}") from exc
+    
     def get_user_projects(self, user_id: str) -> List[Dict[str, Any]]:
         """
         Get all projects for a user, ordered by most recent first.

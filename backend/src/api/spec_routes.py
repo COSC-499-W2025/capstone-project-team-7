@@ -1016,45 +1016,48 @@ def append_upload(project_id: str, upload_id: str):
     return {"project_id": project_id, "upload_id": upload_id, "state": JobState.succeeded}
 
 
-@router.post("/api/projects/{project_id}/rank", response_model=RankResponse)
-def rank_project(project_id: str, payload: RankRequest):
-    if project_id not in _project_store:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-    score = sum(payload.weights.values())
-    return RankResponse(score=score, reasons=["Stubbed ranking"])
+# Commented out - Real implementations now in project_routes.py
+# @router.post("/api/projects/{project_id}/rank", response_model=RankResponse)
+# def rank_project(project_id: str, payload: RankRequest):
+#     if project_id not in _project_store:
+#         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+#     score = sum(payload.weights.values())
+#     return RankResponse(score=score, reasons=["Stubbed ranking"])
 
 
-@router.get("/api/projects/top", response_model=List[ProjectSummary])
-def top_projects(limit: int = 3):
-    items = list(_project_store.values())[:limit]
-    return [
-        ProjectSummary(
-            project_id=p.project_id,
-            name=p.name,
-            project_type=p.project_type,
-            languages=p.languages,
-            frameworks=p.frameworks,
-            rank_score=p.rank_score,
-            created_at=p.created_at,
-        )
-        for p in items
-    ]
+# Commented out - Real implementation now in project_routes.py
+# @router.get("/api/projects/top", response_model=List[ProjectSummary])
+# def top_projects(limit: int = 3):
+#     items = list(_project_store.values())[:limit]
+#     return [
+#         ProjectSummary(
+#             project_id=p.project_id,
+#             name=p.name,
+#             project_type=p.project_type,
+#             languages=p.languages,
+#             frameworks=p.frameworks,
+#             rank_score=p.rank_score,
+#             created_at=p.created_at,
+#         )
+#         for p in items
+#     ]
 
 
-@router.get("/api/projects/timeline", response_model=List[TimelineItem])
-def project_timeline():
-    items: List[TimelineItem] = []
-    for p in _project_store.values():
-        items.append(
-            TimelineItem(
-                project_id=p.project_id,
-                name=p.name,
-                start_date=p.scan_timestamp,
-                end_date=p.project_end_date,
-                duration_days=None,
-            )
-        )
-    return items
+# Commented out - Real implementation now in project_routes.py
+# @router.get("/api/projects/timeline", response_model=List[TimelineItem])
+# def project_timeline():
+#     items: List[TimelineItem] = []
+#     for p in _project_store.values():
+#         items.append(
+#             TimelineItem(
+#                 project_id=p.project_id,
+#                 name=p.name,
+#                 start_date=p.scan_timestamp,
+#                 end_date=p.project_end_date,
+#                 duration_days=None,
+#             )
+#         )
+#     return items
 
 
 @router.get("/api/resume/items", response_model=Dict[str, Any])
