@@ -42,6 +42,12 @@ from .services.projects_service import ProjectsService, ProjectsServiceError
 from .services.preferences_service import PreferencesService
 from .services.auth_api_service import AuthAPIService
 from .services.consent_api_service import ConsentAPIService, ConsentAPIServiceError
+from .services.analysis_api_service import (
+    AnalysisAPIService,
+    AnalysisServiceError,
+    AnalysisConsentError,
+    AnalysisResponse,
+)
 from .services.ai_service import (
     AIService,
     AIDependencyError,
@@ -284,6 +290,7 @@ class PortfolioTextualApp(App):
         self._use_api_mode = _env_flag("PORTFOLIO_USE_API")
         self._auth_api_service = AuthAPIService() if self._use_api_mode else None
         self._consent_api_service = ConsentAPIService() if self._use_api_mode else None
+        self._analysis_api_service: Optional[AnalysisAPIService] = None
         self._scan_service = ScanService(use_api=self._use_api_mode)
         self._preferences_service = PreferencesService(media_extensions=MEDIA_EXTENSIONS)
         self._scan_service = ScanService()
@@ -3715,6 +3722,21 @@ class PortfolioTextualApp(App):
         except ProjectsServiceError as exc:
             raise ProjectsServiceError(f"Unable to initialize projects service: {exc}") from exc
     
+    def _get_analysis_api_service(self) -> AnalysisAPIService:
+        """Lazy initialize analysis API service when needed."""
+        if self._analysis_api_service is not None:
+            return self._analysis_api_service
+        
+        try:
+            self._analysis_api_service = AnalysisAPIService()
+            # Set access token if user is already logged in
+            if self._session_state.session:
+                self._analysis_api_service.set_access_token(self._session_state.session.access_token)
+            self._debug_log("Initialized AnalysisAPIService")
+            return self._analysis_api_service
+        except AnalysisServiceError as exc:
+            raise AnalysisServiceError(f"Unable to initialize analysis API service: {exc}") from exc
+    
     def _init_resume_storage_service(self) -> None:
         """Initialize Supabase resume storage client without crashing the UI."""
         try:
@@ -4272,6 +4294,11 @@ class PortfolioTextualApp(App):
         if self._projects_service and hasattr(self._projects_service, 'set_access_token'):
             self._projects_service.set_access_token(session.access_token)
             self._debug_log(f"Updated ProjectsAPIService token for {session.email}")
+        
+        # Update Analysis API service token if initialized
+        if self._analysis_api_service:
+            self._analysis_api_service.set_access_token(session.access_token)
+            self._debug_log(f"Updated AnalysisAPIService token for {session.email}")
 
         self._invalidate_cached_state()
         self._refresh_consent_state()
@@ -5514,7 +5541,15 @@ class PortfolioTextualApp(App):
             progress_label.update("Initializing AI analysis…")
         detail_panel.update("[b]AI-Powered Analysis[/b]\n\nPreparing AI insights…")
         self._show_status("Preparing AI analysis…", "info")
-        self._ai_state.task = asyncio.create_task(self._run_ai_analysis())
+        
+        # Choose between API mode and local mode
+        use_analysis_api = os.getenv("PORTFOLIO_USE_ANALYSIS_API", "false").lower() == "true"
+        if use_analysis_api and self._scan_state.archive:
+            self._debug_log("Starting AI analysis via API")
+            self._ai_state.task = asyncio.create_task(self._run_ai_analysis_via_api())
+        else:
+            self._debug_log("Starting AI analysis locally")
+            self._ai_state.task = asyncio.create_task(self._run_ai_analysis())
 
     async def _run_ai_analysis(self) -> None:
         detail_panel = self.query_one("#detail", Static)
@@ -5609,6 +5644,259 @@ class PortfolioTextualApp(App):
         finally:
             self._ai_state.task = None
             _reset_progress_ui()
+
+    async def _run_ai_analysis_via_api(self) -> None:
+        """
+        Run AI analysis using the Analysis API endpoint.
+        
+        This method uploads the scanned archive to the API, then calls the
+        portfolio analysis endpoint with use_llm=True to get LLM-enhanced insights.
+        """
+        detail_panel = self.query_one("#detail", Static)
+        progress_bar = self._scan_progress_bar
+        progress_label = self._scan_progress_label
+
+        def _reset_progress_ui() -> None:
+            if progress_bar:
+                progress_bar.update(progress=0)
+                progress_bar.display = False
+            if progress_label:
+                progress_label.add_class("hidden")
+                progress_label.update("")
+
+        if not self._scan_state.archive:
+            self._surface_error(
+                "AI-Powered Analysis",
+                "A recent scan with an archive is required.",
+                "Run a portfolio scan first, then try again.",
+            )
+            self._ai_state.task = None
+            _reset_progress_ui()
+            return
+
+        try:
+            analysis_service = self._get_analysis_api_service()
+        except AnalysisServiceError as exc:
+            self._surface_error(
+                "AI-Powered Analysis",
+                f"Cannot connect to analysis API: {exc}",
+                "Ensure the API server is running or use local analysis mode.",
+            )
+            self._ai_state.task = None
+            _reset_progress_ui()
+            return
+
+        try:
+            # Update progress
+            if progress_label:
+                progress_label.update("Uploading archive to analysis API…")
+            
+            # Upload the archive
+            archive_path = str(self._scan_state.archive)
+            upload_id = await asyncio.to_thread(
+                analysis_service.upload_archive,
+                archive_path,
+            )
+            self._debug_log(f"Uploaded archive for analysis: {upload_id}")
+
+            # Update progress
+            if progress_label:
+                progress_label.update("Parsing uploaded archive…")
+
+            # Parse the upload first
+            preferences = None
+            current_prefs = self._current_scan_preferences()
+            if current_prefs:
+                preferences = {
+                    "allowed_extensions": current_prefs.allowed_extensions,
+                    "excluded_dirs": current_prefs.excluded_dirs,
+                    "max_file_size_bytes": current_prefs.max_file_size_bytes,
+                    "follow_symlinks": current_prefs.follow_symlinks,
+                }
+            
+            await asyncio.to_thread(
+                analysis_service.parse_upload,
+                upload_id,
+                preferences=preferences,
+                relevance_only=bool(self._scan_state.relevant_only),
+            )
+            self._debug_log(f"Parsed upload: {upload_id}")
+
+            # Update progress
+            if progress_label:
+                progress_label.update("Running portfolio analysis with LLM…")
+            if progress_bar:
+                progress_bar.update(progress=50)
+
+            # Run analysis with LLM enabled
+            analysis_result = await asyncio.to_thread(
+                analysis_service.analyze_portfolio,
+                upload_id=upload_id,
+                use_llm=True,
+                llm_media=self._ai_state.include_media,
+                preferences=preferences,
+            )
+            self._debug_log(f"Analysis completed: llm_status={analysis_result.llm_status}")
+
+            # Convert API response to format expected by display methods
+            result = self._convert_analysis_response_to_dict(analysis_result)
+
+            # Check if LLM analysis succeeded
+            if analysis_result.llm_status.startswith("skipped") or analysis_result.llm_status.startswith("failed"):
+                # LLM was not used, show local analysis results with a note
+                self._show_status(f"Analysis complete (LLM: {analysis_result.llm_status})", "warning")
+                if analysis_result.llm_analysis is None:
+                    detail_panel.update(
+                        f"[b]Portfolio Analysis[/b]\n\n"
+                        f"[yellow]Note: LLM analysis was {analysis_result.llm_status}[/yellow]\n\n"
+                        f"{self._format_local_analysis_summary(analysis_result)}"
+                    )
+                    return
+
+            # Display LLM analysis results
+            self._ai_state.last_analysis = result
+            structured_result, _ = self._ai_service.format_analysis(result, return_structured=True)
+            rendered = self._display_ai_sections(structured_result)
+            if rendered.strip():
+                detail_panel.update(rendered)
+            else:
+                detail_panel.update(
+                    "[b]AI-Powered Analysis[/b]\n\n"
+                    f"{self._format_local_analysis_summary(analysis_result)}"
+                )
+            
+            saved = self._persist_ai_output(structured_result, result)
+            message = f"AI analysis complete — {analysis_result.total_files} files analyzed."
+            if saved:
+                output_path = self._ai_output_path.with_suffix(".json")
+                message = f"{message} Saved to {output_path.name}."
+            self._show_status(message, "success")
+            await self._show_ai_results(structured_result)
+
+        except AnalysisConsentError as exc:
+            self._surface_error(
+                "AI-Powered Analysis",
+                f"Consent required: {exc}",
+                "Grant external services consent in settings, then try again.",
+            )
+        except AnalysisServiceError as exc:
+            self._surface_error(
+                "AI-Powered Analysis",
+                f"Analysis API error: {exc}",
+                "Check your network connection or try local analysis mode.",
+            )
+        except asyncio.CancelledError:
+            self._show_status("AI analysis cancelled.", "info")
+            detail_panel.update(self._render_ai_detail())
+            raise
+        except Exception as exc:
+            self._surface_error(
+                "AI-Powered Analysis",
+                f"Unexpected error ({exc.__class__.__name__}): {exc}",
+                "Check your network connection and rerun the analysis.",
+            )
+        finally:
+            self._ai_state.task = None
+            _reset_progress_ui()
+
+    def _convert_analysis_response_to_dict(self, response: AnalysisResponse) -> Dict[str, Any]:
+        """Convert AnalysisResponse dataclass to dict format expected by AI service."""
+        result: Dict[str, Any] = {
+            "upload_id": response.upload_id,
+            "project_id": response.project_id,
+            "status": response.status,
+            "project_type": response.project_type,
+            "total_files": response.total_files,
+            "total_size_bytes": response.total_size_bytes,
+            "files_analyzed_count": response.total_files,
+        }
+        
+        # Add LLM analysis if present
+        if response.llm_analysis:
+            result["portfolio_overview"] = response.llm_analysis.portfolio_overview
+            result["project_insights"] = response.llm_analysis.project_insights
+            result["key_achievements"] = response.llm_analysis.key_achievements
+            result["recommendations"] = response.llm_analysis.recommendations
+        
+        # Add skills
+        if response.skills:
+            result["skills"] = [
+                {
+                    "name": s.name,
+                    "category": s.category,
+                    "confidence": s.confidence,
+                    "evidence_count": s.evidence_count,
+                }
+                for s in response.skills
+            ]
+        
+        # Add languages
+        if response.languages:
+            result["languages"] = [
+                {
+                    "name": lang.name,
+                    "files": lang.files,
+                    "lines": lang.lines,
+                    "percentage": lang.percentage,
+                }
+                for lang in response.languages
+            ]
+        
+        return result
+
+    def _format_local_analysis_summary(self, response: AnalysisResponse) -> str:
+        """Format a summary of local analysis results."""
+        lines = []
+        
+        # Project type
+        lines.append(f"[bold]Project Type:[/bold] {response.project_type}")
+        lines.append(f"[bold]Total Files:[/bold] {response.total_files}")
+        lines.append(f"[bold]Total Size:[/bold] {response.total_size_bytes:,} bytes")
+        lines.append("")
+        
+        # Languages
+        if response.languages:
+            lines.append("[bold cyan]Languages:[/bold cyan]")
+            for lang in response.languages[:5]:
+                lines.append(f"  • {lang.name}: {lang.files} files, {lang.lines} lines ({lang.percentage:.1f}%)")
+            if len(response.languages) > 5:
+                lines.append(f"  • ... and {len(response.languages) - 5} more")
+            lines.append("")
+        
+        # Skills
+        if response.skills:
+            lines.append("[bold cyan]Skills Detected:[/bold cyan]")
+            for skill in response.skills[:8]:
+                conf = f"{skill.confidence * 100:.0f}%"
+                lines.append(f"  • {skill.name} ({skill.category}): {conf} confidence")
+            if len(response.skills) > 8:
+                lines.append(f"  • ... and {len(response.skills) - 8} more")
+            lines.append("")
+        
+        # Code metrics
+        if response.code_metrics:
+            cm = response.code_metrics
+            lines.append("[bold cyan]Code Metrics:[/bold cyan]")
+            lines.append(f"  • Files: {cm.total_files}, Lines: {cm.total_lines:,}")
+            lines.append(f"  • Code: {cm.code_lines:,}, Comments: {cm.comment_lines:,}")
+            lines.append(f"  • Functions: {cm.functions}, Classes: {cm.classes}")
+            lines.append("")
+        
+        # Contribution metrics
+        if response.contribution_metrics:
+            cm = response.contribution_metrics
+            lines.append("[bold cyan]Contribution Metrics:[/bold cyan]")
+            lines.append(f"  • Total Commits: {cm.total_commits}")
+            lines.append(f"  • Contributors: {cm.total_contributors}")
+            lines.append(f"  • Commit Frequency: {cm.commit_frequency:.2f}/day")
+            lines.append("")
+        
+        # Duplicates
+        if response.duplicates:
+            total_wasted = sum(d.wasted_bytes for d in response.duplicates)
+            lines.append(f"[bold yellow]Duplicates Found:[/bold yellow] {len(response.duplicates)} groups ({total_wasted:,} bytes wasted)")
+        
+        return "\n".join(lines)
 
 
     async def _run_auto_suggestion(self, selected_files: List[str], output_dir: str) -> None:
