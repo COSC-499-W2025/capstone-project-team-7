@@ -1,3 +1,8 @@
+# Week 16: December 12 - December 18
+
+
+<img width="1082" height="642" alt="Screenshot 2026-01-18 at 2 42 46 PM" src="https://github.com/user-attachments/assets/399898a6-4c0b-469b-888a-33a711bd185d" />
+
 # Week 15: December 4 - December 11
 This week I implemented PR ([212](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/212)) the one‑shot scan API in the main backend, delivering authenticated POST /api/scans and GET /api/scans/{scan_id} endpoints with background execution, progress polling, and result payloads. The implementation integrates auth via get_auth_context, enforces per‑user scan isolation, and validates input early to protect the system.
 
