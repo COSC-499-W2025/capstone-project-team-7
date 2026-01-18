@@ -1,5 +1,12 @@
 # Week 16: December 12 - December 18
+This week I worked on two PR's that work towards the completion of Milestone #2. The first PR I worked on was [PR #231](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/231) which implemented last weeks API (One shot scan API) into out existing TUI. This change made the upload, parse and analyze features using POST /api/scans and GET /api/scans/{scan_id} into a usable version within out TUI. My second PR this week was PR [PR #235](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/235)  which implements a delete insights API into our existing TUI. This feature helps improve the usability of our program for users, giving them the opportunity to delete insights of a project without deleting the project and allowing them to rescan the project if needed. Other the my PR's I also reviewed [PR #234](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/234) and [PR #233](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/233), giving feedback and approving these requests.
 
+Key achievements:
+- Integrated the one-shot scan backend API into the existing TUI (PR #231), enabling end-to-end upload, parse, and analysis workflows using POST /api/scans and GET /api/scans/{scan_id} within the CLI interface.
+- Translated previously backend-only scan functionality into a fully usable TUI experience, including scan initiation, progress polling, and result retrieval, advancing the project toward Milestone #2 completion.
+- Implemented a Delete Insights API integration in the TUI (PR #235), allowing users to remove analysis results without deleting the underlying project, improving workflow flexibility and usability.
+- Conducted peer code reviews for [PR #233](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/233) and [PR #234](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/234), providing actionable feedback and approving changes to maintain code quality and forward progress.
+- Contributed to team velocity and stability by reviewing, validating, and approving teammate PRs alongside feature development work.
 
 <img width="1082" height="642" alt="Screenshot 2026-01-18 at 2 42 46 PM" src="https://github.com/user-attachments/assets/399898a6-4c0b-469b-888a-33a711bd185d" />
 
