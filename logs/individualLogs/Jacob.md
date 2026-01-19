@@ -47,7 +47,6 @@ The profiles API was designed to return and persist **single-object JSON respons
 
 To validate real-world behavior, I added an **environment-gated Supabase integration test** rather than relying on monkeypatching. This ensured that profile persistence and retrieval behave correctly against an actual Supabase instance. I also added unit-level tests to validate JSON response structure and response models, helping enforce API contract consistency. Tests were organized using a pytest `integration` marker to clearly separate local/unit tests from Supabase-backed integration tests.
 
-<img width="1070" height="625" alt="image" src="https://github.com/user-attachments/assets/d276c73f-b920-4ce9-8f09-199b0de6cf92" />
 ---
 
 ## Reflection
