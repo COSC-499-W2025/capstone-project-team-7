@@ -67,10 +67,14 @@ Content-Type: multipart/form-data
   - Tests: `tests/test_upload_api.py` (12 tests, all passing)
   - Features: Magic byte validation, 200MB limit, SHA-256 hashing, scan preferences support
 
-### Analysis (local-first, optional external)
-- `POST /api/analysis/portfolio`: Run combined analysis for an `upload_id` or stored project; params `use_llm` (requires consent+key), `llm_media` optional; if `use_llm=false`, use local-only pipeline.
-- Output: project type (individual/collab), language/framework detection, contribution metrics, skill extraction, media/doc/pdf summaries, code metrics, project ranking scores, timelines.
-- External denied/missing key: return local results with `llm_status:"skipped"`.
+
+#### Completed
+- **Portfolio Analysis Endpoint**
+  - `POST /api/analysis/portfolio`: Local analysis with optional LLM enhancement
+  - Implementation: `backend/src/api/analysis_routes.py`
+  - Tests: `tests/test_analysis_api.py` (14 tests)
+  - Features: Language detection, git analysis, code metrics, skills extraction, contribution analysis, duplicate detection
+  - LLM fallback: Graceful degradation with `llm_status` indicator when consent/key missing
 
 ### Scans (desktop wiring)
 - `POST /api/scans`: One-shot convenience that wraps upload+parse(+analysis) for a local `source_path` (Electron sends path via IPC); returns `scan_id`, derived `project_id` (if persisted), and progress hooks.
