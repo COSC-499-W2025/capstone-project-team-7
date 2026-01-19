@@ -1,6 +1,33 @@
 
 # Jacob Damery
+## Week 16
 
+
+This week, I focused on solidifying the Skills Timeline + Portfolio Chronology APIs, tightening response typing, fixing Supabase integration test safety, and adding a TUI-based API validation flow to confirm the endpoints work end-to-end.
+
+**Key Accomplishments:**
+
+**Skills + Portfolio Chronology API Hardening (PR #200):** Implemented explicit response model construction for `/api/skills/timeline` and `/api/portfolio/chronology` to avoid implicit dict→model coercion and enforce strong typing. Ensured deterministic ordering is preserved while aligning responses with the documented schema.
+
+**Supabase Integration Test Safety + Reliability:** Removed global mutation of `SUPABASE_KEY` in the integration test to avoid accidentally running the app with service-role privileges. Updated cleanup logic to use a service-role client directly while keeping app auth scoped. Added robust Supabase key fallback resolution in `ProjectsService` (`SUPABASE_KEY` → `SUPABASE_SERVICE_ROLE_KEY` → `SUPABASE_ANON_KEY`) so integration tests and local runs work without risky env overrides.
+
+**TUI API Timeline Check for Validation:** Added a new TUI menu option "API Timeline Check" that performs live calls to `/api/skills/timeline` and `/api/portfolio/chronology` with the current session token and reports status codes + item counts. Added `.env` loading at TUI startup (repo root or CWD) for smoother local configuration. Verified it end‑to‑end against a running local FastAPI server.
+
+**Challenges & Learning:**
+
+The main friction was making integration tests safe without mutating global env state while still allowing test setup/cleanup to use elevated Supabase keys. I resolved this by isolating service-role access to the cleanup client and making the app rely on scoped env vars. I also learned that the TUI requires explicit `.env` loading and stable base URL configuration for reliable local API checks.
+
+**Next Week Priorities:**
+
+Next week, I'll expand the TUI validation flow to include lightweight response previews (first item summaries) and add automated tests for the new TUI API check behavior. I'll also formalize the local dev "run API + run TUI" workflow in documentation and verify timeline endpoints against larger datasets.
+
+**Impact:**
+
+This work locks down correctness for the new timeline endpoints, improves integration test safety, and adds a practical validation tool in the TUI so we can quickly confirm API health and user-scoped data. It reduces the risk of auth/scoping regressions and makes local verification faster for the team.
+
+
+**Issues:**
+[PR233](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/233)
 ## Week 15
 
 # Individual Weekly Report – Config & Profiles API (Ticket #202)
@@ -21,8 +48,7 @@ The profiles API was designed to return and persist **single-object JSON respons
 
 To validate real-world behavior, I added an **environment-gated Supabase integration test** rather than relying on monkeypatching. This ensured that profile persistence and retrieval behave correctly against an actual Supabase instance. I also added unit-level tests to validate JSON response structure and response models, helping enforce API contract consistency. Tests were organized using a pytest `integration` marker to clearly separate local/unit tests from Supabase-backed integration tests.
 
-Overall, this work closes **Ticket #202** by ensuring profiles persist, are retrievable via the API, and actively influence scan behavior through the `ConfigManager`.
-
+<img width="1070" height="625" alt="image" src="https://github.com/user-attachments/assets/d276c73f-b920-4ce9-8f09-199b0de6cf92" />
 ---
 
 ## Reflection
