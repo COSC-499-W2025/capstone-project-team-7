@@ -23,15 +23,19 @@ Impact:
 
 This week's work establishes the API-backed architecture for the TUI, enabling horizontal scaling, centralized business logic, and future web/mobile frontends. The dual-mode operation provides resilience during development and outages. The ranking system quantifies contributions through a 5-component algorithm, while thumbnails improve visual project navigation. This unblocks downstream features like the web dashboard, project comparisons, and AI-powered portfolio generation.
 
-Issues resolved include:[#199]([https://github.com/COSC-499-W2025/capstone-project-team-7/issues/197](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/199)),[#219](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/219),[#222](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/222)
+Issues resolved include:[#199](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/199),[#219](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/219),[#222](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/222)
 
 PR's:
 [#223 - Connect project routes with tui](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/223),
 [#229 - Project ranking top timeline api](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/229),
 [#236 - Thumbnail tui implementation and api implementation](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/236)
+
 <img width="737" height="152" alt="image" src="https://github.com/user-attachments/assets/8c55312d-eac1-4a7b-85a0-83b03885415e" />
+
 <img width="761" height="152" alt="image" src="https://github.com/user-attachments/assets/58f05737-00dd-4a12-972b-5db030426200" />
+
 <img width="818" height="163" alt="image" src="https://github.com/user-attachments/assets/378ca979-5b2c-49e0-8178-0ebe163ea8e5" />
+
 <img width="1107" height="634" alt="image" src="https://github.com/user-attachments/assets/8431dd61-2a3b-427e-846f-35ce4ef1ed1f" />
 
 
