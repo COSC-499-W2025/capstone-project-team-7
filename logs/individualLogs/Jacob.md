@@ -27,6 +27,9 @@ This work locks down correctness for the new timeline endpoints, improves integr
 
 **Issues:**
 [PR233](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/233)
+
+<img width="1070" height="625" alt="image" src="https://github.com/user-attachments/assets/d276c73f-b920-4ce9-8f09-199b0de6cf92" />
+
 ## Week 15
 
 # Individual Weekly Report – Config & Profiles API (Ticket #202)
