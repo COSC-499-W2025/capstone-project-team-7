@@ -17,7 +17,7 @@
 - [Week 4](#week-4-september-22nd---28th)
 - [Week 3](#week-3-september-15th---21st)
 
-## Week 16
+## Week 16 (January 12th - 18th)
 This week was about finishing the bridge between the TUI and the backend APIs and making those paths solid. Most of the work landed through **PR [#226 – “Added consent API routes to TUI”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/226)**, **PR [#232 – “Add authentication API endpoints”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/232)**, and **PR [#239 – “Add dedup API report and TUI integration”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/239)**. Together, these changes finish off the API-backed paths for consent, auth, and dedup, and make the TUI behave the same way in both legacy and API modes. I added `ConsentAPIService` and wired the TUI consent flow to use FastAPI whenever `PORTFOLIO_USE_API` is enabled, covering status, toggles, and the privacy notice. I also extended the consent state to track external-services consent and render badges straight from API state, while guarding persistence so Supabase storage is only used in legacy mode. On the backend side, I added `/api/auth` routes for signup, login, refresh, and session using `SupabaseAuth`, and extended the auth context to return the user email. The auth router is now wired into the FastAPI app, with tests covering the main flows. I updated the API plan and OpenAPI spec so the auth contracts are clearly documented. I also implemented `GET /api/dedup` to return hash-based duplicate groups and storage savings from project scans. To support that, I persisted `file_hash` in scan payloads (both TUI export and API scan responses). The TUI now fetches dedup data in API mode with a local fallback using a new `get_dedup_report` client helper. I added `tests/test_dedup_api.py` for coverage. All consent-related tests passed locally, including `tests/test_api_consent.py` and `tests/test_consent_integration.py`.
 
 ### Reflection
@@ -35,7 +35,7 @@ The TUI now switches cleanly between legacy and API-backed consent without leaki
   
 ![Peer Eval](./images/w16peer.png)
 
-## Week 15 
+## Week 15 (January 5th - 11th)
 This week focused on implementing the Consent API as a standalone backend component, decoupled from any Textual or TUI assumptions. I implemented the consent endpoints (`GET /api/consent`, `POST /api/consent`, and `GET /api/consent/notice`) in `backend/src/api/consent_routes.py`, aligned with the updated OpenAPI specification. The routes resolve `user_id` via a shared auth-token dependency that queries Supabase `/auth/v1/user`, keeping consent enforcement centralized and reusable across services.
 
 To avoid confusion and route conflicts, I removed the stub consent handlers from `backend/src/api/spec_routes.py`. I added a focused test suite in `tests/test_api_consent.py` and validated it locally using the backend venv, with all five tests passing. I also added `python-multipart` to `backend/requirements.txt` to keep FastAPI route imports clean and prevent runtime import errors.
