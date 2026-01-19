@@ -1,5 +1,25 @@
 # Joaquin Almora / @joaquinalmora
 
+## Week 16
+## Week 16
+
+This week was about finishing the bridge between the TUI and the backend APIs and making those paths solid. Most of the work landed through **PR [#226 – “Added consent API routes to TUI”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/226)**, **PR [#232 – “Add authentication API endpoints”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/232)**, and **PR [#239 – “Add dedup API report and TUI integration”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/239)**. Together, these changes finish off the API-backed paths for consent, auth, and dedup, and make the TUI behave the same way in both legacy and API modes. I added `ConsentAPIService` and wired the TUI consent flow to use FastAPI whenever `PORTFOLIO_USE_API` is enabled, covering status, toggles, and the privacy notice. I also extended the consent state to track external-services consent and render badges straight from API state, while guarding persistence so Supabase storage is only used in legacy mode. On the backend side, I added `/api/auth` routes for signup, login, refresh, and session using `SupabaseAuth`, and extended the auth context to return the user email. The auth router is now wired into the FastAPI app, with tests covering the main flows. I updated the API plan and OpenAPI spec so the auth contracts are clearly documented. I also implemented `GET /api/dedup` to return hash-based duplicate groups and storage savings from project scans. To support that, I persisted `file_hash` in scan payloads (both TUI export and API scan responses). The TUI now fetches dedup data in API mode with a local fallback using a new `get_dedup_report` client helper. I added `tests/test_dedup_api.py` for coverage. All consent-related tests passed locally, including `tests/test_api_consent.py` and `tests/test_consent_integration.py`.
+
+### Reflection
+**What went well:**  
+The TUI now switches cleanly between legacy and API-backed consent without leaking state. Auth is fully API-driven with tests and docs in place, which unblocks other services. Dedup is end-to-end: hashes flow through scans, the API reports groups and savings, and the TUI can consume it with a simple helper. Tests stayed small and fast.
+
+**What didn’t go well:**  
+`textual_app.py` already has a lot of static type noise, which made even small edits slow and fragile. The consent wiring touches a lot of UI and session paths, so missing a single guard (like during session refresh) can cause regressions. Pytest initially failed because `pypdf` wasn’t installed, and dedup tests still fail without it. 
+
+### Next Steps
+- Add a focused unit test for `ConsentAPIService` using mocked `httpx`.
+- Consider pulling consent UI helpers out of `textual_app.py` to reduce edit friction.
+- Optionally fix the `datetime.utcnow()` deprecation warnings in `backend/src/auth/consent.py`.
+- Add coverage for legacy scans that don’t have `file_hash`, if needed.
+  
+![Peer Eval](./images/w16peer.png)
+
 ## Week 15 
 This week focused on implementing the Consent API as a standalone backend component, decoupled from any Textual or TUI assumptions. I implemented the consent endpoints (`GET /api/consent`, `POST /api/consent`, and `GET /api/consent/notice`) in `backend/src/api/consent_routes.py`, aligned with the updated OpenAPI specification. The routes resolve `user_id` via a shared auth-token dependency that queries Supabase `/auth/v1/user`, keeping consent enforcement centralized and reusable across services.
 
@@ -15,6 +35,8 @@ Initial test failures were caused by a missing `python-multipart` dependency and
 
 ### Next Steps
 Tackle more of the API routes specified in the API plan, continuing to replace scaffolded endpoints with real implementations and accompanying tests.
+
+![Peer Eval](./images/w16peer.png)
 
 ## Winter Break
 This winter break I focused on locking down the backend API direction while unblocking client and desktop development through scaffolding. I captured the Milestone 2 backend behavior, requirements, and delivery order in `docs/api-plan.md`, and drafted an OpenAPI specification in `docs/api-spec.yaml` aligned to the payload shapes currently used across the system. Together, these documents now serve as the shared contract for backend implementation and frontend/Desktop integration.
