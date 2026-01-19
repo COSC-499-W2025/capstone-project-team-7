@@ -20,6 +20,8 @@
 This week, the team continued building out the backend API and integrating it with the Textual UI. Key accomplishments include connecting the API routes implemented last week to the TUI and also adding other new API routes that are needed by the frontend.
 
 **Joaquin:**
+This week, alongside continuing work on my own features, I spent a good amount of time reviewing PRs as more of the team’s work started landing in the API-backed path. I reviewed Aaron’s **PR [#223](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/223)**, which wires the project routes API into the TUI. The integration mirrors the existing `ProjectsService` interface, which makes the change low-risk and easy to reason about. The API flag is a strong choice and keeps the transition non-disruptive, and the service selection logic is straightforward. Session and token handling are correct and future-proof, and the initialization-time health check is a solid safeguard. It felt ready to merge. I also reviewed Om’s **PR [#228](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/228)**, which integrates the Upload and Parse API into the TUI. The separation between API mode and local scanning is clean, and the tests cover the main success and error paths well. I did not spot any blocking issues. The only feedback was minor cleanup around unused imports in tests, but overall it feels ready. Aaron’s **PR [#229](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/229)** adds API-backed project ranking and timeline support. Structurally, it is solid: the endpoints are well shaped, reusing `ContributionAnalysisService` keeps scoring consistent, and the dual-mode TUI flow with API fallback is a good design. However, I did not approve yet because when the API ranking call fails inside `_save_scan_to_database`, the code logs the error but never falls back to local ranking. That leaves `contribution_score` unset and contradicts the intended fallback behavior. I asked for that to be fixed before merge. Finally, I reviewed Vlad’s **PR [#231](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/231)**, which integrates `POST /api/scans` and `GET /api/scans/{scan_id}` into the TUI. The client is clean, the tests are thorough, and the TUI flow feels consistent with the rest of the app. I could not approve yet because the API endpoints on main require a bearer token, and the client does not currently send `Authorization`. In practice this would 401. I asked for the session access token to be wired into `ScanApiClient` and passed through in `start_scan` and `get_scan_status`, after which I am happy to re-review.
+
 
 **Aaron:**
 
@@ -30,6 +32,23 @@ This week, the team continued building out the backend API and integrating it wi
 **Vlad:** This week I worked on two PR's that work towards the completion of Milestone #2. The first PR I worked on was [PR #231](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/231) which implemented last weeks API (One shot scan API) into out existing TUI. This change made the upload, parse and analyze features using POST /api/scans and GET /api/scans/{scan_id} into a usable version within out TUI. My second PR this week was [PR #235](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/235) which implements a delete insights API into our existing TUI. This feature helps improve the usability of our program for users, giving them the opportunity to delete insights of a project without deleting the project and allowing them to rescan the project if needed. Other the my PR's I also reviewed [PR #234](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/234) and [PR #233](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/233), giving feedback and approving these requests.
 
 **Samarth:**
+
+## Reflection
+
+### What went well
+- PRs were clean and well-scoped.
+- The API-backed TUI transition is staying consistent with existing patterns.
+
+### Challenges
+- Small edge cases in auth or fallback behavior can break API mode, so reviews had to be very detail-oriented.
+- Some changes depend on backend assumptions, making coordination across features more complex.
+
+## **Next Steps**
+- Get the TUI ready for the peer evaluations.
+
+<p align="center">
+  <img src="./charts/w16burnup.png" alt="Week 15 Burnup Chart width="400"/>
+</p>
 
 
 ## Week 15 (January 5th - 11th)
