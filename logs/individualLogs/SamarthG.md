@@ -1,5 +1,28 @@
 # Samarth Grover (@Samarth-G)
 
+## Week 16: January 12 - January 18
+This week I was focused on implementing the Portfolio Analysis API into the TUI with optional LLM enhancement. The main work landed through the **[PR 215 Portfolio analysis api with TUI integration](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/215)**, adding a comprehensive analysis endpoint that runs local analysis by default and gracefully upgrades to LLM-powered insights when the user has granted consent and configured an API key.
+
+I implemented POST `/api/analysis/portfolio` in `analysis_routes.py`, which orchestrates the full analysis pipeline: language detection, git history analysis, code metrics via tree-sitter, skills extraction, contribution analysis, and duplicate detection. The endpoint is "local-first" and LLM features are an optional enhancement. I added a detailed llm_status field that tells the client exactly why LLM was skipped or failed (skipped:consent_not_granted, skipped:no_api_key, failed:analysis_error, etc.), so the TUI can display appropriate messaging.
+
+For TUI integration, I created `AnalysisAPIService` in `analysis_api_service.py` as an HTTP client that handles the upload, parse and analysis workflow. The service manages JWT tokens, handles error responses with proper exception types (`AnalysisServiceError`, `AnalysisConsentError`), and parses the rich API response into typed dataclasses. I wired this into `textual_app.py` with a new `_run_ai_analysis_via_api()` method that's triggered when PORTFOLIO_USE_ANALYSIS_API=true. The TUI shows progress during upload/parse/analysis and formats results using the existing AI display helpers.
+
+Additionally, I added tests in `test_analysis_api.py` to cover the main flows (18 tests) including language detection, duplicate detection, LLM consent/key requirements, and ZIP security. Also added `test_analysis_api_service.py`, which covers tests for the TUI integration layer (14 tests).
+
+### Reflection
+**What went well:** 
+The typed dataclasses in the service layer made response parsing straightforward and caught schema mismatches early. The TUI integration reused existing AI display methods, so results render consistently whether analysis runs locally or via API. Tests stayed focused and fast by mocking the HTTP layer.
+
+**What didn’t go well:**  
+The analysis endpoint does a lot (language, git, code metrics, skills, contributions, duplicates), which made the route file long and harder to test in isolation. Tree-sitter availability varies across environments, so code metrics silently degrade when it's missing, which could confuse users expecting full results.
+
+### Next Steps
+
+- I'll be working on adding support evidence of success for projects: add structured support for “evidence of success” on projects, including quantitative metrics, feedback, evaluations and evidence must be editable via API and included in portfolio and résumé outputs.
+
+![Week 16 Image](./assets/SamarthG-W16.png)
+
+
 ## Week 14: December 1st - 7th
 This week I focused on stabilizing the AI analysis workflow and enhancing user control over analysis depth. The work centered on fixing multi-project bugs, restoring real-time progress tracking, and introducing different analysis modes, all delivered in this PR: **[PR 187 fix bugs in ai analysis](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/188)**
 
