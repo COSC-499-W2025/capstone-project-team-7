@@ -16,6 +16,7 @@ from api.analysis_routes import router as analysis_router
 from api.consent_routes import router as consent_router
 from api.llm_routes import router as llm_router
 from api.portfolio_routes import router as portfolio_router
+from api.resume_routes import router as resume_router
 from api.spec_routes import router as spec_router
 from api.project_routes import router as project_router
 from api.upload_routes import router as upload_router
@@ -53,6 +54,7 @@ app.include_router(analysis_router)
 app.include_router(consent_router)
 app.include_router(llm_router)
 app.include_router(portfolio_router)
+app.include_router(resume_router)
 app.include_router(spec_router)
 app.include_router(project_router)
 app.include_router(upload_router)
