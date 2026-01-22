@@ -18,9 +18,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 try:
     from cli.services.projects_service import ProjectsService, ProjectsServiceError
     from cli.services.encryption import EncryptionService
+    from cli.services.project_overrides_service import ProjectOverridesService, ProjectOverridesServiceError
 except ModuleNotFoundError:  # pragma: no cover - test/import fallback
     from backend.src.cli.services.projects_service import ProjectsService, ProjectsServiceError
     from backend.src.cli.services.encryption import EncryptionService
+    from backend.src.cli.services.project_overrides_service import ProjectOverridesService, ProjectOverridesServiceError
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +32,7 @@ router = APIRouter(prefix="/api/projects", tags=["Projects"])
 # Initialize services
 _projects_service: Optional[ProjectsService] = None
 _encryption_service: Optional[EncryptionService] = None
+_overrides_service: Optional[ProjectOverridesService] = None
 
 
 def get_projects_service() -> ProjectsService:
@@ -57,6 +60,22 @@ def get_encryption_service() -> Optional[EncryptionService]:
         except Exception:
             _encryption_service = None
     return _encryption_service
+
+
+def get_overrides_service() -> ProjectOverridesService:
+    """Get or create the ProjectOverridesService singleton."""
+    global _overrides_service
+    if _overrides_service is None:
+        try:
+            _encryption_service_instance = EncryptionService()
+        except Exception:
+            _encryption_service_instance = None
+        
+        _overrides_service = ProjectOverridesService(
+            encryption_service=_encryption_service_instance,
+            encryption_required=False,  # Graceful degradation if encryption unavailable
+        )
+    return _overrides_service
 
 
 def normalize_project_data(project: Dict[str, Any]) -> Dict[str, Any]:
@@ -190,6 +209,7 @@ class ProjectMetadata(BaseModel):
 class ProjectDetail(ProjectMetadata):
     """Full project details including scan data."""
     scan_data: Optional[Dict[str, Any]] = None
+    user_overrides: Optional["ProjectOverrides"] = None
 
 
 class CreateProjectResponse(BaseModel):
@@ -274,6 +294,47 @@ class ProjectTimelineResponse(BaseModel):
     """Response with chronologically ordered projects."""
     count: int
     timeline: List[ProjectTimelineEntry]
+
+
+# ============================================================================
+# Project Overrides Models
+# ============================================================================
+
+class ProjectOverrides(BaseModel):
+    """User-defined overrides for project display and metadata."""
+    role: Optional[str] = Field(None, description="User's role/title for this project")
+    evidence: Optional[List[str]] = Field(None, description="List of accomplishment bullet points")
+    thumbnail_url: Optional[str] = Field(None, description="Custom thumbnail URL")
+    custom_rank: Optional[float] = Field(None, description="Manual ranking override (0-100)")
+    start_date_override: Optional[str] = Field(None, description="Override for project start date (ISO date)")
+    end_date_override: Optional[str] = Field(None, description="Override for project end date (ISO date)")
+    comparison_attributes: Optional[Dict[str, str]] = Field(None, description="Custom key-value pairs for comparisons")
+    highlighted_skills: Optional[List[str]] = Field(None, description="Skills to highlight for this project")
+
+
+class ProjectOverridesRequest(BaseModel):
+    """Request model for updating project overrides (partial update supported)."""
+    role: Optional[str] = Field(None, description="User's role/title for this project")
+    evidence: Optional[List[str]] = Field(None, description="List of accomplishment bullet points")
+    thumbnail_url: Optional[str] = Field(None, description="Custom thumbnail URL")
+    custom_rank: Optional[float] = Field(None, description="Manual ranking override (0-100)")
+    start_date_override: Optional[str] = Field(None, description="Override for project start date (ISO date)")
+    end_date_override: Optional[str] = Field(None, description="Override for project end date (ISO date)")
+    comparison_attributes: Optional[Dict[str, str]] = Field(None, description="Custom key-value pairs for comparisons")
+    highlighted_skills: Optional[List[str]] = Field(None, description="Skills to highlight for this project")
+
+
+class ProjectOverridesResponse(BaseModel):
+    """Response model for project overrides."""
+    project_id: str
+    overrides: ProjectOverrides
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class DeleteOverridesResponse(BaseModel):
+    """Response model for overrides deletion."""
+    message: str = "Overrides cleared successfully"
 
 
 # ============================================================================
@@ -455,38 +516,80 @@ async def get_project_timeline(
     user_id: str = Depends(verify_auth_token),
 ) -> ProjectTimelineResponse:
     """
-    Get projects ordered chronologically by scan timestamp.
+    Get projects ordered chronologically by end date (newest first).
     
-    Returns projects sorted by scan_timestamp (newest first).
+    Uses the following priority for determining the display date:
+    1. end_date_override from user overrides (if set)
+    2. project_end_date from scan data (if set)
+    3. scan_timestamp as fallback
+    
+    This allows users to correct chronology via overrides.
     """
     try:
         service = get_projects_service()
+        overrides_service = get_overrides_service()
         
         # Get all user projects (run in thread pool to avoid blocking event loop)
         projects = await asyncio.to_thread(service.get_user_projects, user_id)
         
+        # Get project IDs for batch override fetch (filter out any None values)
+        project_ids: List[str] = []
+        for p in projects:
+            pid = p.get("id")
+            if pid:
+                project_ids.append(pid)
+        
+        # Batch fetch overrides for all projects
+        overrides_map: Dict[str, Dict[str, Any]] = {}
+        if project_ids:
+            overrides_map = await asyncio.to_thread(
+                overrides_service.get_overrides_for_projects, user_id, project_ids
+            )
+        
         # Build timeline entries with full project objects
         timeline_entries = []
         for project in projects:
-            scan_timestamp = project.get("scan_timestamp") or project.get("created_at")
+            project_id = project.get("id")
+            project_overrides = overrides_map.get(project_id, {})
             
-            if not scan_timestamp:
-                # Skip projects without timestamps
+            # Priority: end_date_override > project_end_date > scan_timestamp > created_at
+            display_date = None
+            
+            # 1. Check for end_date_override
+            end_date_override = project_overrides.get("end_date_override")
+            if end_date_override:
+                display_date = end_date_override
+            
+            # 2. Check for project_end_date from scan data
+            if not display_date:
+                project_end_date = project.get("project_end_date")
+                if project_end_date:
+                    display_date = project_end_date
+            
+            # 3. Fall back to scan_timestamp or created_at
+            if not display_date:
+                display_date = project.get("scan_timestamp") or project.get("created_at")
+            
+            if not display_date:
+                # Skip projects without any date information
                 continue
             
             # Parse to datetime for proper sorting
             try:
                 # Handle various timestamp formats
-                ts_str = scan_timestamp.replace("Z", "+00:00")
+                ts_str = display_date.replace("Z", "+00:00")
+                # Handle date-only format (YYYY-MM-DD)
+                if len(ts_str) == 10:
+                    ts_str = ts_str + "T00:00:00+00:00"
                 dt = datetime.fromisoformat(ts_str)
             except Exception as e:
                 # If parsing fails, try to use it as-is and log error
-                print(f"Failed to parse timestamp for {project.get('project_name')}: {scan_timestamp}, error: {e}")
+                print(f"Failed to parse timestamp for {project.get('project_name')}: {display_date}, error: {e}")
                 continue
             
             timeline_entries.append({
                 "project": project,
-                "display_date": scan_timestamp,
+                "display_date": display_date,
                 "_sort_key": dt,  # Use datetime object for sorting
             })
         
@@ -538,14 +641,16 @@ async def get_project(
     - **project_id**: UUID of the project to retrieve
     
     Returns encrypted scan data decrypted for display.
+    Also includes any user-defined overrides (role, highlighted skills, date overrides, etc.)
     
     Acceptance Criteria:
     - Full scan data is retrievable by project ID
     - Only project owner can access their projects
+    - User overrides are included in the response
     """
     try:
         service = get_projects_service()
-        project = service.get_project_scan(user_id, project_id)
+        project = await asyncio.to_thread(service.get_project_scan, user_id, project_id)
         
         if not project:
             raise HTTPException(
@@ -556,8 +661,26 @@ async def get_project(
         # Normalize project data before converting to model
         project = normalize_project_data(project)
         
+        # Fetch user overrides for this project
+        overrides_service = get_overrides_service()
+        overrides = await asyncio.to_thread(overrides_service.get_overrides, user_id, project_id)
+        
+        # Build user_overrides object (or None if no overrides exist)
+        user_overrides = None
+        if overrides:
+            user_overrides = ProjectOverrides(
+                role=overrides.get("role"),
+                evidence=overrides.get("evidence", []),
+                thumbnail_url=overrides.get("thumbnail_url"),
+                custom_rank=overrides.get("custom_rank"),
+                start_date_override=overrides.get("start_date_override"),
+                end_date_override=overrides.get("end_date_override"),
+                comparison_attributes=overrides.get("comparison_attributes", {}),
+                highlighted_skills=overrides.get("highlighted_skills", []),
+            )
+        
         # Convert to ProjectDetail object for response
-        return ProjectDetail(**project)
+        return ProjectDetail(**project, user_overrides=user_overrides)
     
     except HTTPException:
         raise
@@ -1025,4 +1148,250 @@ async def update_project_thumbnail_url(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An unexpected error occurred: {str(exc)}",
+        )
+
+
+# ============================================================================
+# Project Overrides Endpoints
+# ============================================================================
+
+@router.get(
+    "/{project_id}/overrides",
+    response_model=ProjectOverridesResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Project not found"},
+        500: {"model": ErrorResponse, "description": "Server error"},
+    },
+)
+async def get_project_overrides(
+    project_id: str,
+    user_id: str = Depends(verify_auth_token),
+) -> ProjectOverridesResponse:
+    """
+    Get user-defined overrides for a specific project.
+    
+    - **project_id**: UUID of the project
+    
+    Returns the current override settings. If no overrides have been set,
+    returns default/empty values for all fields.
+    
+    Overrides include:
+    - Chronology corrections (start_date_override, end_date_override)
+    - Role and evidence bullet points
+    - Highlighted skills
+    - Comparison attributes
+    - Custom ranking
+    - Thumbnail URL override
+    """
+    try:
+        # Verify project exists and user owns it
+        projects_service = get_projects_service()
+        project = await asyncio.to_thread(projects_service.get_project_scan, user_id, project_id)
+        
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Project {project_id} not found",
+            )
+        
+        # Get overrides
+        overrides_service = get_overrides_service()
+        overrides = await asyncio.to_thread(overrides_service.get_overrides, user_id, project_id)
+        
+        # Build response with defaults if no overrides exist
+        if overrides:
+            return ProjectOverridesResponse(
+                project_id=project_id,
+                overrides=ProjectOverrides(
+                    role=overrides.get("role"),
+                    evidence=overrides.get("evidence", []),
+                    thumbnail_url=overrides.get("thumbnail_url"),
+                    custom_rank=overrides.get("custom_rank"),
+                    start_date_override=overrides.get("start_date_override"),
+                    end_date_override=overrides.get("end_date_override"),
+                    comparison_attributes=overrides.get("comparison_attributes", {}),
+                    highlighted_skills=overrides.get("highlighted_skills", []),
+                ),
+                created_at=overrides.get("created_at"),
+                updated_at=overrides.get("updated_at"),
+            )
+        else:
+            # Return empty overrides
+            return ProjectOverridesResponse(
+                project_id=project_id,
+                overrides=ProjectOverrides(
+                    role=None,
+                    evidence=[],
+                    thumbnail_url=None,
+                    custom_rank=None,
+                    start_date_override=None,
+                    end_date_override=None,
+                    comparison_attributes={},
+                    highlighted_skills=[],
+                ),
+            )
+    
+    except HTTPException:
+        raise
+    except ProjectOverridesServiceError as exc:
+        logger.error(f"Overrides service error: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve overrides: {str(exc)}",
+        )
+    except Exception as exc:
+        logger.exception("Unexpected error retrieving project overrides")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred",
+        )
+
+
+@router.patch(
+    "/{project_id}/overrides",
+    response_model=ProjectOverridesResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Project not found"},
+        400: {"model": ErrorResponse, "description": "Invalid request"},
+        500: {"model": ErrorResponse, "description": "Server error"},
+    },
+)
+async def update_project_overrides(
+    project_id: str,
+    request: ProjectOverridesRequest,
+    user_id: str = Depends(verify_auth_token),
+) -> ProjectOverridesResponse:
+    """
+    Create or update user-defined overrides for a project.
+    
+    - **project_id**: UUID of the project
+    
+    Supports partial updates - only provided fields are updated.
+    Pass empty string/list/dict to explicitly clear a field.
+    
+    Acceptance Criteria:
+    - Overrides persist in encrypted storage
+    - Overrides are reflected in timelines and comparisons
+    """
+    try:
+        # Verify project exists and user owns it
+        projects_service = get_projects_service()
+        project = await asyncio.to_thread(projects_service.get_project_scan, user_id, project_id)
+        
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Project {project_id} not found",
+            )
+        
+        # Update overrides
+        overrides_service = get_overrides_service()
+        updated = await asyncio.to_thread(
+            overrides_service.upsert_overrides,
+            user_id,
+            project_id,
+            role=request.role,
+            evidence=request.evidence,
+            thumbnail_url=request.thumbnail_url,
+            custom_rank=request.custom_rank,
+            start_date_override=request.start_date_override,
+            end_date_override=request.end_date_override,
+            comparison_attributes=request.comparison_attributes,
+            highlighted_skills=request.highlighted_skills,
+        )
+        
+        return ProjectOverridesResponse(
+            project_id=project_id,
+            overrides=ProjectOverrides(
+                role=updated.get("role"),
+                evidence=updated.get("evidence", []),
+                thumbnail_url=updated.get("thumbnail_url"),
+                custom_rank=updated.get("custom_rank"),
+                start_date_override=updated.get("start_date_override"),
+                end_date_override=updated.get("end_date_override"),
+                comparison_attributes=updated.get("comparison_attributes", {}),
+                highlighted_skills=updated.get("highlighted_skills", []),
+            ),
+            created_at=updated.get("created_at"),
+            updated_at=updated.get("updated_at"),
+        )
+    
+    except HTTPException:
+        raise
+    except ProjectOverridesServiceError as exc:
+        logger.error(f"Overrides service error: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update overrides: {str(exc)}",
+        )
+    except Exception as exc:
+        logger.exception("Unexpected error updating project overrides")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred",
+        )
+
+
+@router.delete(
+    "/{project_id}/overrides",
+    response_model=DeleteOverridesResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Project or overrides not found"},
+        500: {"model": ErrorResponse, "description": "Server error"},
+    },
+)
+async def delete_project_overrides(
+    project_id: str,
+    user_id: str = Depends(verify_auth_token),
+) -> DeleteOverridesResponse:
+    """
+    Delete all user-defined overrides for a project.
+    
+    - **project_id**: UUID of the project
+    
+    This resets the project to use computed/scanned values instead of user overrides.
+    The project itself is NOT deleted.
+    
+    Returns 404 if no overrides exist for the project.
+    """
+    try:
+        # Verify project exists and user owns it
+        projects_service = get_projects_service()
+        project = await asyncio.to_thread(projects_service.get_project_scan, user_id, project_id)
+        
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Project {project_id} not found",
+            )
+        
+        # Delete overrides
+        overrides_service = get_overrides_service()
+        deleted = await asyncio.to_thread(overrides_service.delete_overrides, user_id, project_id)
+        
+        if not deleted:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No overrides found for project {project_id}",
+            )
+        
+        return DeleteOverridesResponse(message="Overrides cleared successfully")
+    
+    except HTTPException:
+        raise
+    except ProjectOverridesServiceError as exc:
+        logger.error(f"Overrides service error: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete overrides: {str(exc)}",
+        )
+    except Exception as exc:
+        logger.exception("Unexpected error deleting project overrides")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred",
         )
