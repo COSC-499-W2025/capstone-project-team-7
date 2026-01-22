@@ -22,6 +22,11 @@ except ModuleNotFoundError:  # pragma: no cover - test/import fallback
     from backend.src.cli.services.projects_service import ProjectsService, ProjectsServiceError
     from backend.src.cli.services.encryption import EncryptionService
 
+try:
+    from scanner.parser import parse_zip
+except ModuleNotFoundError:  # pragma: no cover - test/import fallback
+    from backend.src.scanner.parser import parse_zip
+
 logger = logging.getLogger(__name__)
 
 # Create router for project endpoints
@@ -1017,7 +1022,7 @@ async def update_project_thumbnail_url(
             )
         
         return ThumbnailUpdateResponse()
-    
+
     except HTTPException:
         raise
     except Exception as exc:
@@ -1026,3 +1031,208 @@ async def update_project_thumbnail_url(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An unexpected error occurred: {str(exc)}",
         )
+
+
+# ============================================================================
+# Append Upload to Project (with Deduplication)
+# ============================================================================
+
+
+class AppendUploadRequest(BaseModel):
+    """Request body for appending an upload to a project."""
+    skip_duplicates: bool = Field(True, description="Skip files with matching SHA-256 hash")
+
+
+class AppendFileStatus(BaseModel):
+    """Status of a single file in the append operation."""
+    path: str
+    status: str  # "added", "updated", "skipped_duplicate"
+    sha256: Optional[str] = None
+
+
+class AppendUploadResponse(BaseModel):
+    """Response from append-upload endpoint."""
+    project_id: str
+    upload_id: str
+    status: str = "completed"
+    files_added: int
+    files_updated: int
+    files_skipped_duplicate: int
+    total_files_in_upload: int
+    files: List[AppendFileStatus]
+
+
+@router.post(
+    "/{project_id}/append-upload/{upload_id}",
+    response_model=AppendUploadResponse,
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid request"},
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        403: {"model": ErrorResponse, "description": "Forbidden"},
+        404: {"model": ErrorResponse, "description": "Project or upload not found"},
+        500: {"model": ErrorResponse, "description": "Server error"},
+    },
+)
+async def append_upload_to_project(
+    project_id: str,
+    upload_id: str,
+    request: AppendUploadRequest = AppendUploadRequest(),
+    user_id: str = Depends(verify_auth_token),
+) -> AppendUploadResponse:
+    """
+    Merge files from a new upload into an existing project with deduplication.
+
+    - Verifies upload exists and user owns it
+    - Verifies project exists and user owns it
+    - Compares each file by SHA-256 hash:
+      - If hash matches existing file → skip (duplicate)
+      - If path exists but different hash → update
+      - If new path → add
+    - Updates cached file metadata in the project
+
+    Args:
+        project_id: UUID of the target project
+        upload_id: ID of the upload to merge
+        request: Options for the append operation
+
+    Returns:
+        Detailed status for each file in the upload
+    """
+    # Import uploads_store lazily to avoid circular imports
+    from api.upload_routes import uploads_store
+
+    # Verify upload exists and user owns it
+    if upload_id not in uploads_store:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Upload {upload_id} not found",
+        )
+
+    upload_data = uploads_store[upload_id]
+    if upload_data.get("user_id") != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied to this upload",
+        )
+
+    # Verify project exists and user owns it
+    service = get_projects_service()
+    project = service.get_project_scan(user_id, project_id)
+
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found",
+        )
+
+    # Get existing cached files for the project
+    try:
+        existing_files = service.get_cached_files(user_id, project_id)
+    except ProjectsServiceError as exc:
+        logger.warning(f"Failed to get cached files for project {project_id}: {exc}")
+        existing_files = {}
+
+    # Build a lookup of existing hashes for deduplication
+    existing_hashes: Dict[str, str] = {}  # sha256 -> path
+    for path, meta in existing_files.items():
+        sha = meta.get("sha256")
+        if sha:
+            existing_hashes[sha] = path
+
+    # Parse the upload ZIP to get file metadata
+    storage_path = Path(upload_data.get("storage_path", ""))
+    if not storage_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Upload file not found on disk",
+        )
+
+    try:
+        parse_result = parse_zip(storage_path, relevant_only=False)
+    except Exception as exc:
+        logger.exception(f"Failed to parse upload {upload_id}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to parse upload: {str(exc)}",
+        )
+
+    # Process each file and determine status
+    files_added = 0
+    files_updated = 0
+    files_skipped_duplicate = 0
+    file_statuses: List[AppendFileStatus] = []
+    files_to_upsert: List[Dict[str, Any]] = []
+
+    for file_meta in parse_result.files:
+        rel_path = file_meta.path.replace("\\", "/")
+        sha256 = file_meta.file_hash
+        size_bytes = file_meta.size_bytes
+        mime_type = file_meta.mime_type
+
+        file_status: str
+
+        # Check if this exact file (by hash) already exists
+        if request.skip_duplicates and sha256 and sha256 in existing_hashes:
+            file_status = "skipped_duplicate"
+            files_skipped_duplicate += 1
+        elif rel_path in existing_files:
+            # Path exists - check if content changed
+            existing_sha = existing_files[rel_path].get("sha256")
+            if existing_sha == sha256:
+                # Same content, skip
+                file_status = "skipped_duplicate"
+                files_skipped_duplicate += 1
+            else:
+                # Different content, update
+                file_status = "updated"
+                files_updated += 1
+                files_to_upsert.append({
+                    "relative_path": rel_path,
+                    "size_bytes": size_bytes,
+                    "mime_type": mime_type,
+                    "sha256": sha256,
+                    "metadata": {},
+                    "last_seen_modified_at": file_meta.modified_at.isoformat() + "Z",
+                    "last_scanned_at": datetime.now().isoformat() + "Z",
+                })
+        else:
+            # New file
+            file_status = "added"
+            files_added += 1
+            files_to_upsert.append({
+                "relative_path": rel_path,
+                "size_bytes": size_bytes,
+                "mime_type": mime_type,
+                "sha256": sha256,
+                "metadata": {},
+                "last_seen_modified_at": file_meta.modified_at.isoformat() + "Z",
+                "last_scanned_at": datetime.now().isoformat() + "Z",
+            })
+
+        file_statuses.append(AppendFileStatus(
+            path=rel_path,
+            status=file_status,
+            sha256=sha256,
+        ))
+
+    # Persist the new/updated files
+    if files_to_upsert:
+        try:
+            service.upsert_cached_files(user_id, project_id, files_to_upsert)
+        except ProjectsServiceError as exc:
+            logger.error(f"Failed to upsert cached files: {exc}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to save file metadata: {str(exc)}",
+            )
+
+    return AppendUploadResponse(
+        project_id=project_id,
+        upload_id=upload_id,
+        status="completed",
+        files_added=files_added,
+        files_updated=files_updated,
+        files_skipped_duplicate=files_skipped_duplicate,
+        total_files_in_upload=len(parse_result.files),
+        files=file_statuses,
+    )
