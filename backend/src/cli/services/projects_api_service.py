@@ -13,6 +13,9 @@ except ImportError:
     httpx = None  # type: ignore
 
 
+logger = logging.getLogger(__name__)
+
+
 class ProjectsServiceError(Exception):
     """Base error for projects service."""
 
