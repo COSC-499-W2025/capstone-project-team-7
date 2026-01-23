@@ -2905,7 +2905,7 @@ class ProjectViewerScreen(ModalScreen[None]):
             
             metrics = code_data.get("metrics", {})
             if metrics:
-                total_lines = metrics.get('total_lines', 0)
+                Static("AI Auto-Suggestion", classes="dialog-title"),
                 code_lines = metrics.get('total_code_lines', 0)
                 comments = metrics.get('total_comments', 0)
                 functions = metrics.get('total_functions', 0)
@@ -4489,7 +4489,8 @@ class FileSkillsSearchScreen(ModalScreen[None]):
         yield Vertical(
             Static("📁 Project Files Browser", classes="browser-dialog-title"),
             Static(info_text, classes="browser-project-info"),
-            Static("Use arrows to navigate, Enter to open, or click the Open button", classes="browser-project-info"),
+            Static("Use arrows to navigate, type to search, press Enter to run search, or click Open", classes="browser-project-info"),
+            Input(placeholder="Type filename or keyword and press Enter to search...", id="file-search-query"),
             ListView(id="file-list"),
             Static("", id="file-browser-message", classes="dialog-message"),
             Horizontal(
@@ -4655,3 +4656,61 @@ class FileSkillsSearchScreen(ModalScreen[None]):
         if event.key == "escape":
             dispatch_message(self, FileSkillsSearchCancelled())
             self.dismiss(None)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Handle user-entered search query and dispatch to app for execution."""
+        try:
+            if event.input.id == "file-search-query":
+                query = event.value.strip() if hasattr(event, 'value') else event.input.value.strip()
+                if not query:
+                    self._set_status("Please enter a search query", "warning")
+                    return
+                project_id = self.project.get("id")
+                if not project_id:
+                    self._set_status("Invalid project ID", "error")
+                    return
+                # Dispatch the search message to the app which runs API or direct search
+                dispatch_message(self, FileSkillsSearchSubmitted(query, project_id, "files"))
+                self._set_status(f"Searching for '{query}'...", "info")
+        except Exception as exc:
+            self._set_status(f"Search dispatch failed: {exc}", "error")
+
+    def _display_results(self, output: str) -> None:
+        """Display search results returned by the app by parsing file lines and populating the list.
+
+        Expects `output` to be the formatted string produced by `_format_search_results`.
+        """
+        try:
+            lines = (output or "").splitlines()
+            list_view = self.query_one("#file-list", ListView)
+            list_view.clear()
+
+            # Parse lines for file entries starting with bullet '•'
+            for ln in lines:
+                stripped = ln.strip()
+                if stripped.startswith("•"):
+                    path = stripped.lstrip("•").strip()
+                    from textual.widgets import ListItem, Label
+                    item = ListItem(Label(path))
+                    item.file_path = path
+                    list_view.append(item)
+
+            # If no items parsed, show the raw output as a single item
+            if not list_view.children:
+                from textual.widgets import ListItem, Label
+                list_view.append(ListItem(Label(output or "No results")))
+
+        except Exception as exc:
+            self._set_status(f"Failed to display results: {exc}", "error")
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """When the search box is edited, if cleared restore full file list."""
+        try:
+            if event.input.id == "file-search-query":
+                current = event.value if hasattr(event, 'value') else event.input.value
+                if not current or not str(current).strip():
+                    # Restore the original file list
+                    self._populate_file_list()
+                    self._set_status(f"Showing {len(self.files)} files", "info")
+        except Exception:
+            pass

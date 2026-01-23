@@ -6858,7 +6858,7 @@ class PortfolioTextualApp(App):
             
             # Use API mode if enabled, otherwise direct DB access
             if self._use_api_mode:
-                # API mode: call GET /api/search endpoint
+                # API mode: call GET /api/projects/search endpoint
                 try:
                     api_url = os.getenv("PORTFOLIO_API_URL", "http://127.0.0.1:8000").rstrip("/")
                     headers = {}
@@ -6875,7 +6875,7 @@ class PortfolioTextualApp(App):
                     
                     async with httpx.AsyncClient(timeout=30.0) as client:
                         response = await client.get(
-                            f"{api_url}/api/search",
+                            f"{api_url}/api/projects/search",
                             params=params,
                             headers=headers
                         )
