@@ -19,8 +19,12 @@ class PortfolioItemCreate(PortfolioItemBase):
     pass
 
 
-class PortfolioItemUpdate(PortfolioItemBase):
+class PortfolioItemUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=255)
+    summary: Optional[str] = Field(None, max_length=1000)
+    role: Optional[str] = Field(None, max_length=255)
+    evidence: Optional[str] = Field(None, max_length=255)
+    thumbnail: Optional[str] = Field(None, max_length=255)
 
 
 class PortfolioItem(PortfolioItemBase):
