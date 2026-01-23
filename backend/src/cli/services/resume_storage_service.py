@@ -49,17 +49,34 @@ class ResumeStorageService:
         self._access_token: Optional[str] = None
         self._encryption: Optional["EncryptionService"] = encryption_service
 
-        if encryption_required and self._encryption is None:
-            try:
-                from .encryption import EncryptionError as _EncryptionError
-                from .encryption import EncryptionService as _EncryptionService
-            except Exception as exc:  # pragma: no cover - import side issues are environment-specific
-                raise ResumeStorageError(f"Encryption unavailable: {exc}") from exc
+        # Development fallback: allow plaintext storage when explicitly enabled.
+        # This is intended for local development only. In production, provide
+        # a real base64-encoded 32-byte key via ENCRYPTION_MASTER_KEY.
+        allow_plaintext = os.getenv("RESUME_ALLOW_PLAINTEXT", "false").lower() in (
+            "1",
+            "true",
+            "yes",
+        )
 
-            try:
-                self._encryption = _EncryptionService()
-            except _EncryptionError as exc:  # pragma: no cover - surfaced in tests
-                raise ResumeStorageError(f"Encryption unavailable: {exc}") from exc
+        if encryption_required and self._encryption is None:
+            if allow_plaintext:
+                # Do not initialize EncryptionService; leave _encryption as None.
+                import logging
+
+                logging.warning(
+                    "RESUME_ALLOW_PLAINTEXT is enabled — resume content will be stored without encryption (development only)."
+                )
+            else:
+                try:
+                    from .encryption import EncryptionError as _EncryptionError
+                    from .encryption import EncryptionService as _EncryptionService
+                except Exception as exc:  # pragma: no cover - import side issues are environment-specific
+                    raise ResumeStorageError(f"Encryption unavailable: {exc}") from exc
+
+                try:
+                    self._encryption = _EncryptionService()
+                except _EncryptionError as exc:  # pragma: no cover - surfaced in tests
+                    raise ResumeStorageError(f"Encryption unavailable: {exc}") from exc
 
         try:
             self.client: Client = create_client(self.supabase_url, self.supabase_key)
