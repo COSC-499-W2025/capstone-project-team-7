@@ -11,6 +11,7 @@ import logging
 import sys
 import os
 from pathlib import Path
+import uuid
 import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -402,6 +403,126 @@ async def list_projects(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred",
         )
+
+
+@router.get("/search")
+async def search_projects(
+    q: Optional[str] = None,
+    scope: Optional[str] = None,
+    project_id: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    user_id: str = Depends(verify_auth_token),
+) -> Dict[str, Any]:
+    """Search across projects' scan data (files/skills) for the authenticated user.
+
+    Endpoint available at: `/api/projects/search`.
+    """
+    if not q or not q.strip():
+        return {"items": [], "page": {"limit": limit, "offset": offset, "total": 0}}
+
+    query_lower = q.lower()
+    scope = scope or "all"
+
+    try:
+        service = get_projects_service()
+
+        # If project_id is specified, search within that project only
+        if project_id:
+            try:
+                uuid.UUID(project_id)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail={"code": "validation_error", "message": "project_id must be a valid UUID"},
+                )
+
+            project = await asyncio.to_thread(service.get_project_scan, user_id, project_id)
+            if not project:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={"code": "not_found", "message": f"Project {project_id} not found"},
+                )
+
+            projects = [project]
+        else:
+            # Search across all user's projects (with scan_data)
+            projects = await asyncio.to_thread(service.get_user_projects_with_scan_data, user_id)
+
+        results: List[Dict[str, Any]] = []
+
+        for project in projects:
+            pid = project.get("id")
+            pname = project.get("project_name", "Unknown")
+            scan_data = project.get("scan_data", {}) or {}
+
+            # Search in files
+            if scope in ["all", "files"]:
+                files = scan_data.get("files", []) or []
+                for file_entry in files:
+                    file_path = file_entry.get("path", "") or ""
+                    file_name = Path(file_path).name if file_path else ""
+                    mime_type = file_entry.get("mime_type", "") or file_entry.get("type", "")
+
+                    if (query_lower in file_path.lower() or
+                        query_lower in file_name.lower() or
+                        query_lower in mime_type.lower()):
+                        results.append({
+                            "type": "file",
+                            "project_id": pid,
+                            "project_name": pname,
+                            "path": file_path,
+                            "name": file_name,
+                            "size_bytes": file_entry.get("size_bytes") or file_entry.get("size") or 0,
+                            "mime_type": mime_type,
+                        })
+
+            # Search in skills
+            if scope in ["all", "skills"]:
+                skills_data = scan_data.get("skills_analysis", {}) or {}
+                if skills_data and skills_data.get("success"):
+                    skills = skills_data.get("skills", {}) or {}
+                    for category, skill_list in skills.items():
+                        if isinstance(skill_list, list):
+                            for skill in skill_list:
+                                if isinstance(skill, str) and query_lower in skill.lower():
+                                    results.append({
+                                        "type": "skill",
+                                        "project_id": pid,
+                                        "project_name": pname,
+                                        "category": category,
+                                        "skill": skill,
+                                    })
+                                elif isinstance(skill, dict):
+                                    skill_name = skill.get("name", "") or ""
+                                    if query_lower in skill_name.lower():
+                                        results.append({
+                                            "type": "skill",
+                                            "project_id": pid,
+                                            "project_name": pname,
+                                            "category": category,
+                                            "skill": skill_name,
+                                            "proficiency": skill.get("proficiency"),
+                                        })
+
+        # Pagination
+        total = len(results)
+        paginated = results[offset: offset + limit]
+
+        return {"items": paginated, "page": {"limit": limit, "offset": offset, "total": total}}
+
+    except ProjectsServiceError as exc:
+        logger.error(f"Failed to search projects: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "search_error", "message": str(exc)},
+        )
+    except Exception as exc:
+        logger.exception("Unexpected error during search")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "search_error", "message": "An unexpected error occurred"},
+        ) from exc
 
 
 @router.get("/top", response_model=TopProjectsResponse, status_code=200)

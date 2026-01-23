@@ -1589,6 +1589,34 @@ class ResumeDeleted(Message):
         super().__init__()
         self.resume_id = resume_id
 
+
+class ProjectSearchSelected(Message):
+    """Message sent when user selects a project for file/skills search."""
+    
+    def __init__(self, project: Dict[str, Any]) -> None:
+        super().__init__()
+        self.project = project
+
+
+class ProjectSearchCancelled(Message):
+    """Message sent when user cancels project search selection."""
+    pass
+
+
+class FileSkillsSearchSubmitted(Message):
+    """Message sent when user submits a search query for files/skills."""
+    
+    def __init__(self, query: str, project_id: str, scope: str) -> None:
+        super().__init__()
+        self.query = query
+        self.project_id = project_id
+        self.scope = scope  # 'all', 'files', 'skills'
+
+
+class FileSkillsSearchCancelled(Message):
+    """Message sent when user cancels file/skills search."""
+    pass
+
 class ProjectsScreen(ModalScreen[None]):
     """Screen for browsing saved project scans."""
     
@@ -4180,3 +4208,450 @@ class SkillProgressScreen(ModalScreen[None]):
             self.app.notify("Summary copied to clipboard!", severity="information")
         else:
             self.app.notify("Could not copy to clipboard", severity="warning")
+
+class ProjectSearchSelectionScreen(ModalScreen[None]):
+    """Screen for selecting a project to search within."""
+    
+    CSS = """
+    ProjectSearchSelectionScreen {
+        align: center middle;
+    }
+    
+    #project-search-dialog {
+        width: 80;
+        height: auto;
+        max-height: 35;
+        background: $surface;
+        border: solid $primary;
+        padding: 1 2;
+    }
+    
+    .dialog-title {
+        text-align: center;
+        text-style: bold;
+        color: $accent;
+        margin-bottom: 1;
+    }
+    
+    .dialog-subtitle {
+        text-align: center;
+        color: $text-muted;
+        margin-bottom: 1;
+    }
+    
+    #project-search-list {
+        height: 15;
+        border: solid $primary;
+        margin-bottom: 1;
+    }
+    
+    #project-search-detail {
+        height: 5;
+        border: solid $primary-darken-1;
+        padding: 1;
+        margin-bottom: 1;
+        background: $surface-darken-1;
+    }
+    
+    #project-search-message {
+        text-align: center;
+        min-height: 1;
+        margin-bottom: 1;
+    }
+    
+    .dialog-buttons {
+        align: center middle;
+        height: auto;
+    }
+    
+    .dialog-buttons Button {
+        margin: 0 1;
+    }
+    """
+    
+    def __init__(self, projects: List[Dict[str, Any]]) -> None:
+        super().__init__()
+        self.projects = projects or []
+        self.selected_project: Optional[Dict[str, Any]] = None
+    
+    def compose(self) -> ComposeResult:
+        if not self.projects:
+            yield Vertical(
+                Static("🔍 Search Project Files & Skills", classes="dialog-title"),
+                Static("No saved projects found. Run a scan first.", classes="dialog-subtitle"),
+                Static("", id="project-search-message", classes="dialog-message"),
+                Horizontal(
+                    Button("Close", id="project-search-close-btn", variant="primary"),
+                    classes="dialog-buttons",
+                ),
+                id="project-search-dialog",
+            )
+            return
+        
+        project_items = []
+        for proj in self.projects:
+            name = proj.get("project_name", "Unnamed Project")
+            timestamp = proj.get("scan_timestamp", "")[:10] if proj.get("scan_timestamp") else "Unknown"
+            label = f"{name} ({timestamp})"
+            project_items.append(ListItem(Label(label)))
+        
+        yield Vertical(
+            Static("🔍 Search Project Files & Skills", classes="dialog-title"),
+            Static("Select a project to search within", classes="dialog-subtitle"),
+            ListView(*project_items, id="project-search-list"),
+            Static("", id="project-search-detail"),
+            Static("", id="project-search-message", classes="dialog-message"),
+            Horizontal(
+                Button("Cancel", id="project-search-cancel-btn"),
+                Button("Select", id="project-search-select-btn", variant="primary"),
+                classes="dialog-buttons",
+            ),
+            id="project-search-dialog",
+        )
+    
+    def on_mount(self) -> None:
+        """Set initial selection when the screen mounts."""
+        if self.projects:
+            try:
+                list_view = self.query_one("#project-search-list", ListView)
+                list_view.index = 0
+                self.selected_project = self.projects[0]
+                self._update_detail(self.selected_project)
+            except Exception:
+                pass
+    
+    def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
+        """Update detail view when selection changes."""
+        if event.control.id == "project-search-list" and event.control.index < len(self.projects):
+            self.selected_project = self.projects[event.control.index]
+            self._update_detail(self.selected_project)
+    
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        """When user presses Enter on a project, select it immediately."""
+        if event.control.id == "project-search-list":
+            if event.control.index < len(self.projects):
+                self.selected_project = self.projects[event.control.index]
+                dispatch_message(self, ProjectSearchSelected(self.selected_project))
+            else:
+                self._set_status("No project selected", "warning")
+    
+    def _update_detail(self, project: Dict[str, Any]) -> None:
+        """Update the detail panel with project information."""
+        try:
+            detail = self.query_one("#project-search-detail", Static)
+            name = project.get("project_name", "Unknown")
+            files = project.get("total_files", 0)
+            langs = project.get("languages", [])
+            has_skills = project.get("has_skills_analysis", False)
+            
+            lang_str = ", ".join(langs[:3]) if langs else "None"
+            if len(langs) > 3:
+                lang_str += f" +{len(langs)-3} more"
+            
+            skills_indicator = "✓" if has_skills else "✗"
+            
+            detail_text = (
+                f"[b]{name}[/b]\n"
+                f"Files: {files} | Languages: {lang_str}\n"
+                f"Skills Analysis: {skills_indicator}"
+            )
+            detail.update(detail_text)
+        except Exception:
+            pass
+    
+    def _set_status(self, message: str, tone: str = "info") -> None:
+        """Update the status message."""
+        try:
+            status = self.query_one("#project-search-message", Static)
+            status.update(message)
+            # Update classes for styling
+            for cls in ["info", "warning", "error", "success"]:
+                status.remove_class(cls)
+            status.add_class(tone)
+        except Exception:
+            pass
+    
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        button_id = event.button.id
+        if button_id == "project-search-close-btn":
+            dispatch_message(self, ProjectSearchCancelled())
+            self.dismiss(None)
+        elif button_id == "project-search-cancel-btn":
+            dispatch_message(self, ProjectSearchCancelled())
+            self.dismiss(None)
+        elif button_id == "project-search-select-btn":
+            if self.selected_project:
+                dispatch_message(self, ProjectSearchSelected(self.selected_project))
+            else:
+                self._set_status("Please select a project first", "warning")
+    
+    def on_key(self, event: Key) -> None:
+        if event.key == "escape":
+            dispatch_message(self, ProjectSearchCancelled())
+            self.dismiss(None)
+
+
+class FileSkillsSearchScreen(ModalScreen[None]):
+    """Screen for browsing files within a selected project."""
+    
+    CSS = """
+    FileSkillsSearchScreen {
+        align: center middle;
+    }
+    
+    #file-browser-dialog {
+        width: 90;
+        height: auto;
+        max-height: 40;
+        background: $surface;
+        border: solid $primary;
+        padding: 1 2;
+    }
+    
+    .browser-dialog-title {
+        text-align: center;
+        text-style: bold;
+        color: $accent;
+        margin-bottom: 1;
+    }
+    
+    .browser-project-info {
+        text-align: center;
+        color: $text-muted;
+        margin-bottom: 1;
+        padding: 1;
+        background: $surface-darken-1;
+        border: solid $primary-darken-1;
+    }
+    
+    #file-list {
+        height: 25;
+        border: solid $primary;
+        margin-bottom: 1;
+    }
+    
+    #file-list > ListItem {
+        padding: 0 1;
+    }
+    
+    #file-list > ListItem:hover {
+        background: $boost;
+    }
+    
+    #file-browser-message {
+        text-align: center;
+        min-height: 1;
+        margin-bottom: 1;
+    }
+    
+    .browser-action-buttons {
+        align: center middle;
+        height: auto;
+    }
+    
+    .browser-action-buttons Button {
+        margin: 0 1;
+    }
+    """
+    
+    def __init__(self, project: Dict[str, Any]) -> None:
+        super().__init__()
+        self.project = project
+        self.project_path = project.get("project_path", "")
+        
+        # Extract scan_data - handle both string (JSON) and dict
+        import json
+        scan_data_raw = project.get("scan_data")
+        if isinstance(scan_data_raw, str):
+            try:
+                self.scan_data = json.loads(scan_data_raw)
+            except (json.JSONDecodeError, TypeError):
+                self.scan_data = {}
+        elif isinstance(scan_data_raw, dict):
+            self.scan_data = scan_data_raw
+        else:
+            self.scan_data = {}
+        
+        self.files = self.scan_data.get("files") or []
+        
+        # Debug logging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"FileSkillsSearchScreen initialized with project_path: {self.project_path}")
+        logger.info(f"Found {len(self.files)} files in scan_data")
+    
+    def compose(self) -> ComposeResult:
+        project_name = self.project.get("project_name", "Unknown Project")
+        file_count = len(self.files)
+        
+        info_text = f"Project: [b]{project_name}[/b] | Files: {file_count}"
+        
+        yield Vertical(
+            Static("📁 Project Files Browser", classes="browser-dialog-title"),
+            Static(info_text, classes="browser-project-info"),
+            Static("Use arrows to navigate, Enter to open, or click the Open button", classes="browser-project-info"),
+            ListView(id="file-list"),
+            Static("", id="file-browser-message", classes="dialog-message"),
+            Horizontal(
+                Button("Open", id="file-browser-open-btn", variant="primary"),
+                Button("Close", id="file-browser-close-btn"),
+                classes="browser-action-buttons",
+            ),
+            id="file-browser-dialog",
+        )
+    
+    def on_mount(self, _: Mount) -> None:
+        self._populate_file_list()
+        self._set_status(f"Showing {len(self.files)} files", "info")
+    
+    def _populate_file_list(self) -> None:
+        """Populate the file list with all files from scan_data."""
+        try:
+            from textual.widgets import ListItem, Label
+            import os
+            
+            list_view = self.query_one("#file-list", ListView)
+            list_view.clear()
+            
+            if not self.files:
+                list_view.append(ListItem(Label("No files found in project")))
+                return
+            
+            for idx, file_item in enumerate(self.files):
+                path = file_item.get("path", "Unknown path")
+                
+                # Create display label with just filename
+                label_text = f"{path}"
+                list_item = ListItem(Label(label_text))
+                list_item.file_path = path  # Store for opening later
+                list_item.file_index = idx  # Store index
+                list_view.append(list_item)
+                
+        except Exception as exc:
+            self._set_status(f"Error loading files: {exc}", "error")
+    
+    def _set_status(self, message: str, tone: str = "info") -> None:
+        """Update the status message."""
+        try:
+            status = self.query_one("#file-browser-message", Static)
+            status.update(message)
+            for cls in ["info", "warning", "error", "success"]:
+                status.remove_class(cls)
+            status.add_class(tone)
+        except Exception:
+            pass
+    
+    def _open_file_in_notepad(self, file_path: str) -> None:
+        """Open the selected file in Notepad."""
+        import os
+        import subprocess
+        from pathlib import Path
+        
+        try:
+            # Clean up the file path - remove leading slashes or backslashes
+            clean_path = file_path.lstrip('/\\')
+            
+            # Get the project name from the project_path to strip duplicates
+            project_name = self.project.get("project_name", "")
+            
+            # If the file path starts with the project name, remove it
+            # e.g., "budgetTracker/backend/file.js" -> "backend/file.js"
+            if project_name and clean_path.startswith(f"{project_name}/"):
+                clean_path = clean_path[len(project_name)+1:]
+            elif project_name and clean_path.startswith(f"{project_name}\\"):
+                clean_path = clean_path[len(project_name)+1:]
+            
+            # Construct full path
+            if self.project_path:
+                full_path = Path(self.project_path) / clean_path
+            else:
+                # If no project_path, try the file_path as-is
+                full_path = Path(clean_path)
+            
+            # Convert to absolute path
+            full_path = full_path.resolve()
+            
+            self._set_status(f"Opening: {full_path}", "info")
+            
+            if not full_path.exists():
+                self._set_status(f"File not found: {full_path}", "error")
+                return
+            
+            # Open in notepad
+            subprocess.Popen(["notepad.exe", str(full_path)], shell=False)
+            
+            self._set_status(f"Opened {full_path.name} in Notepad", "success")
+            
+        except Exception as exc:
+            import traceback
+            error_details = traceback.format_exc()
+            self._set_status(f"Failed: {exc}", "error")
+    
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        button_id = event.button.id
+        
+        if button_id == "file-browser-close-btn":
+            dispatch_message(self, FileSkillsSearchCancelled())
+            self.dismiss(None)
+        elif button_id == "file-browser-open-btn":
+            self._open_selected_file()
+    
+    def _open_selected_file(self) -> None:
+        """Open the currently selected file."""
+        try:
+            list_view = self.query_one("#file-list", ListView)
+            
+            # Debug: Show what we're working with
+            self._set_status(f"List index: {list_view.index}, highlighted: {list_view.highlighted_child}", "info")
+            
+            if list_view.index is not None and list_view.index >= 0:
+                selected = list_view.highlighted_child
+                if selected and hasattr(selected, 'file_path'):
+                    file_path = selected.file_path
+                    self._set_status(f"Opening file: {file_path}", "info")
+                    self._open_file_in_notepad(file_path)
+                else:
+                    self._set_status(f"No file_path on item. Item type: {type(selected)}", "warning")
+            else:
+                self._set_status("Please select a file first (use arrow keys)", "warning")
+        except Exception as exc:
+            import traceback
+            error_details = traceback.format_exc()
+            self._set_status(f"Error: {exc}", "error")
+    
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        """Handle Enter key on file to open in Notepad."""
+        try:
+            if hasattr(event.item, 'file_path'):
+                self._open_file_in_notepad(event.item.file_path)
+        except Exception as exc:
+            self._set_status(f"Error opening file: {exc}", "error")
+    
+    def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
+        """Update status when a file is highlighted."""
+        try:
+            if event.item and hasattr(event.item, 'file_path'):
+                self._set_status(f"Selected: {event.item.file_path} (Press Enter or click Open)", "info")
+        except Exception:
+            pass
+    
+    async def on_click(self, event) -> None:
+        """Handle mouse clicks anywhere in the screen."""
+        try:
+            # Check if we clicked inside the ListView
+            list_view = self.query_one("#file-list", ListView)
+            if list_view.highlighted_child and hasattr(list_view.highlighted_child, 'file_path'):
+                # Get the widget that was clicked
+                widget = self.app.get_widget_at(event.screen_x, event.screen_y)[0]
+                # Check if the clicked widget is part of the list item
+                if widget and (widget.id == "file-list" or widget.has_class("list-item") or 
+                              str(type(widget).__name__) in ["ListItem", "Label"]):
+                    # Double click or single click behavior
+                    pass  # We'll rely on the Open button for now
+        except Exception:
+            pass
+    
+    def on_key(self, event: Key) -> None:
+        if event.key == "escape":
+            dispatch_message(self, FileSkillsSearchCancelled())
+            self.dismiss(None)

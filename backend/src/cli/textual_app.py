@@ -145,6 +145,12 @@ from .screens import (
     ResumesScreen,
     ResumeViewerScreen,
     SkillProgressScreen,
+    ProjectSearchSelected,
+    ProjectSearchCancelled,
+    ProjectSearchSelectionScreen,
+    FileSkillsSearchSubmitted,
+    FileSkillsSearchCancelled,
+    FileSkillsSearchScreen,
 )
 from ..cli.display import render_language_table
 from ..scanner.errors import ParserError
@@ -251,6 +257,7 @@ class PortfolioTextualApp(App):
         ("Run Portfolio Scan", "Prepare an archive or directory and run the portfolio scan workflow."),
         ("View Saved Projects", "Browse and view previously saved project scans."), 
         ("View Saved Resumes", "Browse generated resume snippets saved in Supabase."),
+        ("Browse Project Files", "Browse all files from a previously scanned project."),
         ("View Last Analysis", "Reopen the results from the most recent scan without rescanning."),
         ("Settings & User Preferences", "Manage scan profiles, file filters, and other preferences."),
         ("Consent Management", "Review and update required and external consent settings."),
@@ -288,6 +295,7 @@ class PortfolioTextualApp(App):
           
         self._session_service = SessionService(reporter=self._report_filesystem_issue)
         self._use_api_mode = _env_flag("PORTFOLIO_USE_API")
+        self._api_base_url = os.getenv("API_BASE_URL", "http://localhost:8000")
         self._auth_api_service = AuthAPIService() if self._use_api_mode else None
         self._consent_api_service = ConsentAPIService() if self._use_api_mode else None
         self._analysis_api_service: Optional[AnalysisAPIService] = None
@@ -511,6 +519,16 @@ class PortfolioTextualApp(App):
                 return
             self._show_status("Loading saved resumes…", "info")
             asyncio.create_task(self._load_and_show_resumes())
+            return
+        
+        if label == "Browse Project Files":
+            if not self._session_state.session:
+                self._show_status("Sign in to search projects.", "warning")
+                self._update_detail(index)
+                return
+            self._show_status("Loading projects for search…", "info")
+            asyncio.create_task(self._show_project_search_selection())
+            return
             return
 
         self._show_status(f"{label} is coming soon. Hang tight!", "info")
@@ -6512,11 +6530,17 @@ class PortfolioTextualApp(App):
         if project_id and self._scan_state.contribution_metrics and session.access_token and self._use_ranking_api:
             # Use API endpoint for ranking
             try:
+                self._debug_log(f"Attempting API ranking for project_id: {project_id}")
+                self._debug_log(f"Has contribution_metrics: {bool(self._scan_state.contribution_metrics)}")
+                self._debug_log(f"Has access_token: {bool(session.access_token)}")
+                self._debug_log(f"Use ranking API flag: {self._use_ranking_api}")
+                
                 self._show_status("Calculating project ranking via API...", "info")
                 from .services.projects_api_service import ProjectsRankingAPIService
                 api_service = ProjectsRankingAPIService(auth_token=session.access_token)
                 
                 user_email = self._preferred_user_email()
+                self._debug_log(f"Calling rank_project with user_email: {user_email}")
                 ranking_result = await asyncio.to_thread(
                     api_service.rank_project,
                     project_id,
@@ -6530,7 +6554,8 @@ class PortfolioTextualApp(App):
             except Exception as rank_exc:
                 # Fall back to local ranking method
                 self._debug_log(f"Failed to rank project via API: {rank_exc}, falling back to local method")
-                self._show_status(f"API ranking failed, using local calculation...", "warning")
+                self._debug_log(f"Error type: {type(rank_exc).__name__}, Error details: {str(rank_exc)}")
+                self._show_status(f"API ranking failed: {str(rank_exc)[:50]}, using local calculation...", "warning")
         
         # Use local CLI method for ranking (fallback or primary method)
         if project_id and self._scan_state.contribution_metrics and not api_ranking_succeeded:
@@ -6721,6 +6746,282 @@ class PortfolioTextualApp(App):
             )
 
         return records
+
+
+    # --- Project file and skills search handlers ---
+
+    async def _show_project_search_selection(self) -> None:
+        """Load projects and show the project selection screen for search."""
+        try:
+            # Use API mode if enabled, otherwise direct DB access
+            if self._use_api_mode:
+                # API mode: use HTTP client
+                try:
+                    api_url = os.getenv("PORTFOLIO_API_URL", "http://127.0.0.1:8000").rstrip("/")
+                    headers = {}
+                    if self._session_state.session and self._session_state.session.access_token:
+                        headers["Authorization"] = f"Bearer {self._session_state.session.access_token}"
+                    
+                    async with httpx.AsyncClient(timeout=30.0) as client:
+                        response = await client.get(
+                            f"{api_url}/api/projects",
+                            headers=headers
+                        )
+                        
+                        if response.status_code == 200:
+                            result = response.json()
+                            projects = result.get("projects", [])
+                        else:
+                            raise ProjectsServiceError(f"API error: HTTP {response.status_code}")
+                except Exception as api_exc:
+                    self._debug_log(f"API mode failed, falling back to direct DB: {api_exc}")
+                    # Fallback to direct DB access
+                    service = ProjectsService()
+                    projects = service.get_user_projects(self._session_state.session.user_id)
+            else:
+                # Direct DB mode
+                service = ProjectsService()
+                projects = service.get_user_projects(self._session_state.session.user_id)
+            
+            if not projects:
+                self._show_status("No saved projects found. Run a scan first.", "warning")
+                return
+            
+            self.push_screen(ProjectSearchSelectionScreen(projects))
+            
+        except ProjectsServiceError as exc:
+            self._show_status(f"Failed to load projects: {exc}", "error")
+        except Exception as exc:
+            self._show_status(f"Error loading projects: {exc}", "error")
+
+    def on_project_search_selected(self, event: ProjectSearchSelected) -> None:
+        """Handle project selection for search."""
+        event.stop()
+        project_name = event.project.get('project_name', 'Unknown Project')
+        project_id = event.project.get('id')
+        
+        self._show_status(f"Loading {project_name}…", "info")
+        
+        try:
+            # Fetch full project data including scan_data
+            scan_data = None
+            
+            if self._use_api_mode:
+                try:
+                    # API mode: GET /api/projects/{project_id}
+                    response = httpx.get(
+                        f"{self._api_base_url}/api/projects/{project_id}",
+                        headers={"Authorization": f"Bearer {self._session_state.session.access_token}"},
+                        timeout=30.0,
+                    )
+                    response.raise_for_status()
+                    project_data = response.json()
+                    scan_data = project_data.get("scan_data")
+                except Exception as api_err:
+                    self._show_status(f"API error, falling back to direct DB: {api_err}", "warning")
+                    # Fallback to direct DB
+                    service = ProjectsService()
+                    scan_data = service.get_project_scan(self._session_state.session.user_id, project_id)
+            else:
+                # Direct DB mode
+                service = ProjectsService()
+                scan_data = service.get_project_scan(self._session_state.session.user_id, project_id)
+            
+            # Pass project metadata and scan_data to screen
+            project_with_data = event.project.copy()
+            project_with_data['scan_data'] = scan_data
+            
+            self.push_screen(FileSkillsSearchScreen(project_with_data))
+            
+        except Exception as exc:
+            self._show_status(f"Failed to load project data: {exc}", "error")
+
+    def on_project_search_cancelled(self, event: ProjectSearchCancelled) -> None:
+        """Handle project search cancellation."""
+        event.stop()
+        self._show_status("Project search cancelled.", "info")
+
+    def on_file_skills_search_submitted(self, event: FileSkillsSearchSubmitted) -> None:
+        """Handle file/skills search query submission."""
+        event.stop()
+        asyncio.create_task(self._execute_project_search(event.query, event.project_id, event.scope))
+
+    def on_file_skills_search_cancelled(self, event: FileSkillsSearchCancelled) -> None:
+        """Handle file/skills search cancellation."""
+        event.stop()
+        self._show_status("Search cancelled.", "info")
+
+    async def _execute_project_search(self, query: str, project_id: str, scope: str) -> None:
+        """Execute search within project files and skills data."""
+        try:
+            results = []
+            
+            # Use API mode if enabled, otherwise direct DB access
+            if self._use_api_mode:
+                # API mode: call GET /api/search endpoint
+                try:
+                    api_url = os.getenv("PORTFOLIO_API_URL", "http://127.0.0.1:8000").rstrip("/")
+                    headers = {}
+                    if self._session_state.session and self._session_state.session.access_token:
+                        headers["Authorization"] = f"Bearer {self._session_state.session.access_token}"
+                    
+                    params = {
+                        "q": query,
+                        "scope": scope,
+                        "project_id": project_id,
+                        "limit": 100,
+                        "offset": 0
+                    }
+                    
+                    async with httpx.AsyncClient(timeout=30.0) as client:
+                        response = await client.get(
+                            f"{api_url}/api/search",
+                            params=params,
+                            headers=headers
+                        )
+                        
+                        if response.status_code == 200:
+                            result = response.json()
+                            results = result.get("items", [])
+                        else:
+                            error_detail = response.text
+                            raise ProjectsServiceError(f"API error: HTTP {response.status_code} - {error_detail}")
+                except Exception as api_exc:
+                    self._debug_log(f"API search failed, falling back to direct search: {api_exc}")
+                    # Fallback to direct DB search
+                    results = await self._direct_project_search(query, project_id, scope)
+            else:
+                # Direct DB mode
+                results = await self._direct_project_search(query, project_id, scope)
+            
+            # Format and display results
+            output = self._format_search_results(results, query, scope)
+            
+            # Find the search screen and update it
+            for screen in self.screen_stack:
+                if isinstance(screen, FileSkillsSearchScreen):
+                    screen._display_results(output)
+                    screen._set_status(f"Found {len(results)} results for '{query}'", "success")
+                    break
+            
+        except ProjectsServiceError as exc:
+            self._show_status(f"Search failed: {exc}", "error")
+        except Exception as exc:
+            self._show_status(f"Search error: {exc}", "error")
+
+    async def _direct_project_search(self, query: str, project_id: str, scope: str) -> List[Dict[str, Any]]:
+        """Direct database search (fallback when API mode is disabled or fails)."""
+        service = ProjectsService()
+        project = service.get_project_scan(self._session_state.session.user_id, project_id)
+        
+        if not project:
+            raise ProjectsServiceError("Project not found")
+        
+        scan_data = project.get("scan_data", {})
+        results = []
+        
+        # Search in files
+        if scope in ["all", "files"]:
+            files = scan_data.get("files", [])
+            query_lower = query.lower()
+            
+            for file_entry in files:
+                file_path = file_entry.get("path", "")
+                file_name = Path(file_path).name
+                mime_type = file_entry.get("mime_type", "")
+                
+                # Search in file path, name, and mime type
+                if (query_lower in file_path.lower() or 
+                    query_lower in file_name.lower() or 
+                    query_lower in mime_type.lower()):
+                    results.append({
+                        "type": "file",
+                        "path": file_path,
+                        "size": file_entry.get("size_bytes", 0),
+                        "size_bytes": file_entry.get("size_bytes", 0),
+                        "mime_type": mime_type
+                    })
+        
+        # Search in skills
+        if scope in ["all", "skills"]:
+            skills_data = scan_data.get("skills_analysis", {})
+            if skills_data and skills_data.get("success"):
+                skills = skills_data.get("skills", {})
+                query_lower = query.lower()
+                
+                # Search in technical skills
+                for category, skill_list in skills.items():
+                    if isinstance(skill_list, list):
+                        for skill in skill_list:
+                            if isinstance(skill, str) and query_lower in skill.lower():
+                                results.append({
+                                    "type": "skill",
+                                    "category": category,
+                                    "skill": skill
+                                })
+                            elif isinstance(skill, dict):
+                                skill_name = skill.get("name", "")
+                                if query_lower in skill_name.lower():
+                                    results.append({
+                                        "type": "skill",
+                                        "category": category,
+                                        "skill": skill_name,
+                                        "proficiency": skill.get("proficiency")
+                                    })
+        
+        return results
+
+    def _format_search_results(self, results: List[Dict[str, Any]], query: str, scope: str) -> str:
+        """Format search results for display."""
+        if not results:
+            return f"No results found for '{query}' in {scope}."
+        
+        output_lines = [f"Search Results for '{query}' (Scope: {scope})"]
+        output_lines.append("=" * 60)
+        output_lines.append("")
+        
+        # Group results by type
+        files = [r for r in results if r.get("type") == "file"]
+        skills = [r for r in results if r.get("type") == "skill"]
+        
+        if files:
+            output_lines.append(f"[b]Files ({len(files)}):[/b]")
+            for file_result in files[:50]:  # Limit to 50 files
+                path = file_result.get("path", "Unknown")
+                size = file_result.get("size", 0)
+                mime = file_result.get("mime_type", "")
+                size_str = self._format_bytes(size) if size else "0 B"
+                output_lines.append(f"  • {path}")
+                output_lines.append(f"    Size: {size_str} | Type: {mime}")
+            
+            if len(files) > 50:
+                output_lines.append(f"  ... and {len(files) - 50} more files")
+            output_lines.append("")
+        
+        if skills:
+            output_lines.append(f"[b]Skills ({len(skills)}):[/b]")
+            skills_by_category: Dict[str, List[Dict[str, Any]]] = {}
+            for skill_result in skills:
+                category = skill_result.get("category", "Other")
+                skills_by_category.setdefault(category, []).append(skill_result)
+            
+            for category, category_skills in skills_by_category.items():
+                output_lines.append(f"  [b]{category}:[/b]")
+                for skill_result in category_skills[:20]:  # Limit per category
+                    skill = skill_result.get("skill", "Unknown")
+                    proficiency = skill_result.get("proficiency")
+                    if proficiency:
+                        output_lines.append(f"    • {skill} (Proficiency: {proficiency})")
+                    else:
+                        output_lines.append(f"    • {skill}")
+                if len(category_skills) > 20:
+                    output_lines.append(f"    ... and {len(category_skills) - 20} more")
+            output_lines.append("")
+        
+        output_lines.append("=" * 60)
+        output_lines.append(f"Total: {len(results)} results")
+        
+        return "\n".join(output_lines)
 
 
 def main() -> None:
