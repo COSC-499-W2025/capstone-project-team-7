@@ -906,6 +906,123 @@ Write the Markdown block only, no extra text.
             total_files = parse_result.summary.get("files_processed", len(parse_result.files))
         return int(total_files or 0)
 
+    # ------------------------------------------------------------------ #
+    # One-page resume: LaTeX rendering + optional PDF compile helpers
+    # ------------------------------------------------------------------ #
+
+    def build_onepage_tex(self, *, header: Dict[str, Optional[str]], items: List[Dict[str, Any]]) -> str:
+        """Build a LaTeX source for a one-page resume using a lightweight
+        template inspired by Jake's resume. `header` is a dict with keys:
+        name, email, phone, linkedin, github. `items` is a list of dicts with
+        keys: title, role, summary, evidence (list).
+        Returns the LaTeX source as a string.
+        """
+        def esc(s: Optional[str]) -> str:
+            if not s:
+                return ""
+            # Minimal escaping
+            return (
+                str(s)
+                .replace("\\", "\\textbackslash{}")
+                .replace("&", "\\&")
+                .replace("%", "\\%")
+                .replace("$", "\\$")
+                .replace("#", "\\#")
+                .replace("_", "\\_")
+                .replace("{", "\\{")
+                .replace("}", "\\}")
+                .replace("~", "\\textasciitilde{}")
+                .replace("^", "\\^{ }")
+            )
+
+        name = esc(header.get("name"))
+        contact = []
+        if header.get("phone"):
+            contact.append(esc(header.get("phone")))
+        if header.get("email"):
+            email = esc(header.get("email"))
+            contact.append(r"\href{mailto:%s}{%s}" % (email, email))
+        if header.get("linkedin"):
+            link = esc(header.get("linkedin"))
+            contact.append(r"\href{%s}{%s}" % (link, link))
+        if header.get("github"):
+            gh = esc(header.get("github"))
+            contact.append(r"\href{%s}{%s}" % (gh, gh))
+
+        contact_line = " $|$ ".join(contact)
+
+        preamble = (
+            r"\\documentclass[letterpaper,11pt]{article}\n"
+            r"\\usepackage[empty]{fullpage}\n"
+            r"\\usepackage[hidelinks]{hyperref}\n"
+            r"\\usepackage{titlesec}\n"
+            r"\\usepackage{enumitem}\n"
+            r"\\usepackage{fancyhdr}\n"
+            r"\\usepackage[english]{babel}\n"
+            r"\\pagestyle{fancy}\n\\fancyhf{}\n"
+            r"\\renewcommand{\\headrulewidth}{0pt}\n\\renewcommand{\\footrulewidth}{0pt}\n"
+            r"\\addtolength{\\oddsidemargin}{-0.5in}\n\\addtolength{\\evensidemargin}{-0.5in}\n"
+            r"\\addtolength{\\textwidth}{1in}\n\\addtolength{\\topmargin}{-.5in}\n\\addtolength{\\textheight}{1.0in}\n"
+            r"\\urlstyle{same}\n\\raggedbottom\\raggedright\\setlength{\\tabcolsep}{0in}\n"
+            r"\\titleformat{\\section}{\\vspace{-4pt}\\scshape\\raggedright\\large}{}{0em}{}[\\color{black}\\titlerule \\vspace{-5pt}]\n"
+        )
+
+        header_block = (
+            "\\begin{center}\n"
+            f"    \\textbf{{\\Huge \\scshape {name}}} \\\\ \\vspace{{1pt}}\n"
+            f"    \\small {contact_line}\n"
+            "\\end{center}\n\n"
+        )
+
+        body = ["% Auto-generated one-page resume", preamble, header_block]
+
+        # Projects section
+        body.append(r"\section{Projects}")
+        body.append(r"\resumeSubHeadingListStart")
+        for it in items:
+            title = esc(it.get("title") or it.get("project_id") or "Project")
+            role = esc(it.get("role") or "")
+            # date placeholder
+            date = esc(it.get("date") or "")
+            body.append(rf"\resumeSubheading{{{title}}}{{{date}}}{{{role}}}{{}}")
+            body.append(r"\resumeItemListStart")
+            if it.get("summary"):
+                body.append(rf"  \resumeItem{{{esc(it.get('summary'))}}}")
+            for ev in (it.get("evidence") or [])[:4]:
+                body.append(rf"  \resumeItem{{{esc(ev)}}}")
+            body.append(r"\resumeItemListEnd")
+        body.append(r"\resumeSubHeadingListEnd")
+
+        body.append("\\end{document}")
+        return "\n".join(body)
+
+    def compile_tex_to_pdf(self, tex_source: str, filename_root: str = "resume") -> Optional[str]:
+        """Compile LaTeX source to PDF using `pdflatex` if available.
+        Returns path to generated PDF or None on failure / missing pdflatex.
+        """
+        import subprocess
+        import tempfile
+        import shutil
+        import uuid
+
+        pdflatex = shutil.which("pdflatex")
+        if not pdflatex:
+            return None
+        with tempfile.TemporaryDirectory() as td:
+            tex_path = Path(td) / f"{filename_root}.tex"
+            tex_path.write_text(tex_source, encoding="utf-8")
+            try:
+                subprocess.run([pdflatex, "-interaction=nonstopmode", tex_path.name], cwd=td, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                subprocess.run([pdflatex, "-interaction=nonstopmode", tex_path.name], cwd=td, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                pdf_path = Path(td) / f"{filename_root}.pdf"
+                if pdf_path.exists():
+                    out = Path(tempfile.gettempdir()) / f"{filename_root}-{uuid.uuid4().hex}.pdf"
+                    shutil.copy2(pdf_path, out)
+                    return str(out)
+            except subprocess.CalledProcessError:
+                return None
+        return None
+
     def _format_stack(self, languages: List[Dict[str, object]], *, limit: int = 3) -> str:
         names = [lang.get("language") for lang in languages if isinstance(lang, dict) and lang.get("language")]
         unique = []
