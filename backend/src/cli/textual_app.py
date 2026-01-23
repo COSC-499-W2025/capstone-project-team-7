@@ -6858,37 +6858,32 @@ class PortfolioTextualApp(App):
             
             # Use API mode if enabled, otherwise direct DB access
             if self._use_api_mode:
-                # API mode: call GET /api/projects/search endpoint
+                # API mode: use the Projects API service client so auth/headers and base URL
+                # are managed in one place. The service is synchronous (httpx.Client),
+                # so run it in a thread to avoid blocking the event loop.
                 try:
-                    api_url = os.getenv("PORTFOLIO_API_URL", "http://127.0.0.1:8000").rstrip("/")
-                    headers = {}
-                    if self._session_state.session and self._session_state.session.access_token:
-                        headers["Authorization"] = f"Bearer {self._session_state.session.access_token}"
-                    
-                    params = {
-                        "q": query,
-                        "scope": scope,
-                        "project_id": project_id,
-                        "limit": 100,
-                        "offset": 0
-                    }
-                    
-                    async with httpx.AsyncClient(timeout=30.0) as client:
-                        response = await client.get(
-                            f"{api_url}/api/projects/search",
-                            params=params,
-                            headers=headers
-                        )
-                        
-                        if response.status_code == 200:
-                            result = response.json()
-                            results = result.get("items", [])
-                        else:
-                            error_detail = response.text
-                            raise ProjectsServiceError(f"API error: HTTP {response.status_code} - {error_detail}")
+                    projects_service = self._get_projects_service()
+                    # Ensure the service has the current access token
+                    if self._session_state.session and hasattr(projects_service, "set_access_token"):
+                        projects_service.set_access_token(self._session_state.session.access_token)
+
+                    resp = await asyncio.to_thread(
+                        projects_service.search_projects,
+                        query,
+                        project_id,
+                        scope,
+                        100,
+                        0,
+                    )
+
+                    if isinstance(resp, dict):
+                        results = resp.get("items", [])
+                    else:
+                        # Unexpected response shape; fall back
+                        self._debug_log(f"Unexpected search response: {resp}")
+                        results = await self._direct_project_search(query, project_id, scope)
                 except Exception as api_exc:
                     self._debug_log(f"API search failed, falling back to direct search: {api_exc}")
-                    # Fallback to direct DB search
                     results = await self._direct_project_search(query, project_id, scope)
             else:
                 # Direct DB mode

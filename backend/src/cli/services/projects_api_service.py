@@ -223,6 +223,55 @@ class ProjectsAPIService:
             raise
         except Exception as exc:
             raise ProjectsServiceError(f"Failed to get project scan: {exc}") from exc
+
+    def search_projects(
+        self,
+        q: str,
+        project_id: Optional[str] = None,
+        scope: str = "files",
+        limit: int = 100,
+        offset: int = 0,
+    ) -> Dict[str, Any]:
+        """Search projects via the API search endpoint.
+
+        Args:
+            q: Query string to search for.
+            project_id: Optional project UUID to limit search to a single project.
+            scope: One of 'files' or 'skills'.
+            limit: Maximum number of items to return.
+            offset: Offset for pagination.
+
+        Returns:
+            Parsed JSON response from the API (expected to include 'items' list).
+
+        Raises:
+            ProjectsServiceError on network or API errors.
+        """
+        try:
+            params = {"q": q, "scope": scope, "limit": limit, "offset": offset}
+            if project_id:
+                params["project_id"] = project_id
+
+            response = self.client.get(
+                f"{self.api_base_url}/api/projects/search",
+                params=params,
+                headers=self._get_headers(),
+            )
+
+            if response.status_code == 200:
+                try:
+                    return response.json()
+                except Exception as exc:
+                    raise ProjectsServiceError(f"Invalid JSON in search response: {exc}") from exc
+            else:
+                self._handle_error_response(response, "search_projects")
+
+        except httpx.HTTPError as exc:
+            raise ProjectsServiceError(f"Network error while searching projects: {exc}") from exc
+        except ProjectsServiceError:
+            raise
+        except Exception as exc:
+            raise ProjectsServiceError(f"Unexpected error searching projects: {exc}") from exc
     
     def get_dedup_report(self, project_id: str) -> Dict[str, Any]:
         """Fetch the deduplication report for a project via API."""
