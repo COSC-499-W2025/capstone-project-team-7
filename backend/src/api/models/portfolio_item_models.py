@@ -11,8 +11,8 @@ class PortfolioItemBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     summary: Optional[str] = Field(None, max_length=1000)
     role: Optional[str] = Field(None, max_length=255)
-    evidence: Optional[str] = Field(None, max_length=255)
-    thumbnail: Optional[str] = Field(None, max_length=255)
+    evidence: Optional[str] = Field(None, max_length=2048)
+    thumbnail: Optional[str] = Field(None, max_length=1024)
 
 
 class PortfolioItemCreate(PortfolioItemBase):
@@ -23,8 +23,8 @@ class PortfolioItemUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=255)
     summary: Optional[str] = Field(None, max_length=1000)
     role: Optional[str] = Field(None, max_length=255)
-    evidence: Optional[str] = Field(None, max_length=255)
-    thumbnail: Optional[str] = Field(None, max_length=255)
+    evidence: Optional[str] = Field(None, max_length=2048)
+    thumbnail: Optional[str] = Field(None, max_length=1024)
 
 
 class PortfolioItem(PortfolioItemBase):

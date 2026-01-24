@@ -155,7 +155,7 @@ Content-Type: multipart/form-data
   - Tests: `tests/test_portfolio_items_api.py` (10 tests, all passing)
   - Features:
     - Per-user isolation via PostgreSQL RLS policy (`user_id = auth.uid()`)
-    - Field validation: title max 255 chars, summary max 1000 chars, role max 255 chars, evidence max 5000 chars, thumbnail max 500 chars
+    - Field validation: title max 255 chars, summary max 1000 chars, role max 255 chars, evidence max 2048 chars, thumbnail max 1024 chars
     - UUID primary keys with created_at/updated_at timestamps
     - Partial updates via PATCH (only provided fields are modified)
 

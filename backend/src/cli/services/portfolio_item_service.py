@@ -5,7 +5,7 @@ import os
 from typing import List, Dict, Any, Optional
 from uuid import UUID
 
-from supabase.client import Client, create_client
+from supabase import Client, create_client
 
 from api.models.portfolio_item_models import PortfolioItem, PortfolioItemCreate, PortfolioItemUpdate
 
