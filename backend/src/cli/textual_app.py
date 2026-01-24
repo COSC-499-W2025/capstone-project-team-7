@@ -6714,6 +6714,7 @@ class PortfolioTextualApp(App):
                     "relative_path": path,
                     "size_bytes": entry.get("size_bytes"),
                     "mime_type": entry.get("mime_type"),
+                    "sha256": entry.get("file_hash"),
                     "metadata": metadata,
                     "last_seen_modified_at": modified,
                     "last_scanned_at": timestamp,

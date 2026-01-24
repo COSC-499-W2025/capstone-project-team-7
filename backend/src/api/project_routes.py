@@ -1132,6 +1132,23 @@ async def append_upload_to_project(
         logger.warning(f"Failed to get cached files for project {project_id}: {exc}")
         existing_files = {}
 
+    # Check if any cached files are missing sha256 (e.g., from TUI scans)
+    # and trigger backfill from scan_data if needed
+    files_missing_hash = any(
+        not meta.get("sha256") for meta in existing_files.values()
+    )
+    if files_missing_hash:
+        try:
+            backfill_count = service.backfill_cached_file_hashes(user_id, project_id)
+            if backfill_count > 0:
+                logger.info(
+                    f"Backfilled {backfill_count} sha256 hashes for project {project_id}"
+                )
+                # Reload cached files after backfill
+                existing_files = service.get_cached_files(user_id, project_id)
+        except ProjectsServiceError as exc:
+            logger.warning(f"Failed to backfill hashes for project {project_id}: {exc}")
+
     # Build a lookup of existing hashes for deduplication
     existing_hashes: Dict[str, str] = {}  # sha256 -> path
     for path, meta in existing_files.items():

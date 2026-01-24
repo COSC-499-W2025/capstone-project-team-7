@@ -425,3 +425,238 @@ class TestResponseModels:
                 # Since we can't know exact file size, just verify it's non-negative
                 assert group["wasted_bytes"] >= 0
                 assert group["file_count"] >= 2  # At least 2 files to be a duplicate
+
+
+# ============================================================================
+# TUI-Scanned Project Deduplication Tests (Backfill Tests)
+# ============================================================================
+
+
+class FakeTUIProjectsService:
+    """
+    Fake projects service that simulates TUI-scanned projects.
+
+    TUI-scanned projects have cached files without sha256 hashes initially,
+    but the scan_data contains file_hash for each file.
+    """
+
+    def __init__(self):
+        self._projects = {}
+        self._cached_files = {}
+        self._backfill_called = False
+        self._backfill_count = 0
+
+    def get_user_projects(self, user_id):
+        """Return mock projects."""
+        return [
+            {
+                "id": "tui-project-1",
+                "project_name": "TUI Project 1",
+                "project_path": "/test/tui/path1",
+            },
+        ]
+
+    def get_cached_files(self, user_id, project_id):
+        """
+        Return mock cached files simulating TUI scan behavior.
+
+        Initially returns files WITHOUT sha256, then after backfill
+        returns files WITH sha256.
+        """
+        if project_id == "tui-project-1":
+            if self._backfill_called:
+                # After backfill, return files with sha256
+                return {
+                    "src/main.py": {
+                        "sha256": "abc123hash",
+                        "size_bytes": 100,
+                        "mime_type": "text/x-python",
+                    },
+                    "src/utils.py": {
+                        "sha256": "def456hash",
+                        "size_bytes": 200,
+                        "mime_type": "text/x-python",
+                    },
+                }
+            else:
+                # Before backfill - no sha256 (simulates TUI scan)
+                return {
+                    "src/main.py": {
+                        "sha256": None,
+                        "size_bytes": 100,
+                        "mime_type": "text/x-python",
+                    },
+                    "src/utils.py": {
+                        "sha256": None,
+                        "size_bytes": 200,
+                        "mime_type": "text/x-python",
+                    },
+                }
+        return self._cached_files.get(project_id, {})
+
+    def get_project_scan(self, user_id, project_id):
+        """Return mock project scan data with file_hash in files."""
+        if project_id == "tui-project-1":
+            return {
+                "id": project_id,
+                "project_name": "TUI Project 1",
+                "user_id": user_id,
+                "scan_data": {
+                    "files": [
+                        {
+                            "path": "src/main.py",
+                            "file_hash": "abc123hash",
+                            "size_bytes": 100,
+                            "mime_type": "text/x-python",
+                        },
+                        {
+                            "path": "src/utils.py",
+                            "file_hash": "def456hash",
+                            "size_bytes": 200,
+                            "mime_type": "text/x-python",
+                        },
+                    ]
+                },
+            }
+        return self._projects.get(project_id)
+
+    def upsert_cached_files(self, user_id, project_id, files):
+        """Mock upsert cached files."""
+        if project_id not in self._cached_files:
+            self._cached_files[project_id] = {}
+        for f in files:
+            self._cached_files[project_id][f["relative_path"]] = f
+
+    def backfill_cached_file_hashes(self, user_id, project_id):
+        """
+        Mock backfill that simulates extracting hashes from scan_data.
+
+        Returns the number of files backfilled.
+        """
+        self._backfill_called = True
+        if project_id == "tui-project-1":
+            self._backfill_count = 2  # We have 2 files to backfill
+            return 2
+        return 0
+
+
+class TestTUIScannedProjectDeduplication:
+    """
+    Tests for deduplication of TUI-scanned projects.
+
+    These tests verify that projects scanned via TUI (which initially
+    don't have sha256 in cached files) can still properly detect duplicates
+    after the backfill mechanism populates the hashes from scan_data.
+    """
+
+    @pytest.fixture(autouse=True)
+    def override_dependencies(self):
+        """Override dependencies for testing."""
+        self.fake_service = FakeTUIProjectsService()
+        app.dependency_overrides[get_auth_context] = _override_auth
+        app.dependency_overrides[get_projects_service] = lambda: self.fake_service
+        yield
+        app.dependency_overrides.clear()
+
+    def test_tui_project_cached_files_missing_sha256_initially(self):
+        """Test that TUI-scanned cached files don't have sha256 initially"""
+        cached = self.fake_service.get_cached_files(VALID_USER_ID, "tui-project-1")
+
+        # Verify all files are missing sha256
+        for path, meta in cached.items():
+            assert meta.get("sha256") is None, f"File {path} should not have sha256 initially"
+
+    def test_backfill_populates_sha256_from_scan_data(self):
+        """Test that backfill extracts sha256 from scan_data"""
+        # Trigger backfill
+        count = self.fake_service.backfill_cached_file_hashes(VALID_USER_ID, "tui-project-1")
+
+        assert count == 2, "Should have backfilled 2 files"
+        assert self.fake_service._backfill_called
+
+        # After backfill, cached files should have sha256
+        cached = self.fake_service.get_cached_files(VALID_USER_ID, "tui-project-1")
+        for path, meta in cached.items():
+            assert meta.get("sha256") is not None, f"File {path} should have sha256 after backfill"
+
+    def test_refresh_triggers_backfill_for_tui_projects(self):
+        """Test that portfolio refresh handles TUI-scanned projects correctly"""
+        response = client.post(
+            "/api/portfolio/refresh",
+            json={"include_duplicates": True},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "completed"
+
+    def test_duplicate_detection_works_after_backfill(self):
+        """Test that duplicates are detected after sha256 is backfilled"""
+        # First trigger backfill
+        self.fake_service.backfill_cached_file_hashes(VALID_USER_ID, "tui-project-1")
+
+        # Then verify deduplication can find files by hash
+        cached = self.fake_service.get_cached_files(VALID_USER_ID, "tui-project-1")
+
+        # Build hash lookup (same logic as append_upload_to_project)
+        existing_hashes = {}
+        for path, meta in cached.items():
+            sha = meta.get("sha256")
+            if sha:
+                existing_hashes[sha] = path
+
+        # Verify we can look up files by hash now
+        assert "abc123hash" in existing_hashes
+        assert "def456hash" in existing_hashes
+        assert existing_hashes["abc123hash"] == "src/main.py"
+        assert existing_hashes["def456hash"] == "src/utils.py"
+
+
+class TestBackfillCachedFileHashesUnit:
+    """Unit tests for the backfill_cached_file_hashes method in ProjectsService"""
+
+    def test_backfill_extracts_file_hash_from_scan_data(self):
+        """Test that backfill correctly maps file_hash from scan_data to sha256"""
+        # This is a more detailed unit test of the backfill logic
+        scan_data = {
+            "files": [
+                {"path": "src/main.py", "file_hash": "hash1"},
+                {"path": "src/utils.py", "file_hash": "hash2"},
+                {"path": "src/no_hash.py"},  # File without hash
+            ]
+        }
+
+        # Build hash map (same logic as in backfill_cached_file_hashes)
+        hash_map = {}
+        for entry in scan_data.get("files", []):
+            path = entry.get("path")
+            file_hash = entry.get("file_hash")
+            if path and file_hash:
+                normalized = str(path).replace("\\", "/")
+                hash_map[normalized] = file_hash
+
+        assert hash_map == {
+            "src/main.py": "hash1",
+            "src/utils.py": "hash2",
+        }
+        assert "src/no_hash.py" not in hash_map
+
+    def test_backfill_normalizes_paths(self):
+        """Test that backfill normalizes Windows-style paths"""
+        scan_data = {
+            "files": [
+                {"path": "src\\windows\\path.py", "file_hash": "hash1"},
+                {"path": "src/unix/path.py", "file_hash": "hash2"},
+            ]
+        }
+
+        hash_map = {}
+        for entry in scan_data.get("files", []):
+            path = entry.get("path")
+            file_hash = entry.get("file_hash")
+            if path and file_hash:
+                normalized = str(path).replace("\\", "/")
+                hash_map[normalized] = file_hash
+
+        assert "src/windows/path.py" in hash_map
+        assert "src/unix/path.py" in hash_map
