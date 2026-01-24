@@ -2913,11 +2913,11 @@ class ProjectViewerScreen(ModalScreen[None]):
                 avg_complexity = metrics.get('average_complexity', 0)
                 avg_maint = metrics.get('average_maintainability', 0)
                 
-                lines.append(f"  e Total lines: {total_lines:,}")
-                lines.append(f"  e Code lines: {code_lines:,} | Comments: {comments:,}")
-                lines.append(f"  e Functions: {functions:,} | Classes: {classes:,}")
-                lines.append(f"  e Avg complexity: {avg_complexity:.2f}")
-                lines.append(f"  e Avg maintainability: {avg_maint:.1f}/100")
+                lines.append(f"  • Total lines: {total_lines:,}")
+                lines.append(f"  • Code lines: {code_lines:,} | Comments: {comments:,}")
+                lines.append(f"  • Functions: {functions:,} | Classes: {classes:,}")
+                lines.append(f"  • Avg complexity: {avg_complexity:.2f}")
+                lines.append(f"  • Avg maintainability: {avg_maint:.1f}/100")
             
             quality = code_data.get("quality", {})
             if quality:

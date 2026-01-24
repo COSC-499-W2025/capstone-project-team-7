@@ -6805,6 +6805,7 @@ class PortfolioTextualApp(App):
             # Fetch full project data including scan_data
             scan_data = None
             
+
             if self._use_api_mode:
                 try:
                     # API mode: GET /api/projects/{project_id}
@@ -6820,16 +6821,18 @@ class PortfolioTextualApp(App):
                     self._show_status(f"API error, falling back to direct DB: {api_err}", "warning")
                     # Fallback to direct DB
                     service = ProjectsService()
-                    scan_data = service.get_project_scan(self._session_state.session.user_id, project_id)
+                    project = service.get_project_scan(self._session_state.session.user_id, project_id)
+                    scan_data = project.get("scan_data") if project else None
             else:
                 # Direct DB mode
                 service = ProjectsService()
-                scan_data = service.get_project_scan(self._session_state.session.user_id, project_id)
-            
+                project = service.get_project_scan(self._session_state.session.user_id, project_id)
+                scan_data = project.get("scan_data") if project else None
+
             # Pass project metadata and scan_data to screen
             project_with_data = event.project.copy()
             project_with_data['scan_data'] = scan_data
-            
+
             self.push_screen(FileSkillsSearchScreen(project_with_data))
             
         except Exception as exc:
