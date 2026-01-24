@@ -39,6 +39,7 @@ class TimelineItem(BaseModel):
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     duration_days: Optional[int] = None
+    role: Optional[str] = Field(None, description="User's role in the project")
 
 
 class SkillsTimelineItem(BaseModel):
