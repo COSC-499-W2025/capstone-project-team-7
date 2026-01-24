@@ -39,6 +39,7 @@ from textual.widgets import Footer, Header, Label, ListItem, ListView, ProgressB
 from .message_utils import dispatch_message
 
 from .services.projects_service import ProjectsService, ProjectsServiceError 
+from .services.project_overrides_service import ProjectOverridesService
 from .services.preferences_service import PreferencesService
 from .services.auth_api_service import AuthAPIService
 from .services.consent_api_service import ConsentAPIService, ConsentAPIServiceError
@@ -144,6 +145,8 @@ from .screens import (
     ResumeSelected,
     ResumesScreen,
     ResumeViewerScreen,
+    RoleEditScreen,
+    RoleUpdated,
     SkillProgressScreen,
 )
 from ..cli.display import render_language_table
@@ -303,6 +306,7 @@ class PortfolioTextualApp(App):
         self._search_service = SearchService()
         self._resume_service = ResumeGenerationService()
         self._projects_service: Optional[ProjectsService] = None
+        self._overrides_service: Optional[ProjectOverridesService] = None
         
         # Feature flag: Use API endpoints for ranking/timeline (True) or local CLI methods (False)
         self._use_ranking_api = os.getenv("PORTFOLIO_USE_API", "true").lower() in ("true", "1", "yes")
@@ -3722,6 +3726,15 @@ class PortfolioTextualApp(App):
         except ProjectsServiceError as exc:
             raise ProjectsServiceError(f"Unable to initialize projects service: {exc}") from exc
     
+    def _get_overrides_service(self) -> ProjectOverridesService:
+        """Lazy initialize project overrides service when needed."""
+        if self._overrides_service is not None:
+            return self._overrides_service
+        
+        self._overrides_service = ProjectOverridesService()
+        self._debug_log("Initialized ProjectOverridesService")
+        return self._overrides_service
+    
     def _get_analysis_api_service(self) -> AnalysisAPIService:
         """Lazy initialize analysis API service when needed."""
         if self._analysis_api_service is not None:
@@ -6366,6 +6379,36 @@ class PortfolioTextualApp(App):
                 self._show_status(f"Failed to refresh: {exc}", "error")
         else:
             self._show_status("Failed to delete project.", "error")
+
+    async def on_role_updated(self, message: RoleUpdated) -> None:
+        """Handle when user updates a project role."""
+        message.stop()
+        
+        if not self._session_state.session:
+            self._show_status("Sign in required.", "error")
+            return
+        
+        project_id = message.project_id
+        role = message.role
+        self._show_status("Updating project role…", "info")
+        
+        try:
+            overrides_service = self._get_overrides_service()
+            await asyncio.to_thread(
+                overrides_service.upsert_overrides,
+                self._session_state.session.user_id,
+                project_id,
+                role=role,
+            )
+        except Exception as exc:
+            self._show_status(f"Failed to update role: {exc}", "error")
+            return
+        
+        # Update selected project state if it matches
+        if self._projects_state.selected_project and self._projects_state.selected_project.get("id") == project_id:
+            self._projects_state.selected_project["role"] = role
+        
+        self._show_status(f"Role updated to '{role}'.", "success")
             
     async def on_resume_selected(self, message: ResumeSelected) -> None:
         """Handle viewing a saved resume item."""
