@@ -88,9 +88,7 @@ class PortfolioItemService:
     def delete_portfolio_item(self, user_id: UUID, item_id: UUID) -> bool:
         try:
             response = self.client.from_('portfolio_items').delete().eq('user_id', str(user_id)).eq('id', str(item_id)).execute()
-            # Supabase delete returns data=[] on successful delete if no rows are returned.
-            # We check for error in _handle_response, if no error, consider it successful.
-            self._handle_response(response.data)
-            return True
+            data = self._handle_response(response.data)
+            return bool(data)
         except Exception as exc:
             raise PortfolioItemServiceError(f"Failed to delete portfolio item {item_id} for user {user_id}: {exc}") from exc

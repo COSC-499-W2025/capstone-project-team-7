@@ -180,8 +180,7 @@ class TestPortfolioItemsAPI:
         fake_id = str(uuid.uuid4())
         response = authenticated_client.delete(f"/api/portfolio/items/{fake_id}")
         
-        # Note: This might return 404 or handle differently based on service implementation
-        assert response.status_code in [204, 404]  # Accept either for now
+        assert response.status_code == 404
 
     def test_create_portfolio_item_minimal_data(self, authenticated_client):
         """Test creating a portfolio item with only required fields."""
