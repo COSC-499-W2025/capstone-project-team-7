@@ -19,6 +19,10 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# Allowed user roles for projects
+# Used for validation in API endpoints, CLI screens, and database constraints
+ALLOWED_ROLES = ["author", "contributor", "lead", "maintainer", "reviewer"]
+
 
 class ProjectOverridesServiceError(Exception):
     """Base error for project overrides service."""

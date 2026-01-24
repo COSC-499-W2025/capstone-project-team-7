@@ -61,10 +61,53 @@ class ProjectsService:
                     raise ProjectsServiceError(f"Encryption unavailable: {exc}") from exc
                 self._encryption = None
         
+        # Lazy-load overrides service
+        self._overrides_service = None
+        
         try:
             self.client: Client = create_client(self.supabase_url, self.supabase_key)
         except Exception as exc:
             raise ProjectsServiceError(f"Failed to initialize Supabase client: {exc}") from exc
+    
+    def _get_overrides_service(self):
+        """Get or create the ProjectOverridesService (lazy-loaded)."""
+        if self._overrides_service is None:
+            try:
+                from .project_overrides_service import ProjectOverridesService
+                self._overrides_service = ProjectOverridesService(
+                    supabase_url=self.supabase_url,
+                    supabase_key=self.supabase_key,
+                    encryption_service=self._encryption,
+                    encryption_required=False,
+                )
+            except Exception as exc:
+                logging.getLogger(__name__).warning(f"Could not initialize overrides service: {exc}")
+                return None
+        return self._overrides_service
+    
+    @staticmethod
+    def infer_role_from_contribution(scan_data: Dict[str, Any]) -> str:
+        """
+        Infer user's role based on contribution metrics.
+        
+        Returns:
+            'author' if user has >= 80% of commits, otherwise 'contributor'
+        """
+        user_commit_share = scan_data.get("contribution_ranking", {}).get("user_commit_share")
+        if user_commit_share is None:
+            # Check contribution_metrics as fallback
+            contribution_metrics = scan_data.get("contribution_metrics", {})
+            if contribution_metrics:
+                # Try to compute share from primary_contributor
+                primary = contribution_metrics.get("primary_contributor")
+                total_commits = contribution_metrics.get("total_commits", 0)
+                if isinstance(primary, dict) and total_commits > 0:
+                    primary_commits = primary.get("commits", 0)
+                    user_commit_share = primary_commits / total_commits
+        
+        if user_commit_share is not None and user_commit_share >= 0.80:
+            return "author"
+        return "contributor"
     
     def save_scan(
         self,
@@ -72,6 +115,7 @@ class ProjectsService:
         project_name: str,
         project_path: str,
         scan_data: Dict[str, Any],
+        role: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Save or update a project scan.
@@ -81,9 +125,10 @@ class ProjectsService:
             project_name: Name/identifier for this project
             project_path: Filesystem path that was scanned
             scan_data: Complete JSON export payload
+            role: User's role in the project (optional - auto-inferred if not provided)
         
         Returns:
-            Saved project record
+            Saved project record (includes 'role' field from overrides if available)
         """
         try:
             # Extract metadata from scan_data
@@ -151,7 +196,38 @@ class ProjectsService:
             if not response.data:
                 raise ProjectsServiceError("Failed to save project scan")
             
-            return response.data[0]
+            saved_project = response.data[0]
+            project_id = saved_project.get("id")
+            
+            # Auto-infer and save role to project_overrides if not already set
+            if project_id:
+                overrides_service = self._get_overrides_service()
+                if overrides_service:
+                    try:
+                        # Check existing overrides
+                        existing_overrides = overrides_service.get_overrides(user_id, project_id)
+                        existing_role = existing_overrides.get("role") if existing_overrides else None
+                        
+                        # Determine role to save
+                        role_to_save = role  # Use explicit role if provided
+                        if not role_to_save and not existing_role:
+                            # Auto-infer role only for new projects without existing role
+                            role_to_save = self.infer_role_from_contribution(scan_data)
+                        
+                        if role_to_save:
+                            overrides_service.upsert_overrides(
+                                user_id=user_id,
+                                project_id=project_id,
+                                role=role_to_save,
+                            )
+                            saved_project["role"] = role_to_save
+                        elif existing_role:
+                            saved_project["role"] = existing_role
+                    except Exception as role_exc:
+                        # Don't fail the entire save if role update fails
+                        logging.getLogger(__name__).warning(f"Failed to save role for project {project_id}: {role_exc}")
+            
+            return saved_project
             
         except Exception as exc:
             raise ProjectsServiceError(f"Failed to save scan: {exc}") from exc
@@ -225,6 +301,42 @@ class ProjectsService:
                     project.setdefault("has_skills_progress", False)
                 return projects
             raise ProjectsServiceError(f"Failed to get projects: {exc}") from exc
+    
+    def get_user_projects_with_roles(self, user_id: str) -> List[Dict[str, Any]]:
+        """
+        Get all projects for a user with role information from overrides.
+        
+        Returns:
+            List of project records including 'role' field from project_overrides
+        """
+        projects = self.get_user_projects(user_id)
+        if not projects:
+            return projects
+        
+        # Get all project IDs
+        project_ids = [p.get("id") for p in projects if p.get("id")]
+        
+        # Fetch overrides for all projects in one query
+        overrides_service = self._get_overrides_service()
+        if overrides_service and project_ids:
+            try:
+                overrides_map = overrides_service.get_overrides_for_projects(user_id, project_ids)
+                for project in projects:
+                    pid = project.get("id")
+                    if pid and pid in overrides_map:
+                        project["role"] = overrides_map[pid].get("role")
+                    else:
+                        project["role"] = None
+            except Exception as exc:
+                logging.getLogger(__name__).warning(f"Failed to fetch overrides: {exc}")
+                # Set role to None for all projects if overrides fetch fails
+                for project in projects:
+                    project["role"] = None
+        else:
+            for project in projects:
+                project["role"] = None
+        
+        return projects
 
     def get_user_projects_with_scan_data(self, user_id: str) -> List[Dict[str, Any]]:
         """
@@ -257,7 +369,7 @@ class ProjectsService:
             project_id: Project's UUID
         
         Returns:
-            Complete project record with scan_data, or None if not found
+            Complete project record with scan_data and role, or None if not found
         """
         try:
             response = self.client.table("projects").select("*").eq(
@@ -269,6 +381,18 @@ class ProjectsService:
             
             record = response.data[0]
             record["scan_data"] = self._decrypt_scan_data(record.get("scan_data"))
+            
+            # Fetch role from overrides
+            overrides_service = self._get_overrides_service()
+            if overrides_service:
+                try:
+                    overrides = overrides_service.get_overrides(user_id, project_id)
+                    record["role"] = overrides.get("role") if overrides else None
+                except Exception:
+                    record["role"] = None
+            else:
+                record["role"] = None
+            
             return record
             
         except Exception as exc:
