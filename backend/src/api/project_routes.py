@@ -3,7 +3,7 @@
 # Endpoints are registered in this module's router
 
 from fastapi import APIRouter, HTTPException, status, Header, Depends, File, UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 import asyncio
@@ -12,6 +12,7 @@ import sys
 import os
 from pathlib import Path
 import tempfile
+import threading
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -29,52 +30,75 @@ logger = logging.getLogger(__name__)
 # Create router for project endpoints
 router = APIRouter(prefix="/api/projects", tags=["Projects"])
 
-# Initialize services
+# Initialize services with thread-safe locks to prevent race conditions
 _projects_service: Optional[ProjectsService] = None
 _encryption_service: Optional[EncryptionService] = None
 _overrides_service: Optional[ProjectOverridesService] = None
+_projects_service_lock = threading.Lock()
+_encryption_service_lock = threading.Lock()
+_overrides_service_lock = threading.Lock()
 
 
 def get_projects_service() -> ProjectsService:
-    """Get or create the ProjectsService singleton."""
+    """Get or create the ProjectsService singleton (thread-safe)."""
     global _projects_service
     if _projects_service is None:
-        try:
-            _encryption_service_instance = EncryptionService()
-        except Exception:
-            _encryption_service_instance = None
-        
-        _projects_service = ProjectsService(
-            encryption_service=_encryption_service_instance,
-            encryption_required=False,  # Graceful degradation if encryption unavailable
-        )
+        with _projects_service_lock:
+            # Double-check pattern: verify again inside lock
+            if _projects_service is None:
+                try:
+                    _encryption_service_instance = EncryptionService()
+                except Exception:
+                    _encryption_service_instance = None
+                
+                _projects_service = ProjectsService(
+                    encryption_service=_encryption_service_instance,
+                    encryption_required=False,  # Graceful degradation if encryption unavailable
+                )
     return _projects_service
 
 
 def get_encryption_service() -> Optional[EncryptionService]:
-    """Get or create the EncryptionService singleton."""
+    """Get or create the EncryptionService singleton (thread-safe)."""
     global _encryption_service
     if _encryption_service is None:
-        try:
-            _encryption_service = EncryptionService()
-        except Exception:
-            _encryption_service = None
+        with _encryption_service_lock:
+            # Double-check pattern: verify again inside lock
+            if _encryption_service is None:
+                try:
+                    _encryption_service = EncryptionService()
+                except Exception:
+                    _encryption_service = None
     return _encryption_service
 
 
 def get_overrides_service() -> ProjectOverridesService:
-    """Get or create the ProjectOverridesService singleton."""
+    """Get or create the ProjectOverridesService singleton (thread-safe).
+    
+    Note: This service stores user overrides with encryption when available.
+    If encryption fails during initialization, overrides will be stored unencrypted
+    with a warning logged. This is intentional for availability, but clients should
+    be aware that sensitive fields (role, comparison_attributes) may not be encrypted.
+    """
     global _overrides_service
     if _overrides_service is None:
-        try:
-            _encryption_service_instance = EncryptionService()
-        except Exception:
-            _encryption_service_instance = None
-        
-        _overrides_service = ProjectOverridesService(
-            encryption_service=_encryption_service_instance,
-            encryption_required=False,  # Graceful degradation if encryption unavailable
-        )
+        with _overrides_service_lock:
+            # Double-check pattern: verify again inside lock
+            if _overrides_service is None:
+                try:
+                    _encryption_service_instance = EncryptionService()
+                    logger.info("Encryption service initialized successfully for overrides")
+                except Exception as exc:
+                    logger.warning(
+                        f"Encryption service unavailable for overrides - "
+                        f"sensitive fields will be stored unencrypted: {exc}"
+                    )
+                    _encryption_service_instance = None
+                
+                _overrides_service = ProjectOverridesService(
+                    encryption_service=_encryption_service_instance,
+                    encryption_required=False,  # Allow unencrypted storage if encryption unavailable
+                )
     return _overrides_service
 
 
@@ -290,10 +314,22 @@ class ProjectTimelineEntry(BaseModel):
     display_date: str = Field(..., description="Date to use for timeline display (end_date or scan_timestamp)")
 
 
+class ProjectTimelineWarning(BaseModel):
+    """Warning about a project that couldn't be included in timeline."""
+    project_id: str
+    project_name: str
+    issue: str
+    details: str
+
+
 class ProjectTimelineResponse(BaseModel):
     """Response with chronologically ordered projects."""
     count: int
     timeline: List[ProjectTimelineEntry]
+    warnings: Optional[List[ProjectTimelineWarning]] = Field(
+        default=None,
+        description="Projects with date parsing issues that were excluded from timeline"
+    )
 
 
 # ============================================================================
@@ -301,15 +337,32 @@ class ProjectTimelineResponse(BaseModel):
 # ============================================================================
 
 class ProjectOverrides(BaseModel):
-    """User-defined overrides for project display and metadata."""
+    """User-defined overrides for project display and metadata.
+    
+    Note on encryption:
+    - role and comparison_attributes are encrypted at rest when encryption is available
+    - Other fields (evidence, highlighted_skills, dates) are stored unencrypted
+    - If encryption service is unavailable, all fields are stored unencrypted with a warning logged
+    """
     role: Optional[str] = Field(None, description="User's role/title for this project")
     evidence: Optional[List[str]] = Field(None, description="List of accomplishment bullet points")
     thumbnail_url: Optional[str] = Field(None, description="Custom thumbnail URL")
     custom_rank: Optional[float] = Field(None, description="Manual ranking override (0-100)")
     start_date_override: Optional[str] = Field(None, description="Override for project start date (ISO date)")
     end_date_override: Optional[str] = Field(None, description="Override for project end date (ISO date)")
-    comparison_attributes: Optional[Dict[str, str]] = Field(None, description="Custom key-value pairs for comparisons")
+    comparison_attributes: Optional[Dict[str, str]] = Field(
+        None, 
+        description="Custom key-value pairs for comparisons (encrypted at rest)"
+    )
     highlighted_skills: Optional[List[str]] = Field(None, description="Skills to highlight for this project")
+    
+    @field_validator('custom_rank')
+    @classmethod
+    def validate_custom_rank(cls, v: Optional[float]) -> Optional[float]:
+        """Validate custom_rank is between 0 and 100."""
+        if v is not None and not (0 <= v <= 100):
+            raise ValueError('custom_rank must be between 0 and 100')
+        return v
 
 
 class ProjectOverridesRequest(BaseModel):
@@ -320,8 +373,19 @@ class ProjectOverridesRequest(BaseModel):
     custom_rank: Optional[float] = Field(None, description="Manual ranking override (0-100)")
     start_date_override: Optional[str] = Field(None, description="Override for project start date (ISO date)")
     end_date_override: Optional[str] = Field(None, description="Override for project end date (ISO date)")
-    comparison_attributes: Optional[Dict[str, str]] = Field(None, description="Custom key-value pairs for comparisons")
+    comparison_attributes: Optional[Dict[str, str]] = Field(
+        None, 
+        description="Custom key-value pairs for comparisons (encrypted at rest)"
+    )
     highlighted_skills: Optional[List[str]] = Field(None, description="Skills to highlight for this project")
+    
+    @field_validator('custom_rank')
+    @classmethod
+    def validate_custom_rank(cls, v: Optional[float]) -> Optional[float]:
+        """Validate custom_rank is between 0 and 100."""
+        if v is not None and not (0 <= v <= 100):
+            raise ValueError('custom_rank must be between 0 and 100')
+        return v
 
 
 class ProjectOverridesResponse(BaseModel):
@@ -548,8 +612,11 @@ async def get_project_timeline(
         
         # Build timeline entries with full project objects
         timeline_entries = []
+        warnings = []
+        
         for project in projects:
             project_id = project.get("id")
+            project_name = project.get("project_name", "Unknown")
             project_overrides = overrides_map.get(project_id, {})
             
             # Priority: end_date_override > project_end_date > scan_timestamp > created_at
@@ -571,7 +638,14 @@ async def get_project_timeline(
                 display_date = project.get("scan_timestamp") or project.get("created_at")
             
             if not display_date:
-                # Skip projects without any date information
+                # Warn about projects without any date information
+                warnings.append({
+                    "project_id": project_id or "unknown",
+                    "project_name": project_name,
+                    "issue": "missing_date",
+                    "details": "Project has no date information (no end_date_override, project_end_date, scan_timestamp, or created_at)"
+                })
+                logger.warning(f"Project {project_name} ({project_id}) excluded from timeline: no date information")
                 continue
             
             # Parse to datetime for proper sorting
@@ -583,8 +657,14 @@ async def get_project_timeline(
                     ts_str = ts_str + "T00:00:00+00:00"
                 dt = datetime.fromisoformat(ts_str)
             except Exception as e:
-                # If parsing fails, try to use it as-is and log error
-                print(f"Failed to parse timestamp for {project.get('project_name')}: {display_date}, error: {e}")
+                # Warn about date parsing failures
+                warnings.append({
+                    "project_id": project_id or "unknown",
+                    "project_name": project_name,
+                    "issue": "invalid_date_format",
+                    "details": f"Failed to parse date '{display_date}': {str(e)}"
+                })
+                logger.error(f"Failed to parse timestamp for {project_name}: {display_date}, error: {e}")
                 continue
             
             timeline_entries.append({
@@ -612,6 +692,7 @@ async def get_project_timeline(
         return ProjectTimelineResponse(
             count=len(timeline_entries),
             timeline=timeline_entries,
+            warnings=warnings if warnings else None,
         )
     
     except Exception as exc:
