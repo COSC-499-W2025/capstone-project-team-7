@@ -265,6 +265,7 @@ class ProjectsAPIService:
                     raise ProjectsServiceError(f"Invalid JSON in search response: {exc}") from exc
             else:
                 self._handle_error_response(response, "search_projects")
+                return
 
         except httpx.HTTPError as exc:
             raise ProjectsServiceError(f"Network error while searching projects: {exc}") from exc

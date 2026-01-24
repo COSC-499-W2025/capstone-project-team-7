@@ -529,7 +529,6 @@ class PortfolioTextualApp(App):
             self._show_status("Loading projects for search…", "info")
             asyncio.create_task(self._show_project_search_selection())
             return
-            return
 
         self._show_status(f"{label} is coming soon. Hang tight!", "info")
 
