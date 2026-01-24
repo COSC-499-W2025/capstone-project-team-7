@@ -5,12 +5,20 @@
 # - Provides root health-check endpoint
 # - Run with: uvicorn src.main:app --reload
 import os
+try:
+    from dotenv import load_dotenv
+except Exception:  # pragma: no cover - optional dependency
+    load_dotenv = None  # type: ignore
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+if load_dotenv:
+    env_path = Path.cwd() / ".env"
+    if env_path.exists():
+        load_dotenv(env_path, override=False)
 from api.auth_routes import router as auth_router
 from api.analysis_routes import router as analysis_router
 from api.consent_routes import router as consent_router
