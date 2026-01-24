@@ -5,6 +5,8 @@ from typing import Dict, List, Optional, Any
 import os
 import logging
 
+logger = logging.getLogger(__name__)
+
 try:
     import httpx
     HTTPX_AVAILABLE = True
