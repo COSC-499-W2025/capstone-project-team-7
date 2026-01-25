@@ -3,8 +3,30 @@
 
 ## Week 17
 
+This week, I focused on two major PRs: integrating config/profile APIs into the TUI and delivering resume items CRUD via the API.
 
+### Key Accomplishments
 
+- **Config + Profiles API Integration into TUI**  
+  **PR #252**: https://github.com/COSC-499-W2025/capstone-project-team-7/pull/252  
+  - Connected the TUI file browser search to the server-side `/api/projects/search` endpoint  
+  - Added an API client method to centralize auth, base URL, and error handling  
+  - Restored the full file list when the search bar is cleared  
+  - Updated API documentation to reflect the canonical files-only search endpoint  
+
+- **Resume Items CRUD API Integration**  
+  **PR #250**: https://github.com/COSC-499-W2025/capstone-project-team-7/pull/250  
+  - Implemented resume items CRUD in the TUI routed through `/api/resume/items` when API mode is enabled  
+  - Improved backend environment loading and Supabase key lookup to avoid 503 errors in API mode  
+  - Normalized project language data to prevent list validation errors  
+
+### Challenges & Learning
+
+The main challenge was keeping API mode reliable while avoiding duplicated HTTP logic in the TUI. Centralizing requests in API service classes made error handling consistent and kept UI responsiveness by moving blocking calls off the event loop.
+
+### Impact
+
+This work strengthens the API-driven TUI workflow, improves reliability in API mode, and ensures resume generation and file search behave consistently across sessions.
 
 
 <img width="1071" height="625" alt="image" src="https://github.com/user-attachments/assets/af874996-21b7-453c-9419-c824474250ff" />
