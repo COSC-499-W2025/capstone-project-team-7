@@ -133,10 +133,34 @@ Content-Type: multipart/form-data
 - `GET/POST /api/config/profiles`: Manage scan/analysis profiles.
 
 ### Resume and Portfolio
+
+#### Portfolio Items ✅ Completed
+- **Portfolio Items CRUD API** 
+  - `POST /api/portfolio/items`: Create a new portfolio showcase item with title (required), summary, role, evidence, and thumbnail (all optional).
+    - Request: `{"title": "string", "summary": "string?", "role": "string?", "evidence": "string?", "thumbnail": "string?"}`
+    - Response: HTTP 201 with full item object including `id`, `user_id`, `created_at`, `updated_at`
+  - `GET /api/portfolio/items`: Retrieve all portfolio items for the authenticated user.
+    - Response: HTTP 200 with array of portfolio items; user-scoped via RLS
+  - `GET /api/portfolio/items/{item_id}`: Retrieve a specific portfolio item by ID.
+    - Response: HTTP 200 with item object or HTTP 404 if not found/unauthorized
+  - `PATCH /api/portfolio/items/{item_id}`: Update a specific portfolio item (all fields optional).
+    - Request: `{"title": "string?", "summary": "string?", "role": "string?", "evidence": "string?", "thumbnail": "string?"}`
+    - Response: HTTP 200 with updated item object or HTTP 404
+  - `DELETE /api/portfolio/items/{item_id}`: Delete a specific portfolio item.
+    - Response: HTTP 204 No Content or HTTP 404
+  - Implementation: `backend/src/api/portfolio_routes.py`
+  - Service layer: `backend/src/cli/services/portfolio_item_service.py`
+  - Models: `backend/src/api/models/portfolio_item_models.py`
+  - Database: `db/07_create_portfolio_items_table.sql`
+  - Tests: `tests/test_portfolio_items_api.py` (10 tests, all passing)
+  - Features:
+    - Per-user isolation via PostgreSQL RLS policy (`user_id = auth.uid()`)
+    - Field validation: title max 255 chars, summary max 1000 chars, role max 255 chars, evidence max 2048 chars, thumbnail max 1024 chars
+    - UUID primary keys with created_at/updated_at timestamps
+    - Partial updates via PATCH (only provided fields are modified)
+
 - `POST /api/resume/items`: Generate or save resume items from projects/analysis; allow custom wording and role description; optional thumbnail URL.
 - `GET /api/resume/items`, `GET /api/resume/items/{id}`, `PATCH /api/resume/items/{id}`, `DELETE /api/resume/items/{id}`: CRUD + edits.
-- `GET /api/portfolio/items`, `POST /api/portfolio/items`: CRUD for portfolio showcase items (custom title/summary/role/evidence/thumbnail).
-- `GET/PATCH/DELETE /api/portfolio/items/{id}`: Fetch/edit/delete showcase item.
 - `GET /api/portfolio/chronology`: Chronological list of projects and exercised skills.
 - `POST /api/portfolio/refresh`: Append new zip(s) and rebuild combined view.
 
@@ -184,6 +208,7 @@ Content-Type: multipart/form-data
 - Contributions and metrics: activity frequency, duration, activity type mix (code/test/design/doc), key metrics.
 - Skill extraction and ranking: skill list, timelines, project ranking and summaries.
 - Data storage/retrieval: project, portfolio, resume item CRUD; historical retrieval.
+- **Portfolio items showcase**: `/api/portfolio/items` CRUD with per-user RLS, custom title/summary/role/evidence/thumbnail fields (title required, others optional).
 - Incremental and dedup: append zip, duplicate detection, shared files not deleted when removing insights.
 - Human-in-the-loop: adjustable weights, selection/reordering endpoints, editable wording/roles, optional thumbnails, user overrides.
 - Project/skill chronology: timeline endpoints (/api/projects/timeline, /api/skills/timeline, /api/portfolio/chronology).
