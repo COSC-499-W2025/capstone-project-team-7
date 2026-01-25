@@ -564,7 +564,7 @@ class PortfolioTextualApp(App):
             from .screens import CreatePortfolioScreen
             self.push_screen(CreatePortfolioScreen())
         elif label == "View Portfolios":
-            self._show_status("View Portfolios selected (to be implemented).", "info")
+            asyncio.create_task(self._show_view_portfolios())
         elif label == "Update Portfolio":
             self._show_status("Update Portfolio selected (to be implemented).", "info")
         elif label == "Delete Portfolio":
@@ -643,6 +643,53 @@ class PortfolioTextualApp(App):
             self._show_status(f"Portfolio '{name}' created successfully.", "success")
         else:
             self._show_status(f"Failed to create portfolio: {result}", "error")
+
+    async def _show_view_portfolios(self) -> None:
+        if not self._use_api_mode:
+            self._show_status("View portfolios requires API mode; enable PORTFOLIO_USE_API.", "warning")
+            return
+
+        if not self._session_state.session or not getattr(self._session_state.session, "access_token", None):
+            self._show_status("Sign in to view portfolios via API.", "warning")
+            return
+
+        self._show_status("Loading portfolios…", "info")
+
+        def _fetch():
+            try:
+                import httpx
+                base = self._get_api_base_url()
+                headers = {"Authorization": f"Bearer {self._session_state.session.access_token}", "Content-Type": "application/json"}
+                client = httpx.Client(timeout=30.0)
+                res = client.get(f"{base}/api/portfolios", headers=headers)
+                if res.status_code == 200:
+                    return True, res.json()
+                else:
+                    return False, f"API error {res.status_code}: {res.text}"
+            except Exception as exc:
+                return False, str(exc)
+
+        ok, data = await asyncio.to_thread(_fetch)
+        if not ok:
+            self._show_status(f"Failed to load portfolios: {data}", "error")
+            return
+
+        # Expecting either {'portfolios': [...]} or a raw list
+        portfolios = data.get("portfolios") if isinstance(data, dict) and "portfolios" in data else data
+
+        from .screens import ViewPortfoliosScreen
+        self.push_screen(ViewPortfoliosScreen(portfolios))
+
+    async def on_portfolio_selected(self, message) -> None:
+        try:
+            portfolio = message.portfolio
+        except Exception:
+            self._show_status("Invalid portfolio selected.", "error")
+            return
+        # For now, just show details in status; could open a detailed viewer later
+        name = portfolio.get("name") or portfolio.get("title") or portfolio.get("id")
+        desc = portfolio.get("description") or ""
+        self._show_status(f"Selected portfolio: {name} - {desc}", "info")
 
     def _handle_ai_analysis_selection(self) -> None:
         detail_panel = self.query_one("#detail", Static)

@@ -344,6 +344,62 @@ class CreatePortfolioScreen(ModalScreen[None]):
             self._submit()
 
 
+class PortfolioSelected(Message):
+    """Raised when the user selects a portfolio from the list."""
+
+    def __init__(self, portfolio: Dict[str, Any]) -> None:
+        super().__init__()
+        self.portfolio = portfolio
+
+
+class ViewPortfoliosScreen(ModalScreen[None]):
+    """Modal screen that lists portfolios for the user to select."""
+
+    def __init__(self, portfolios: List[Dict[str, Any]] | None = None) -> None:
+        super().__init__()
+        self._portfolios = portfolios or []
+
+    def compose(self) -> ComposeResult:
+        items = []
+        if not self._portfolios:
+            items.append(ListItem(Label("No portfolios found.", classes="menu-item")))
+        else:
+            for idx, p in enumerate(self._portfolios):
+                name = p.get("name") or p.get("title") or f"Unnamed {idx}"
+                desc = p.get("description") or ""
+                label_text = f"{name} - {desc}" if desc else name
+                item = ListItem(Label(label_text, classes="menu-item"), id=f"portfolio-{idx}")
+                item.data_portfolio = p
+                items.append(item)
+
+        yield Vertical(
+            Static("View Portfolios", classes="dialog-title"),
+            Static("Select a portfolio to view details.", classes="dialog-subtitle"),
+            ListView(*items, id="portfolio-list"),
+            Horizontal(Button("Close", id="close-btn"), classes="dialog-buttons"),
+            classes="dialog",
+        )
+
+    def on_mount(self, event: Mount) -> None:  # pragma: no cover - focus wiring
+        try:
+            self.query_one("#portfolio-list", ListView).focus()
+        except Exception:
+            pass
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "close-btn":
+            self.dismiss(None)
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        if event.control.id != "portfolio-list":
+            return
+        item = event.item
+        portfolio = getattr(item, "data_portfolio", None)
+        if portfolio:
+            dispatch_message(self, PortfolioSelected(portfolio))
+            self.dismiss(None)
+
+
 class LoginScreen(ModalScreen[None]):
     """Modal dialog for collecting Supabase credentials."""
 
