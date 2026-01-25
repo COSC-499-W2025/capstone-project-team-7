@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from typing import List, Optional
+from typing import List, Optional, Dict
+from collections import defaultdict
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -27,6 +28,7 @@ router = APIRouter(tags=["Portfolio"])
 
 _timeline_service: Optional[PortfolioTimelineService] = None
 _portfolio_item_service: Optional[PortfolioItemService] = None
+_projects_service: Optional[ProjectsService] = None
 
 
 def get_portfolio_timeline_service() -> PortfolioTimelineService:
