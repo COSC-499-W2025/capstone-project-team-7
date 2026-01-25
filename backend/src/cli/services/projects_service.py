@@ -82,7 +82,13 @@ class ProjectsService:
                 )
             except Exception as exc:
                 logging.getLogger(__name__).warning(f"Could not initialize overrides service: {exc}")
+                self._overrides_service = False  # Cache the failure with a sentinel value
                 return None
+        
+        # Check if it's the sentinel "failed" value
+        if self._overrides_service is False:
+            return None  # Skip re-initialization attempts
+        
         return self._overrides_service
     
     @staticmethod
