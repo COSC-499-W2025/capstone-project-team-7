@@ -249,6 +249,7 @@ class PortfolioTextualApp(App):
     MENU_ITEMS = [
         ("Account", "Sign in to Supabase or sign out of the current session."),
         ("Run Portfolio Scan", "Prepare an archive or directory and run the portfolio scan workflow."),
+        ("Manage Portfolio", "Create, view, update, or delete portfolios."),
         ("View Saved Projects", "Browse and view previously saved project scans."), 
         ("View Saved Resumes", "Browse generated resume snippets saved in Supabase."),
         ("View Last Analysis", "Reopen the results from the most recent scan without rescanning."),
@@ -260,6 +261,13 @@ class PortfolioTextualApp(App):
         ("Skill progression", "View skill progression timeline and optionally generate an AI summary."),
         ("API Timeline Check", "Call /api/skills/timeline and /api/portfolio/chronology to confirm API responses."),
         ("Exit", "Quit the Textual interface."),
+    ]
+    MANAGE_PORTFOLIO_OPTIONS = [
+        ("Create Portfolio", "Create a new portfolio."),
+        ("View Portfolios", "View existing portfolios."),
+        ("Update Portfolio", "Update an existing portfolio."),
+        ("Delete Portfolio", "Delete a portfolio."),
+        ("Back", "Return to the main menu."),
     ]
     BINDINGS = [
         Binding("q", "quit", "Quit", priority=True),
@@ -388,6 +396,10 @@ class PortfolioTextualApp(App):
             self._update_detail(index)
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
+        if event.control.id == "portfolio-submenu":
+            index = event.control.index or 0
+            self._handle_portfolio_submenu_selection(index)
+            return
         if event.control.id == "menu":
             index = event.control.index or 0
             self._handle_selection(index)
@@ -432,6 +444,10 @@ class PortfolioTextualApp(App):
         label, _ = self.MENU_ITEMS[index]
         if label == "Exit":
             self.exit()
+            return
+
+        if label == "Manage Portfolio":
+            self._show_manage_portfolio_submenu()
             return
 
         if label == "Account":
@@ -520,6 +536,52 @@ class PortfolioTextualApp(App):
             self._logout()
         else:
             self._show_login_dialog()
+
+    def _show_manage_portfolio_submenu(self) -> None:
+        submenu_items = [ListItem(Label(label, classes="menu-item")) for label, _ in self.MANAGE_PORTFOLIO_OPTIONS]
+        submenu = ListView(*submenu_items, id="portfolio-submenu")
+        main = self.query_one("#main", Vertical)
+        # Remove old menu if present
+        for child in list(main.children):
+            if isinstance(child, ListView) and child.id == "menu":
+                child.remove()
+        # Remove any existing submenu
+        for child in list(main.children):
+            if isinstance(child, ListView) and child.id == "portfolio-submenu":
+                child.remove()
+        main.mount(submenu)
+        submenu.focus()
+        submenu.index = 0
+        self._show_status("Select a portfolio action and press Enter.", "info")
+
+    def _handle_portfolio_submenu_selection(self, index: int) -> None:
+        label, _ = self.MANAGE_PORTFOLIO_OPTIONS[index]
+        if label == "Back":
+            self._restore_main_menu()
+            return
+        elif label == "Create Portfolio":
+            self._show_status("Create Portfolio selected (to be implemented).", "info")
+        elif label == "View Portfolios":
+            self._show_status("View Portfolios selected (to be implemented).", "info")
+        elif label == "Update Portfolio":
+            self._show_status("Update Portfolio selected (to be implemented).", "info")
+        elif label == "Delete Portfolio":
+            self._show_status("Delete Portfolio selected (to be implemented).", "info")
+
+    def _restore_main_menu(self) -> None:
+        main = self.query_one("#main", Vertical)
+        # Remove submenu if present
+        for child in list(main.children):
+            if isinstance(child, ListView) and child.id == "portfolio-submenu":
+                child.remove()
+        # Restore main menu if not present
+        if not any(isinstance(child, ListView) and child.id == "menu" for child in main.children):
+            menu_items = [ListItem(Label(label, classes="menu-item")) for label, _ in self.MENU_ITEMS]
+            menu_list = ListView(*menu_items, id="menu")
+            main.mount(menu_list)
+            menu_list.focus()
+            menu_list.index = 0
+        self._show_status("Returned to main menu.", "info")
 
     def _handle_ai_analysis_selection(self) -> None:
         detail_panel = self.query_one("#detail", Static)
