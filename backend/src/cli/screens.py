@@ -400,6 +400,67 @@ class ViewPortfoliosScreen(ModalScreen[None]):
             self.dismiss(None)
 
 
+class EditPortfolioSubmitted(Message):
+    """Raised when the user submits the edit-portfolio dialog."""
+
+    def __init__(self, portfolio_id: str, name: str, description: str | None = None) -> None:
+        super().__init__()
+        self.portfolio_id = portfolio_id
+        self.name = name
+        self.description = description
+
+
+class EditPortfolioScreen(ModalScreen[None]):
+    """Modal dialog for editing a portfolio's name/description."""
+
+    def __init__(self, portfolio: Dict[str, Any]) -> None:
+        super().__init__()
+        self._portfolio = portfolio
+
+    def compose(self) -> ComposeResult:
+        name = self._portfolio.get("name") or self._portfolio.get("title") or ""
+        desc = self._portfolio.get("description") or ""
+        yield Vertical(
+            Static("Edit Portfolio", classes="dialog-title"),
+            Static("Update the portfolio name and description.", classes="dialog-subtitle"),
+            Input(value=name, placeholder="Portfolio name", id="edit-portfolio-name"),
+            Input(value=desc, placeholder="Description (optional)", id="edit-portfolio-desc"),
+            Static("", id="edit-portfolio-message", classes="dialog-message"),
+            Horizontal(
+                Button("Cancel", id="edit-cancel"),
+                Button("Save", id="edit-submit", variant="primary"),
+                classes="dialog-buttons",
+            ),
+            classes="dialog",
+        )
+
+    def on_mount(self, event: Mount) -> None:  # pragma: no cover - focus wiring
+        try:
+            self.query_one("#edit-portfolio-name", Input).focus()
+        except Exception:
+            pass
+
+    def _submit(self) -> None:
+        name = self.query_one("#edit-portfolio-name", Input).value.strip()
+        desc = self.query_one("#edit-portfolio-desc", Input).value.strip()
+        if not name:
+            self.query_one("#edit-portfolio-message", Static).update("Provide a portfolio name.")
+            return
+        pid = self._portfolio.get("id") or self._portfolio.get("_id") or self._portfolio.get("uuid")
+        dispatch_message(self, EditPortfolioSubmitted(pid, name, desc or None))
+        self.dismiss(None)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "edit-submit":
+            self._submit()
+        elif event.button.id == "edit-cancel":
+            self.dismiss(None)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "edit-portfolio-name":
+            self._submit()
+
+
 class LoginScreen(ModalScreen[None]):
     """Modal dialog for collecting Supabase credentials."""
 

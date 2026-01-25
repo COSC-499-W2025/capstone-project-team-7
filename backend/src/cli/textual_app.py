@@ -311,6 +311,7 @@ class PortfolioTextualApp(App):
         self._search_service = SearchService()
         self._resume_service = ResumeGenerationService()
         self._projects_service: Optional[ProjectsService] = None
+        self._pending_portfolio_action: Optional[str] = None
         
         # Feature flag: Use API endpoints for ranking/timeline (True) or local CLI methods (False)
         self._use_ranking_api = os.getenv("PORTFOLIO_USE_API", "true").lower() in ("true", "1", "yes")
@@ -566,6 +567,14 @@ class PortfolioTextualApp(App):
         elif label == "View Portfolios":
             asyncio.create_task(self._show_view_portfolios())
         elif label == "Update Portfolio":
+            # Set pending action so selection opens edit dialog
+            self._pending_portfolio_action = "update"
+            asyncio.create_task(self._show_view_portfolios())
+        elif label == "Delete Portfolio":
+            # Set pending action so selection triggers delete
+            self._pending_portfolio_action = "delete"
+            asyncio.create_task(self._show_view_portfolios())
+        elif label == "Update Portfolio":
             self._show_status("Update Portfolio selected (to be implemented).", "info")
         elif label == "Delete Portfolio":
             self._show_status("Delete Portfolio selected (to be implemented).", "info")
@@ -644,6 +653,54 @@ class PortfolioTextualApp(App):
         else:
             self._show_status(f"Failed to create portfolio: {result}", "error")
 
+    async def on_edit_portfolio_submitted(self, message) -> None:
+        try:
+            pid = message.portfolio_id
+            name = message.name
+            description = getattr(message, "description", None)
+        except Exception:
+            self._show_status("Invalid edit portfolio submission.", "error")
+            return
+
+        if not pid:
+            self._show_status("Portfolio id missing; cannot update.", "error")
+            return
+
+        if not self._use_api_mode:
+            self._show_status("Update requires API mode; enable PORTFOLIO_USE_API.", "warning")
+            return
+
+        if not self._session_state.session or not getattr(self._session_state.session, "access_token", None):
+            self._show_status("Sign in to update portfolios via API.", "warning")
+            return
+
+        self._show_status("Updating portfolio…", "info")
+
+        def _update_sync():
+            try:
+                import httpx
+                base = self._get_api_base_url()
+                headers = {"Authorization": f"Bearer {self._session_state.session.access_token}", "Content-Type": "application/json"}
+                client = httpx.Client(timeout=30.0)
+                payload = {"name": name, "description": description}
+                res = client.patch(f"{base}/api/portfolios/{pid}", json=payload, headers=headers)
+                if res.status_code in (200, 204):
+                    # Some APIs return updated object
+                    try:
+                        return True, res.json()
+                    except Exception:
+                        return True, None
+                else:
+                    return False, f"API error {res.status_code}: {res.text}"
+            except Exception as exc:
+                return False, str(exc)
+
+        ok, info = await asyncio.to_thread(_update_sync)
+        if ok:
+            self._show_status(f"Portfolio '{name}' updated successfully.", "success")
+        else:
+            self._show_status(f"Failed to update portfolio: {info}", "error")
+
     async def _show_view_portfolios(self) -> None:
         if not self._use_api_mode:
             self._show_status("View portfolios requires API mode; enable PORTFOLIO_USE_API.", "warning")
@@ -686,7 +743,53 @@ class PortfolioTextualApp(App):
         except Exception:
             self._show_status("Invalid portfolio selected.", "error")
             return
-        # For now, just show details in status; could open a detailed viewer later
+
+        action = self._pending_portfolio_action
+        # Clear pending action immediately
+        self._pending_portfolio_action = None
+
+        if action == "update":
+            from .screens import EditPortfolioScreen
+            self.push_screen(EditPortfolioScreen(portfolio))
+            return
+        if action == "delete":
+            # Perform delete via API
+            pid = portfolio.get("id") or portfolio.get("_id") or portfolio.get("uuid")
+            if not pid:
+                self._show_status("Selected portfolio has no id; cannot delete.", "error")
+                return
+
+            if not self._use_api_mode:
+                self._show_status("Delete requires API mode; enable PORTFOLIO_USE_API.", "warning")
+                return
+            if not self._session_state.session or not getattr(self._session_state.session, "access_token", None):
+                self._show_status("Sign in to delete portfolios via API.", "warning")
+                return
+
+            self._show_status("Deleting portfolio…", "info")
+
+            def _delete_sync():
+                try:
+                    import httpx
+                    base = self._get_api_base_url()
+                    headers = {"Authorization": f"Bearer {self._session_state.session.access_token}"}
+                    client = httpx.Client(timeout=30.0)
+                    res = client.delete(f"{base}/api/portfolios/{pid}", headers=headers)
+                    if res.status_code in (200, 204):
+                        return True, None
+                    else:
+                        return False, f"API error {res.status_code}: {res.text}"
+                except Exception as exc:
+                    return False, str(exc)
+
+            ok, info = await asyncio.to_thread(_delete_sync)
+            if ok:
+                self._show_status("Portfolio deleted.", "success")
+            else:
+                self._show_status(f"Failed to delete portfolio: {info}", "error")
+            return
+
+        # Default: just show selected portfolio details
         name = portfolio.get("name") or portfolio.get("title") or portfolio.get("id")
         desc = portfolio.get("description") or ""
         self._show_status(f"Selected portfolio: {name} - {desc}", "info")
