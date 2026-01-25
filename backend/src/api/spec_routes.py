@@ -1211,25 +1211,8 @@ def save_profile(payload: ProfileUpsertRequest, authorization: Optional[str] = H
     }
 
 
-@router.delete("/api/config/profiles/{profile_name}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_profile(
-    profile_name: str,
-    user_id: Optional[str] = None,
-    authorization: Optional[str] = Header(default=None),
-):
-    resolved_user_id = _resolve_user_id(user_id, authorization)
-    manager = _get_config_manager(resolved_user_id)
-    if not manager.delete_profile(profile_name):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unable to delete profile '{profile_name}'",
-        )
-    return
-
-
-@router.get("/api/search")
-def search(q: Optional[str] = None, scope: Optional[str] = None, project_id: Optional[str] = None, limit: int = 50):
-    return {"items": [], "page": Pagination(limit=limit, offset=0, total=0)}
+# NOTE: `/api/search` endpoint moved to `project_routes.py` (as `/api/projects/search`).
+# The previous implementation lived here; it was removed to avoid duplicate routes.
 
 
 def _build_dedup_report(files: List[Dict[str, Any]]) -> DedupReport:

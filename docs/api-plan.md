@@ -141,7 +141,47 @@ Content-Type: multipart/form-data
 - `POST /api/portfolio/refresh`: Append new zip(s) and rebuild combined view.
 
 ### Search, Dedup, and Selection
-- `GET /api/search`: Query across projects/files/skills with filters.
+- `GET /api/projects/search`: Query across projects' scan data (files) with filters.
+
+  Description: Server-side search endpoint to find files across one or more of the user's scanned projects. This replaces the earlier `/api/search` route and lives under `projects` to scope results by project.
+
+  Query parameters:
+  - `q` (string, required): Search query (filename fragment, path fragment, or keyword).
+  - `project_id` (uuid, optional): Restrict search to a single project.
+  - `limit` (int, optional): Maximum number of items to return (default 20, max 100).
+  - `offset` (int, optional): Result offset for pagination (default 0).
+
+  Authentication: `Authorization: Bearer <access_token>` required. Results are scoped to the authenticated user.
+
+  Response (200):
+  ```json
+  {
+    "items": [
+      {
+        "project_id": "...",
+        "project_name": "budgetTracker",
+        "path": "backend/src/config/upstash.js",
+        "filename": "upstash.js",
+        "mime_type": "application/javascript",
+        "size_bytes": 1234
+      }
+    ],
+    "page": {"limit": 20, "offset": 0, "total": 56}
+  }
+  ```
+
+  Notes on item shape:
+  - Each item includes `project_id`, `project_name`, `path` (relative path as stored in scan_data), `filename`, `mime_type`, and `size_bytes` when available.
+
+  Errors: Standard error envelope `{code, message, details?}` with `401` for unauthorized and `400` for invalid query parameters.
+
+  Example request:
+  ```http
+  GET /api/projects/search?q=upstash&project_id=proj_abc123&limit=50
+  Authorization: Bearer <token>
+  ```
+
+  Implementation: `backend/src/api/project_routes.py` provides this handler; TUI clients should use `ProjectsAPIService.search_projects(...)` or `GET /api/projects/search` directly when `PORTFOLIO_USE_API` is enabled.
 - `GET /api/dedup`: Report duplicate files and recommendations to retain a single copy.
 - `POST /api/selection`: Save user selections (projects/skills/ranking order); supports reordering and showcase selection.
 

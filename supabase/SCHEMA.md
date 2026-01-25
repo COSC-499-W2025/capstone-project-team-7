@@ -29,6 +29,12 @@ This project uses Supabase for persisted user data and synced scan artifacts. Be
   - Code: `backend/src/api/selection_routes.py` (to be implemented).
   - Notes: One record per user; supports custom ordering and selection state for portfolio display.
 
+- **public.project_overrides**
+  - Purpose: User-defined overrides for project display, chronology, and metadata.
+  - Key fields: `user_id`, `project_id` (unique per user+project), `start_date_override`, `end_date_override`, `role` (encrypted), `evidence` (encrypted), `thumbnail_url`, `highlighted_skills`, `comparison_attributes` (encrypted), `custom_rank`.
+  - Code: `backend/src/cli/services/project_overrides_service.py`, `backend/src/api/project_routes.py`.
+  - Notes: Supports chronology corrections (date overrides), role/evidence for resume generation, highlighted skills for comparisons, and manual ranking. RLS enabled with owner-only policies.
+
 - **public.consents_v1**
   - Purpose: Service-level consent storage with metadata per service.
   - Key fields: `user_id` (PK, refs auth.users), `accepted`, `accepted_at`, `version`, `metadata` JSONB (e.g., per-service consent_given/timestamp).
@@ -53,6 +59,7 @@ Do not modify; managed by Supabase:
 - `20251123000000_add_contribution_ranking.sql`: Adds contribution ranking fields to `projects`.
 - `20251124000000_drop_unused_tables.sql`: Drops `consents` and `uploads` (legacy/unused).
 - `20260115000000_add_user_selections.sql`: Adds `user_selections` table for portfolio/skill ordering and showcase preferences.
+- `20260120000000_add_project_overrides.sql`: Adds `project_overrides` table for user-defined chronology corrections, role/evidence, highlighted skills, and comparison attributes.
 
 ## Environment Keys (per .env)
 
@@ -66,6 +73,7 @@ Using the service key means RLS is bypassed. If you enable RLS on `projects`, en
 ## Table Usage Cheatsheet
 
 - Saved projects: `projects` (JSON exports + summary fields), with cached files in `scan_files`.
+- Project overrides: `project_overrides` (user-defined chronology, role, evidence, highlighted skills).
 - Resumes: `resume_items`.
 - User preferences: `user_configs`.
 - User selections: `user_selections` (portfolio/skill ordering and showcase preferences).
