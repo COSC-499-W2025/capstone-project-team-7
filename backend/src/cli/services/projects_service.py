@@ -636,6 +636,88 @@ class ProjectsService:
         except Exception as exc:
             raise ProjectsServiceError(f"Failed to delete cached files: {exc}") from exc
 
+    def backfill_cached_file_hashes(
+        self,
+        user_id: str,
+        project_id: str,
+    ) -> int:
+        """
+        Backfill sha256 hashes for cached files that are missing them.
+
+        This method reads the project's scan_data to extract file_hash values
+        and updates the scan_files table for any records missing sha256.
+
+        Args:
+            user_id: Owner of the project
+            project_id: Project identifier
+
+        Returns:
+            Number of files updated
+        """
+        # Get the project with scan_data to extract file hashes
+        project = self.get_project_scan(user_id, project_id)
+        if not project:
+            return 0
+
+        scan_data = project.get("scan_data") or {}
+        files = scan_data.get("files") or []
+        if not files:
+            return 0
+
+        # Build a mapping of path -> file_hash from scan_data
+        hash_map: Dict[str, str] = {}
+        for entry in files:
+            path = entry.get("path")
+            file_hash = entry.get("file_hash")
+            if path and file_hash:
+                normalized = str(path).replace("\\", "/")
+                hash_map[normalized] = file_hash
+
+        if not hash_map:
+            return 0
+
+        # Get cached files that are missing sha256
+        try:
+            response = (
+                self.client.table("scan_files")
+                .select("relative_path")
+                .eq("owner", user_id)
+                .eq("project_id", project_id)
+                .is_("sha256", "null")
+                .execute()
+            )
+        except Exception as exc:
+            raise ProjectsServiceError(f"Failed to query cached files for backfill: {exc}") from exc
+
+        files_to_update = response.data or []
+        if not files_to_update:
+            return 0
+
+        # Update each file that has a hash in scan_data
+        updated_count = 0
+        for row in files_to_update:
+            path = row.get("relative_path")
+            if not path:
+                continue
+            normalized = str(path).replace("\\", "/")
+            sha256 = hash_map.get(normalized)
+            if not sha256:
+                continue
+
+            try:
+                self.client.table("scan_files").update(
+                    {"sha256": sha256}
+                ).eq("owner", user_id).eq("project_id", project_id).eq(
+                    "relative_path", path
+                ).execute()
+                updated_count += 1
+            except Exception as exc:
+                logging.warning(
+                    "Failed to backfill sha256 for %s: %s", path, exc
+                )
+
+        return updated_count
+
     # --- Encryption helpers -------------------------------------------------
 
     def _encrypt_scan_data(self, scan_data: Dict[str, Any]) -> Any:

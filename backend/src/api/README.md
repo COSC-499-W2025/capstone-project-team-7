@@ -408,4 +408,115 @@ pytest tests/test_analysis_api.py -v
 
 ## Storage
 
-Currently uses in-memory storage (`uploads_store` dict). 
+Currently uses in-memory storage (`uploads_store` dict).
+
+---
+
+### Portfolio Refresh (`portfolio_routes.py`)
+
+#### POST /api/portfolio/refresh
+Refresh entire portfolio with cross-project duplicate detection.
+
+**Request:**
+```json
+{
+  "include_duplicates": true
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "status": "completed",
+  "projects_scanned": 5,
+  "total_files": 150,
+  "total_size_bytes": 5000000,
+  "dedup_report": {
+    "summary": {
+      "duplicate_groups_count": 3,
+      "total_wasted_bytes": 50000
+    },
+    "duplicate_groups": [
+      {
+        "sha256": "abc123...",
+        "file_count": 2,
+        "wasted_bytes": 25000,
+        "files": [
+          {"path": "src/utils.py", "project_id": "...", "project_name": "Project A"},
+          {"path": "lib/utils.py", "project_id": "...", "project_name": "Project B"}
+        ]
+      }
+    ]
+  }
+}
+```
+
+**Features:**
+- Scans all user projects for cached file metadata
+- Detects files duplicated across multiple projects using SHA-256 hash
+- Returns deduplication report with wasted bytes calculation
+- Sorted by wasted bytes (largest first)
+
+**Authentication:** Required (`Authorization: Bearer <JWT>`)
+
+**Errors:**
+- `401 Unauthorized`: Missing or invalid JWT token
+- `500 Internal Server Error`: Failed to refresh portfolio
+
+---
+
+### Append Upload to Project (`project_routes.py`)
+
+#### POST /api/projects/{project_id}/append-upload/{upload_id}
+Merge files from a new upload into an existing project with deduplication.
+
+**Request:**
+```json
+{
+  "skip_duplicates": true
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "project_id": "ab5743df-c763-472b-98a0-d45548c4c5ce",
+  "upload_id": "upl_abc123def456",
+  "status": "completed",
+  "files_added": 5,
+  "files_updated": 2,
+  "files_skipped_duplicate": 3,
+  "total_files_in_upload": 10,
+  "files": [
+    {"path": "src/new_file.py", "status": "added", "sha256": "abc123..."},
+    {"path": "src/changed.py", "status": "updated", "sha256": "def456..."},
+    {"path": "src/existing.py", "status": "skipped_duplicate", "sha256": "789abc..."}
+  ]
+}
+```
+
+**Features:**
+- Verifies upload exists and user owns it
+- Verifies project exists and user owns it
+- Compares files by SHA-256 hash:
+  - If hash matches existing file → skipped (duplicate)
+  - If path exists but different hash → updated
+  - If new path → added
+- Persists new/updated file metadata to the project
+
+**Authentication:** Required (`Authorization: Bearer <JWT>`)
+
+**Errors:**
+- `401 Unauthorized`: Missing or invalid JWT token
+- `403 Forbidden`: Access denied to upload (wrong user)
+- `404 Not Found`: Upload or project not found
+- `500 Internal Server Error`: Failed to parse or save files
+
+---
+
+## Testing
+
+Run tests for incremental refresh endpoints:
+```bash
+pytest tests/test_incremental_refresh_api.py -v
+``` 
