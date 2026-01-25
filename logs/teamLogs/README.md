@@ -1,6 +1,7 @@
 # Capstone Team 7 Logs
 
 ## Quick Navigation
+- [Week 17 (January 19th - 25th)](#week-17-january-19th---25th)
 - [Week 16 (January 12th - 18th)](#week-16-january-12th---18th)
 - [Week 15 (January 5th - 11th)](#week-15-january-5th---11th)
 - [Week 14 (December 1st - 7th)](#week-14-december-1st---7th)
@@ -15,6 +16,26 @@
 - [Week 5 (September 29 - October 5)](#week-5-september-29---october-5)
 - [Week 4 (September 22 - 28)](#week-4-september-22---28)
 - [Week 3 (September 15 - 21)](#week-3-september-15---21)
+
+## Week 17 (January 19th - 25th)
+**Joaquin:**
+**Aaron:**
+**Jacob:** 
+**Om:** 
+**Vlad:**
+**Samarth:**
+
+## Reflection
+
+### What went well
+
+### Challenges
+
+## **Next Steps**
+
+<p align="center">
+  <img src="./charts/w16burnup.png" alt="Week 17 Burnup Chart width="400"/>
+</p>
 
 ## Week 16 (January 12th - 18th)
 This week, the team continued building out the backend API and integrating it with the Textual UI. Key accomplishments include connecting the API routes implemented last week to the TUI and also adding other new API routes that are needed by the frontend.
