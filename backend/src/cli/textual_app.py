@@ -289,6 +289,8 @@ class PortfolioTextualApp(App):
         self._preferences_state = PreferencesState()
         self._scan_state = ScanState()
         self._ai_state = AIState()
+        self._scan_state.export_already_saved = False
+
         # Timeline API state
         self._timeline_api_snapshot: Optional[Dict[str, Any]] = None
         self._timeline_api_error: Optional[str] = None
@@ -3868,6 +3870,35 @@ class PortfolioTextualApp(App):
         self.push_screen(NoticeScreen(notice))
 
     def on_scan_results_screen_closed(self) -> None:
+        """Handle scan results screen closure - save to database if not already saved via export."""
+        self._debug_log("[on_scan_results_screen_closed] Screen closed event triggered")
+        
+        # Only save if we haven't already saved via export
+        if not getattr(self._scan_state, 'export_already_saved', False):
+            self._debug_log("[on_scan_results_screen_closed] Export not done yet, triggering background save")
+            
+            # Check if we have the required data
+            if self._session_state.session and self._scan_state.parse_result and self._scan_state.archive:
+                try:
+                    # Build payload
+                    payload = self._build_export_payload(
+                        self._scan_state.parse_result,
+                        self._scan_state.languages,
+                        self._scan_state.archive,
+                    )
+                    
+                    # Trigger background save (no silent parameter needed)
+                    self._debug_log("[on_scan_results_screen_closed] Creating background save task")
+                    asyncio.create_task(self._save_scan_to_database(payload))
+                    self._debug_log("[on_scan_results_screen_closed] Background database save task created successfully")
+                except Exception as exc:
+                    self._debug_log(f"[on_scan_results_screen_closed] Failed to trigger background save: {exc}")
+            else:
+                self._debug_log(f"[on_scan_results_screen_closed] Skipping save - session={bool(self._session_state.session)}, parse_result={bool(self._scan_state.parse_result)}, archive={bool(self._scan_state.archive)}")
+        else:
+            self._debug_log("[on_scan_results_screen_closed] Export already saved, skipping duplicate save")
+        
+        # Clear the screen reference
         self._scan_results_screen = None
 
     def on_resumes_screen_closed(self) -> None:
@@ -4027,6 +4058,8 @@ class PortfolioTextualApp(App):
         self._scan_state.languages = []
         self._scan_state.scan_timings = []
         self._scan_state.has_media_files = False
+        self._scan_state.export_already_saved = False  # ✅ ADD THIS LINE
+
         self._scan_state.git_repos = []
         self._scan_state.git_analysis = []
         self._scan_state.media_analysis = None
