@@ -19,10 +19,15 @@
 
 ## Week 17 (January 19th - 25th)
 **Joaquin:**
+
 **Aaron:**
+
 **Jacob:** 
+
 **Om:** 
+
 **Vlad:**
+
 **Samarth:**
 
 ## Reflection
