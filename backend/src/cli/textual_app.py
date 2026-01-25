@@ -560,7 +560,9 @@ class PortfolioTextualApp(App):
             self._restore_main_menu()
             return
         elif label == "Create Portfolio":
-            self._show_status("Create Portfolio selected (to be implemented).", "info")
+            # Open modal to collect portfolio name/description
+            from .screens import CreatePortfolioScreen
+            self.push_screen(CreatePortfolioScreen())
         elif label == "View Portfolios":
             self._show_status("View Portfolios selected (to be implemented).", "info")
         elif label == "Update Portfolio":
@@ -582,6 +584,65 @@ class PortfolioTextualApp(App):
             menu_list.focus()
             menu_list.index = 0
         self._show_status("Returned to main menu.", "info")
+
+    async def on_create_portfolio_submitted(self, message) -> None:
+        """Handle CreatePortfolioSubmitted message from CreatePortfolioScreen."""
+        try:
+            name = message.name
+            description = getattr(message, "description", None)
+        except Exception:
+            self._show_status("Invalid create portfolio submission.", "error")
+            return
+
+        if not self._use_api_mode:
+            self._show_status("Local portfolio creation not implemented; enable API mode.", "warning")
+            return
+
+        if not self._session_state.session or not getattr(self._session_state.session, "access_token", None):
+            self._show_status("Sign in to create a portfolio via API.", "warning")
+            return
+
+        self._show_status("Creating portfolio via API…", "info")
+
+        async def _create():
+            try:
+                import httpx
+                base = self._get_api_base_url()
+                headers = {"Authorization": f"Bearer {self._session_state.session.access_token}", "Content-Type": "application/json"}
+                payload = {"name": name, "description": description}
+                client = httpx.Client(timeout=30.0)
+                res = client.post(f"{base}/api/portfolios", json=payload, headers=headers)
+                if res.status_code in (200, 201):
+                    return True, res.json()
+                else:
+                    return False, f"API error {res.status_code}: {res.text}"
+            except Exception as exc:
+                return False, str(exc)
+
+        ok, result = await asyncio.to_thread(lambda: asyncio.get_event_loop().run_until_complete(_create()) if False else (_create()))
+        # Note: above uses to_thread which runs _create coroutine incorrectly; instead run synchronous httpx inside thread
+        # We'll implement correct threaded call below
+        def _create_sync():
+            try:
+                import httpx
+                base = self._get_api_base_url()
+                headers = {"Authorization": f"Bearer {self._session_state.session.access_token}", "Content-Type": "application/json"}
+                payload = {"name": name, "description": description}
+                client = httpx.Client(timeout=30.0)
+                res = client.post(f"{base}/api/portfolios", json=payload, headers=headers)
+                if res.status_code in (200, 201):
+                    return True, res.json()
+                else:
+                    return False, f"API error {res.status_code}: {res.text}"
+            except Exception as exc:
+                return False, str(exc)
+
+        ok, result = await asyncio.to_thread(_create_sync)
+
+        if ok:
+            self._show_status(f"Portfolio '{name}' created successfully.", "success")
+        else:
+            self._show_status(f"Failed to create portfolio: {result}", "error")
 
     def _handle_ai_analysis_selection(self) -> None:
         detail_panel = self.query_one("#detail", Static)

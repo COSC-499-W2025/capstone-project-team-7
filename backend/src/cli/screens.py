@@ -291,6 +291,59 @@ Examples: name:*.py  |  lang:python;min:1KB  |  path:test"""
             self.dismiss(None)
 
 
+class CreatePortfolioSubmitted(Message):
+    """Raised when the user submits the create-portfolio dialog."""
+
+    def __init__(self, name: str, description: str | None = None) -> None:
+        super().__init__()
+        self.name = name
+        self.description = description
+
+
+class CreatePortfolioScreen(ModalScreen[None]):
+    """Modal dialog for creating a named portfolio (simple form)."""
+
+    def compose(self) -> ComposeResult:
+        yield Vertical(
+            Static("Create Portfolio", classes="dialog-title"),
+            Static("Enter a name and optional description for the portfolio.", classes="dialog-subtitle"),
+            Input(placeholder="Portfolio name", id="portfolio-name"),
+            Input(placeholder="Description (optional)", id="portfolio-desc"),
+            Static("", id="create-portfolio-message", classes="dialog-message"),
+            Horizontal(
+                Button("Cancel", id="create-cancel"),
+                Button("Create", id="create-submit", variant="primary"),
+                classes="dialog-buttons",
+            ),
+            classes="dialog",
+        )
+
+    def on_mount(self, event: Mount) -> None:  # pragma: no cover - focus wiring
+        try:
+            self.query_one("#portfolio-name", Input).focus()
+        except Exception:
+            pass
+
+    def _submit(self) -> None:
+        name = self.query_one("#portfolio-name", Input).value.strip()
+        desc = self.query_one("#portfolio-desc", Input).value.strip()
+        if not name:
+            self.query_one("#create-portfolio-message", Static).update("Provide a portfolio name.")
+            return
+        dispatch_message(self, CreatePortfolioSubmitted(name, desc or None))
+        self.dismiss(None)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "create-submit":
+            self._submit()
+        elif event.button.id == "create-cancel":
+            self.dismiss(None)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "portfolio-name":
+            self._submit()
+
+
 class LoginScreen(ModalScreen[None]):
     """Modal dialog for collecting Supabase credentials."""
 
