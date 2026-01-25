@@ -22,7 +22,11 @@
 
 **Aaron:**
 
-**Jacob:** 
+**Jacob:** This week I delivered two core API-driven TUI integrations of my own and reviewed multiple portfolio-related PRs as we continue the migration toward backend-backed workflows. I opened [PR #252](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/244) to integrate config/profile APIs into the TUI, centralize server-side file search via /api/projects/search, and restore the full file list when the search input is cleared; this keeps the UI responsive while making search results consistent with the backend. I also completed [PR #250](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/250) to implement resume items CRUD in the TUI through /api/resume/items under API mode, and improved backend env loading and Supabase key lookup to reduce 503s and data validation issues. Together, these changes strengthen our API-driven UX and ensure persisted preferences and resume data flow correctly.
+
+Alongside my own work, I reviewed Oms’s PR [#251](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/251) (TUI Portfolio CRUD Integration), focusing on the integration test coverage, API/TUI wiring, and the documentation updates; the structure is solid and aligns with our API‑first migration. I also reviewed [PR #244](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/244) (Portfolio Items API), verifying that the CRUD endpoints, RLS isolation, and model validation are consistent with the existing patterns and ready for TUI consumption.
+
+
 
 **Om:** 
 
