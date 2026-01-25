@@ -179,6 +179,11 @@ components:
         languages: { type: array, items: { type: string } }
         frameworks: { type: array, items: { type: string } }
         rank_score: { type: number, format: float }
+        role:
+          type: string
+          nullable: true
+          enum: [author, contributor, lead, maintainer, reviewer]
+          description: User's role in the project
         created_at: { type: string, format: date-time }
 
     ProjectDetail:
@@ -205,6 +210,11 @@ components:
         project_end_date: { type: string, nullable: true }
         has_skills_progress: { type: boolean }
         rank_score: { type: number, format: float }
+        role:
+          type: string
+          nullable: true
+          enum: [author, contributor, lead, maintainer, reviewer]
+          description: User's role in the project
         summary: { type: object }
         analysis: { $ref: '#/components/schemas/AnalysisSummary' }
         user_overrides: { $ref: '#/components/schemas/ProjectOverrides' }
@@ -224,6 +234,26 @@ components:
         highlighted_skills:
           type: array
           items: { type: string }
+
+    RoleUpdateRequest:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [author, contributor, lead, maintainer, reviewer]
+          description: User's role in the project
+      required: [role]
+
+    RoleResponse:
+      type: object
+      properties:
+        project_id: { type: string }
+        role:
+          type: string
+          nullable: true
+          enum: [author, contributor, lead, maintainer, reviewer]
+        message: { type: string }
+      required: [project_id, role]
 
     RankRequest:
       type: object
@@ -1267,6 +1297,70 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/RankResponse' }
+
+  /api/projects/{project_id}/role:
+    get:
+      summary: Get user's role in a project
+      description: Returns the user's role for this project from project_overrides
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: project_id
+          schema: { type: string, format: uuid }
+          required: true
+      responses:
+        '200':
+          description: Role retrieved successfully
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RoleResponse' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    patch:
+      summary: Update user's role in a project
+      description: |
+        Updates the user's role for this project. Allowed values:
+        author, contributor, lead, maintainer, reviewer
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: project_id
+          schema: { type: string, format: uuid }
+          required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RoleUpdateRequest' }
+      responses:
+        '200':
+          description: Role updated successfully
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RoleResponse' }
+        '400':
+          description: Invalid role value
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   /api/projects/top:
     get:

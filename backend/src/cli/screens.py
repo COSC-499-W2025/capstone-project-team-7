@@ -25,6 +25,8 @@ from textual.widgets import (
     RichLog,
     Static,
     Switch,
+    RadioButton,
+    RadioSet,
 )
 
 
@@ -34,6 +36,8 @@ except ImportError:  # pragma: no cover
     TextLog = None  # type: ignore[assignment]
 
 from .message_utils import dispatch_message
+from .services.project_overrides_service import ALLOWED_ROLES
+
 
 class ScanParametersChosen(Message):
     """Raised when the user submits scan parameters from the dialog."""
@@ -48,6 +52,15 @@ class ScanCancelled(Message):
     """Raised when the user cancels the scan configuration dialog."""
 
     pass
+
+
+class RoleUpdated(Message):
+    """Raised when the user updates their role in a project."""
+
+    def __init__(self, project_id: str, role: str) -> None:
+        super().__init__()
+        self.project_id = project_id
+        self.role = role
 
 
 class ScanConfigScreen(ModalScreen[None]):
@@ -2775,9 +2788,10 @@ class ProjectViewerScreen(ModalScreen[None]):
             with ScrollableContainer(id="viewer-content"):
                 yield Static(self._render_summary(), id="viewer-content-text")
             
-            # Action buttons - ✅ ADD BACK BUTTON
+            # Action buttons
             with Horizontal(id="viewer-buttons"):
                 yield Button("← Back", id="back-btn", variant="default")
+                yield Button("📝 Edit Role", id="edit-role-btn", variant="default")
                 yield Button("✖ Close", id="close-btn", variant="primary")
     
     def on_mount(self) -> None:
@@ -2791,8 +2805,15 @@ class ProjectViewerScreen(ModalScreen[None]):
         if button_id == "close-btn":
             self.dismiss(None)
         
-        elif button_id == "back-btn":  # ✅ NEW: Back button
+        elif button_id == "back-btn":
             self.dismiss(None)
+        
+        elif button_id == "edit-role-btn":
+            # Open the role edit screen
+            project_id = self.project.get("id", "")
+            project_name = self.project.get("project_name", "Project")
+            current_role = self.project.get("role")
+            self.app.push_screen(RoleEditScreen(project_id, project_name, current_role))
         
         elif button_id.startswith("tab-"):
             tab_name = button_id.replace("tab-", "")
@@ -2853,6 +2874,13 @@ class ProjectViewerScreen(ModalScreen[None]):
         
         lines.append(f"[b]{project_name}[/b]")
         lines.append(f"Path: {project_path}")
+        
+        # Show user's role in the project
+        role = self.project.get("role")
+        if role:
+            lines.append(f"[b]Role:[/b] {escape(role.title())}")
+        else:
+            lines.append("[b]Role:[/b] [dim]Not set (click 'Edit Role' to set)[/dim]")
         
         if timestamp != "Unknown":
             try:
@@ -4053,6 +4081,143 @@ class AIResultsScreen(ModalScreen[None]):
         if event.key == "escape" or event.key == "q":
             self.dismiss(None)
 
+
+class RoleEditScreen(ModalScreen[None]):
+    """Modal screen for editing user's role in a project."""
+
+    CSS = """
+    RoleEditScreen {
+        align: center middle;
+    }
+    
+    #role-dialog {
+        width: 60;
+        height: auto;
+        max-height: 25;
+        border: thick $background 80%;
+        background: $surface;
+        padding: 1 2;
+    }
+    
+    #role-title {
+        width: 100%;
+        content-align: center middle;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+    
+    #role-subtitle {
+        width: 100%;
+        margin-bottom: 1;
+        color: $text-muted;
+    }
+    
+    #role-radio-set {
+        width: 100%;
+        margin-bottom: 1;
+    }
+    
+    #role-message {
+        width: 100%;
+        height: 1;
+        margin-bottom: 1;
+    }
+    
+    #role-buttons {
+        width: 100%;
+        height: auto;
+        align: center middle;
+    }
+    
+    Button {
+        margin: 0 1;
+    }
+    """
+
+    def __init__(self, project_id: str, project_name: str, current_role: Optional[str] = None) -> None:
+        super().__init__()
+        self.project_id = project_id
+        self.project_name = project_name
+        self.current_role = current_role or ""
+        self.selected_role: Optional[str] = current_role
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="role-dialog"):
+            yield Static(f"📝 Edit Role: {self.project_name}", id="role-title")
+            yield Static(
+                "Select your role in this project. This will appear in portfolio and résumé views.",
+                id="role-subtitle",
+            )
+            
+            # Radio buttons for role selection
+            with RadioSet(id="role-radio-set"):
+                for role in ALLOWED_ROLES:
+                    is_checked = role == self.current_role
+                    display_name = role.title()
+                    if role == "author":
+                        display_name += " (≥80% of commits)"
+                    elif role == "contributor":
+                        display_name += " (<80% of commits)"
+                    yield RadioButton(display_name, value=is_checked, id=f"role-{role}")
+            
+            yield Static("", id="role-message")
+            
+            with Horizontal(id="role-buttons"):
+                yield Button("Cancel", id="role-cancel", variant="default")
+                yield Button("Save", id="role-save", variant="primary")
+
+    def on_mount(self) -> None:
+        """Set initial selection."""
+        if self.current_role and self.current_role in ALLOWED_ROLES:
+            try:
+                radio = self.query_one(f"#role-{self.current_role}", RadioButton)
+                radio.value = True
+            except Exception:
+                pass
+
+    def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
+        """Handle radio button selection changes."""
+        # Extract role from the pressed button's ID
+        if event.pressed and event.pressed.id:
+            role = event.pressed.id.replace("role-", "")
+            if role in ALLOWED_ROLES:
+                self.selected_role = role
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button presses."""
+        button_id = event.button.id
+
+        if button_id == "role-cancel":
+            self.dismiss(None)
+
+        elif button_id == "role-save":
+            if not self.selected_role:
+                self._set_message("Please select a role.", tone="warning")
+                return
+            
+            # Emit the role update message
+            dispatch_message(self, RoleUpdated(self.project_id, self.selected_role))
+            self.dismiss(None)
+
+    def _set_message(self, text: str, tone: str = "info") -> None:
+        """Set status message."""
+        try:
+            msg = self.query_one("#role-message", Static)
+            if tone == "warning":
+                msg.update(f"[yellow]{text}[/yellow]")
+            elif tone == "error":
+                msg.update(f"[red]{text}[/red]")
+            elif tone == "success":
+                msg.update(f"[green]{text}[/green]")
+            else:
+                msg.update(text)
+        except Exception:
+            pass
+
+    def on_key(self, event: Key) -> None:
+        """Handle keyboard shortcuts."""
+        if event.key == "escape":
+            self.dismiss(None)
 
 class SkillProgressScreen(ModalScreen[None]):
     """Modal showing skill progression timeline and optional AI summary."""
