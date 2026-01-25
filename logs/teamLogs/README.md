@@ -37,8 +37,10 @@ Alongside my own work, I reviewed Oms’s PR [#251](https://github.com/COSC-499-
 ## Reflection
 
 ### What went well
-
+- API‑backed TUI integrations landed cleanly with tests and reviews completed on schedule.
 ### Challenges
+- API‑mode testing was delayed by config/flag confusion and connection‑refused login until the local server/env were aligned.
+
 
 ## **Next Steps**
 
