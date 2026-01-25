@@ -613,32 +613,15 @@ class PortfolioTextualApp(App):
 
         self._show_status("Creating portfolio via API…", "info")
 
-        async def _create():
-            try:
-                import httpx
-                base = self._get_api_base_url()
-                headers = {"Authorization": f"Bearer {self._session_state.session.access_token}", "Content-Type": "application/json"}
-                payload = {"name": name, "description": description}
-                client = httpx.Client(timeout=30.0)
-                res = client.post(f"{base}/api/portfolios", json=payload, headers=headers)
-                if res.status_code in (200, 201):
-                    return True, res.json()
-                else:
-                    return False, f"API error {res.status_code}: {res.text}"
-            except Exception as exc:
-                return False, str(exc)
-
-        ok, result = await asyncio.to_thread(lambda: asyncio.get_event_loop().run_until_complete(_create()) if False else (_create()))
-        # Note: above uses to_thread which runs _create coroutine incorrectly; instead run synchronous httpx inside thread
-        # We'll implement correct threaded call below
+        # Perform API call in a worker thread (synchronous httpx client)
         def _create_sync():
             try:
                 import httpx
                 base = self._get_api_base_url()
                 headers = {"Authorization": f"Bearer {self._session_state.session.access_token}", "Content-Type": "application/json"}
-                payload = {"name": name, "description": description}
+                payload = {"title": name, "summary": description}
                 client = httpx.Client(timeout=30.0)
-                res = client.post(f"{base}/api/portfolios", json=payload, headers=headers)
+                res = client.post(f"{base}/api/portfolio/items", json=payload, headers=headers)
                 if res.status_code in (200, 201):
                     return True, res.json()
                 else:
@@ -682,8 +665,8 @@ class PortfolioTextualApp(App):
                 base = self._get_api_base_url()
                 headers = {"Authorization": f"Bearer {self._session_state.session.access_token}", "Content-Type": "application/json"}
                 client = httpx.Client(timeout=30.0)
-                payload = {"name": name, "description": description}
-                res = client.patch(f"{base}/api/portfolios/{pid}", json=payload, headers=headers)
+                payload = {"title": name, "summary": description}
+                res = client.patch(f"{base}/api/portfolio/items/{pid}", json=payload, headers=headers)
                 if res.status_code in (200, 204):
                     # Some APIs return updated object
                     try:
@@ -718,7 +701,7 @@ class PortfolioTextualApp(App):
                 base = self._get_api_base_url()
                 headers = {"Authorization": f"Bearer {self._session_state.session.access_token}", "Content-Type": "application/json"}
                 client = httpx.Client(timeout=30.0)
-                res = client.get(f"{base}/api/portfolios", headers=headers)
+                res = client.get(f"{base}/api/portfolio/items", headers=headers)
                 if res.status_code == 200:
                     return True, res.json()
                 else:
@@ -774,7 +757,7 @@ class PortfolioTextualApp(App):
                     base = self._get_api_base_url()
                     headers = {"Authorization": f"Bearer {self._session_state.session.access_token}"}
                     client = httpx.Client(timeout=30.0)
-                    res = client.delete(f"{base}/api/portfolios/{pid}", headers=headers)
+                    res = client.delete(f"{base}/api/portfolio/items/{pid}", headers=headers)
                     if res.status_code in (200, 204):
                         return True, None
                     else:
