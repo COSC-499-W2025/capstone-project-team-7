@@ -1,5 +1,15 @@
 
 # Jacob Damery
+
+## Week 17
+
+
+
+
+
+<img width="1071" height="625" alt="image" src="https://github.com/user-attachments/assets/af874996-21b7-453c-9419-c824474250ff" />
+
+
 ## Week 16
 
 This week, I focused on solidifying the Skills Timeline + Portfolio Chronology APIs, tightening response typing, fixing Supabase integration test safety, and adding a TUI-based API validation flow to confirm the endpoints work end-to-end.
