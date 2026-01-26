@@ -5,6 +5,7 @@ from typing import Any, Callable, Dict, Optional, Tuple
 
 from ...scanner.models import ScanPreferences
 from ...scanner.preferences import normalize_extensions
+from .config_api_service import ConfigAPIService, ConfigAPIServiceError
 
 
 ConfigManagerFactory = Callable[[str], object]
@@ -18,9 +19,11 @@ class PreferencesService:
         *,
         media_extensions: Tuple[str, ...],
         manager_factory: Optional[ConfigManagerFactory] = None,
+        api_service: Optional[ConfigAPIService] = None,
     ) -> None:
         self._media_extensions = media_extensions
         self._manager_factory = manager_factory
+        self._api_service = api_service
         self._fallback_structure = {
             "scan_profiles": {
                 "sample": {
@@ -39,12 +42,25 @@ class PreferencesService:
     def load_preferences(
         self,
         user_id: str,
+        *,
+        access_token: Optional[str] = None,
     ) -> Tuple[Dict[str, Any], Dict[str, Dict[str, Any]], Dict[str, Any], Optional[str]]:
         """Return (summary, profiles, raw_config, error)."""
         if not user_id:
             fallback = self.default_structure()
             summary = self._fallback_summary(fallback)
             return summary, fallback["scan_profiles"], fallback, None
+
+        if self._api_service:
+            try:
+                config = self._api_service.get_config(user_id, access_token=access_token)
+            except Exception as exc:
+                fallback = self.default_structure()
+                summary = self._fallback_summary(fallback)
+                return summary, fallback["scan_profiles"], fallback, str(exc)
+            summary = self._summary_from_config(config)
+            profiles = config.get("scan_profiles") or {}
+            return summary, profiles, config, None
 
         try:
             manager = self._get_manager(user_id)
@@ -63,9 +79,13 @@ class PreferencesService:
         user_id: str,
         action: str,
         payload: Dict[str, Any],
+        *,
+        access_token: Optional[str] = None,
     ) -> Tuple[bool, str]:
         if not user_id:
             return False, "No active session."
+        if self._api_service:
+            return self._execute_action_api(user_id, action, payload, access_token)
         try:
             manager = self._get_manager(user_id)
         except Exception as exc:  # pragma: no cover - import or init failure
@@ -127,6 +147,70 @@ class PreferencesService:
                 ):
                     return False, "Unable to update settings."
                 return True, "Settings updated."
+        except Exception as exc:  # pragma: no cover - defensive fallback
+            return False, str(exc)
+
+        return False, "Unknown preferences action."
+
+    def _execute_action_api(
+        self,
+        user_id: str,
+        action: str,
+        payload: Dict[str, Any],
+        access_token: Optional[str],
+    ) -> Tuple[bool, str]:
+        try:
+            if action == "set_active":
+                name = payload.get("name")
+                if not name:
+                    return False, "Profile name missing."
+                self._api_service.update_config(
+                    user_id,
+                    access_token=access_token,
+                    current_profile=name,
+                )
+                return True, f"Active profile set to {name}."
+
+            if action == "delete_profile":
+                name = payload.get("name")
+                if not name:
+                    return False, "Profile name missing."
+                self._api_service.delete_profile(
+                    user_id,
+                    name,
+                    access_token=access_token,
+                )
+                return True, f"Profile {name} deleted."
+
+            if action in {"create_profile", "update_profile"}:
+                name = payload.get("name")
+                if not name:
+                    return False, "Profile name missing."
+                self._api_service.save_profile(
+                    user_id,
+                    name,
+                    access_token=access_token,
+                    extensions=payload.get("extensions", []),
+                    exclude_dirs=payload.get("exclude_dirs", []),
+                    description=payload.get("description") or "Custom profile",
+                )
+                message = "Profile created." if action == "create_profile" else "Profile updated."
+                return True, message
+
+            if action == "update_settings":
+                max_size = payload.get("max_file_size_mb")
+                follow_symlinks = payload.get("follow_symlinks")
+                if max_size is None and follow_symlinks is None:
+                    return False, "No settings to update."
+                self._api_service.update_config(
+                    user_id,
+                    access_token=access_token,
+                    max_file_size_mb=max_size,
+                    follow_symlinks=follow_symlinks,
+                )
+                return True, "Settings updated."
+        except ConfigAPIServiceError as exc:
+            return False, str(exc)
         except Exception as exc:  # pragma: no cover - defensive fallback
             return False, str(exc)
 

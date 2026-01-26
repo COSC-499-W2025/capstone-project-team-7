@@ -41,6 +41,7 @@ from .message_utils import dispatch_message
 from .services.projects_service import ProjectsService, ProjectsServiceError 
 from .services.project_overrides_service import ProjectOverridesService
 from .services.preferences_service import PreferencesService
+from .services.config_api_service import ConfigAPIService
 from .services.auth_api_service import AuthAPIService
 from .services.consent_api_service import ConsentAPIService, ConsentAPIServiceError
 from .services.analysis_api_service import (
@@ -314,7 +315,13 @@ class PortfolioTextualApp(App):
         self._consent_api_service = ConsentAPIService() if self._use_api_mode else None
         self._analysis_api_service: Optional[AnalysisAPIService] = None
         self._scan_service = ScanService(use_api=self._use_api_mode)
-        self._preferences_service = PreferencesService(media_extensions=MEDIA_EXTENSIONS)
+        self._config_api_service = (
+            ConfigAPIService(base_url=self._get_api_base_url()) if self._use_config_api else None
+        )
+        self._preferences_service = PreferencesService(
+            media_extensions=MEDIA_EXTENSIONS,
+            api_service=self._config_api_service,
+        )
         self._scan_service = ScanService()
         self._ai_service = AIService()
         self._code_service = CodeAnalysisService()
@@ -4545,6 +4552,7 @@ class PortfolioTextualApp(App):
                 self._session_state.session.user_id,
                 action,
                 payload,
+                access_token=getattr(self._session_state.session, "access_token", None),
             )
         except Exception as exc:  # pragma: no cover - defensive fallback
             self._show_status(f"Unexpected preferences error: {exc}", "error")
@@ -5330,7 +5338,10 @@ class PortfolioTextualApp(App):
         self._preferences_state.config = {}
         if not self._session_state.session:
             return
-        summary, profiles, config, error = self._preferences_service.load_preferences(self._session_state.session.user_id)
+        summary, profiles, config, error = self._preferences_service.load_preferences(
+            self._session_state.session.user_id,
+            access_token=getattr(self._session_state.session, "access_token", None),
+        )
         self._preferences_state.summary = summary
         self._preferences_state.profiles = profiles
         self._preferences_state.config = config
@@ -5703,7 +5714,7 @@ class PortfolioTextualApp(App):
             lines.extend(
                 [
                     "",
-                    "• Sign in (Ctrl+L) to load your Supabase-backed preferences.",
+                    "• Sign in (Ctrl+L) to load your server-backed preferences.",
                 ]
             )
             return "\n".join(lines)
