@@ -310,6 +310,11 @@ class PortfolioTextualApp(App):
           
         self._session_service = SessionService(reporter=self._report_filesystem_issue)
         self._use_api_mode = _env_flag("PORTFOLIO_USE_API")
+        config_api_flag = os.getenv("PORTFOLIO_USE_CONFIG_API")
+        if config_api_flag is None:
+            self._use_config_api = self._use_api_mode
+        else:
+            self._use_config_api = _env_flag("PORTFOLIO_USE_CONFIG_API")
         self._api_base_url = os.getenv("API_BASE_URL", "http://localhost:8000")
         self._auth_api_service = AuthAPIService() if self._use_api_mode else None
         self._consent_api_service = ConsentAPIService() if self._use_api_mode else None

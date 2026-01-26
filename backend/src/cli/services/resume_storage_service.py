@@ -35,7 +35,7 @@ class ResumeStorageService:
         supabase_key: Optional[str] = None,
         *,
         encryption_service: Optional[EncryptionService] = None,
-        encryption_required: bool = True,
+        encryption_required: bool = False,
     ):
         if not SUPABASE_AVAILABLE:
             raise ResumeStorageError("Supabase client not available. Install supabase-py.")
