@@ -29,6 +29,13 @@ Alongside my own work, I reviewed Oms’s PR [#251](https://github.com/COSC-499-
 
 
 **Om:** 
+This week I delivered end‑to‑end Portfolio Items functionality and reviewed the team’s API‑first integrations in depth. I authored PRs [#244](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/244) (Portfolio Items API) and [#251](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/251) (TUI Portfolio CRUD integration). The backend work provided a production-ready schema and typed request/response models, transactional create/update semantics, and clear error envelopes; the TUI work added a Portfolio CRUD submenu, confirmation/feedback flows, a thin service layer for API calls, and cache-invalidation to keep views consistent.
+
+I reviewed and validated several team integrations to ensure consistent API contracts and test coverage — notably project-overrides ([#241](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/241)), Selection ([#234](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/234)), Project Routes TUI ([#223](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/223]), and Upload/Parse ([#210](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/210)). Across these PRs we focused on: robust validation (Pydantic models), RLS-compatible auth flows for Supabase, service-role vs session-token test wiring, and integration tests that exercise end-to-end TUI ↔ API flows.
+
+`Key outcomes:` stable CRUD endpoints for portfolio items, end-user TUI flows (create/view/edit/delete) with predictable status handling, improved test coverage (unit + integration), and fixes for UX edge cases (404/delete handling, optimistic-update rollbacks, and stale-cache invalidation). Primary roadblocks were auth/RLS testing complexity, merge coordination between TUI branches, and a few async/ blocking issues in the TUI (resolved via executors/asyncio.to_thread).
+
+`Next steps:` centralize token handling into a small auth helper, add retry/backoff for transient API failures, harden RLS test fixtures in CI, and add an E2E CI job that runs key TUI flows against a test backend so regressions are caught earlier.
 
 **Vlad:**
 
@@ -38,8 +45,13 @@ Alongside my own work, I reviewed Oms’s PR [#251](https://github.com/COSC-499-
 
 ### What went well
 - API‑backed TUI integrations landed cleanly with tests and reviews completed on schedule.
+- API routes on track and good to go for Peer Testing sessions.
+- All tests passing new implementation.
+
 ### Challenges
 - API‑mode testing was delayed by config/flag confusion and connection‑refused login until the local server/env were aligned.
+- Some PRs required multiple review rounds to nail down edge cases in error handling and test coverage.
+
 
 
 ## **Next Steps**
