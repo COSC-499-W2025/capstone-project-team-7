@@ -1,5 +1,42 @@
 # Aaron Banerjee (@aaronbanerjee123)
-## Week 15: January 12 - January 19
+## Week 17: January 20 - January 26
+
+This week, I focused on implementing server-side search functionality and fixing a critical data persistence bug in the project save workflow, ensuring better data reliability and improved user experience across the TUI application.
+
+**Key Accomplishments:**
+
+**Server-Side Search Integration (PR #245):** Implemented comprehensive server-side file-browser search functionality to centralize API calls and improve TUI responsiveness. Wired the TUI file-browser search to the server-side search endpoint, restoring the full file list when the search bar is cleared. Added a synchronous client method `search_projects(...)` to the API client and integrated it into the TUI (via `asyncio.to_thread`) so authentication, base URL, and error handling are centralized. Updated API documentation to describe the canonical `GET /api/projects/search` endpoint (files-only). Implemented UI improvement where the full file list is repopulated when the search input is emptied. Centralized API calls in `ProjectsAPIService` to avoid duplicated HTTP code in the TUI and ensured consistent headers/auth handling. Created testing suite to ensure proper functionality across the search flow. Provided consistent server-side file search for the TUI while keeping the UI responsive by running blocking HTTP client calls off the event loop.
+
+**Automatic Save Bugfix (PR #249):** Fixed a critical bug where portfolio scan results were not being automatically saved to the database when users closed the scan results dialog without explicitly clicking "Export JSON report". Implemented automatic database save when the scan results dialog closes, ensuring users who viewed their scan results and then closed the dialog wouldn't lose their data for future access via "View Saved Projects". Added `export_already_saved` flag to `ScanState` to track if export already occurred, preventing duplicate saves if users already clicked "Export JSON report". Modified `on_scan_results_screen_closed` to trigger background database save when dialog closes (only if export wasn't already done). Set the flag in the export action handler to prevent duplicate saves. Reset the flag when starting a new scan to ensure clean state. Modified files include `backend/cli/textual_app.py` with changes to `on_scan_results_screen_closed()` (line ~1930), `on_scan_result_action()` export handler (line ~2850), and `_reset_scan_state()` (line ~1900). Added `export_already_saved` flag initialization in `ScanState`. Database save on close now happens silently in the background without blocking the UI, significantly improving user experience.
+
+**Challenges & Learning:**
+
+The main challenge in PR #245 was managing async/sync boundaries when integrating synchronous HTTP client calls into the async TUI event loop. I resolved this by wrapping blocking operations with `asyncio.to_thread()`, executing them in a thread pool without blocking the event loop. For PR #249, the challenge was understanding user behavior patterns - many users would view results and close the dialog without realizing they needed to export, resulting in lost data. I learned about state management with flags to prevent duplicate operations and the importance of automatic data persistence for better UX. Additionally, I gained experience in handling background operations that enhance user experience without requiring explicit user action.
+
+**Next Week Priorities:**
+
+Next week, I'll focus on extending the search functionality to support additional filters (date ranges, project types, tags) and implementing search result highlighting in the UI. I'll also work on comprehensive error handling for edge cases in the save workflow, including network failures and database timeouts. Additionally, I'll investigate implementing a local cache for recently viewed projects to reduce database queries and improve TUI responsiveness during navigation.
+
+**Impact:**
+
+This week's work improves both the search experience and data reliability of the portfolio application. The server-side search integration centralizes business logic and prepares the architecture for future enhancements like fuzzy search and advanced filtering. The automatic save bugfix prevents user data loss and eliminates friction in the workflow, ensuring all scan results are preserved without requiring explicit user action. These improvements enhance user trust in the application and reduce support requests related to "missing" projects.
+
+Issues resolved include:[#248](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/248),[#207](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/207)
+
+PR's:
+
+[#245 - Cross Entity](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/245),
+[#249 - Save Project Bugfix](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/249)
+
+<img width="1382" height="880" alt="image" src="https://github.com/user-attachments/assets/d15ef12c-dbe9-4baa-82b0-5601acca5842" />
+
+<img width="1434" height="769" alt="image" src="https://github.com/user-attachments/assets/d8832935-7fde-4948-8ac2-704dc511ccf9" />
+
+<img width="1451" height="723" alt="image" src="https://github.com/user-attachments/assets/901f5895-dd8e-45e0-a549-67a816fa440f" />
+
+
+
+## Week 16: January 12 - January 19
 
 This week, I focused on implementing a comprehensive REST API layer for project management with full TUI integration, enabling dual-mode operation (API-based and direct Supabase access), and extending the platform with thumbnail upload functionality for visual project identification.
 
@@ -38,6 +75,7 @@ PR's:
 
 <img width="1107" height="634" alt="image" src="https://github.com/user-attachments/assets/8431dd61-2a3b-427e-846f-35ce4ef1ed1f" />
 
+<img width="1451" height="723" alt="image" src="https://github.com/user-attachments/assets/901f5895-dd8e-45e0-a549-67a816fa440f" />
 
 
 
