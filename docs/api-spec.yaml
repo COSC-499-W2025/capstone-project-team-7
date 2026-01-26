@@ -179,6 +179,11 @@ components:
         languages: { type: array, items: { type: string } }
         frameworks: { type: array, items: { type: string } }
         rank_score: { type: number, format: float }
+        role:
+          type: string
+          nullable: true
+          enum: [author, contributor, lead, maintainer, reviewer]
+          description: User's role in the project
         created_at: { type: string, format: date-time }
 
     ProjectDetail:
@@ -205,6 +210,11 @@ components:
         project_end_date: { type: string, nullable: true }
         has_skills_progress: { type: boolean }
         rank_score: { type: number, format: float }
+        role:
+          type: string
+          nullable: true
+          enum: [author, contributor, lead, maintainer, reviewer]
+          description: User's role in the project
         summary: { type: object }
         analysis: { $ref: '#/components/schemas/AnalysisSummary' }
         user_overrides: { $ref: '#/components/schemas/ProjectOverrides' }
@@ -224,6 +234,26 @@ components:
         highlighted_skills:
           type: array
           items: { type: string }
+
+    RoleUpdateRequest:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [author, contributor, lead, maintainer, reviewer]
+          description: User's role in the project
+      required: [role]
+
+    RoleResponse:
+      type: object
+      properties:
+        project_id: { type: string }
+        role:
+          type: string
+          nullable: true
+          enum: [author, contributor, lead, maintainer, reviewer]
+        message: { type: string }
+      required: [project_id, role]
 
     RankRequest:
       type: object
@@ -282,38 +312,35 @@ components:
     PortfolioItem:
       type: object
       properties:
-        id: { type: string }
-        project_id: { type: string }
-        title: { type: string }
-        role: { type: string }
-        summary: { type: string }
-        evidence: { type: array, items: { type: string } }
-        thumbnail_url: { type: string }
-        highlighted_skills: { type: array, items: { type: string } }
-        comparison_attributes:
-          type: object
-          additionalProperties: { type: string }
-        start_date_override: { type: string, format: date, nullable: true }
-        end_date_override: { type: string, format: date, nullable: true }
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        title: { type: string, description: "Required. Portfolio item title", maxLength: 255 }
+        summary: { type: string, nullable: true, description: "Optional. Detailed summary (max 1000 chars)", maxLength: 1000 }
+        role: { type: string, nullable: true, description: "Optional. Role or position (max 255 chars)", maxLength: 255 }
+        evidence: { type: string, nullable: true, description: "Optional. Evidence link or description (max 2048 chars)", maxLength: 2048 }
+        thumbnail: { type: string, nullable: true, description: "Optional. Thumbnail image URL (max 1024 chars)", maxLength: 1024 }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+      required: [id, user_id, title, created_at, updated_at]
 
-    PortfolioItemRequest:
+    PortfolioItemCreate:
       type: object
       properties:
-        project_id: { type: string }
-        title: { type: string }
-        role: { type: string }
-        summary: { type: string }
-        evidence: { type: array, items: { type: string } }
-        thumbnail_url: { type: string }
-        highlighted_skills: { type: array, items: { type: string } }
-        comparison_attributes:
-          type: object
-          additionalProperties: { type: string }
-        start_date_override: { type: string, format: date, nullable: true }
-        end_date_override: { type: string, format: date, nullable: true }
-      required: [project_id, title]
+        title: { type: string, description: "Required. Portfolio item title", maxLength: 255 }
+        summary: { type: string, nullable: true, maxLength: 1000 }
+        role: { type: string, nullable: true, maxLength: 255 }
+        evidence: { type: string, nullable: true, maxLength: 2048 }
+        thumbnail: { type: string, nullable: true, maxLength: 1024 }
+      required: [title]
+
+    PortfolioItemUpdate:
+      type: object
+      properties:
+        title: { type: string, nullable: true, maxLength: 255 }
+        summary: { type: string, nullable: true, maxLength: 1000 }
+        role: { type: string, nullable: true, maxLength: 255 }
+        evidence: { type: string, nullable: true, maxLength: 2048 }
+        thumbnail: { type: string, nullable: true, maxLength: 1024 }
 
     PortfolioRefreshRequest:
       type: object
@@ -1290,6 +1317,70 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/RankResponse' }
 
+  /api/projects/{project_id}/role:
+    get:
+      summary: Get user's role in a project
+      description: Returns the user's role for this project from project_overrides
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: project_id
+          schema: { type: string, format: uuid }
+          required: true
+      responses:
+        '200':
+          description: Role retrieved successfully
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RoleResponse' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    patch:
+      summary: Update user's role in a project
+      description: |
+        Updates the user's role for this project. Allowed values:
+        author, contributor, lead, maintainer, reviewer
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: project_id
+          schema: { type: string, format: uuid }
+          required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RoleUpdateRequest' }
+      responses:
+        '200':
+          description: Role updated successfully
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RoleResponse' }
+        '400':
+          description: Invalid role value
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   /api/projects/top:
     get:
       summary: Top ranked projects
@@ -1365,50 +1456,43 @@ paths:
 
   /api/portfolio/items:
     get:
-      summary: List portfolio showcase items
+      summary: List portfolio showcase items (all for authenticated user)
       security: [{ bearerAuth: [] }]
-      parameters:
-        - in: query
-          name: limit
-          schema: { type: integer, default: 20 }
-        - in: query
-          name: offset
-          schema: { type: integer, default: 0 }
       responses:
         '200':
           description: Portfolio items
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  items:
-                    type: array
-                    items: { $ref: '#/components/schemas/PortfolioItem' }
-                  page: { $ref: '#/components/schemas/Pagination' }
+                type: array
+                items: { $ref: '#/components/schemas/PortfolioItem' }
+        '500':
+          description: Server error
     post:
-      summary: Create or save portfolio showcase item
+      summary: Create portfolio showcase item
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/PortfolioItemRequest' }
+            schema: { $ref: '#/components/schemas/PortfolioItemCreate' }
       responses:
-        '200':
-          description: Portfolio item
+        '201':
+          description: Portfolio item created
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PortfolioItem' }
+        '500':
+          description: Server error
 
-  /api/portfolio/items/{id}:
+  /api/portfolio/items/{item_id}:
     get:
       summary: Get portfolio showcase item
       security: [{ bearerAuth: [] }]
       parameters:
         - in: path
-          name: id
-          schema: { type: string }
+          name: item_id
+          schema: { type: string, format: uuid }
           required: true
       responses:
         '200':
@@ -1416,36 +1500,48 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PortfolioItem' }
+        '404':
+          description: Item not found
+        '500':
+          description: Server error
     patch:
       summary: Update portfolio showcase item
       security: [{ bearerAuth: [] }]
       parameters:
         - in: path
-          name: id
-          schema: { type: string }
+          name: item_id
+          schema: { type: string, format: uuid }
           required: true
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/PortfolioItemRequest' }
+            schema: { $ref: '#/components/schemas/PortfolioItemUpdate' }
       responses:
         '200':
-          description: Portfolio item
+          description: Portfolio item updated
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PortfolioItem' }
+        '404':
+          description: Item not found
+        '500':
+          description: Server error
     delete:
       summary: Delete portfolio showcase item
       security: [{ bearerAuth: [] }]
       parameters:
         - in: path
-          name: id
-          schema: { type: string }
+          name: item_id
+          schema: { type: string, format: uuid }
           required: true
       responses:
         '204':
-          description: Deleted
+          description: Item deleted
+        '404':
+          description: Item not found
+        '500':
+          description: Server error
 
   /api/resume/items:
     get:

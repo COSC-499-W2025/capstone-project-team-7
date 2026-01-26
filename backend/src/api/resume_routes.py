@@ -19,7 +19,7 @@ router = APIRouter(prefix="/api/resume", tags=["Resume"])
 def get_resume_service() -> ResumeStorageService:
     """Create a ResumeStorageService instance."""
     try:
-        return ResumeStorageService(encryption_required=False)
+        return ResumeStorageService()
     except ResumeStorageError as exc:
         logger.error("Failed to initialize ResumeStorageService: %s", exc)
         raise HTTPException(
