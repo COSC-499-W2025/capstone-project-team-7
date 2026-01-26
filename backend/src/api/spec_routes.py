@@ -1210,9 +1210,8 @@ def save_profile(payload: ProfileUpsertRequest, authorization: Optional[str] = H
     }
 
 
-@router.get("/api/search")
-def search(q: Optional[str] = None, scope: Optional[str] = None, project_id: Optional[str] = None, limit: int = 50):
-    return {"items": [], "page": Pagination(limit=limit, offset=0, total=0)}
+# NOTE: `/api/search` endpoint moved to `project_routes.py` (as `/api/projects/search`).
+# The previous implementation lived here; it was removed to avoid duplicate routes.
 
 
 def _build_dedup_report(files: List[Dict[str, Any]]) -> DedupReport:

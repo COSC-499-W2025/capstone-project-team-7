@@ -20,7 +20,7 @@ class PortfolioTimelineService:
 
     def get_projects_timeline(self, user_id: str) -> List[Dict[str, Any]]:
         try:
-            projects = self._projects_service.get_user_projects(user_id)
+            projects = self._projects_service.get_user_projects_with_roles(user_id)
         except ProjectsServiceError as exc:
             raise PortfolioTimelineServiceError(str(exc)) from exc
 
@@ -35,6 +35,7 @@ class PortfolioTimelineService:
                     "start_date": start_date,
                     "end_date": end_date,
                     "duration_days": _duration_days(start_date, end_date),
+                    "role": project.get("role"),
                 }
             )
 

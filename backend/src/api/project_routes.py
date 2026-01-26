@@ -11,6 +11,7 @@ import logging
 import sys
 import os
 from pathlib import Path
+import uuid
 import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -18,9 +19,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 try:
     from cli.services.projects_service import ProjectsService, ProjectsServiceError
     from cli.services.encryption import EncryptionService
+    from cli.services.project_overrides_service import ProjectOverridesService, ProjectOverridesServiceError
 except ModuleNotFoundError:  # pragma: no cover - test/import fallback
     from backend.src.cli.services.projects_service import ProjectsService, ProjectsServiceError
     from backend.src.cli.services.encryption import EncryptionService
+    from backend.src.cli.services.project_overrides_service import ProjectOverridesService, ProjectOverridesServiceError
+
+try:
+    from scanner.parser import parse_zip
+except ModuleNotFoundError:  # pragma: no cover - test/import fallback
+    from backend.src.scanner.parser import parse_zip
 
 try:
     from scanner.parser import parse_zip
@@ -32,9 +40,16 @@ logger = logging.getLogger(__name__)
 # Create router for project endpoints
 router = APIRouter(prefix="/api/projects", tags=["Projects"])
 
+# Import ALLOWED_ROLES from the service that manages roles
+try:
+    from cli.services.project_overrides_service import ALLOWED_ROLES
+except ImportError:
+    from backend.src.cli.services.project_overrides_service import ALLOWED_ROLES
+
 # Initialize services
 _projects_service: Optional[ProjectsService] = None
 _encryption_service: Optional[EncryptionService] = None
+_overrides_service: Optional[ProjectOverridesService] = None
 
 
 def get_projects_service() -> ProjectsService:
@@ -51,6 +66,22 @@ def get_projects_service() -> ProjectsService:
             encryption_required=False,  # Graceful degradation if encryption unavailable
         )
     return _projects_service
+
+
+def get_overrides_service() -> ProjectOverridesService:
+    """Get or create the ProjectOverridesService singleton."""
+    global _overrides_service
+    if _overrides_service is None:
+        try:
+            _encryption_service_instance = EncryptionService()
+        except Exception:
+            _encryption_service_instance = None
+        
+        _overrides_service = ProjectOverridesService(
+            encryption_service=_encryption_service_instance,
+            encryption_required=False,
+        )
+    return _overrides_service
 
 
 def get_encryption_service() -> Optional[EncryptionService]:
@@ -164,6 +195,7 @@ class CreateProjectRequest(BaseModel):
     project_name: str = Field(..., description="Name/identifier for the project")
     project_path: str = Field(..., description="Filesystem path that was scanned")
     scan_data: ProjectScanData = Field(..., description="Complete scan results")
+    role: Optional[str] = Field(None, description="User's role in the project (author, contributor, lead, maintainer, reviewer)")
 
 
 class ProjectMetadata(BaseModel):
@@ -190,6 +222,7 @@ class ProjectMetadata(BaseModel):
     project_end_date: Optional[str] = None
     thumbnail_url: Optional[str] = None
     created_at: Optional[str] = None
+    role: Optional[str] = Field(None, description="User's role in the project (author, contributor, lead, maintainer, reviewer)")
 
 
 class ProjectDetail(ProjectMetadata):
@@ -237,6 +270,20 @@ class ThumbnailUpdateRequest(BaseModel):
 class ThumbnailUpdateResponse(BaseModel):
     """Response model for thumbnail URL update."""
     message: str = "Thumbnail URL updated successfully"
+
+
+class RoleUpdateRequest(BaseModel):
+    """Request model for updating user role in a project."""
+    role: str = Field(..., description="User's role in the project (author, contributor, lead, maintainer, reviewer)")
+
+
+class RoleUpdateResponse(BaseModel):
+    """Response model for role update."""
+    project_id: str
+    role: str
+    message: str = "Role updated successfully"
+
+
 class RankProjectRequest(BaseModel):
     """Request to compute ranking for a specific project."""
     user_email: Optional[str] = Field(None, description="User's email for contribution matching")
@@ -327,6 +374,13 @@ async def create_project(
         # Convert request to dictionary for service
         scan_data_dict = request.scan_data.dict(exclude_none=True)
         
+        # Validate role if provided
+        if request.role is not None and request.role not in ALLOWED_ROLES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid role '{request.role}'. Allowed roles: {', '.join(ALLOWED_ROLES)}",
+            )
+        
         # Get service and save scan
         service = get_projects_service()
         result = service.save_scan(
@@ -334,6 +388,7 @@ async def create_project(
             project_name=request.project_name,
             project_path=request.project_path,
             scan_data=scan_data_dict,
+            role=request.role,
         )
         
         return CreateProjectResponse(
@@ -383,7 +438,8 @@ async def list_projects(
     """
     try:
         service = get_projects_service()
-        projects = service.get_user_projects(user_id)
+        # Use get_user_projects_with_roles to include role field from project_overrides
+        projects = service.get_user_projects_with_roles(user_id)
         
         # Normalize and convert to ProjectMetadata objects for response
         metadata_projects = [
@@ -407,6 +463,126 @@ async def list_projects(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred",
         )
+
+
+@router.get("/search")
+async def search_projects(
+    q: Optional[str] = None,
+    scope: Optional[str] = None,
+    project_id: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    user_id: str = Depends(verify_auth_token),
+) -> Dict[str, Any]:
+    """Search across projects' scan data (files/skills) for the authenticated user.
+
+    Endpoint available at: `/api/projects/search`.
+    """
+    if not q or not q.strip():
+        return {"items": [], "page": {"limit": limit, "offset": offset, "total": 0}}
+
+    query_lower = q.lower()
+    scope = scope or "all"
+
+    try:
+        service = get_projects_service()
+
+        # If project_id is specified, search within that project only
+        if project_id:
+            try:
+                uuid.UUID(project_id)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail={"code": "validation_error", "message": "project_id must be a valid UUID"},
+                )
+
+            project = await asyncio.to_thread(service.get_project_scan, user_id, project_id)
+            if not project:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={"code": "not_found", "message": f"Project {project_id} not found"},
+                )
+
+            projects = [project]
+        else:
+            # Search across all user's projects (with scan_data)
+            projects = await asyncio.to_thread(service.get_user_projects_with_scan_data, user_id)
+
+        results: List[Dict[str, Any]] = []
+
+        for project in projects:
+            pid = project.get("id")
+            pname = project.get("project_name", "Unknown")
+            scan_data = project.get("scan_data", {}) or {}
+
+            # Search in files
+            if scope in ["all", "files"]:
+                files = scan_data.get("files", []) or []
+                for file_entry in files:
+                    file_path = file_entry.get("path", "") or ""
+                    file_name = Path(file_path).name if file_path else ""
+                    mime_type = file_entry.get("mime_type", "") or file_entry.get("type", "")
+
+                    if (query_lower in file_path.lower() or
+                        query_lower in file_name.lower() or
+                        query_lower in mime_type.lower()):
+                        results.append({
+                            "type": "file",
+                            "project_id": pid,
+                            "project_name": pname,
+                            "path": file_path,
+                            "name": file_name,
+                            "size_bytes": file_entry.get("size_bytes") or file_entry.get("size") or 0,
+                            "mime_type": mime_type,
+                        })
+
+            # Search in skills
+            if scope in ["all", "skills"]:
+                skills_data = scan_data.get("skills_analysis", {}) or {}
+                if skills_data and skills_data.get("success"):
+                    skills = skills_data.get("skills", {}) or {}
+                    for category, skill_list in skills.items():
+                        if isinstance(skill_list, list):
+                            for skill in skill_list:
+                                if isinstance(skill, str) and query_lower in skill.lower():
+                                    results.append({
+                                        "type": "skill",
+                                        "project_id": pid,
+                                        "project_name": pname,
+                                        "category": category,
+                                        "skill": skill,
+                                    })
+                                elif isinstance(skill, dict):
+                                    skill_name = skill.get("name", "") or ""
+                                    if query_lower in skill_name.lower():
+                                        results.append({
+                                            "type": "skill",
+                                            "project_id": pid,
+                                            "project_name": pname,
+                                            "category": category,
+                                            "skill": skill_name,
+                                            "proficiency": skill.get("proficiency"),
+                                        })
+
+        # Pagination
+        total = len(results)
+        paginated = results[offset: offset + limit]
+
+        return {"items": paginated, "page": {"limit": limit, "offset": offset, "total": total}}
+
+    except ProjectsServiceError as exc:
+        logger.error(f"Failed to search projects: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "search_error", "message": str(exc)},
+        )
+    except Exception as exc:
+        logger.exception("Unexpected error during search")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "search_error", "message": "An unexpected error occurred"},
+        ) from exc
 
 
 @router.get("/top", response_model=TopProjectsResponse, status_code=200)
@@ -1033,6 +1209,131 @@ async def update_project_thumbnail_url(
         )
 
 
+@router.patch(
+    "/{project_id}/role",
+    response_model=RoleUpdateResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Project not found"},
+        400: {"model": ErrorResponse, "description": "Invalid role value"},
+        500: {"model": ErrorResponse, "description": "Server error"},
+    },
+)
+async def update_project_role(
+    project_id: str,
+    request: RoleUpdateRequest,
+    user_id: str = Depends(verify_auth_token),
+) -> RoleUpdateResponse:
+    """
+    Update the user's role in a project.
+    
+    - **project_id**: UUID of the project
+    - **role**: User's role (author, contributor, lead, maintainer, reviewer)
+    
+    Updates the project's role field in the project_overrides table.
+    The role is used for display in portfolio and résumé views.
+    """
+    try:
+        # Validate role
+        if request.role not in ALLOWED_ROLES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid role '{request.role}'. Allowed roles: {', '.join(ALLOWED_ROLES)}",
+            )
+        
+        # Verify project exists and user owns it
+        service = get_projects_service()
+        project = service.get_project_scan(user_id, project_id)
+        
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Project {project_id} not found",
+            )
+        
+        # Update role in project_overrides
+        overrides_service = get_overrides_service()
+        overrides_service.upsert_overrides(
+            user_id=user_id,
+            project_id=project_id,
+            role=request.role,
+        )
+        
+        return RoleUpdateResponse(project_id=project_id, role=request.role)
+    
+    except HTTPException:
+        raise
+    except ProjectOverridesServiceError as exc:
+        logger.exception("Failed to update project role")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update role: {str(exc)}",
+        )
+    except Exception as exc:
+        logger.exception("Unexpected error updating project role")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An unexpected error occurred: {str(exc)}",
+        )
+
+
+@router.get(
+    "/{project_id}/role",
+    response_model=RoleUpdateResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Project not found"},
+        500: {"model": ErrorResponse, "description": "Server error"},
+    },
+)
+async def get_project_role(
+    project_id: str,
+    user_id: str = Depends(verify_auth_token),
+) -> RoleUpdateResponse:
+    """
+    Get the user's role in a project.
+    
+    - **project_id**: UUID of the project
+    
+    Returns the role from project_overrides, or null if not set.
+    """
+    try:
+        # Verify project exists and user owns it
+        service = get_projects_service()
+        project = service.get_project_scan(user_id, project_id)
+        
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Project {project_id} not found",
+            )
+        
+        # Get role from overrides
+        overrides_service = get_overrides_service()
+        overrides = overrides_service.get_overrides(user_id, project_id)
+        
+        role = overrides.get("role") if overrides else None
+        
+        return RoleUpdateResponse(
+            project_id=project_id,
+            role=role or "",
+            message="Role retrieved successfully" if role else "No role set"
+        )
+    
+    except HTTPException:
+        raise
+    except ProjectOverridesServiceError as exc:
+        logger.exception("Failed to get project role")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get role: {str(exc)}",
+        )
+    except Exception as exc:
+        logger.exception("Unexpected error getting project role")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An unexpected error occurred: {str(exc)}",
+        )
 # ============================================================================
 # Append Upload to Project (with Deduplication)
 # ============================================================================
