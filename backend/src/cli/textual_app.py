@@ -2086,9 +2086,9 @@ class PortfolioTextualApp(App):
         actions.append(("resume", "Generate resume item"))
         actions.append(("duplicates", "Find duplicate files"))
         actions.append(("search", "Search & filter files"))
-        actions.append(("export", "Export JSON report"))
+        actions.append(("export", "Save project & export JSON"))
         actions.append(("export_html", "Export HTML report"))
-        actions.append(("export_pdf", "📄 Export printable report"))
+        actions.append(("export_pdf", "Export printable report"))
 
         if self._scan_state.pdf_candidates:
             label = (
@@ -2219,7 +2219,10 @@ class PortfolioTextualApp(App):
                 screen.set_message(f"Failed to export scan: {exc}", tone="error")
                 return
             screen.display_output(f"Exported scan report to {destination}", context="Export")
-            screen.set_message(f"Report saved to {destination}", tone="success")
+            if self._session_state.session:
+                screen.set_message(f"Project saved to library & exported to {destination}", tone="success")
+            else:
+                screen.set_message(f"Report saved to {destination} (sign in to save to library)", tone="success")
             return
 
         if action == "export_html":
@@ -4982,14 +4985,22 @@ class PortfolioTextualApp(App):
         return text
     
     def _load_ai_config(self) -> None:
-        """Load saved AI configuration (API key, temperature, max_tokens) from local file."""
+        """Load saved AI configuration (API key, temperature, max_tokens) from local file or environment."""
         try:
-            if not self._ai_config_path.exists():
-                return
+            api_key = None
+            config = {}
             
-            import json
-            config = json.loads(self._ai_config_path.read_text(encoding="utf-8"))
-            api_key = config.get("api_key")
+            # First try local config file
+            if self._ai_config_path.exists():
+                import json
+                config = json.loads(self._ai_config_path.read_text(encoding="utf-8"))
+                api_key = config.get("api_key")
+                self._debug_log("AI config loaded from local file")
+            else:
+                # Fallback to environment variable
+                api_key = os.getenv("OPENAI_API_KEY")
+                if api_key:
+                    self._debug_log("AI config loaded from environment variable")
             
             if api_key:
                 self._ai_state.api_key = api_key
@@ -5001,7 +5012,7 @@ class PortfolioTextualApp(App):
                         temperature=config.get("temperature"),
                         max_tokens=config.get("max_tokens")
                     )
-                    self._debug_log("AI client initialized from saved config")
+                    self._debug_log("AI client initialized successfully")
                 except Exception:
                     # If verification fails, just clear it
                     self._ai_state.api_key = None
@@ -5504,7 +5515,7 @@ class PortfolioTextualApp(App):
             lines.extend([
                 "",
                 "• Sign in (Ctrl+L) to view your saved project scans.",
-                "• Projects are automatically saved when you export scan results.",
+                "• Click '💾 Save project & export JSON' after scanning to save to your library.",
             ])
             return "\n".join(lines)
         
@@ -5515,7 +5526,7 @@ class PortfolioTextualApp(App):
             f"• Saved projects: {project_count}",
             "• Press Enter to browse your projects.",
             "",
-            "Each export automatically saves to your project library.",
+            "Saved projects appear in 'View Saved Projects' and sync across devices.",
         ])
         
         if project_count > 0:
