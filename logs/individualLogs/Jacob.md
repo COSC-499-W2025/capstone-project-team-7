@@ -22,7 +22,6 @@ This week, I focused on two major PRs: integrating config/profile APIs into the 
 
 - **Bug Fixes: API Stability & Resume/Config Flow**  
   **PR #254**: https://github.com/COSC-499-W2025/capstone-project-team-7/pull/254  
-  - Fixed consent API crash on Python 3.9 by using `datetime.timezone.utc`  
   - Added missing service locks in `project_routes.py` to stop 500s on project endpoints  
   - Disabled resume encryption requirement by default to prevent 503s when `ENCRYPTION_MASTER_KEY` is absent  
   - Ensured config API flag is initialized before use in the TUI to prevent startup errors  
