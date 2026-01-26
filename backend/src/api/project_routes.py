@@ -51,6 +51,9 @@ except ImportError:
 _projects_service: Optional[ProjectsService] = None
 _encryption_service: Optional[EncryptionService] = None
 _overrides_service: Optional[ProjectOverridesService] = None
+_projects_service_lock = threading.Lock()
+_encryption_service_lock = threading.Lock()
+_overrides_service_lock = threading.Lock()
 
 
 def get_projects_service() -> ProjectsService:
