@@ -10,19 +10,27 @@ This week, I focused on two major PRs: integrating config/profile APIs into the 
 - **Config + Profiles API Integration into TUI**  
   **PR #252**: https://github.com/COSC-499-W2025/capstone-project-team-7/pull/252  
   - Connected the TUI file browser search to the server-side `/api/projects/search` endpoint  
-  - Added an API client method to centralize auth, base URL, and error handling  
+  - Added the API client method to centralize auth/base URL/error handling  
   - Restored the full file list when the search bar is cleared  
   - Updated API documentation to reflect the canonical files-only search endpoint  
 
 - **Resume Items CRUD API Integration**  
   **PR #250**: https://github.com/COSC-499-W2025/capstone-project-team-7/pull/250  
   - Implemented resume items CRUD in the TUI routed through `/api/resume/items` when API mode is enabled  
-  - Improved backend environment loading and Supabase key lookup to avoid 503 errors in API mode  
+  - Improved backend env loading and Supabase key lookup to avoid 503s in API mode  
   - Normalized project language data to prevent list validation errors  
+
+- **Bug Fixes: API Stability & Resume/Config Flow**  
+  **PR #254**: https://github.com/COSC-499-W2025/capstone-project-team-7/pull/254  
+  - Fixed consent API crash on Python 3.9 by using `datetime.timezone.utc`  
+  - Added missing service locks in `project_routes.py` to stop 500s on project endpoints  
+  - Disabled resume encryption requirement by default to prevent 503s when `ENCRYPTION_MASTER_KEY` is absent  
+  - Ensured config API flag is initialized before use in the TUI to prevent startup errors  
 
 ### Challenges & Learning
 
-The main challenge was keeping API mode reliable while avoiding duplicated HTTP logic in the TUI. Centralizing requests in API service classes made error handling consistent and kept UI responsiveness by moving blocking calls off the event loop.
+The main challenge was keeping API mode reliable while avoiding duplicated HTTP logic in the TUI, and then responding to the post‑PR runtime bugs that surfaced in local testing (missing service locks, Python 3.9 UTC incompatibility, and encryption key failures). Centralizing requests in API service classes improved consistency, and patching those backend issues stabilized the end‑to‑end flow.
+
 
 ### Impact
 
