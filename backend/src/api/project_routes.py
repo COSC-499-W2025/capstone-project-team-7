@@ -110,9 +110,13 @@ def normalize_project_data(project: Dict[str, Any]) -> Dict[str, Any]:
         if field in project and project[field] is None:
             project[field] = False
     
-    # Convert None languages list to empty list
-    if 'languages' in project and project['languages'] is None:
-        project['languages'] = []
+    # Normalize languages list to strings and drop null entries
+    if 'languages' in project:
+        languages = project.get('languages')
+        if languages is None:
+            project['languages'] = []
+        elif isinstance(languages, list):
+            project['languages'] = [str(lang) for lang in languages if lang]
     
     return project
 

@@ -41,7 +41,12 @@ class ResumeStorageService:
             raise ResumeStorageError("Supabase client not available. Install supabase-py.")
 
         self.supabase_url = supabase_url or os.getenv("SUPABASE_URL")
-        self.supabase_key = supabase_key or os.getenv("SUPABASE_KEY")
+        self.supabase_key = (
+            supabase_key
+            or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+            or os.getenv("SUPABASE_KEY")
+            or os.getenv("SUPABASE_ANON_KEY")
+        )
 
         if not self.supabase_url or not self.supabase_key:
             raise ResumeStorageError("Supabase credentials not configured.")
@@ -123,6 +128,49 @@ class ResumeStorageService:
             raise ResumeStorageError("Supabase did not return a saved resume record.")
         return response.data[0]
 
+    def save_resume_record(
+        self,
+        user_id: str,
+        *,
+        project_name: str,
+        start_date: Optional[str],
+        end_date: Optional[str],
+        content: str,
+        bullets: Optional[List[str]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        source_path: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Persist a resume item record from raw values."""
+        if not user_id:
+            raise ResumeStorageError("User ID is required to save a resume.")
+        if not project_name:
+            raise ResumeStorageError("Project name is required to save a resume.")
+        if not content:
+            raise ResumeStorageError("Resume content is required to save a resume.")
+
+        payload: Dict[str, Any] = {
+            "user_id": user_id,
+            "project_name": project_name,
+            "start_date": start_date,
+            "end_date": end_date,
+            "content": content,
+            "bullets": list(bullets or []),
+            "metadata": self._sanitize_metadata(metadata),
+            "source_path": source_path,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        payload = self._encrypt_payload(payload)
+
+        try:
+            response = self.client.table("resume_items").insert(payload).execute()
+        except Exception as exc:
+            raise ResumeStorageError(f"Failed to save resume item: {exc}") from exc
+
+        if not response.data:
+            raise ResumeStorageError("Supabase did not return a saved resume record.")
+        return response.data[0]
+
     def get_user_resumes(self, user_id: str) -> List[Dict[str, Any]]:
         """Return lightweight resume metadata for a user."""
         if not user_id:
@@ -179,6 +227,67 @@ class ResumeStorageService:
             raise ResumeStorageError(f"Failed to delete resume item: {exc}") from exc
 
         return bool(response.data)
+
+    def update_resume_item(
+        self,
+        user_id: str,
+        resume_id: str,
+        *,
+        project_name: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        content: Optional[str] = None,
+        bullets: Optional[List[str]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        source_path: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Update an existing resume record and return the updated entry."""
+        if not user_id or not resume_id:
+            return None
+
+        record = self.get_resume_item(user_id, resume_id)
+        if not record:
+            return None
+
+        payload: Dict[str, Any] = {}
+        if project_name is not None:
+            payload["project_name"] = project_name
+        if start_date is not None:
+            payload["start_date"] = start_date
+        if end_date is not None:
+            payload["end_date"] = end_date
+        if source_path is not None:
+            payload["source_path"] = source_path
+
+        needs_encrypt = self._encryption is not None and (content is not None or bullets is not None)
+        existing_metadata = record.get("metadata") or {}
+        if metadata is not None or needs_encrypt:
+            merged_metadata = {**existing_metadata, **(metadata or {})}
+            payload["metadata"] = self._sanitize_metadata(merged_metadata)
+
+        if content is not None or bullets is not None:
+            payload["content"] = content if content is not None else record.get("content") or ""
+            payload["bullets"] = list(bullets) if bullets is not None else record.get("bullets") or []
+            if needs_encrypt:
+                payload = self._encrypt_payload(payload)
+
+        if not payload:
+            return record
+
+        try:
+            response = (
+                self.client.table("resume_items")
+                .update(payload)
+                .eq("user_id", user_id)
+                .eq("id", resume_id)
+                .execute()
+            )
+        except Exception as exc:
+            raise ResumeStorageError(f"Failed to update resume item: {exc}") from exc
+
+        if not response.data:
+            return None
+        return self._decrypt_record(response.data[0])
 
     # ------------------------------------------------------------------ #
     # Helpers

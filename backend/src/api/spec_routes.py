@@ -1080,53 +1080,54 @@ def append_upload(project_id: str, upload_id: str):
 #     return items
 
 
-@router.get("/api/resume/items", response_model=Dict[str, Any])
-def list_resume_items(limit: int = 20, offset: int = 0):
-    items = list(_resume_store.values())[offset : offset + limit]
-    return {
-        "items": items,
-        "page": Pagination(limit=limit, offset=offset, total=len(_resume_store)),
-    }
-
-
-class ResumeCreateRequest(BaseModel):
-    project_id: str
-    title: str
-    role: Optional[str] = None
-    summary: Optional[str] = None
-    evidence: List[str] = Field(default_factory=list)
-    thumbnail_url: Optional[str] = None
-
-
-@router.post("/api/resume/items", response_model=ResumeItem)
-def create_resume_item(payload: ResumeCreateRequest):
-    item_id = str(uuid.uuid4())
-    item = ResumeItem(
-        id=item_id,
-        project_id=payload.project_id,
-        title=payload.title,
-        role=payload.role,
-        summary=payload.summary,
-        evidence=payload.evidence,
-        thumbnail_url=payload.thumbnail_url,
-        created_at=_now_iso(),
-    )
-    _resume_store[item_id] = item
-    return item
-
-
-@router.get("/api/resume/items/{item_id}", response_model=ResumeItem)
-def get_resume_item(item_id: str):
-    item = _resume_store.get(item_id)
-    if not item:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resume item not found")
-    return item
-
-
-@router.delete("/api/resume/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_resume_item(item_id: str):
-    _resume_store.pop(item_id, None)
-    return
+# Commented out - Real implementation now in resume_routes.py
+# @router.get("/api/resume/items", response_model=Dict[str, Any])
+# def list_resume_items(limit: int = 20, offset: int = 0):
+#     items = list(_resume_store.values())[offset : offset + limit]
+#     return {
+#         "items": items,
+#         "page": Pagination(limit=limit, offset=offset, total=len(_resume_store)),
+#     }
+#
+#
+# class ResumeCreateRequest(BaseModel):
+#     project_id: str
+#     title: str
+#     role: Optional[str] = None
+#     summary: Optional[str] = None
+#     evidence: List[str] = Field(default_factory=list)
+#     thumbnail_url: Optional[str] = None
+#
+#
+# @router.post("/api/resume/items", response_model=ResumeItem)
+# def create_resume_item(payload: ResumeCreateRequest):
+#     item_id = str(uuid.uuid4())
+#     item = ResumeItem(
+#         id=item_id,
+#         project_id=payload.project_id,
+#         title=payload.title,
+#         role=payload.role,
+#         summary=payload.summary,
+#         evidence=payload.evidence,
+#         thumbnail_url=payload.thumbnail_url,
+#         created_at=_now_iso(),
+#     )
+#     _resume_store[item_id] = item
+#     return item
+#
+#
+# @router.get("/api/resume/items/{item_id}", response_model=ResumeItem)
+# def get_resume_item(item_id: str):
+#     item = _resume_store.get(item_id)
+#     if not item:
+#         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resume item not found")
+#     return item
+#
+#
+# @router.delete("/api/resume/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+# def delete_resume_item(item_id: str):
+#     _resume_store.pop(item_id, None)
+#     return
 
 
 @router.get("/api/config", response_model=ConfigResponse)

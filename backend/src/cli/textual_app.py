@@ -15,7 +15,7 @@ import shutil
 import sys
 import tempfile
 import time
-from typing import Optional, Dict, Any, List, Sequence, Type
+from typing import Optional, Dict, Any, List, Sequence, Type, Union
 import os
 import weakref
 import httpx
@@ -97,6 +97,7 @@ from .services.resume_storage_service import (
     ResumeStorageError,
     ResumeStorageService,
 )
+from .services.resume_api_service import ResumeAPIService
 from .state import (
     AIState,
     ConsentState,
@@ -329,7 +330,7 @@ class PortfolioTextualApp(App):
         
         # Feature flag: Use API endpoints for ranking/timeline (True) or local CLI methods (False)
         self._use_ranking_api = os.getenv("PORTFOLIO_USE_API", "true").lower() in ("true", "1", "yes")
-        self._resume_storage_service: Optional[ResumeStorageService] = None
+        self._resume_storage_service: Optional[Union[ResumeStorageService, ResumeAPIService]] = None
         self._media_analyzer: Optional[MediaAnalyzer] = None
         try:
             self._document_analyzer = DocumentAnalyzer()
@@ -4028,7 +4029,11 @@ class PortfolioTextualApp(App):
     def _init_resume_storage_service(self) -> None:
         """Initialize Supabase resume storage client without crashing the UI."""
         try:
-            self._resume_storage_service = ResumeStorageService()
+            if self._use_api_mode:
+                self._resume_storage_service = ResumeAPIService()
+                self._debug_log("Using ResumeAPIService (API mode)")
+            else:
+                self._resume_storage_service = ResumeStorageService()
         except ResumeStorageError as exc:
             self._resume_storage_service = None
             try:
@@ -4047,11 +4052,15 @@ class PortfolioTextualApp(App):
             except Exception:
                 pass
     
-    def _get_resume_storage_service(self) -> ResumeStorageService:
+    def _get_resume_storage_service(self) -> Union[ResumeStorageService, ResumeAPIService]:
         """Lazy initialize resume storage service when needed."""
         if self._resume_storage_service is None:
             try:
-                self._resume_storage_service = ResumeStorageService()
+                if self._use_api_mode:
+                    self._resume_storage_service = ResumeAPIService()
+                    self._debug_log("Using ResumeAPIService (API mode)")
+                else:
+                    self._resume_storage_service = ResumeStorageService()
             except ResumeStorageError as exc:
                 raise ResumeStorageError(f"Unable to initialize resume storage: {exc}") from exc
         # Ensure the client carries the current session token for RLS-aware tables.
@@ -4618,6 +4627,10 @@ class PortfolioTextualApp(App):
         if self._analysis_api_service:
             self._analysis_api_service.set_access_token(session.access_token)
             self._debug_log(f"Updated AnalysisAPIService token for {session.email}")
+        
+        if self._resume_storage_service and hasattr(self._resume_storage_service, "set_access_token"):
+            self._resume_storage_service.set_access_token(session.access_token)
+            self._debug_log(f"Updated ResumeAPIService token for {session.email}")
 
         self._invalidate_cached_state()
         self._refresh_consent_state()
@@ -4809,6 +4822,10 @@ class PortfolioTextualApp(App):
         if self._session_state.session and self._session_state.session.access_token:
             # Sync to scan service for API mode
             self._scan_service.set_auth_token(self._session_state.session.access_token)
+            if self._resume_storage_service and hasattr(self._resume_storage_service, "set_access_token"):
+                self._resume_storage_service.set_access_token(
+                    self._session_state.session.access_token
+                )
 
     def _persist_ai_output(self, structured_result: Dict[str, Any], raw_result: Dict[str, Any]) -> bool:
         """Write the latest AI analysis to disk as JSON for easier reading.
