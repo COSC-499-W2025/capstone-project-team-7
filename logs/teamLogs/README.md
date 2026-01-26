@@ -40,7 +40,21 @@ I reviewed and validated several team integrations to ensure consistent API cont
 
 `Next steps:` centralize token handling into a small auth helper, add retry/backoff for transient API failures, harden RLS test fixtures in CI, and add an E2E CI job that runs key TUI flows against a test backend so regressions are caught earlier.
 
-**Vlad:**
+**Vlad:** This week I authored PR ([#242](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/242)), which implements two new API endpoints for incremental portfolio refresh with deduplication. POST /api/portfolio/refresh scans all user projects and detects files duplicated across multiple projects using SHA-256 hash comparison, and POST /api/projects/{project_id}/append-upload/{upload_id} merges files from a new upload into an existing project while automatically skipping duplicates, updating changed files, and adding new ones. The implementation includes TUI client methods in PortfolioRefreshAPIService for easy integration, comprehensive test coverage (13 tests), and updated API documentation. This PR closes issue #204.
+
+I also reviewed five PRs this week:
+
+([#252](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/252)) – "Config and profiles APIs integration into TUI" by Jacob: Wires the TUI file-browser search to the server-side /api/projects/search endpoint, adds a synchronous search_projects(...) client method centralized in ProjectsAPIService, and restores the full file list when the search bar is cleared. Clean integration that keeps the UI responsive while centralizing HTTP/auth handling.
+
+([#250](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/250)) – "Implement resume items CRUD" by Jacob: Adds API integration for resume generation and CRUD operations in the TUI, routing saves/listing/view/delete through /api/resume/items when PORTFOLIO_USE_API=true. Also improves backend env loading and Supabase key lookup to prevent 503s, and normalizes project languages data to avoid list validation errors. Solid refactoring that strengthens our API-driven UX.
+
+([#249](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/249)) – "Save project bugfix" by Aaron: Fixes a bug where portfolio scan results weren't automatically saved to the database when users closed the scan results dialog without explicitly clicking "Export JSON report". Added automatic database save on dialog close with deduplication logic via an export_already_saved flag to prevent saving twice. Good edge-case handling with thorough manual testing documented.
+
+([#245](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/245)) – "Cross entity" by Aaron: Wires the TUI file-browser search to the server-side search endpoint with centralized API calls in ProjectsAPIService. Uses asyncio.to_thread to keep blocking HTTP calls off the event loop. Well-structured API-first approach with a direct DB fallback; I verified the implementation and approved after confirming the search flow works correctly.
+
+([#243](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/243)) – "Add API endpoints and integration tests" by Joaquin: Implements override API endpoints (GET, PATCH, DELETE for /api/projects/{id}/overrides) and modifies the timeline endpoint to use end_date_override for chronology corrections. Includes 19 passing integration tests. Clean backend work that extends our project customization capabilities.
+
+Overall, a productive week focused on API integrations and ensuring consistent backend-TUI communication patterns across the team.
 
 **Samarth:**
 
