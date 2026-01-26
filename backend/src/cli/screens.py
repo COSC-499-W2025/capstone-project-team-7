@@ -304,6 +304,176 @@ Examples: name:*.py  |  lang:python;min:1KB  |  path:test"""
             self.dismiss(None)
 
 
+class CreatePortfolioSubmitted(Message):
+    """Raised when the user submits the create-portfolio dialog."""
+
+    def __init__(self, name: str, description: str | None = None) -> None:
+        super().__init__()
+        self.name = name
+        self.description = description
+
+
+class CreatePortfolioScreen(ModalScreen[None]):
+    """Modal dialog for creating a named portfolio (simple form)."""
+
+    def compose(self) -> ComposeResult:
+        yield Vertical(
+            Static("Create Portfolio", classes="dialog-title"),
+            Static("Enter a name and optional description for the portfolio.", classes="dialog-subtitle"),
+            Input(placeholder="Portfolio name", id="portfolio-name"),
+            Input(placeholder="Description (optional)", id="portfolio-desc"),
+            Static("", id="create-portfolio-message", classes="dialog-message"),
+            Horizontal(
+                Button("Cancel", id="create-cancel"),
+                Button("Create", id="create-submit", variant="primary"),
+                classes="dialog-buttons",
+            ),
+            classes="dialog",
+        )
+
+    def on_mount(self, event: Mount) -> None:  # pragma: no cover - focus wiring
+        try:
+            self.query_one("#portfolio-name", Input).focus()
+        except Exception:
+            pass
+
+    def _submit(self) -> None:
+        name = self.query_one("#portfolio-name", Input).value.strip()
+        desc = self.query_one("#portfolio-desc", Input).value.strip()
+        if not name:
+            self.query_one("#create-portfolio-message", Static).update("Provide a portfolio name.")
+            return
+        dispatch_message(self, CreatePortfolioSubmitted(name, desc or None))
+        self.dismiss(None)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "create-submit":
+            self._submit()
+        elif event.button.id == "create-cancel":
+            self.dismiss(None)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "portfolio-name":
+            self._submit()
+
+
+class PortfolioSelected(Message):
+    """Raised when the user selects a portfolio from the list."""
+
+    def __init__(self, portfolio: Dict[str, Any]) -> None:
+        super().__init__()
+        self.portfolio = portfolio
+
+
+class ViewPortfoliosScreen(ModalScreen[None]):
+    """Modal screen that lists portfolios for the user to select."""
+
+    def __init__(self, portfolios: List[Dict[str, Any]] | None = None) -> None:
+        super().__init__()
+        self._portfolios = portfolios or []
+
+    def compose(self) -> ComposeResult:
+        items = []
+        if not self._portfolios:
+            items.append(ListItem(Label("No portfolios found.", classes="menu-item")))
+        else:
+            for idx, p in enumerate(self._portfolios):
+                name = p.get("name") or p.get("title") or f"Unnamed {idx}"
+                desc = p.get("description") or ""
+                label_text = f"{name} - {desc}" if desc else name
+                item = ListItem(Label(label_text, classes="menu-item"), id=f"portfolio-{idx}")
+                item.data_portfolio = p
+                items.append(item)
+
+        yield Vertical(
+            Static("View Portfolios", classes="dialog-title"),
+            Static("Select a portfolio to view details.", classes="dialog-subtitle"),
+            ListView(*items, id="portfolio-list"),
+            Horizontal(Button("Close", id="close-btn"), classes="dialog-buttons"),
+            classes="dialog",
+        )
+
+    def on_mount(self, event: Mount) -> None:  # pragma: no cover - focus wiring
+        try:
+            self.query_one("#portfolio-list", ListView).focus()
+        except Exception:
+            pass
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "close-btn":
+            self.dismiss(None)
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        if event.control.id != "portfolio-list":
+            return
+        item = event.item
+        portfolio = getattr(item, "data_portfolio", None)
+        if portfolio:
+            dispatch_message(self, PortfolioSelected(portfolio))
+            self.dismiss(None)
+
+
+class EditPortfolioSubmitted(Message):
+    """Raised when the user submits the edit-portfolio dialog."""
+
+    def __init__(self, portfolio_id: str, name: str, description: str | None = None) -> None:
+        super().__init__()
+        self.portfolio_id = portfolio_id
+        self.name = name
+        self.description = description
+
+
+class EditPortfolioScreen(ModalScreen[None]):
+    """Modal dialog for editing a portfolio's name/description."""
+
+    def __init__(self, portfolio: Dict[str, Any]) -> None:
+        super().__init__()
+        self._portfolio = portfolio
+
+    def compose(self) -> ComposeResult:
+        name = self._portfolio.get("name") or self._portfolio.get("title") or ""
+        desc = self._portfolio.get("description") or ""
+        yield Vertical(
+            Static("Edit Portfolio", classes="dialog-title"),
+            Static("Update the portfolio name and description.", classes="dialog-subtitle"),
+            Input(value=name, placeholder="Portfolio name", id="edit-portfolio-name"),
+            Input(value=desc, placeholder="Description (optional)", id="edit-portfolio-desc"),
+            Static("", id="edit-portfolio-message", classes="dialog-message"),
+            Horizontal(
+                Button("Cancel", id="edit-cancel"),
+                Button("Save", id="edit-submit", variant="primary"),
+                classes="dialog-buttons",
+            ),
+            classes="dialog",
+        )
+
+    def on_mount(self, event: Mount) -> None:  # pragma: no cover - focus wiring
+        try:
+            self.query_one("#edit-portfolio-name", Input).focus()
+        except Exception:
+            pass
+
+    def _submit(self) -> None:
+        name = self.query_one("#edit-portfolio-name", Input).value.strip()
+        desc = self.query_one("#edit-portfolio-desc", Input).value.strip()
+        if not name:
+            self.query_one("#edit-portfolio-message", Static).update("Provide a portfolio name.")
+            return
+        pid = self._portfolio.get("id") or self._portfolio.get("_id") or self._portfolio.get("uuid")
+        dispatch_message(self, EditPortfolioSubmitted(pid, name, desc or None))
+        self.dismiss(None)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "edit-submit":
+            self._submit()
+        elif event.button.id == "edit-cancel":
+            self.dismiss(None)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "edit-portfolio-name":
+            self._submit()
+
+
 class LoginScreen(ModalScreen[None]):
     """Modal dialog for collecting Supabase credentials."""
 

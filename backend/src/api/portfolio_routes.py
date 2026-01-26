@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from typing import List, Optional
+from typing import List, Optional, Dict
+from collections import defaultdict
 from uuid import UUID
 from typing import List, Optional, Dict, Any
 from collections import defaultdict
@@ -44,6 +45,22 @@ def get_portfolio_item_service() -> PortfolioItemService:
     if _portfolio_item_service is None:
         _portfolio_item_service = PortfolioItemService()
     return _portfolio_item_service
+def get_projects_service() -> ProjectsService:
+    """Get or create the ProjectsService singleton."""
+    global _projects_service
+    if _projects_service is None:
+        try:
+            from cli.services.encryption import EncryptionService
+            encryption_service = EncryptionService()
+        except Exception:
+            encryption_service = None
+        _projects_service = ProjectsService(
+            encryption_service=encryption_service,
+            encryption_required=False,
+        )
+    return _projects_service
+
+
 def get_projects_service() -> ProjectsService:
     """Get or create the ProjectsService singleton."""
     global _projects_service
@@ -266,6 +283,173 @@ async def delete_portfolio_item(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"code": "portfolio_item_deletion_error", "message": str(exc)},
+# ============================================================================
+# Portfolio Refresh with Deduplication
+# ============================================================================
+
+
+class PortfolioRefreshRequest(BaseModel):
+    """Request body for portfolio refresh."""
+    include_duplicates: bool = Field(True, description="Include cross-project duplicate detection")
+
+
+class DuplicateFileInfo(BaseModel):
+    """Information about a single duplicate file."""
+    path: str
+    project_id: str
+    project_name: str
+
+
+class DuplicateGroup(BaseModel):
+    """A group of files that share the same SHA-256 hash."""
+    sha256: str
+    file_count: int
+    wasted_bytes: int
+    files: List[DuplicateFileInfo]
+
+
+class DedupSummary(BaseModel):
+    """Summary of deduplication analysis."""
+    duplicate_groups_count: int
+    total_wasted_bytes: int
+
+
+class DedupReport(BaseModel):
+    """Full deduplication report."""
+    summary: DedupSummary
+    duplicate_groups: List[DuplicateGroup]
+
+
+class PortfolioRefreshResponse(BaseModel):
+    """Response from portfolio refresh endpoint."""
+    status: str = "completed"
+    projects_scanned: int
+    total_files: int
+    total_size_bytes: int
+    dedup_report: Optional[DedupReport] = None
+
+
+@router.post(
+    "/api/portfolio/refresh",
+    response_model=PortfolioRefreshResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        500: {"model": ErrorResponse, "description": "Refresh failed"},
+    },
+)
+def refresh_portfolio(
+    request: PortfolioRefreshRequest = PortfolioRefreshRequest(),
+    auth: AuthContext = Depends(get_auth_context),
+    service: ProjectsService = Depends(get_projects_service),
+) -> PortfolioRefreshResponse:
+    """
+    Refresh entire portfolio with cross-project duplicate detection.
+
+    Scans all user projects and detects files duplicated across multiple projects.
+    Returns a deduplication report identifying duplicate files by SHA-256 hash.
+    """
+    try:
+        # Get all user projects
+        projects = service.get_user_projects(auth.user_id)
+
+        total_files = 0
+        total_size_bytes = 0
+
+        # Map: sha256 -> list of (file_info, size_bytes)
+        hash_to_files: Dict[str, List[tuple]] = defaultdict(list)
+
+        # Build a mapping of project_id -> project_name for quick lookup
+        project_names: Dict[str, str] = {p["id"]: p.get("project_name", "Unknown") for p in projects}
+
+        # Scan each project for cached files
+        for project in projects:
+            project_id = project["id"]
+            project_name = project.get("project_name", "Unknown")
+
+            try:
+                cached_files = service.get_cached_files(auth.user_id, project_id)
+            except Exception as exc:
+                logger.warning(f"Failed to get cached files for project {project_id}: {exc}")
+                continue
+
+            for rel_path, file_meta in cached_files.items():
+                sha256 = file_meta.get("sha256")
+                size_bytes = file_meta.get("size_bytes", 0)
+
+                total_files += 1
+                total_size_bytes += size_bytes
+
+                if sha256:
+                    hash_to_files[sha256].append({
+                        "path": rel_path,
+                        "project_id": project_id,
+                        "project_name": project_name,
+                        "size_bytes": size_bytes,
+                    })
+
+        # Build dedup report if requested
+        dedup_report = None
+        if request.include_duplicates:
+            duplicate_groups = []
+            total_wasted_bytes = 0
+
+            for sha256, files in hash_to_files.items():
+                # Only consider duplicates across different projects
+                unique_projects = set(f["project_id"] for f in files)
+                if len(unique_projects) > 1:
+                    # This is a cross-project duplicate
+                    file_size = files[0]["size_bytes"]
+                    # Wasted bytes = (count - 1) * size (keeping one copy is not wasted)
+                    wasted = (len(files) - 1) * file_size
+                    total_wasted_bytes += wasted
+
+                    duplicate_groups.append(DuplicateGroup(
+                        sha256=sha256,
+                        file_count=len(files),
+                        wasted_bytes=wasted,
+                        files=[
+                            DuplicateFileInfo(
+                                path=f["path"],
+                                project_id=f["project_id"],
+                                project_name=f["project_name"],
+                            )
+                            for f in files
+                        ],
+                    ))
+
+            # Sort by wasted bytes descending
+            duplicate_groups.sort(key=lambda g: g.wasted_bytes, reverse=True)
+
+            dedup_report = DedupReport(
+                summary=DedupSummary(
+                    duplicate_groups_count=len(duplicate_groups),
+                    total_wasted_bytes=total_wasted_bytes,
+                ),
+                duplicate_groups=duplicate_groups,
+            )
+
+        return PortfolioRefreshResponse(
+            status="completed",
+            projects_scanned=len(projects),
+            total_files=total_files,
+            total_size_bytes=total_size_bytes,
+            dedup_report=dedup_report,
+        )
+
+    except ProjectsServiceError as exc:
+        logger.exception("Failed to refresh portfolio")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "refresh_error", "message": str(exc)},
+        ) from exc
+    except Exception as exc:
+        logger.exception("Unexpected error refreshing portfolio")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "refresh_error", "message": str(exc)},
+        ) from exc
+
+
 # ============================================================================
 # Portfolio Refresh with Deduplication
 # ============================================================================

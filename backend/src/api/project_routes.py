@@ -30,6 +30,11 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - test/import fallback
     from backend.src.scanner.parser import parse_zip
 
+try:
+    from scanner.parser import parse_zip
+except ModuleNotFoundError:  # pragma: no cover - test/import fallback
+    from backend.src.scanner.parser import parse_zip
+
 logger = logging.getLogger(__name__)
 
 # Create router for project endpoints
