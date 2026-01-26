@@ -1,5 +1,54 @@
 # Om Mistry (@OM200401)
 
+## Week 17: January 19 - January 25
+
+This week I focused on implementing Portfolio Items CRUD functionality, integrating the API with the Textual UI, adding tests, and updating documentation. The work includes model and migration additions, TUI wiring for create/view/update/delete flows, and several bug fixes from peer reviews.
+
+**Core Implementation:**
+
+1. **Portfolio CRUD Backend:** Added models and SQL migration for `portfolio_items`, wired API routes for create/read/update/delete, and ensured constraints and tests cover edge cases.
+
+2. **TUI Integration:** Added a submenu for Portfolio CRUD and connected the TUI screens to the API/service layer for create, view, update, and delete operations.
+
+- **PR #244:** [Feature/portfolio-items-api](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/244)
+
+   Summary: implemented the backend foundation for Portfolio Items and delivered a production-ready CRUD API, schema, and tests. This PR provides the database schema, validation, and routes that the TUI and services depend on.
+
+   Highlights:
+   - Database: created `db/07_create_portfolio_items_table.sql` with typed columns, UNIQUE constraints, and foreign keys with cascade delete to keep portfolio items consistent with `profiles`.
+   - Models & validation: added `backend/src/api/models/portfolio_item_models.py` (Pydantic + DB mapping) to enforce request/response contracts.
+   - API: implemented RESTful Portfolio CRUD in `backend/src/api/portfolio_routes.py` with clear status codes and error handling (201/200/404/204).
+   - Testing & docs: added integration and unit tests, and updated `docs/api-plan.md` / `docs/api-spec.yaml` and `README.md` for consumers.
+
+   Impact: establishes a dependable backend contract for portfolio item management and reduces integration friction for the TUI and other clients.
+
+- **PR #251:** [tui-portfolio-crud-integration](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/251)
+
+   Summary: wired the Textual UI to the Portfolio Items API to provide end-to-end CRUD operations in the CLI UI, improved UX, and hardened error handling.
+
+   Highlights:
+   - UI flows: added a Portfolio CRUD submenu and screens for create/view/edit/delete with confirmation dialogs and visual status feedback (`backend/src/cli/textual_app.py`, `backend/src/cli/screens.py`).
+   - Service abstraction: implemented `backend/src/cli/services/portfolio_item_service.py` to encapsulate API calls, retries, and response parsing so UI code stays focused on presentation.
+   - UX & robustness: client-side validation, clearer error messages, handling for API 404/500 responses, and cache invalidation to keep the TUI in sync.
+   - Polish & tests: handled peer-requested fixes (404 delete fix, minor UX tweaks) and updated tests and docs to cover the new flows.
+
+   Impact: users can manage portfolio items directly from the TUI with reliable feedback and fewer failure modes; closes the integration loop between backend and UI.
+
+**What Went Well:**
+- Smooth integration between API and TUI; tests caught several edge cases early.
+- Documentation kept in sync with implementation, easing review.
+
+**What Didn't Go Well:**
+- A few small bugs required follow-up fixes (404 handling, minor service errors).
+- Some merge coordination was required when multiple branches touched the TUI.
+
+**Next Steps:**
+- Keep stress testing the system to check for any latent bugs.
+- Address any additional review feedback and extend test coverage for rarer edge cases.
+- Address fixes based on upcoming Peer Testing feedback.
+
+![Tasks Completed](./assets/Omistry_T2_Week3.png)
+
 ## Week 16: January 12 - January 18
 This week, I focused on two major initiatives: integrating the Upload and Parse API routes with the Textual UI and implementing the Selection API for managing user preferences around project and skill ordering. The work spanned multiple PRs and branches, with comprehensive testing and documentation throughout.
 
