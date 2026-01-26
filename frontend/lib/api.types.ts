@@ -60,6 +60,9 @@ export interface DedupResult {
 
 // ---------- Project / resume domain ----------
 
+/** Allowed user roles for projects */
+export type ProjectRoleValue = "author" | "contributor" | "lead" | "maintainer" | "reviewer";
+
 export interface EvidenceEntry {
   id: string;
   label: string; // e.g., "Throughput +35%"
@@ -75,7 +78,7 @@ export interface ProjectImage {
 }
 
 export interface ProjectRole {
-  title: string;
+  title: ProjectRoleValue | string;
   summary?: string;
 }
 
@@ -96,12 +99,40 @@ export interface ProjectRepresentation {
   showcase: boolean;
 }
 
+/** Project metadata returned from API */
+export interface ProjectMetadata {
+  id: string;
+  project_name: string;
+  project_path: string;
+  scan_timestamp?: string;
+  total_files?: number;
+  total_lines?: number;
+  languages?: string[];
+  has_media_analysis?: boolean;
+  has_pdf_analysis?: boolean;
+  has_code_analysis?: boolean;
+  has_git_analysis?: boolean;
+  has_contribution_metrics?: boolean;
+  has_skills_analysis?: boolean;
+  has_document_analysis?: boolean;
+  has_skills_progress?: boolean;
+  contribution_score?: number;
+  user_commit_share?: number;
+  total_commits?: number;
+  primary_contributor?: string;
+  project_end_date?: string;
+  thumbnail_url?: string;
+  created_at?: string;
+  role?: ProjectRoleValue | null; // User's role in the project
+}
+
 export interface ResumeItem {
   id: string;
   projectId: string;
   wording: string; // customized resume bullet/paragraph
   order: number;
   evidence?: EvidenceEntry[];
+  role?: ProjectRoleValue | string; // User's role in the project
 }
 
 // ---------- Mutations ----------

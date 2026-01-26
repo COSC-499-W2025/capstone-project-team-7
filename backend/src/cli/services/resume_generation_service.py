@@ -46,10 +46,13 @@ class ResumeItem:
     bullets: List[str]
     output_path: Path
     ai_generated: bool = False
+    role: str = ""  # User's role in the project (author, contributor, lead, etc.)
 
     def to_markdown(self) -> str:
         date_span = f"{self.start_date} – {self.end_date}" if self.end_date else self.start_date
         lines = [f"{self.project_name} — {date_span}"]
+        if self.role:
+            lines.append(f"Role: {self.role.title()}")
         overview_line = self.overview.strip()
         if overview_line:
             lines.append(f"Overview: {overview_line}")

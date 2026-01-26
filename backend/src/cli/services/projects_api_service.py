@@ -5,12 +5,19 @@ from typing import Dict, List, Optional, Any
 import os
 import logging
 
+logger = logging.getLogger(__name__)
+
 try:
     import httpx
     HTTPX_AVAILABLE = True
 except ImportError:
     HTTPX_AVAILABLE = False
     httpx = None  # type: ignore
+
+logger = logging.getLogger(__name__)
+
+
+logger = logging.getLogger(__name__)
 
 
 class ProjectsServiceError(Exception):
@@ -220,6 +227,56 @@ class ProjectsAPIService:
             raise
         except Exception as exc:
             raise ProjectsServiceError(f"Failed to get project scan: {exc}") from exc
+
+    def search_projects(
+        self,
+        q: str,
+        project_id: Optional[str] = None,
+        scope: str = "files",
+        limit: int = 100,
+        offset: int = 0,
+    ) -> Dict[str, Any]:
+        """Search projects via the API search endpoint.
+
+        Args:
+            q: Query string to search for.
+            project_id: Optional project UUID to limit search to a single project.
+            scope: One of 'files' or 'skills'.
+            limit: Maximum number of items to return.
+            offset: Offset for pagination.
+
+        Returns:
+            Parsed JSON response from the API (expected to include 'items' list).
+
+        Raises:
+            ProjectsServiceError on network or API errors.
+        """
+        try:
+            params = {"q": q, "scope": scope, "limit": limit, "offset": offset}
+            if project_id:
+                params["project_id"] = project_id
+
+            response = self.client.get(
+                f"{self.api_base_url}/api/projects/search",
+                params=params,
+                headers=self._get_headers(),
+            )
+
+            if response.status_code == 200:
+                try:
+                    return response.json()
+                except Exception as exc:
+                    raise ProjectsServiceError(f"Invalid JSON in search response: {exc}") from exc
+            else:
+                self._handle_error_response(response, "search_projects")
+                return
+
+        except httpx.HTTPError as exc:
+            raise ProjectsServiceError(f"Network error while searching projects: {exc}") from exc
+        except ProjectsServiceError:
+            raise
+        except Exception as exc:
+            raise ProjectsServiceError(f"Unexpected error searching projects: {exc}") from exc
     
     def get_dedup_report(self, project_id: str) -> Dict[str, Any]:
         """Fetch the deduplication report for a project via API."""
@@ -539,15 +596,15 @@ class ProjectsRankingAPIService:
     def get_project_timeline(self) -> Dict[str, Any]:
         """
         Get projects ordered chronologically by activity date.
-        
+
         Returns:
             Dict with count and timeline entries (sorted by display_date)
-            
+
         Raises:
             ProjectsRankingAPIServiceError: If API call fails
         """
         url = f"{self.base_url}/api/projects/timeline"
-        
+
         try:
             with httpx.Client(timeout=30.0) as client:
                 response = client.get(url, headers=self.headers)
@@ -565,4 +622,119 @@ class ProjectsRankingAPIService:
         except Exception as exc:
             raise ProjectsRankingAPIServiceError(
                 f"Unexpected error fetching project timeline: {exc}"
+            ) from exc
+
+
+# ============================================================================
+# Portfolio Refresh and Append Upload API Service
+# ============================================================================
+
+
+class PortfolioRefreshAPIServiceError(Exception):
+    """Base error for portfolio refresh API service."""
+
+
+class PortfolioRefreshAPIService:
+    """Client for portfolio refresh and append upload API endpoints."""
+
+    def __init__(
+        self,
+        base_url: Optional[str] = None,
+        auth_token: Optional[str] = None,
+    ):
+        """
+        Initialize the API service client.
+
+        Args:
+            base_url: Base URL for the API (e.g., "http://localhost:8000")
+            auth_token: JWT Bearer token for authentication
+        """
+        self.base_url = base_url or os.getenv("API_BASE_URL", "http://localhost:8000")
+        self.auth_token = auth_token
+
+        if not self.auth_token:
+            raise PortfolioRefreshAPIServiceError("Authentication token is required")
+
+        self.headers = {
+            "Authorization": f"Bearer {self.auth_token}",
+            "Content-Type": "application/json",
+        }
+
+    def refresh_portfolio(self, include_duplicates: bool = True) -> Dict[str, Any]:
+        """
+        Refresh entire portfolio with cross-project duplicate detection.
+
+        Args:
+            include_duplicates: Whether to include cross-project duplicate detection
+
+        Returns:
+            Dict with status, projects_scanned, total_files, total_size_bytes, and dedup_report
+
+        Raises:
+            PortfolioRefreshAPIServiceError: If API call fails
+        """
+        url = f"{self.base_url}/api/portfolio/refresh"
+        payload = {"include_duplicates": include_duplicates}
+
+        try:
+            with httpx.Client(timeout=60.0) as client:
+                response = client.post(url, json=payload, headers=self.headers)
+                response.raise_for_status()
+                return response.json()
+        except httpx.HTTPStatusError as exc:
+            error_detail = exc.response.text
+            raise PortfolioRefreshAPIServiceError(
+                f"Failed to refresh portfolio: {exc.response.status_code} - {error_detail}"
+            ) from exc
+        except httpx.RequestError as exc:
+            raise PortfolioRefreshAPIServiceError(
+                f"Network error refreshing portfolio: {exc}"
+            ) from exc
+        except Exception as exc:
+            raise PortfolioRefreshAPIServiceError(
+                f"Unexpected error refreshing portfolio: {exc}"
+            ) from exc
+
+    def append_upload(
+        self,
+        project_id: str,
+        upload_id: str,
+        skip_duplicates: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Merge files from an upload into an existing project with deduplication.
+
+        Args:
+            project_id: UUID of the target project
+            upload_id: ID of the upload to merge
+            skip_duplicates: Skip files with matching SHA-256 hash
+
+        Returns:
+            Dict with project_id, upload_id, status, files_added, files_updated,
+            files_skipped_duplicate, total_files_in_upload, and files list
+
+        Raises:
+            PortfolioRefreshAPIServiceError: If API call fails
+        """
+        url = f"{self.base_url}/api/projects/{project_id}/append-upload/{upload_id}"
+        payload = {"skip_duplicates": skip_duplicates}
+
+        try:
+            with httpx.Client(timeout=60.0) as client:
+                response = client.post(url, json=payload, headers=self.headers)
+                response.raise_for_status()
+                return response.json()
+        except httpx.HTTPStatusError as exc:
+            error_detail = exc.response.text
+            raise PortfolioRefreshAPIServiceError(
+                f"Failed to append upload {upload_id} to project {project_id}: "
+                f"{exc.response.status_code} - {error_detail}"
+            ) from exc
+        except httpx.RequestError as exc:
+            raise PortfolioRefreshAPIServiceError(
+                f"Network error appending upload: {exc}"
+            ) from exc
+        except Exception as exc:
+            raise PortfolioRefreshAPIServiceError(
+                f"Unexpected error appending upload: {exc}"
             ) from exc

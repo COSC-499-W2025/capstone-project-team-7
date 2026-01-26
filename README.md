@@ -36,6 +36,7 @@ Interactive Textual dashboard for scanning projects, summarizing artifacts, and 
 - [Work Breakdown Structure](docs/WBS.md)
 - [Team Contract](docs/teamContract.pdf)
 - [Shared Drive](https://drive.google.com/drive/folders/1Ic_HO0ReyS5_xveO-FNnUX63wc-phoV9?usp=sharing)
+ - [Portfolio CRUD integration notes](docs/portfolio-crud.md)
 
 ## Setup & Run the Textual UI
 The Textual dashboard is implemented with [Textual](https://textual.textualize.io/). Use the helper scripts to bootstrap the virtual environment, install dependencies, load `.env`, and launch the UI.

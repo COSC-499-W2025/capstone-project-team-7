@@ -15,7 +15,7 @@ import shutil
 import sys
 import tempfile
 import time
-from typing import Optional, Dict, Any, List, Sequence, Type
+from typing import Optional, Dict, Any, List, Sequence, Type, Union
 import os
 import weakref
 import httpx
@@ -39,6 +39,7 @@ from textual.widgets import Footer, Header, Label, ListItem, ListView, ProgressB
 from .message_utils import dispatch_message
 
 from .services.projects_service import ProjectsService, ProjectsServiceError 
+from .services.project_overrides_service import ProjectOverridesService
 from .services.preferences_service import PreferencesService
 from .services.auth_api_service import AuthAPIService
 from .services.consent_api_service import ConsentAPIService, ConsentAPIServiceError
@@ -96,6 +97,7 @@ from .services.resume_storage_service import (
     ResumeStorageError,
     ResumeStorageService,
 )
+from .services.resume_api_service import ResumeAPIService
 from .state import (
     AIState,
     ConsentState,
@@ -144,7 +146,15 @@ from .screens import (
     ResumeSelected,
     ResumesScreen,
     ResumeViewerScreen,
+    RoleEditScreen,
+    RoleUpdated,
     SkillProgressScreen,
+    ProjectSearchSelected,
+    ProjectSearchCancelled,
+    ProjectSearchSelectionScreen,
+    FileSkillsSearchSubmitted,
+    FileSkillsSearchCancelled,
+    FileSkillsSearchScreen,
 )
 from ..cli.display import render_language_table
 from ..scanner.errors import ParserError
@@ -249,8 +259,10 @@ class PortfolioTextualApp(App):
     MENU_ITEMS = [
         ("Account", "Sign in to Supabase or sign out of the current session."),
         ("Run Portfolio Scan", "Prepare an archive or directory and run the portfolio scan workflow."),
+        ("Manage Portfolio", "Create, view, update, or delete portfolios."),
         ("View Saved Projects", "Browse and view previously saved project scans."), 
         ("View Saved Resumes", "Browse generated resume snippets saved in Supabase."),
+        ("Browse Project Files", "Browse all files from a previously scanned project."),
         ("View Last Analysis", "Reopen the results from the most recent scan without rescanning."),
         ("Settings & User Preferences", "Manage scan profiles, file filters, and other preferences."),
         ("Consent Management", "Review and update required and external consent settings."),
@@ -260,6 +272,13 @@ class PortfolioTextualApp(App):
         ("Skill progression", "View skill progression timeline and optionally generate an AI summary."),
         ("API Timeline Check", "Call /api/skills/timeline and /api/portfolio/chronology to confirm API responses."),
         ("Exit", "Quit the Textual interface."),
+    ]
+    MANAGE_PORTFOLIO_OPTIONS = [
+        ("Create Portfolio", "Create a new portfolio."),
+        ("View Portfolios", "View existing portfolios."),
+        ("Update Portfolio", "Update an existing portfolio."),
+        ("Delete Portfolio", "Delete a portfolio."),
+        ("Back", "Return to the main menu."),
     ]
     BINDINGS = [
         Binding("q", "quit", "Quit", priority=True),
@@ -282,12 +301,15 @@ class PortfolioTextualApp(App):
         self._preferences_state = PreferencesState()
         self._scan_state = ScanState()
         self._ai_state = AIState()
+        self._scan_state.export_already_saved = False
+
         # Timeline API state
         self._timeline_api_snapshot: Optional[Dict[str, Any]] = None
         self._timeline_api_error: Optional[str] = None
           
         self._session_service = SessionService(reporter=self._report_filesystem_issue)
         self._use_api_mode = _env_flag("PORTFOLIO_USE_API")
+        self._api_base_url = os.getenv("API_BASE_URL", "http://localhost:8000")
         self._auth_api_service = AuthAPIService() if self._use_api_mode else None
         self._consent_api_service = ConsentAPIService() if self._use_api_mode else None
         self._analysis_api_service: Optional[AnalysisAPIService] = None
@@ -303,10 +325,12 @@ class PortfolioTextualApp(App):
         self._search_service = SearchService()
         self._resume_service = ResumeGenerationService()
         self._projects_service: Optional[ProjectsService] = None
+        self._pending_portfolio_action: Optional[str] = None
+        self._overrides_service: Optional[ProjectOverridesService] = None
         
         # Feature flag: Use API endpoints for ranking/timeline (True) or local CLI methods (False)
         self._use_ranking_api = os.getenv("PORTFOLIO_USE_API", "true").lower() in ("true", "1", "yes")
-        self._resume_storage_service: Optional[ResumeStorageService] = None
+        self._resume_storage_service: Optional[Union[ResumeStorageService, ResumeAPIService]] = None
         self._media_analyzer: Optional[MediaAnalyzer] = None
         try:
             self._document_analyzer = DocumentAnalyzer()
@@ -388,6 +412,10 @@ class PortfolioTextualApp(App):
             self._update_detail(index)
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
+        if event.control.id == "portfolio-submenu":
+            index = event.control.index or 0
+            self._handle_portfolio_submenu_selection(index)
+            return
         if event.control.id == "menu":
             index = event.control.index or 0
             self._handle_selection(index)
@@ -432,6 +460,10 @@ class PortfolioTextualApp(App):
         label, _ = self.MENU_ITEMS[index]
         if label == "Exit":
             self.exit()
+            return
+
+        if label == "Manage Portfolio":
+            self._show_manage_portfolio_submenu()
             return
 
         if label == "Account":
@@ -512,6 +544,15 @@ class PortfolioTextualApp(App):
             self._show_status("Loading saved resumes…", "info")
             asyncio.create_task(self._load_and_show_resumes())
             return
+        
+        if label == "Browse Project Files":
+            if not self._session_state.session:
+                self._show_status("Sign in to search projects.", "warning")
+                self._update_detail(index)
+                return
+            self._show_status("Loading projects for search…", "info")
+            asyncio.create_task(self._show_project_search_selection())
+            return
 
         self._show_status(f"{label} is coming soon. Hang tight!", "info")
 
@@ -520,6 +561,245 @@ class PortfolioTextualApp(App):
             self._logout()
         else:
             self._show_login_dialog()
+
+    def _show_manage_portfolio_submenu(self) -> None:
+        submenu_items = [ListItem(Label(label, classes="menu-item")) for label, _ in self.MANAGE_PORTFOLIO_OPTIONS]
+        submenu = ListView(*submenu_items, id="portfolio-submenu")
+        main = self.query_one("#main", Vertical)
+        # Remove old menu if present
+        for child in list(main.children):
+            if isinstance(child, ListView) and child.id == "menu":
+                child.remove()
+        # Remove any existing submenu
+        for child in list(main.children):
+            if isinstance(child, ListView) and child.id == "portfolio-submenu":
+                child.remove()
+        main.mount(submenu)
+        submenu.focus()
+        submenu.index = 0
+        self._show_status("Select a portfolio action and press Enter.", "info")
+
+    def _handle_portfolio_submenu_selection(self, index: int) -> None:
+        label, _ = self.MANAGE_PORTFOLIO_OPTIONS[index]
+        if label == "Back":
+            self._restore_main_menu()
+            return
+        elif label == "Create Portfolio":
+            # Open modal to collect portfolio name/description
+            from .screens import CreatePortfolioScreen
+            self.push_screen(CreatePortfolioScreen())
+        elif label == "View Portfolios":
+            asyncio.create_task(self._show_view_portfolios())
+        elif label == "Update Portfolio":
+            # Set pending action so selection opens edit dialog
+            self._pending_portfolio_action = "update"
+            asyncio.create_task(self._show_view_portfolios())
+        elif label == "Delete Portfolio":
+            # Set pending action so selection triggers delete
+            self._pending_portfolio_action = "delete"
+            asyncio.create_task(self._show_view_portfolios())
+        elif label == "Update Portfolio":
+            self._show_status("Update Portfolio selected (to be implemented).", "info")
+        elif label == "Delete Portfolio":
+            self._show_status("Delete Portfolio selected (to be implemented).", "info")
+
+    def _restore_main_menu(self) -> None:
+        main = self.query_one("#main", Vertical)
+        # Remove submenu if present
+        for child in list(main.children):
+            if isinstance(child, ListView) and child.id == "portfolio-submenu":
+                child.remove()
+        # Restore main menu if not present
+        if not any(isinstance(child, ListView) and child.id == "menu" for child in main.children):
+            menu_items = [ListItem(Label(label, classes="menu-item")) for label, _ in self.MENU_ITEMS]
+            menu_list = ListView(*menu_items, id="menu")
+            main.mount(menu_list)
+            menu_list.focus()
+            menu_list.index = 0
+        self._show_status("Returned to main menu.", "info")
+
+    async def on_create_portfolio_submitted(self, message) -> None:
+        """Handle CreatePortfolioSubmitted message from CreatePortfolioScreen."""
+        try:
+            name = message.name
+            description = getattr(message, "description", None)
+        except Exception:
+            self._show_status("Invalid create portfolio submission.", "error")
+            return
+
+        if not self._use_api_mode:
+            self._show_status("Local portfolio creation not implemented; enable API mode.", "warning")
+            return
+
+        if not self._session_state.session or not getattr(self._session_state.session, "access_token", None):
+            self._show_status("Sign in to create a portfolio via API.", "warning")
+            return
+
+        self._show_status("Creating portfolio via API…", "info")
+
+        # Perform API call in a worker thread (synchronous httpx client)
+        def _create_sync():
+            try:
+                import httpx
+                base = self._get_api_base_url()
+                headers = {"Authorization": f"Bearer {self._session_state.session.access_token}", "Content-Type": "application/json"}
+                payload = {"title": name, "summary": description}
+                client = httpx.Client(timeout=30.0)
+                res = client.post(f"{base}/api/portfolio/items", json=payload, headers=headers)
+                if res.status_code in (200, 201):
+                    return True, res.json()
+                else:
+                    return False, f"API error {res.status_code}: {res.text}"
+            except Exception as exc:
+                return False, str(exc)
+
+        ok, result = await asyncio.to_thread(_create_sync)
+
+        if ok:
+            self._show_status(f"Portfolio '{name}' created successfully.", "success")
+        else:
+            self._show_status(f"Failed to create portfolio: {result}", "error")
+
+    async def on_edit_portfolio_submitted(self, message) -> None:
+        try:
+            pid = message.portfolio_id
+            name = message.name
+            description = getattr(message, "description", None)
+        except Exception:
+            self._show_status("Invalid edit portfolio submission.", "error")
+            return
+
+        if not pid:
+            self._show_status("Portfolio id missing; cannot update.", "error")
+            return
+
+        if not self._use_api_mode:
+            self._show_status("Update requires API mode; enable PORTFOLIO_USE_API.", "warning")
+            return
+
+        if not self._session_state.session or not getattr(self._session_state.session, "access_token", None):
+            self._show_status("Sign in to update portfolios via API.", "warning")
+            return
+
+        self._show_status("Updating portfolio…", "info")
+
+        def _update_sync():
+            try:
+                import httpx
+                base = self._get_api_base_url()
+                headers = {"Authorization": f"Bearer {self._session_state.session.access_token}", "Content-Type": "application/json"}
+                client = httpx.Client(timeout=30.0)
+                payload = {"title": name, "summary": description}
+                res = client.patch(f"{base}/api/portfolio/items/{pid}", json=payload, headers=headers)
+                if res.status_code in (200, 204):
+                    # Some APIs return updated object
+                    try:
+                        return True, res.json()
+                    except Exception:
+                        return True, None
+                else:
+                    return False, f"API error {res.status_code}: {res.text}"
+            except Exception as exc:
+                return False, str(exc)
+
+        ok, info = await asyncio.to_thread(_update_sync)
+        if ok:
+            self._show_status(f"Portfolio '{name}' updated successfully.", "success")
+        else:
+            self._show_status(f"Failed to update portfolio: {info}", "error")
+
+    async def _show_view_portfolios(self) -> None:
+        if not self._use_api_mode:
+            self._show_status("View portfolios requires API mode; enable PORTFOLIO_USE_API.", "warning")
+            return
+
+        if not self._session_state.session or not getattr(self._session_state.session, "access_token", None):
+            self._show_status("Sign in to view portfolios via API.", "warning")
+            return
+
+        self._show_status("Loading portfolios…", "info")
+
+        def _fetch():
+            try:
+                import httpx
+                base = self._get_api_base_url()
+                headers = {"Authorization": f"Bearer {self._session_state.session.access_token}", "Content-Type": "application/json"}
+                client = httpx.Client(timeout=30.0)
+                res = client.get(f"{base}/api/portfolio/items", headers=headers)
+                if res.status_code == 200:
+                    return True, res.json()
+                else:
+                    return False, f"API error {res.status_code}: {res.text}"
+            except Exception as exc:
+                return False, str(exc)
+
+        ok, data = await asyncio.to_thread(_fetch)
+        if not ok:
+            self._show_status(f"Failed to load portfolios: {data}", "error")
+            return
+
+        # Expecting either {'portfolios': [...]} or a raw list
+        portfolios = data.get("portfolios") if isinstance(data, dict) and "portfolios" in data else data
+
+        from .screens import ViewPortfoliosScreen
+        self.push_screen(ViewPortfoliosScreen(portfolios))
+
+    async def on_portfolio_selected(self, message) -> None:
+        try:
+            portfolio = message.portfolio
+        except Exception:
+            self._show_status("Invalid portfolio selected.", "error")
+            return
+
+        action = self._pending_portfolio_action
+        # Clear pending action immediately
+        self._pending_portfolio_action = None
+
+        if action == "update":
+            from .screens import EditPortfolioScreen
+            self.push_screen(EditPortfolioScreen(portfolio))
+            return
+        if action == "delete":
+            # Perform delete via API
+            pid = portfolio.get("id") or portfolio.get("_id") or portfolio.get("uuid")
+            if not pid:
+                self._show_status("Selected portfolio has no id; cannot delete.", "error")
+                return
+
+            if not self._use_api_mode:
+                self._show_status("Delete requires API mode; enable PORTFOLIO_USE_API.", "warning")
+                return
+            if not self._session_state.session or not getattr(self._session_state.session, "access_token", None):
+                self._show_status("Sign in to delete portfolios via API.", "warning")
+                return
+
+            self._show_status("Deleting portfolio…", "info")
+
+            def _delete_sync():
+                try:
+                    import httpx
+                    base = self._get_api_base_url()
+                    headers = {"Authorization": f"Bearer {self._session_state.session.access_token}"}
+                    client = httpx.Client(timeout=30.0)
+                    res = client.delete(f"{base}/api/portfolio/items/{pid}", headers=headers)
+                    if res.status_code in (200, 204):
+                        return True, None
+                    else:
+                        return False, f"API error {res.status_code}: {res.text}"
+                except Exception as exc:
+                    return False, str(exc)
+
+            ok, info = await asyncio.to_thread(_delete_sync)
+            if ok:
+                self._show_status("Portfolio deleted.", "success")
+            else:
+                self._show_status(f"Failed to delete portfolio: {info}", "error")
+            return
+
+        # Default: just show selected portfolio details
+        name = portfolio.get("name") or portfolio.get("title") or portfolio.get("id")
+        desc = portfolio.get("description") or ""
+        self._show_status(f"Selected portfolio: {name} - {desc}", "info")
 
     def _handle_ai_analysis_selection(self) -> None:
         detail_panel = self.query_one("#detail", Static)
@@ -3722,6 +4002,15 @@ class PortfolioTextualApp(App):
         except ProjectsServiceError as exc:
             raise ProjectsServiceError(f"Unable to initialize projects service: {exc}") from exc
     
+    def _get_overrides_service(self) -> ProjectOverridesService:
+        """Lazy initialize project overrides service when needed."""
+        if self._overrides_service is not None:
+            return self._overrides_service
+        
+        self._overrides_service = ProjectOverridesService()
+        self._debug_log("Initialized ProjectOverridesService")
+        return self._overrides_service
+    
     def _get_analysis_api_service(self) -> AnalysisAPIService:
         """Lazy initialize analysis API service when needed."""
         if self._analysis_api_service is not None:
@@ -3740,7 +4029,11 @@ class PortfolioTextualApp(App):
     def _init_resume_storage_service(self) -> None:
         """Initialize Supabase resume storage client without crashing the UI."""
         try:
-            self._resume_storage_service = ResumeStorageService()
+            if self._use_api_mode:
+                self._resume_storage_service = ResumeAPIService()
+                self._debug_log("Using ResumeAPIService (API mode)")
+            else:
+                self._resume_storage_service = ResumeStorageService()
         except ResumeStorageError as exc:
             self._resume_storage_service = None
             try:
@@ -3759,11 +4052,15 @@ class PortfolioTextualApp(App):
             except Exception:
                 pass
     
-    def _get_resume_storage_service(self) -> ResumeStorageService:
+    def _get_resume_storage_service(self) -> Union[ResumeStorageService, ResumeAPIService]:
         """Lazy initialize resume storage service when needed."""
         if self._resume_storage_service is None:
             try:
-                self._resume_storage_service = ResumeStorageService()
+                if self._use_api_mode:
+                    self._resume_storage_service = ResumeAPIService()
+                    self._debug_log("Using ResumeAPIService (API mode)")
+                else:
+                    self._resume_storage_service = ResumeStorageService()
             except ResumeStorageError as exc:
                 raise ResumeStorageError(f"Unable to initialize resume storage: {exc}") from exc
         # Ensure the client carries the current session token for RLS-aware tables.
@@ -3851,6 +4148,35 @@ class PortfolioTextualApp(App):
         self.push_screen(NoticeScreen(notice))
 
     def on_scan_results_screen_closed(self) -> None:
+        """Handle scan results screen closure - save to database if not already saved via export."""
+        self._debug_log("[on_scan_results_screen_closed] Screen closed event triggered")
+        
+        # Only save if we haven't already saved via export
+        if not getattr(self._scan_state, 'export_already_saved', False):
+            self._debug_log("[on_scan_results_screen_closed] Export not done yet, triggering background save")
+            
+            # Check if we have the required data
+            if self._session_state.session and self._scan_state.parse_result and self._scan_state.archive:
+                try:
+                    # Build payload
+                    payload = self._build_export_payload(
+                        self._scan_state.parse_result,
+                        self._scan_state.languages,
+                        self._scan_state.archive,
+                    )
+                    
+                    # Trigger background save (no silent parameter needed)
+                    self._debug_log("[on_scan_results_screen_closed] Creating background save task")
+                    asyncio.create_task(self._save_scan_to_database(payload))
+                    self._debug_log("[on_scan_results_screen_closed] Background database save task created successfully")
+                except Exception as exc:
+                    self._debug_log(f"[on_scan_results_screen_closed] Failed to trigger background save: {exc}")
+            else:
+                self._debug_log(f"[on_scan_results_screen_closed] Skipping save - session={bool(self._session_state.session)}, parse_result={bool(self._scan_state.parse_result)}, archive={bool(self._scan_state.archive)}")
+        else:
+            self._debug_log("[on_scan_results_screen_closed] Export already saved, skipping duplicate save")
+        
+        # Clear the screen reference
         self._scan_results_screen = None
 
     def on_resumes_screen_closed(self) -> None:
@@ -4010,6 +4336,8 @@ class PortfolioTextualApp(App):
         self._scan_state.languages = []
         self._scan_state.scan_timings = []
         self._scan_state.has_media_files = False
+        self._scan_state.export_already_saved = False  # ✅ ADD THIS LINE
+
         self._scan_state.git_repos = []
         self._scan_state.git_analysis = []
         self._scan_state.media_analysis = None
@@ -4299,6 +4627,10 @@ class PortfolioTextualApp(App):
         if self._analysis_api_service:
             self._analysis_api_service.set_access_token(session.access_token)
             self._debug_log(f"Updated AnalysisAPIService token for {session.email}")
+        
+        if self._resume_storage_service and hasattr(self._resume_storage_service, "set_access_token"):
+            self._resume_storage_service.set_access_token(session.access_token)
+            self._debug_log(f"Updated ResumeAPIService token for {session.email}")
 
         self._invalidate_cached_state()
         self._refresh_consent_state()
@@ -4490,6 +4822,10 @@ class PortfolioTextualApp(App):
         if self._session_state.session and self._session_state.session.access_token:
             # Sync to scan service for API mode
             self._scan_service.set_auth_token(self._session_state.session.access_token)
+            if self._resume_storage_service and hasattr(self._resume_storage_service, "set_access_token"):
+                self._resume_storage_service.set_access_token(
+                    self._session_state.session.access_token
+                )
 
     def _persist_ai_output(self, structured_result: Dict[str, Any], raw_result: Dict[str, Any]) -> bool:
         """Write the latest AI analysis to disk as JSON for easier reading.
@@ -6366,6 +6702,36 @@ class PortfolioTextualApp(App):
                 self._show_status(f"Failed to refresh: {exc}", "error")
         else:
             self._show_status("Failed to delete project.", "error")
+
+    async def on_role_updated(self, message: RoleUpdated) -> None:
+        """Handle when user updates a project role."""
+        message.stop()
+        
+        if not self._session_state.session:
+            self._show_status("Sign in required.", "error")
+            return
+        
+        project_id = message.project_id
+        role = message.role
+        self._show_status("Updating project role…", "info")
+        
+        try:
+            overrides_service = self._get_overrides_service()
+            await asyncio.to_thread(
+                overrides_service.upsert_overrides,
+                self._session_state.session.user_id,
+                project_id,
+                role=role,
+            )
+        except Exception as exc:
+            self._show_status(f"Failed to update role: {exc}", "error")
+            return
+        
+        # Update selected project state if it matches
+        if self._projects_state.selected_project and self._projects_state.selected_project.get("id") == project_id:
+            self._projects_state.selected_project["role"] = role
+        
+        self._show_status(f"Role updated to '{role}'.", "success")
             
     async def on_resume_selected(self, message: ResumeSelected) -> None:
         """Handle viewing a saved resume item."""
@@ -6512,11 +6878,17 @@ class PortfolioTextualApp(App):
         if project_id and self._scan_state.contribution_metrics and session.access_token and self._use_ranking_api:
             # Use API endpoint for ranking
             try:
+                self._debug_log(f"Attempting API ranking for project_id: {project_id}")
+                self._debug_log(f"Has contribution_metrics: {bool(self._scan_state.contribution_metrics)}")
+                self._debug_log(f"Has access_token: {bool(session.access_token)}")
+                self._debug_log(f"Use ranking API flag: {self._use_ranking_api}")
+                
                 self._show_status("Calculating project ranking via API...", "info")
                 from .services.projects_api_service import ProjectsRankingAPIService
                 api_service = ProjectsRankingAPIService(auth_token=session.access_token)
                 
                 user_email = self._preferred_user_email()
+                self._debug_log(f"Calling rank_project with user_email: {user_email}")
                 ranking_result = await asyncio.to_thread(
                     api_service.rank_project,
                     project_id,
@@ -6530,7 +6902,8 @@ class PortfolioTextualApp(App):
             except Exception as rank_exc:
                 # Fall back to local ranking method
                 self._debug_log(f"Failed to rank project via API: {rank_exc}, falling back to local method")
-                self._show_status(f"API ranking failed, using local calculation...", "warning")
+                self._debug_log(f"Error type: {type(rank_exc).__name__}, Error details: {str(rank_exc)}")
+                self._show_status(f"API ranking failed: {str(rank_exc)[:50]}, using local calculation...", "warning")
         
         # Use local CLI method for ranking (fallback or primary method)
         if project_id and self._scan_state.contribution_metrics and not api_ranking_succeeded:
@@ -6714,6 +7087,7 @@ class PortfolioTextualApp(App):
                     "relative_path": path,
                     "size_bytes": entry.get("size_bytes"),
                     "mime_type": entry.get("mime_type"),
+                    "sha256": entry.get("file_hash"),
                     "metadata": metadata,
                     "last_seen_modified_at": modified,
                     "last_scanned_at": timestamp,
@@ -6721,6 +7095,280 @@ class PortfolioTextualApp(App):
             )
 
         return records
+
+
+    # --- Project file and skills search handlers ---
+
+    async def _show_project_search_selection(self) -> None:
+        """Load projects and show the project selection screen for search."""
+        try:
+            # Use API mode if enabled, otherwise direct DB access
+            if self._use_api_mode:
+                # API mode: use HTTP client
+                try:
+                    api_url = os.getenv("PORTFOLIO_API_URL", "http://127.0.0.1:8000").rstrip("/")
+                    headers = {}
+                    if self._session_state.session and self._session_state.session.access_token:
+                        headers["Authorization"] = f"Bearer {self._session_state.session.access_token}"
+                    
+                    async with httpx.AsyncClient(timeout=30.0) as client:
+                        response = await client.get(
+                            f"{api_url}/api/projects",
+                            headers=headers
+                        )
+                        
+                        if response.status_code == 200:
+                            result = response.json()
+                            projects = result.get("projects", [])
+                        else:
+                            raise ProjectsServiceError(f"API error: HTTP {response.status_code}")
+                except Exception as api_exc:
+                    self._debug_log(f"API mode failed, falling back to direct DB: {api_exc}")
+                    # Fallback to direct DB access
+                    service = ProjectsService()
+                    projects = service.get_user_projects(self._session_state.session.user_id)
+            else:
+                # Direct DB mode
+                service = ProjectsService()
+                projects = service.get_user_projects(self._session_state.session.user_id)
+            
+            if not projects:
+                self._show_status("No saved projects found. Run a scan first.", "warning")
+                return
+            
+            self.push_screen(ProjectSearchSelectionScreen(projects))
+            
+        except ProjectsServiceError as exc:
+            self._show_status(f"Failed to load projects: {exc}", "error")
+        except Exception as exc:
+            self._show_status(f"Error loading projects: {exc}", "error")
+
+    def on_project_search_selected(self, event: ProjectSearchSelected) -> None:
+        """Handle project selection for search."""
+        event.stop()
+        project_name = event.project.get('project_name', 'Unknown Project')
+        project_id = event.project.get('id')
+        
+        self._show_status(f"Loading {project_name}…", "info")
+        
+        try:
+            # Fetch full project data including scan_data
+            scan_data = None
+            
+
+            if self._use_api_mode:
+                try:
+                    # API mode: GET /api/projects/{project_id}
+                    response = httpx.get(
+                        f"{self._api_base_url}/api/projects/{project_id}",
+                        headers={"Authorization": f"Bearer {self._session_state.session.access_token}"},
+                        timeout=30.0,
+                    )
+                    response.raise_for_status()
+                    project_data = response.json()
+                    scan_data = project_data.get("scan_data")
+                except Exception as api_err:
+                    self._show_status(f"API error, falling back to direct DB: {api_err}", "warning")
+                    # Fallback to direct DB
+                    service = ProjectsService()
+                    project = service.get_project_scan(self._session_state.session.user_id, project_id)
+                    scan_data = project.get("scan_data") if project else None
+            else:
+                # Direct DB mode
+                service = ProjectsService()
+                project = service.get_project_scan(self._session_state.session.user_id, project_id)
+                scan_data = project.get("scan_data") if project else None
+
+            # Pass project metadata and scan_data to screen
+            project_with_data = event.project.copy()
+            project_with_data['scan_data'] = scan_data
+
+            self.push_screen(FileSkillsSearchScreen(project_with_data))
+            
+        except Exception as exc:
+            self._show_status(f"Failed to load project data: {exc}", "error")
+
+    def on_project_search_cancelled(self, event: ProjectSearchCancelled) -> None:
+        """Handle project search cancellation."""
+        event.stop()
+        self._show_status("Project search cancelled.", "info")
+
+    def on_file_skills_search_submitted(self, event: FileSkillsSearchSubmitted) -> None:
+        """Handle file/skills search query submission."""
+        event.stop()
+        asyncio.create_task(self._execute_project_search(event.query, event.project_id, event.scope))
+
+    def on_file_skills_search_cancelled(self, event: FileSkillsSearchCancelled) -> None:
+        """Handle file/skills search cancellation."""
+        event.stop()
+        self._show_status("Search cancelled.", "info")
+
+    async def _execute_project_search(self, query: str, project_id: str, scope: str) -> None:
+        """Execute search within project files and skills data."""
+        try:
+            results = []
+            
+            # Use API mode if enabled, otherwise direct DB access
+            if self._use_api_mode:
+                # API mode: use the Projects API service client so auth/headers and base URL
+                # are managed in one place. The service is synchronous (httpx.Client),
+                # so run it in a thread to avoid blocking the event loop.
+                try:
+                    projects_service = self._get_projects_service()
+                    # Ensure the service has the current access token
+                    if self._session_state.session and hasattr(projects_service, "set_access_token"):
+                        projects_service.set_access_token(self._session_state.session.access_token)
+
+                    resp = await asyncio.to_thread(
+                        projects_service.search_projects,
+                        query,
+                        project_id,
+                        scope,
+                        100,
+                        0,
+                    )
+
+                    if isinstance(resp, dict):
+                        results = resp.get("items", [])
+                    else:
+                        # Unexpected response shape; fall back
+                        self._debug_log(f"Unexpected search response: {resp}")
+                        results = await self._direct_project_search(query, project_id, scope)
+                except Exception as api_exc:
+                    self._debug_log(f"API search failed, falling back to direct search: {api_exc}")
+                    results = await self._direct_project_search(query, project_id, scope)
+            else:
+                # Direct DB mode
+                results = await self._direct_project_search(query, project_id, scope)
+            
+            # Format and display results
+            output = self._format_search_results(results, query, scope)
+            
+            # Find the search screen and update it
+            for screen in self.screen_stack:
+                if isinstance(screen, FileSkillsSearchScreen):
+                    screen._display_results(output)
+                    screen._set_status(f"Found {len(results)} results for '{query}'", "success")
+                    break
+            
+        except ProjectsServiceError as exc:
+            self._show_status(f"Search failed: {exc}", "error")
+        except Exception as exc:
+            self._show_status(f"Search error: {exc}", "error")
+
+    async def _direct_project_search(self, query: str, project_id: str, scope: str) -> List[Dict[str, Any]]:
+        """Direct database search (fallback when API mode is disabled or fails)."""
+        service = ProjectsService()
+        project = service.get_project_scan(self._session_state.session.user_id, project_id)
+        
+        if not project:
+            raise ProjectsServiceError("Project not found")
+        
+        scan_data = project.get("scan_data", {})
+        results = []
+        
+        # Search in files
+        if scope in ["all", "files"]:
+            files = scan_data.get("files", [])
+            query_lower = query.lower()
+            
+            for file_entry in files:
+                file_path = file_entry.get("path", "")
+                file_name = Path(file_path).name
+                mime_type = file_entry.get("mime_type", "")
+                
+                # Search in file path, name, and mime type
+                if (query_lower in file_path.lower() or 
+                    query_lower in file_name.lower() or 
+                    query_lower in mime_type.lower()):
+                    results.append({
+                        "type": "file",
+                        "path": file_path,
+                        "size": file_entry.get("size_bytes", 0),
+                        "size_bytes": file_entry.get("size_bytes", 0),
+                        "mime_type": mime_type
+                    })
+        
+        # Search in skills
+        if scope in ["all", "skills"]:
+            skills_data = scan_data.get("skills_analysis", {})
+            if skills_data and skills_data.get("success"):
+                skills = skills_data.get("skills", {})
+                query_lower = query.lower()
+                
+                # Search in technical skills
+                for category, skill_list in skills.items():
+                    if isinstance(skill_list, list):
+                        for skill in skill_list:
+                            if isinstance(skill, str) and query_lower in skill.lower():
+                                results.append({
+                                    "type": "skill",
+                                    "category": category,
+                                    "skill": skill
+                                })
+                            elif isinstance(skill, dict):
+                                skill_name = skill.get("name", "")
+                                if query_lower in skill_name.lower():
+                                    results.append({
+                                        "type": "skill",
+                                        "category": category,
+                                        "skill": skill_name,
+                                        "proficiency": skill.get("proficiency")
+                                    })
+        
+        return results
+
+    def _format_search_results(self, results: List[Dict[str, Any]], query: str, scope: str) -> str:
+        """Format search results for display."""
+        if not results:
+            return f"No results found for '{query}' in {scope}."
+        
+        output_lines = [f"Search Results for '{query}' (Scope: {scope})"]
+        output_lines.append("=" * 60)
+        output_lines.append("")
+        
+        # Group results by type
+        files = [r for r in results if r.get("type") == "file"]
+        skills = [r for r in results if r.get("type") == "skill"]
+        
+        if files:
+            output_lines.append(f"[b]Files ({len(files)}):[/b]")
+            for file_result in files[:50]:  # Limit to 50 files
+                path = file_result.get("path", "Unknown")
+                size = file_result.get("size", 0)
+                mime = file_result.get("mime_type", "")
+                size_str = self._format_bytes(size) if size else "0 B"
+                output_lines.append(f"  • {path}")
+                output_lines.append(f"    Size: {size_str} | Type: {mime}")
+            
+            if len(files) > 50:
+                output_lines.append(f"  ... and {len(files) - 50} more files")
+            output_lines.append("")
+        
+        if skills:
+            output_lines.append(f"[b]Skills ({len(skills)}):[/b]")
+            skills_by_category: Dict[str, List[Dict[str, Any]]] = {}
+            for skill_result in skills:
+                category = skill_result.get("category", "Other")
+                skills_by_category.setdefault(category, []).append(skill_result)
+            
+            for category, category_skills in skills_by_category.items():
+                output_lines.append(f"  [b]{category}:[/b]")
+                for skill_result in category_skills[:20]:  # Limit per category
+                    skill = skill_result.get("skill", "Unknown")
+                    proficiency = skill_result.get("proficiency")
+                    if proficiency:
+                        output_lines.append(f"    • {skill} (Proficiency: {proficiency})")
+                    else:
+                        output_lines.append(f"    • {skill}")
+                if len(category_skills) > 20:
+                    output_lines.append(f"    ... and {len(category_skills) - 20} more")
+            output_lines.append("")
+        
+        output_lines.append("=" * 60)
+        output_lines.append(f"Total: {len(results)} results")
+        
+        return "\n".join(output_lines)
 
 
 def main() -> None:
