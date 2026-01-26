@@ -18,7 +18,10 @@
 - [Week 3 (September 15 - 21)](#week-3-september-15---21)
 
 ## Week 17 (January 19th - 25th)
-**Joaquin:**
+
+**Joaquin:** I reviewed Vlad’s **PR [#242 – “Implemented all features, tests and documentation”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/242)**. Overall, the implementation is strong and well tested, but there’s a subtle edge case around deduplication for projects scanned via the TUI. The current duplicate detection relies on SHA-256 hashes, but files cached through `_build_cached_file_records` do not store a `sha256` field—only path, size, MIME type, metadata, and timestamps. As a result, when `append_upload_to_project` builds `existing_hashes`, it ends up empty for those projects, and the duplicate check never fires. In practice, this would cause files that should be skipped to be marked as “added” and re-upserted, leading to incorrect status reporting and unnecessary database writes. I suggested persisting hashes in the TUI cache going forward and, if feasible, adding a one-time backfill for older cached records. I also reviewed Om’s **PR [#244 – “Feature/portfolio items API”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/244)**. The structure is clean and consistent with existing service and router patterns in the codebase. One issue I flagged is that `delete_portfolio_item` returns `True` unconditionally, even when no row is deleted. Supabase returns an empty list (`[]`) when nothing matches the delete criteria, so the method should check something like `len(response.data) > 0`. I also recommended tightening the related test in `test_portfolio_items_api` to assert 404 instead of allowing 204 in that case. Other than that, the PR looks ready. Finally, I reviewed Aaron’s **PR [#245 – “Cross entity”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/245)**. The feature is well structured, and I like the API-first approach with a direct DB fallback. I suggested two changes. First, in `on_project_search_selected`, the DB fallback assigns the entire project record returned by `get_project_scan()` directly to `scan_data`, while the API path correctly extracts `scan_data` from the JSON response. This mismatch will cause `FileSkillsSearchScreen` to fail to display files. The fix is to extract `scan_data` from the returned project record (e.g., `project = service.get_project_scan(...); scan_data = project.get("scan_data") if project else None`). Second, there is a minor rendering issue in `screens.py` where an `e` character appears instead of proper bullet-style formatting for fields like total lines and code lines.
+
+Overall, most of the PRs are in good shape. The remaining issues are edge cases and consistency fixes rather than architectural concerns.
 
 **Aaron:**
 
@@ -52,12 +55,11 @@ I reviewed and validated several team integrations to ensure consistent API cont
 - API‑mode testing was delayed by config/flag confusion and connection‑refused login until the local server/env were aligned.
 - Some PRs required multiple review rounds to nail down edge cases in error handling and test coverage.
 
-
-
 ## **Next Steps**
+- Prepare for peer evaluations
 
 <p align="center">
-  <img src="./charts/w16burnup.png" alt="Week 17 Burnup Chart width="400"/>
+  <img src="./charts/w17burnup.png" alt="Week 17 Burnup Chart width="400"/>
 </p>
 
 ## Week 16 (January 12th - 18th)
