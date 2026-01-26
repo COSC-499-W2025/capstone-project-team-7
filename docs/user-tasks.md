@@ -13,12 +13,13 @@
 2. **Find how many files were scanned** in your project
 3. **View the language breakdown** to see which languages are used most
 4. **Search for a specific file** by name in the scan results
+5. **Find duplicate files** in your project and check how much space they waste
 
 ## Projects & Storage
 
 1. **Save your scan as a project** to keep it for later
 2. **View your saved projects list** and find the most recent one
-3. **Find duplicate files** in your project and check how much space they waste
+
 
 ## AI Analysis & Resume
 
