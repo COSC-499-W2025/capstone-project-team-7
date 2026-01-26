@@ -1,6 +1,7 @@
 # Joaquin Almora / @joaquinalmora
 
 ### Weekly Navigation
+- [Week 17](#week-17)
 - [Week 16](#week-16)
 - [Week 15](#week-15)
 - [Winter Break](#winter-break)
@@ -16,6 +17,28 @@
 - [Week 5](#week-5-september-29th---october-5th)
 - [Week 4](#week-4-september-22nd---28th)
 - [Week 3](#week-3-september-15th---21st)
+
+## Week 17 (January 19th - 25th)
+This week focused on building and integrating the Project Overrides layer into the existing project and timeline APIs. The work was delivered in [PR #241 – “Project-overrides: add database layer and service”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/241) and [PR #243 – “Add API endpoints and integration tests”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/243), introducing a full override system so users can customize project metadata and timeline dates beyond computed scan values.
+On the backend, I added a `project_overrides` table with RLS, foreign keys, and indexes, and implemented a `ProjectOverridesService` to handle override logic and transparent encryption/decryption for sensitive fields. All service methods are covered by unit tests (15/15 passing).
+On the API side, I added `GET`, `PATCH`, and `DELETE` endpoints, along with 19 integration tests. I updated `GET /api/projects/{id}` to return `user_overrides`, and modified the timeline endpoint to respect `end_date_override` for correct chronology ordering.
+I also resolved a few issues: adjusted queries due to Supabase 2.0.0’s `maybe_single()` behavior, fixed a decryption bug affecting `role`, and removed `evidence` from encrypted fields to address a PostgreSQL type mismatch.
+
+
+### Reflection
+**What went well:**  
+The separation between database, service, and API layers made testing straightforward. Encryption concerns stayed cleanly encapsulated in the service layer. Both unit and integration test suites are fully passing. 
+
+**What didn’t go well:**  
+The `maybe_single()` behavior in Supabase-py required more refactoring than expected. The encryption and PostgreSQL array type mismatch surfaced later in development and required schema-level reconsideration. The PR initially exceeded size guidelines before being split.
+
+### Next Steps
+- Clean up the “Override Test Project” records created during local testing.
+- Consider adding stricter validation for override date fields at the API boundary.
+- Do test runs ahead of peer testings
+- Start drafting UI layout
+
+![Peer Eval](./images/w17peer.png)
 
 ## Week 16 (January 12th - 18th)
 This week was about finishing the bridge between the TUI and the backend APIs and making those paths solid. Most of the work landed through **PR [#226 – “Added consent API routes to TUI”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/226)**, **PR [#232 – “Add authentication API endpoints”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/232)**, and **PR [#239 – “Add dedup API report and TUI integration”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/239)**. Together, these changes finish off the API-backed paths for consent, auth, and dedup, and make the TUI behave the same way in both legacy and API modes. I added `ConsentAPIService` and wired the TUI consent flow to use FastAPI whenever `PORTFOLIO_USE_API` is enabled, covering status, toggles, and the privacy notice. I also extended the consent state to track external-services consent and render badges straight from API state, while guarding persistence so Supabase storage is only used in legacy mode. On the backend side, I added `/api/auth` routes for signup, login, refresh, and session using `SupabaseAuth`, and extended the auth context to return the user email. The auth router is now wired into the FastAPI app, with tests covering the main flows. I updated the API plan and OpenAPI spec so the auth contracts are clearly documented. I also implemented `GET /api/dedup` to return hash-based duplicate groups and storage savings from project scans. To support that, I persisted `file_hash` in scan payloads (both TUI export and API scan responses). The TUI now fetches dedup data in API mode with a local fallback using a new `get_dedup_report` client helper. I added `tests/test_dedup_api.py` for coverage. All consent-related tests passed locally, including `tests/test_api_consent.py` and `tests/test_consent_integration.py`.
