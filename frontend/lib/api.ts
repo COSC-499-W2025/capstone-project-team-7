@@ -1,4 +1,4 @@
-import type { ApiResult } from "./api.types";
+import type { ApiResult, AuthCredentials, AuthSessionResponse, ConsentRequest } from "./api.types";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
 
@@ -33,5 +33,30 @@ async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T
 }
 
 export const api = {
-  health: () => request<{ status: string; message?: string }>("/health")
+  health: () => request<{ status: string; message?: string }>("/health"),
+  auth: {
+    login: (email: string, password: string) =>
+      request<AuthSessionResponse>("/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password })
+      }),
+    signup: (email: string, password: string) =>
+      request<AuthSessionResponse>("/api/auth/signup", {
+        method: "POST",
+        body: JSON.stringify({ email, password })
+      }),
+    refresh: (refreshToken: string) =>
+      request<AuthSessionResponse>("/api/auth/refresh", {
+        method: "POST",
+        body: JSON.stringify({ refresh_token: refreshToken })
+      }),
+    saveConsent: (userId: string, serviceName: string, consentGiven: boolean, accessToken: string) =>
+      request<{ success: boolean }>("/api/auth/consent", {
+        method: "POST",
+        body: JSON.stringify({ user_id: userId, service_name: serviceName, consent_given: consentGiven }),
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      })
+  }
 };
