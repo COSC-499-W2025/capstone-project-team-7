@@ -1,4 +1,4 @@
-import type { ApiResult } from "./api.types";
+import type { ApiResult, UserProfile, UpdateProfileRequest } from "./api.types";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
 
@@ -32,6 +32,24 @@ async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T
   }
 }
 
+function authHeaders(token: string): Record<string, string> {
+  return { Authorization: `Bearer ${token}` };
+}
+
 export const api = {
-  health: () => request<{ status: string; message?: string }>("/health")
+  health: () => request<{ status: string; message?: string }>("/health"),
+
+  profile: {
+    get: (token: string) =>
+      request<UserProfile>("/api/profile", {
+        headers: authHeaders(token),
+      }),
+
+    update: (token: string, data: UpdateProfileRequest) =>
+      request<UserProfile>("/api/profile", {
+        method: "PATCH",
+        headers: authHeaders(token),
+        body: JSON.stringify(data),
+      }),
+  },
 };

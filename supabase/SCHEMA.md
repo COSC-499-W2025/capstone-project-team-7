@@ -45,10 +45,15 @@ This project uses Supabase for persisted user data and synced scan artifacts. Be
 - **public.consents** (legacy, empty) — dropped by migration `20251124000000_drop_unused_tables.sql`.
 - **public.uploads** (unused, empty) — dropped by the same migration.
 
+- **public.profiles** (extended)
+  - Purpose: User profile data for the Profile page (display name, education, career, avatar, links).
+  - Key fields: `id` (PK, refs auth.users), `email`, `full_name`, `education`, `career_title`, `avatar_url`, `schema_url`, `drive_url`, `updated_at`.
+  - Code: `backend/src/api/profile_routes.py`, `frontend/app/profile/page.tsx`.
+
 ## Auth / Supabase Internals
 
 Do not modify; managed by Supabase:
-- `auth.users`, `profiles`, `identities`, `sessions`, `refresh_tokens`, etc.
+- `auth.users`, `identities`, `sessions`, `refresh_tokens`, etc.
 - Storage tables: `storage.buckets`, `storage.objects`, etc.
 - Migration tracking tables: `schema_migrations`, `migrations`.
 
@@ -60,6 +65,7 @@ Do not modify; managed by Supabase:
 - `20251124000000_drop_unused_tables.sql`: Drops `consents` and `uploads` (legacy/unused).
 - `20260115000000_add_user_selections.sql`: Adds `user_selections` table for portfolio/skill ordering and showcase preferences.
 - `20260120000000_add_project_overrides.sql`: Adds `project_overrides` table for user-defined chronology corrections, role/evidence, highlighted skills, and comparison attributes.
+- `20260130000000_extend_profiles.sql`: Adds `education`, `career_title`, `avatar_url`, `schema_url`, `drive_url`, `updated_at` columns to `profiles`.
 
 ## Environment Keys (per .env)
 
@@ -78,5 +84,6 @@ Using the service key means RLS is bypassed. If you enable RLS on `projects`, en
 - User preferences: `user_configs`.
 - User selections: `user_selections` (portfolio/skill ordering and showcase preferences).
 - Consents: `consents_v1` (not `consents`).
+- Profiles: `profiles` (display name, education, career, avatar, links).
 
 If you add/remove tables, do it via a migration in `supabase/migrations` so all environments stay in sync.
