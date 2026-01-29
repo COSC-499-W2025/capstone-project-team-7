@@ -66,6 +66,7 @@ Do not modify; managed by Supabase:
 - `20260115000000_add_user_selections.sql`: Adds `user_selections` table for portfolio/skill ordering and showcase preferences.
 - `20260120000000_add_project_overrides.sql`: Adds `project_overrides` table for user-defined chronology corrections, role/evidence, highlighted skills, and comparison attributes.
 - `20260130000000_extend_profiles.sql`: Adds `education`, `career_title`, `avatar_url`, `schema_url`, `drive_url`, `updated_at` columns to `profiles`.
+- `20260131000000_create_avatars_bucket.sql`: Creates the `avatars` storage bucket (public) with RLS policies restricting uploads to the user's own folder.
 
 ## Environment Keys (per .env)
 
@@ -85,5 +86,6 @@ Using the service key means RLS is bypassed. If you enable RLS on `projects`, en
 - User selections: `user_selections` (portfolio/skill ordering and showcase preferences).
 - Consents: `consents_v1` (not `consents`).
 - Profiles: `profiles` (display name, education, career, avatar, links).
+- Avatar storage: `storage.avatars` bucket (public, RLS per user folder).
 
 If you add/remove tables, do it via a migration in `supabase/migrations` so all environments stay in sync.

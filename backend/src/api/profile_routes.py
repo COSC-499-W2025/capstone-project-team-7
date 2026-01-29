@@ -1,18 +1,23 @@
-"""Profile endpoints – GET and PATCH the authenticated user's profile."""
+"""Profile endpoints – GET, PATCH, avatar upload, and password change."""
 
 from __future__ import annotations
 
+import base64
 import os
+import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from pydantic import BaseModel, Field
 
 from api.dependencies import AuthContext, get_auth_context
 
 router = APIRouter(prefix="/api/profile", tags=["profile"])
+
+_ALLOWED_AVATAR_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
+_MAX_AVATAR_BYTES = 5 * 1024 * 1024  # 5 MB
 
 # ---------------------------------------------------------------------------
 # Pydantic models
@@ -37,6 +42,14 @@ class UpdateProfileRequest(BaseModel):
     avatar_url: Optional[str] = None
     schema_url: Optional[str] = None
     drive_url: Optional[str] = None
+
+
+class ChangePasswordRequest(BaseModel):
+    new_password: str = Field(..., min_length=6)
+
+
+class AvatarUploadResponse(BaseModel):
+    avatar_url: str
 
 
 # ---------------------------------------------------------------------------
@@ -178,3 +191,112 @@ async def update_profile(
         drive_url=row.get("drive_url"),
         updated_at=row.get("updated_at"),
     )
+
+
+@router.post("/avatar", response_model=AvatarUploadResponse)
+async def upload_avatar(
+    file: UploadFile = File(...),
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """Upload an avatar image to Supabase Storage and update the profile.
+
+    Accepts PNG, JPEG, GIF, or WebP up to 5 MB.  The file is stored in the
+    ``avatars`` bucket under ``<user_id>/avatar.<ext>``.
+    """
+    if file.content_type not in _ALLOWED_AVATAR_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "invalid_file_type",
+                "message": f"Allowed types: {', '.join(_ALLOWED_AVATAR_TYPES)}",
+            },
+        )
+
+    contents = await file.read()
+    if len(contents) > _MAX_AVATAR_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "file_too_large", "message": "Avatar must be under 5 MB"},
+        )
+
+    ext = (file.filename or "avatar.png").rsplit(".", 1)[-1].lower()
+    if ext not in ("png", "jpg", "jpeg", "gif", "webp"):
+        ext = "png"
+    storage_path = f"{auth.user_id}/avatar.{ext}"
+
+    base_url = os.getenv("SUPABASE_URL", "")
+    key = (
+        os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        or os.getenv("SUPABASE_KEY")
+        or os.getenv("SUPABASE_ANON_KEY", "")
+    )
+
+    upload_url = f"{base_url}/storage/v1/object/avatars/{storage_path}"
+    headers = {
+        "Authorization": f"Bearer {auth.access_token}",
+        "apikey": key,
+        "Content-Type": file.content_type or "application/octet-stream",
+        "x-upsert": "true",
+    }
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.put(upload_url, content=contents, headers=headers)
+
+    if resp.status_code >= 400:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "code": "storage_error",
+                "message": f"Failed to upload avatar: {resp.text}",
+            },
+        )
+
+    public_url = f"{base_url}/storage/v1/object/public/avatars/{storage_path}"
+
+    # Persist the URL in the profiles table
+    await update_profile(
+        UpdateProfileRequest(avatar_url=public_url),
+        auth,
+    )
+
+    return AvatarUploadResponse(avatar_url=public_url)
+
+
+@router.post("/password")
+async def change_password(
+    body: ChangePasswordRequest,
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """Change the authenticated user's password via the Supabase Auth API."""
+    base_url = os.getenv("SUPABASE_URL", "")
+    key = (
+        os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        or os.getenv("SUPABASE_KEY")
+        or os.getenv("SUPABASE_ANON_KEY", "")
+    )
+
+    url = f"{base_url}/auth/v1/user"
+    headers = {
+        "Authorization": f"Bearer {auth.access_token}",
+        "apikey": key,
+        "Content-Type": "application/json",
+    }
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.put(
+            url,
+            json={"password": body.new_password},
+            headers=headers,
+        )
+
+    if resp.status_code >= 400:
+        detail = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+        raise HTTPException(
+            status_code=resp.status_code if resp.status_code < 500 else status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "code": "password_change_failed",
+                "message": detail.get("msg") or detail.get("message") or "Password change failed",
+            },
+        )
+
+    return {"ok": True, "message": "Password updated successfully"}

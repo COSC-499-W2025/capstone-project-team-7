@@ -40,6 +40,7 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<UserProfile>(EMPTY_PROFILE);
   const [draft, setDraft] = useState<UserProfile>(EMPTY_PROFILE);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
@@ -106,13 +107,16 @@ export default function ProfilePage() {
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (avatarPreview?.startsWith("blob:")) URL.revokeObjectURL(avatarPreview);
     const url = URL.createObjectURL(file);
     setAvatarPreview(url);
-    // TODO: upload file to backend / Supabase storage
+    setAvatarFile(file);
   };
 
   const removeAvatar = () => {
+    if (avatarPreview?.startsWith("blob:")) URL.revokeObjectURL(avatarPreview);
     setAvatarPreview(null);
+    setAvatarFile(null);
   };
 
   // ---- save ----
@@ -126,14 +130,26 @@ export default function ProfilePage() {
     setSaving(true);
     setMessage(null);
 
+    // Upload avatar file if one was selected
+    if (avatarFile) {
+      const uploadRes = await api.profile.uploadAvatar(token, avatarFile);
+      if (!uploadRes.ok) {
+        setSaving(false);
+        setMessage({ type: "err", text: uploadRes.error ?? "Avatar upload failed." });
+        return;
+      }
+      setAvatarFile(null);
+    } else if (avatarPreview === null && profile.avatar_url) {
+      // Avatar was removed — clear it on the backend
+      await api.profile.update(token, { avatar_url: "" });
+    }
+
     const payload: UpdateProfileRequest = {};
     if (draft.display_name !== profile.display_name) payload.display_name = draft.display_name ?? undefined;
     if (draft.education !== profile.education) payload.education = draft.education ?? undefined;
     if (draft.career_title !== profile.career_title) payload.career_title = draft.career_title ?? undefined;
     if (draft.schema_url !== profile.schema_url) payload.schema_url = draft.schema_url ?? undefined;
     if (draft.drive_url !== profile.drive_url) payload.drive_url = draft.drive_url ?? undefined;
-    // TODO: avatar_url should be the uploaded URL, not a local path
-    if (avatarPreview !== (profile.avatar_url || null)) payload.avatar_url = avatarPreview ?? undefined;
 
     const res = await api.profile.update(token, payload);
     setSaving(false);
@@ -142,6 +158,7 @@ export default function ProfilePage() {
       setProfile(res.data);
       setDraft(res.data);
       if (res.data.avatar_url) setAvatarPreview(res.data.avatar_url);
+      else setAvatarPreview(null);
       setMessage({ type: "ok", text: "Profile saved." });
     } else {
       setMessage({ type: "err", text: res.error ?? "Save failed." });
@@ -150,8 +167,10 @@ export default function ProfilePage() {
 
   // ---- cancel ----
   const handleCancel = () => {
+    if (avatarPreview?.startsWith("blob:")) URL.revokeObjectURL(avatarPreview);
     setDraft(profile);
     setAvatarPreview(profile.avatar_url || null);
+    setAvatarFile(null);
     setCurrentPassword("");
     setNewPassword("");
     setConfirmPassword("");
@@ -169,16 +188,33 @@ export default function ProfilePage() {
 
   // ---- password change ----
   const handlePasswordChange = async () => {
+    const token = getToken();
+    if (!token) {
+      setMessage({ type: "err", text: "Not authenticated. Please log in." });
+      return;
+    }
     if (!newPassword || !confirmPassword) {
       setMessage({ type: "err", text: "Please fill in all password fields." });
+      return;
+    }
+    if (newPassword.length < 6) {
+      setMessage({ type: "err", text: "New password must be at least 6 characters." });
       return;
     }
     if (newPassword !== confirmPassword) {
       setMessage({ type: "err", text: "New passwords do not match." });
       return;
     }
-    // TODO: call backend password-change endpoint when available
-    setMessage({ type: "err", text: "Password change is not yet implemented on the backend." });
+
+    const res = await api.profile.changePassword(token, newPassword);
+    if (res.ok) {
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setMessage({ type: "ok", text: "Password updated successfully." });
+    } else {
+      setMessage({ type: "err", text: res.error ?? "Password change failed." });
+    }
   };
 
   // ---- render ----

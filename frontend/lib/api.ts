@@ -51,5 +51,34 @@ export const api = {
         headers: authHeaders(token),
         body: JSON.stringify(data),
       }),
+
+    uploadAvatar: async (token: string, file: File): Promise<ApiResult<{ avatar_url: string }>> => {
+      const baseUrl = getApiBaseUrl();
+      const form = new FormData();
+      form.append("file", file);
+      try {
+        const res = await fetch(`${baseUrl}/api/profile/avatar`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: form,
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          return { ok: false, status: res.status, error: text || res.statusText };
+        }
+        const data = await res.json();
+        return { ok: true, data };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Network error";
+        return { ok: false, error: message };
+      }
+    },
+
+    changePassword: (token: string, newPassword: string) =>
+      request<{ ok: boolean; message: string }>("/api/profile/password", {
+        method: "POST",
+        headers: authHeaders(token),
+        body: JSON.stringify({ new_password: newPassword }),
+      }),
   },
 };
