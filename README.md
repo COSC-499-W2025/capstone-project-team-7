@@ -3,19 +3,39 @@
 Interactive Textual dashboard for scanning projects, summarizing artifacts, and generating resume-ready snippets. The stack couples a Python/FastAPI backend, Supabase persistence, and optional OpenAI-powered analysis while keeping all local analysis (PDFs/documents/media/git) on-device.
 
 ```text
-├── backend/                # FastAPI app + Textual CLI + analyzers
+├── backend/                  # FastAPI app + Textual CLI + analyzers
 │   └── src/
-│       ├── analyzer/       # LLM client + skills extractor
-│       ├── api/            # FastAPI routes (LLM key verification, consent)
-│       ├── auth/           # Consent + session handling (Supabase)
-│       ├── cli/            # Textual UI + services
-│       ├── local_analysis/ # PDF/doc/media/git analyzers (offline)
-│       ├── scanner/        # File walker, duplicate detection, preferences
-│       └── main.py         # FastAPI entrypoint
-├── docs/                   # Architecture, DFD, WBS, proposal/requirements
-├── supabase/               # Schema guide + migrations
-├── scripts/                # Setup + launch helpers
-└── tests/                  # Pytest suite for CLI/services/analyzers
+│       ├── analyzer/         # LLM client + skills extractor
+│       │   └── llm/          # OpenAI integration
+│       ├── api/              # FastAPI routes (projects, auth, consent, uploads, etc.)
+│       │   └── models/       # Pydantic request/response models
+│       ├── auth/             # Consent + session handling (Supabase)
+│       ├── cli/              # Textual UI + services
+│       │   └── services/     # Business logic services
+│       ├── config/           # Configuration management
+│       ├── local_analysis/   # PDF/doc/media/git analyzers (offline)
+│       ├── scanner/          # File walker, duplicate detection, preferences
+│       └── main.py           # FastAPI entrypoint
+├── frontend/                 # Next.js web UI (in development)
+│   ├── app/                  # Next.js App Router pages
+│   ├── components/           # React components + shadcn/ui
+│   ├── lib/                  # Utilities and helpers
+│   └── types/                # TypeScript type definitions
+├── electron/                 # Desktop app wrapper (in development)
+│   └── ipc/                  # IPC handlers for main/renderer
+├── db/                       # SQL migration scripts
+├── docs/                     # Architecture, DFD, WBS, proposal/requirements
+│   └── assets/               # Documentation images
+├── supabase/                 # Schema guide + migrations
+│   └── migrations/           # Supabase migration files
+├── scripts/                  # Setup + launch helpers
+└── tests/                    # Pytest suite for CLI/services/analyzers
+    ├── analyzers/            # Analyzer unit tests
+    ├── cli/                  # CLI/service tests
+    ├── fixtures/             # Test fixtures and sample data
+    ├── integration/          # Integration tests
+    ├── local_analysis/       # Local analysis tests
+    └── scanner/              # Scanner tests
 ```
 
 ## Highlights
