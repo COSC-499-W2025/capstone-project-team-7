@@ -1,66 +1,233 @@
+/* =========================================================
+   PRO CONTRAST (Black/White) — shadcn-friendly stylesheet
+   - 2px borders
+   - no shadows
+   - dense spacing
+   - sharp radii
+   ========================================================= */
+
+/* If you're using Tailwind + shadcn, keep the Tailwind directives */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
+    /* Core palette (grayscale) */
+    --background: 0 0% 100%;   /* white */
+    --foreground: 0 0% 0%;     /* black */
+
+    --muted: 0 0% 96%;         /* very light gray */
+    --muted-foreground: 0 0% 32%; /* #525252-ish */
+
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
+    --card-foreground: 0 0% 0%;
+
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 0 0% 9%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 72.2% 50.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 240 5% 64.9%;
-    --radius: 0.75rem;
-    color-scheme: dark;
+    --popover-foreground: 0 0% 0%;
+
+    /* Borders/rings (make borders visibly structural) */
+    --border: 0 0% 81%;        /* ~ #CFCFCF */
+    --input: 0 0% 81%;
+    --ring: 0 0% 0%;           /* black ring */
+
+    /* Primary/secondary */
+    --primary: 0 0% 0%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 0 0% 100%;
+    --secondary-foreground: 0 0% 0%;
+
+    --accent: 0 0% 96%;
+    --accent-foreground: 0 0% 0%;
+
+    --destructive: 0 0% 0%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Radius: sharper */
+    --radius: 8px;
+
+    /* Pro Contrast identity knobs */
+    --pc-border-width: 2px;
+    --pc-focus-ring: 2px;
+    --pc-density-y: 0.5rem; /* 8px */
+    --pc-density-x: 0.75rem; /* 12px */
   }
 
-  .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 240 4.9% 83.9%;
-  }
-
+  /* Base document */
   * {
-    @apply border-border;
+    border-color: hsl(var(--border));
+  }
+
+  html, body {
+    height: 100%;
   }
 
   body {
-    @apply bg-background text-foreground;
-    font-feature-settings: "rlig" 1, "calt" 1;
-    font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-feature-settings: "ss01" 1, "ss02" 1;
+    text-rendering: geometricPrecision;
   }
 
-  a {
-    color: inherit;
-    text-decoration: none;
+  /* Typography scale (Inter / shadcn defaults) */
+  h1 {
+    font-size: 30px;
+    line-height: 36px;
+    font-weight: 700; /* Pro Contrast: stronger */
+    letter-spacing: -0.02em;
+  }
+
+  h2 {
+    font-size: 24px;
+    line-height: 32px;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+  }
+
+  h3 {
+    font-size: 20px;
+    line-height: 28px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+  }
+
+  p, li, input, button, textarea, label {
+    font-size: 14px;
+    line-height: 21px;
+  }
+
+  small {
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  /* Make focus states crisp + visible */
+  :focus-visible {
+    outline: var(--pc-focus-ring) solid rgba(0, 0, 0, 0.35);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* -----------------------------------------
+     Pro Contrast “component feel” helpers
+     Use these classes in your JSX when needed.
+     ----------------------------------------- */
+
+  .pc-surface {
+    background: hsl(var(--card));
+    color: hsl(var(--card-foreground));
+    border: var(--pc-border-width) solid hsl(var(--border));
+    border-radius: var(--radius);
+    box-shadow: none !important;
+  }
+
+  .pc-divider {
+    border-top: var(--pc-border-width) solid hsl(var(--border));
+  }
+
+  .pc-input {
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+    border: var(--pc-border-width) solid hsl(var(--input));
+    border-radius: var(--radius);
+    padding: var(--pc-density-y) var(--pc-density-x);
+    box-shadow: none !important;
+  }
+
+  .pc-input::placeholder {
+    color: hsl(var(--muted-foreground));
+  }
+
+  .pc-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: var(--pc-density-y) 1rem;
+    border-radius: 999px;
+    border: var(--pc-border-width) solid hsl(var(--border));
+    box-shadow: none !important;
+    transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+    user-select: none;
+  }
+
+  .pc-btn-primary {
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    border-color: hsl(var(--primary));
+  }
+
+  .pc-btn-primary:hover {
+    background: rgba(0, 0, 0, 0.9);
+  }
+
+  .pc-btn-secondary {
+    background: transparent;
+    color: hsl(var(--foreground));
+  }
+
+  .pc-btn-secondary:hover {
+    background: hsl(var(--muted));
+  }
+
+  /* Table gridlines: visible + structural */
+  .pc-table {
+    width: 100%;
+    border-collapse: collapse;
+    border: var(--pc-border-width) solid hsl(var(--border));
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .pc-table th,
+  .pc-table td {
+    padding: 0.6rem 0.75rem;
+    border-bottom: var(--pc-border-width) solid hsl(var(--border));
+    border-right: var(--pc-border-width) solid hsl(var(--border));
+    text-align: left;
+    vertical-align: middle;
+  }
+
+  .pc-table th:last-child,
+  .pc-table td:last-child {
+    border-right: none;
+  }
+
+  .pc-table tr:last-child td {
+    border-bottom: none;
+  }
+
+  .pc-table thead th {
+    background: hsl(var(--muted));
+    font-weight: 600;
+  }
+
+  /* Status pill: grayscale only */
+  .pc-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    border: var(--pc-border-width) solid hsl(var(--border));
+    background: hsl(var(--muted));
+    color: hsl(var(--foreground));
+    font-weight: 500;
+    white-space: nowrap;
+  }
+}
+
+@layer utilities {
+  /* Density utilities (optional) */
+  .pc-dense {
+    --pc-density-y: 0.45rem;
+    --pc-density-x: 0.7rem;
+  }
+
+  /* Kill shadows anywhere (Pro Contrast rule) */
+  .pc-no-shadow,
+  .pc-no-shadow * {
+    box-shadow: none !important;
   }
 }
