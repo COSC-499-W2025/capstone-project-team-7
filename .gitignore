@@ -46,3 +46,7 @@ skill_summary_raw.txt
 frontend/.next/
 frontend/out/
 electron/dist/
+
+# Playwright artifacts
+frontend/playwright-report/
+frontend/test-results/
