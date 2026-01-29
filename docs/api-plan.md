@@ -67,7 +67,6 @@ Content-Type: multipart/form-data
   - Tests: `tests/test_upload_api.py` (12 tests, all passing)
   - Features: Magic byte validation, 200MB limit, SHA-256 hashing, scan preferences support
 
-### Analysis (local-first, optional external)
 
 #### Completed
 - **Portfolio Analysis Endpoint**
