@@ -281,6 +281,90 @@ Parse uploaded ZIP archive to extract file metadata.
 
 ---
 
+### Portfolio Analysis (`analysis_routes.py`)
+
+#### POST /api/analysis/portfolio
+Run portfolio analysis on an uploaded archive with optional LLM enhancement.
+
+**Request:**
+```json
+{
+  "upload_id": "upl_abc123def456",
+  "use_llm": false,
+  "llm_media": false,
+  "preferences": {
+    "allowed_extensions": [".py", ".js"],
+    "excluded_dirs": ["node_modules", ".git"]
+  }
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "upload_id": "upl_abc123def456",
+  "status": "completed",
+  "analysis_started_at": "2026-01-09T12:00:00Z",
+  "analysis_completed_at": "2026-01-09T12:00:10Z",
+  "llm_status": "skipped:not_requested",
+  "project_type": "collaborative",
+  "languages": [
+    {"name": "Python", "files": 15, "lines": 2500, "percentage": 65.0},
+    {"name": "JavaScript", "files": 8, "lines": 1200, "percentage": 35.0}
+  ],
+  "git_analysis": [
+    {
+      "path": "/project",
+      "commit_count": 150,
+      "contributors": [
+        {"name": "Alice", "commits": 80, "percentage": 53.3},
+        {"name": "Bob", "commits": 70, "percentage": 46.7}
+      ],
+      "project_type": "collaborative",
+      "branches": ["main", "develop"]
+    }
+  ],
+  "code_metrics": {
+    "total_files": 23,
+    "total_lines": 3700,
+    "code_lines": 2800,
+    "comment_lines": 400,
+    "functions": 85,
+    "classes": 12
+  },
+  "skills": [
+    {"name": "Python", "category": "language", "confidence": 0.95, "evidence_count": 15}
+  ],
+  "contribution_metrics": {
+    "project_type": "collaborative",
+    "total_commits": 150,
+    "total_contributors": 2,
+    "commit_frequency": 2.5,
+    "languages_detected": ["Python", "JavaScript"]
+  },
+  "duplicates": [
+    {"hash": "abc123", "files": ["src/utils.py", "backup/utils.py"], "wasted_bytes": 1024}
+  ],
+  "total_files": 23,
+  "total_size_bytes": 125000,
+  "llm_analysis": null
+}
+```
+
+**Features:**
+- Runs local analysis: language detection, git history, code metrics, skills extraction, contribution analysis, duplicate detection
+- Optionally includes LLM-based analysis when `use_llm: true`, consent is granted, and API key is configured
+- Falls back to local-only analysis with `llm_status` indicating the reason
+- Determines project type (individual vs collaborative) from git analysis
+
+**Errors:**
+- `400 validation_error`: Missing upload_id or project_id
+- `403 forbidden`: User doesn't own the upload
+- `404 not_found`: Upload ID doesn't exist
+- `500 analysis_failed`: Error during analysis
+
+---
+
 ### Stub Routes (`spec_routes.py`)
 
 Contains stub implementations for endpoints not yet fully implemented:
@@ -305,6 +389,10 @@ pytest tests/test_upload_api.py -v
 
 All tests should pass (12/12).
 
+Run tests for Analysis endpoints (14 tests):
+```bash
+pytest tests/test_analysis_api.py -v
+```
 ---
 
 ## Dependencies
@@ -312,9 +400,123 @@ All tests should pass (12/12).
 - `fastapi`: Web framework
 - `python-magic` / `python-magic-bin`: File type detection via magic bytes
 - `scanner.parser`: ZIP parsing and file extraction (existing module)
+- `cli.services.*`: Local analysis services (code, skills, contribution etc.)
+- `local_analysis.git_repo`: Git repository analysis
+- `auth.consent_validator`: Consent checking for LLM access
 
 ---
 
 ## Storage
 
-Currently uses in-memory storage (`uploads_store` dict). 
+Currently uses in-memory storage (`uploads_store` dict).
+
+---
+
+### Portfolio Refresh (`portfolio_routes.py`)
+
+#### POST /api/portfolio/refresh
+Refresh entire portfolio with cross-project duplicate detection.
+
+**Request:**
+```json
+{
+  "include_duplicates": true
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "status": "completed",
+  "projects_scanned": 5,
+  "total_files": 150,
+  "total_size_bytes": 5000000,
+  "dedup_report": {
+    "summary": {
+      "duplicate_groups_count": 3,
+      "total_wasted_bytes": 50000
+    },
+    "duplicate_groups": [
+      {
+        "sha256": "abc123...",
+        "file_count": 2,
+        "wasted_bytes": 25000,
+        "files": [
+          {"path": "src/utils.py", "project_id": "...", "project_name": "Project A"},
+          {"path": "lib/utils.py", "project_id": "...", "project_name": "Project B"}
+        ]
+      }
+    ]
+  }
+}
+```
+
+**Features:**
+- Scans all user projects for cached file metadata
+- Detects files duplicated across multiple projects using SHA-256 hash
+- Returns deduplication report with wasted bytes calculation
+- Sorted by wasted bytes (largest first)
+
+**Authentication:** Required (`Authorization: Bearer <JWT>`)
+
+**Errors:**
+- `401 Unauthorized`: Missing or invalid JWT token
+- `500 Internal Server Error`: Failed to refresh portfolio
+
+---
+
+### Append Upload to Project (`project_routes.py`)
+
+#### POST /api/projects/{project_id}/append-upload/{upload_id}
+Merge files from a new upload into an existing project with deduplication.
+
+**Request:**
+```json
+{
+  "skip_duplicates": true
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "project_id": "ab5743df-c763-472b-98a0-d45548c4c5ce",
+  "upload_id": "upl_abc123def456",
+  "status": "completed",
+  "files_added": 5,
+  "files_updated": 2,
+  "files_skipped_duplicate": 3,
+  "total_files_in_upload": 10,
+  "files": [
+    {"path": "src/new_file.py", "status": "added", "sha256": "abc123..."},
+    {"path": "src/changed.py", "status": "updated", "sha256": "def456..."},
+    {"path": "src/existing.py", "status": "skipped_duplicate", "sha256": "789abc..."}
+  ]
+}
+```
+
+**Features:**
+- Verifies upload exists and user owns it
+- Verifies project exists and user owns it
+- Compares files by SHA-256 hash:
+  - If hash matches existing file → skipped (duplicate)
+  - If path exists but different hash → updated
+  - If new path → added
+- Persists new/updated file metadata to the project
+
+**Authentication:** Required (`Authorization: Bearer <JWT>`)
+
+**Errors:**
+- `401 Unauthorized`: Missing or invalid JWT token
+- `403 Forbidden`: Access denied to upload (wrong user)
+- `404 Not Found`: Upload or project not found
+- `500 Internal Server Error`: Failed to parse or save files
+
+---
+
+## Testing
+
+Run tests for incremental refresh endpoints:
+```bash
+pytest tests/test_incremental_refresh_api.py -v
+``` 

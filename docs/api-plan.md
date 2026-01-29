@@ -17,6 +17,12 @@
 - **Reviewable and editable**: All generated rankings, summaries, deletions should be user-adjustable and reversible.
 
 ## Core API Surface (draft)
+### Authentication
+- `POST /api/auth/signup`: Create a new user session via Supabase auth.
+- `POST /api/auth/login`: Issue an access/refresh token pair.
+- `POST /api/auth/refresh`: Exchange a refresh token for a new session.
+- `GET /api/auth/session`: Validate the bearer token and return user identity.
+
 ### Consent and Session
 - `POST /api/consent`: Record/update user consent for data access and external services (include privacy notice text).
 - `GET /api/consent`: Return current consent state and timestamps.
@@ -25,6 +31,7 @@
 - `POST /api/llm/clear-key`, `POST /api/llm/client-status`: Manage LLM key lifecycle (existing).
 
 #### Completed
+- Auth endpoints: `POST /api/auth/signup`, `POST /api/auth/login`, `POST /api/auth/refresh`, `GET /api/auth/session`
 - Consent endpoints: `GET /api/consent`, `POST /api/consent`, `GET /api/consent/notice`
 - Supabase auth resolution: `backend/src/api/dependencies.py`
 - Implementation: `backend/src/api/consent_routes.py`
@@ -61,44 +68,153 @@ Content-Type: multipart/form-data
   - Features: Magic byte validation, 200MB limit, SHA-256 hashing, scan preferences support
 
 ### Analysis (local-first, optional external)
-- `POST /api/analysis/portfolio`: Run combined analysis for an `upload_id` or stored project; params `use_llm` (requires consent+key), `llm_media` optional; if `use_llm=false`, use local-only pipeline.
-- Output: project type (individual/collab), language/framework detection, contribution metrics, skill extraction, media/doc/pdf summaries, code metrics, project ranking scores, timelines.
-- External denied/missing key: return local results with `llm_status:"skipped"`.
-- Implementation note: reuse `backend/src/analyzer/llm_media_helper.py` when `llm_media=true`.
+
+#### Completed
+- **Portfolio Analysis Endpoint**
+  - `POST /api/analysis/portfolio`: Local analysis with optional LLM enhancement
+  - Implementation: `backend/src/api/analysis_routes.py`
+  - Tests: `tests/test_analysis_api.py` (14 tests)
+  - Features: Language detection, git analysis, code metrics, skills extraction, contribution analysis, duplicate detection
+  - LLM fallback: Graceful degradation with `llm_status` indicator when consent/key missing
 
 ### Scans (desktop wiring)
 - `POST /api/scans`: One-shot convenience that wraps upload+parse(+analysis) for a local `source_path` (Electron sends path via IPC); returns `scan_id`, derived `project_id` (if persisted), and progress hooks.
 - `GET /api/scans/{scan_id}`: Progress and results (parse + analysis) so the renderer can poll instead of reading local files.
 - Internally reuses uploads/analysis endpoints to keep a single pipeline; prefer this from the Electron app instead of invoking CLI directly.
 
-### (Completed) - Projects and Storage
+#### Completed
+- **One-Shot Scan API** (Jan 8, 2026)
+  - `POST /api/scans`: Start background scan with `source_path`, returns `scan_id` (HTTP 202)
+  - `GET /api/scans/{scan_id}`: Poll scan status (queued → running → succeeded/failed)
+  - Implementation: `backend/src/api/spec_routes.py`
+  - Tests: `tests/test_scan_api.py`
+  - Features: Background task execution, progress tracking, idempotency support, user isolation
+
+- **TUI Scan API Integration** (Jan 13, 2026)
+  - `ScanApiClient`: HTTP client for scan API endpoints
+  - Implementation: `backend/src/cli/services/scan_api_client.py`
+  - TUI Integration: `backend/src/cli/textual_app.py` (`_run_scan_via_api` method)
+  - Tests: `tests/cli/test_scan_api_client.py`
+  - Usage: Set `SCAN_USE_API=true` environment variable to enable API mode in TUI
+
+### ✅ (Completed) Projects and Storage endpoints
 - `POST /api/projects`: Persist parse+analysis results (optional encryption), return `project_id`.
 - `GET /api/projects`: List with search/filter/sort and timeline views.
 - `GET /api/projects/{project_id}`: Retrieve full summary (ranking, skills, contribution).
+`DELETE /api/projects/{project_id}`: Full delete.
+### ✅ (Completed) - Project Ranking and Timeline, and Top endpoints
+- `POST /api/projects/{project_id}/rank`: Compute contribution-based ranking score (0-100) with detailed component breakdown and human-readable reasons
+    - Uses `ContributionAnalysisService` as single source of truth for scoring algorithm
+    - Considers: 50% commit volume (log-scaled), 20% user commit share, 15% project recency, 10% commit frequency, 5% activity diversity
+    - Accepts optional `user_email` and `user_name` for contributor matching
+    - Persists `contribution_score` and `user_commit_share` to database
+    - Returns: score, components breakdown, user commit share, total commits, and contextual reasons
+  - `GET /api/projects/top?limit=N`: Get top-ranked projects sorted by contribution score (descending)
+    - Filters to projects with computed `contribution_score`
+    - Configurable limit (default: 10)
+    - Used for portfolio summary panels and "best projects" views
+  - `GET /api/projects/timeline`: Get all projects in chronological order (newest first) by `scan_timestamp`
+    - Returns timeline entries with full project objects and display dates
+    - Proper datetime parsing with timezone handling for accurate sorting
+  - Implementation: `backend/src/api/project_routes.py`
+  - HTTP Client: `backend/src/cli/services/projects_api_service.py` (ProjectsRankingAPIService)
+  - TUI Integration: Feature flag `PORTFOLIO_USE_API` for hybrid mode (API calls vs local CLI calculations)
+  - All blocking operations wrapped in `asyncio.to_thread()` to prevent event loop blocking
+  - Tests: Manual testing via Postman and TUI (with uvicorn server)
+
+### (Not Completed)
+
 - `GET/PATCH /api/projects/{project_id}/overrides`: User overrides for chronology corrections, comparison attributes, highlighted skills, role/evidence/thumbnail.
 - `DELETE /api/projects/{project_id}/insights`: Delete analysis results but keep file records; shared files not removed.
-- `DELETE /api/projects/{project_id}`: Full delete.
-- `POST /api/projects/{project_id}/rank`: Return ranking score and rationale; accepts custom weights for human-in-the-loop tuning.
-- `GET /api/projects/top`: Summaries of top-ranked projects.
-- `GET /api/projects/timeline`: Chronological list of projects.
- - `GET /api/skills/timeline`: Chronological list of skills exercised.
 
+
+  
 ### Configurations and Preferences
 - `GET/PUT /api/config`: Read/write user config (scan prefs, ignore rules, ranking weights, skill preferences).
 - `GET/POST /api/config/profiles`: Manage scan/analysis profiles.
 
 ### Resume and Portfolio
+
+#### Portfolio Items ✅ Completed
+- **Portfolio Items CRUD API** 
+  - `POST /api/portfolio/items`: Create a new portfolio showcase item with title (required), summary, role, evidence, and thumbnail (all optional).
+    - Request: `{"title": "string", "summary": "string?", "role": "string?", "evidence": "string?", "thumbnail": "string?"}`
+    - Response: HTTP 201 with full item object including `id`, `user_id`, `created_at`, `updated_at`
+  - `GET /api/portfolio/items`: Retrieve all portfolio items for the authenticated user.
+    - Response: HTTP 200 with array of portfolio items; user-scoped via RLS
+  - `GET /api/portfolio/items/{item_id}`: Retrieve a specific portfolio item by ID.
+    - Response: HTTP 200 with item object or HTTP 404 if not found/unauthorized
+  - `PATCH /api/portfolio/items/{item_id}`: Update a specific portfolio item (all fields optional).
+    - Request: `{"title": "string?", "summary": "string?", "role": "string?", "evidence": "string?", "thumbnail": "string?"}`
+    - Response: HTTP 200 with updated item object or HTTP 404
+  - `DELETE /api/portfolio/items/{item_id}`: Delete a specific portfolio item.
+    - Response: HTTP 204 No Content or HTTP 404
+  - Implementation: `backend/src/api/portfolio_routes.py`
+  - Service layer: `backend/src/cli/services/portfolio_item_service.py`
+  - Models: `backend/src/api/models/portfolio_item_models.py`
+  - Database: `db/07_create_portfolio_items_table.sql`
+  - Tests: `tests/test_portfolio_items_api.py` (10 tests, all passing)
+  - Features:
+    - Per-user isolation via PostgreSQL RLS policy (`user_id = auth.uid()`)
+    - Field validation: title max 255 chars, summary max 1000 chars, role max 255 chars, evidence max 2048 chars, thumbnail max 1024 chars
+    - UUID primary keys with created_at/updated_at timestamps
+    - Partial updates via PATCH (only provided fields are modified)
+
 - `POST /api/resume/items`: Generate or save resume items from projects/analysis; allow custom wording and role description; optional thumbnail URL.
 - `GET /api/resume/items`, `GET /api/resume/items/{id}`, `PATCH /api/resume/items/{id}`, `DELETE /api/resume/items/{id}`: CRUD + edits.
-- `GET /api/portfolio/items`, `POST /api/portfolio/items`: CRUD for portfolio showcase items (custom title/summary/role/evidence/thumbnail).
-- `GET/PATCH/DELETE /api/portfolio/items/{id}`: Fetch/edit/delete showcase item.
 - `GET /api/portfolio/chronology`: Chronological list of projects and exercised skills.
 - `POST /api/portfolio/refresh`: Append new zip(s) and rebuild combined view.
 
 ### Search, Dedup, and Selection
-- `GET /api/search`: Query across projects/files/skills with filters.
+- `GET /api/projects/search`: Query across projects' scan data (files) with filters.
+
+  Description: Server-side search endpoint to find files across one or more of the user's scanned projects. This replaces the earlier `/api/search` route and lives under `projects` to scope results by project.
+
+  Query parameters:
+  - `q` (string, required): Search query (filename fragment, path fragment, or keyword).
+  - `project_id` (uuid, optional): Restrict search to a single project.
+  - `limit` (int, optional): Maximum number of items to return (default 20, max 100).
+  - `offset` (int, optional): Result offset for pagination (default 0).
+
+  Authentication: `Authorization: Bearer <access_token>` required. Results are scoped to the authenticated user.
+
+  Response (200):
+  ```json
+  {
+    "items": [
+      {
+        "project_id": "...",
+        "project_name": "budgetTracker",
+        "path": "backend/src/config/upstash.js",
+        "filename": "upstash.js",
+        "mime_type": "application/javascript",
+        "size_bytes": 1234
+      }
+    ],
+    "page": {"limit": 20, "offset": 0, "total": 56}
+  }
+  ```
+
+  Notes on item shape:
+  - Each item includes `project_id`, `project_name`, `path` (relative path as stored in scan_data), `filename`, `mime_type`, and `size_bytes` when available.
+
+  Errors: Standard error envelope `{code, message, details?}` with `401` for unauthorized and `400` for invalid query parameters.
+
+  Example request:
+  ```http
+  GET /api/projects/search?q=upstash&project_id=proj_abc123&limit=50
+  Authorization: Bearer <token>
+  ```
+
+  Implementation: `backend/src/api/project_routes.py` provides this handler; TUI clients should use `ProjectsAPIService.search_projects(...)` or `GET /api/projects/search` directly when `PORTFOLIO_USE_API` is enabled.
 - `GET /api/dedup`: Report duplicate files and recommendations to retain a single copy.
 - `POST /api/selection`: Save user selections (projects/skills/ranking order); supports reordering and showcase selection.
+
+#### ✅ Completed
+- `GET /api/dedup`: Hash-based duplicate report backed by project scan data.
+- Implementation: `backend/src/api/spec_routes.py`
+- TUI integration: `backend/src/cli/textual_app.py` + `ProjectsAPIService.get_dedup_report`
+- Tests: `tests/test_dedup_api.py`
 
 ### Health and Meta
 - `GET /health`: Health check (existing).
@@ -133,6 +249,7 @@ Content-Type: multipart/form-data
 - Contributions and metrics: activity frequency, duration, activity type mix (code/test/design/doc), key metrics.
 - Skill extraction and ranking: skill list, timelines, project ranking and summaries.
 - Data storage/retrieval: project, portfolio, resume item CRUD; historical retrieval.
+- **Portfolio items showcase**: `/api/portfolio/items` CRUD with per-user RLS, custom title/summary/role/evidence/thumbnail fields (title required, others optional).
 - Incremental and dedup: append zip, duplicate detection, shared files not deleted when removing insights.
 - Human-in-the-loop: adjustable weights, selection/reordering endpoints, editable wording/roles, optional thumbnails, user overrides.
 - Project/skill chronology: timeline endpoints (/api/projects/timeline, /api/skills/timeline, /api/portfolio/chronology).

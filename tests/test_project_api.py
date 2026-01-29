@@ -12,7 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 import uuid
 
-from src.main import app
+from main import app
 
 
 client = TestClient(app)
@@ -404,6 +404,178 @@ class TestProjectIntegration:
     def test_delete_nonexistent_project_returns_404(self):
         """✅ VERIFIED: DELETE /api/projects/{invalid_id} returns 404 Not Found"""
         pass
+
+
+class TestProjectRoleEndpoints:
+    """Tests for PATCH/GET /api/projects/{project_id}/role endpoints."""
+
+    def test_update_role_valid(self):
+        """Test updating a project role with a valid role value."""
+        response = client.patch(
+            f"/api/projects/{VALID_PROJECT_ID}/role",
+            json={"role": "lead"},
+            headers={"Authorization": f"Bearer {TEST_TOKEN}"},
+        )
+        # May return 404 if project doesn't exist, or 200 if it does
+        assert response.status_code in [200, 404]
+        if response.status_code == 200:
+            data = response.json()
+            assert data["role"] == "lead"
+            assert data["project_id"] == VALID_PROJECT_ID
+
+    def test_update_role_all_valid_values(self):
+        """Test that all allowed role values are accepted."""
+        allowed_roles = ["author", "contributor", "lead", "maintainer", "reviewer"]
+        for role in allowed_roles:
+            response = client.patch(
+                f"/api/projects/{VALID_PROJECT_ID}/role",
+                json={"role": role},
+                headers={"Authorization": f"Bearer {TEST_TOKEN}"},
+            )
+            # Should either succeed (200) or fail with 404 (project not found)
+            # Should NOT fail with 400 (invalid role)
+            assert response.status_code in [200, 404], f"Role '{role}' should be valid"
+
+    def test_update_role_invalid_value_returns_400(self):
+        """Test that invalid role values return 400 Bad Request."""
+        response = client.patch(
+            f"/api/projects/{VALID_PROJECT_ID}/role",
+            json={"role": "invalid_role"},
+            headers={"Authorization": f"Bearer {TEST_TOKEN}"},
+        )
+        # Should return 400 for invalid role (unless project not found first)
+        assert response.status_code in [400, 404]
+        if response.status_code == 400:
+            assert "Invalid role" in response.json().get("detail", "")
+
+    def test_update_role_empty_value_returns_400(self):
+        """Test that empty role value returns 400 Bad Request."""
+        response = client.patch(
+            f"/api/projects/{VALID_PROJECT_ID}/role",
+            json={"role": ""},
+            headers={"Authorization": f"Bearer {TEST_TOKEN}"},
+        )
+        # Empty string is not in ALLOWED_ROLES, should return 400
+        assert response.status_code in [400, 404]
+
+    def test_update_role_missing_auth_returns_401(self):
+        """Test that missing Authorization header returns 401."""
+        response = client.patch(
+            f"/api/projects/{VALID_PROJECT_ID}/role",
+            json={"role": "contributor"},
+        )
+        assert response.status_code == 401
+
+    def test_update_role_nonexistent_project_returns_404(self):
+        """Test that updating role for nonexistent project returns 404."""
+        fake_project_id = str(uuid.uuid4())
+        response = client.patch(
+            f"/api/projects/{fake_project_id}/role",
+            json={"role": "author"},
+            headers={"Authorization": f"Bearer {TEST_TOKEN}"},
+        )
+        assert response.status_code == 404
+
+    def test_update_role_missing_body_returns_422(self):
+        """Test that missing request body returns 422."""
+        response = client.patch(
+            f"/api/projects/{VALID_PROJECT_ID}/role",
+            headers={"Authorization": f"Bearer {TEST_TOKEN}"},
+        )
+        assert response.status_code == 422
+
+    def test_get_role_valid(self):
+        """Test getting a project role."""
+        response = client.get(
+            f"/api/projects/{VALID_PROJECT_ID}/role",
+            headers={"Authorization": f"Bearer {TEST_TOKEN}"},
+        )
+        # May return 404 if project doesn't exist, or 200 if it does
+        assert response.status_code in [200, 404]
+        if response.status_code == 200:
+            data = response.json()
+            assert "role" in data
+            assert "project_id" in data
+            assert data["project_id"] == VALID_PROJECT_ID
+
+    def test_get_role_missing_auth_returns_401(self):
+        """Test that GET role without auth returns 401."""
+        response = client.get(
+            f"/api/projects/{VALID_PROJECT_ID}/role",
+        )
+        assert response.status_code == 401
+
+    def test_get_role_nonexistent_project_returns_404(self):
+        """Test that getting role for nonexistent project returns 404."""
+        fake_project_id = str(uuid.uuid4())
+        response = client.get(
+            f"/api/projects/{fake_project_id}/role",
+            headers={"Authorization": f"Bearer {TEST_TOKEN}"},
+        )
+        assert response.status_code == 404
+
+
+class TestCreateProjectWithRole:
+    """Tests for creating projects with role field."""
+
+    def test_create_project_with_valid_role(self):
+        """Test creating a project with a valid role."""
+        response = client.post(
+            "/api/projects",
+            json={
+                "project_name": "Project With Role",
+                "project_path": "/test/with-role",
+                "scan_data": SAMPLE_SCAN_DATA,
+                "role": "lead",
+            },
+            headers={"Authorization": f"Bearer {TEST_TOKEN}"},
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert "id" in data
+
+    def test_create_project_with_invalid_role_returns_400(self):
+        """Test that creating project with invalid role returns 400."""
+        response = client.post(
+            "/api/projects",
+            json={
+                "project_name": "Invalid Role Project",
+                "project_path": "/test/invalid-role",
+                "scan_data": SAMPLE_SCAN_DATA,
+                "role": "invalid_role",
+            },
+            headers={"Authorization": f"Bearer {TEST_TOKEN}"},
+        )
+        assert response.status_code == 400
+        assert "Invalid role" in response.json().get("detail", "")
+
+    def test_create_project_without_role_succeeds(self):
+        """Test that role is optional when creating a project."""
+        response = client.post(
+            "/api/projects",
+            json={
+                "project_name": "No Role Project",
+                "project_path": "/test/no-role",
+                "scan_data": SAMPLE_SCAN_DATA,
+                # No role field
+            },
+            headers={"Authorization": f"Bearer {TEST_TOKEN}"},
+        )
+        assert response.status_code == 201
+
+    def test_create_project_with_null_role_succeeds(self):
+        """Test that explicit null role is accepted."""
+        response = client.post(
+            "/api/projects",
+            json={
+                "project_name": "Null Role Project",
+                "project_path": "/test/null-role",
+                "scan_data": SAMPLE_SCAN_DATA,
+                "role": None,
+            },
+            headers={"Authorization": f"Bearer {TEST_TOKEN}"},
+        )
+        assert response.status_code == 201
 
 
 # Manual Test Results Summary

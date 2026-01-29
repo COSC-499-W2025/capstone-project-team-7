@@ -6,8 +6,14 @@ from math import gcd
 from statistics import mean
 from typing import Any, Dict, Iterable, Mapping, Optional, Sequence, Tuple, Union
 
-from ..scanner.media import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
-from ..scanner.models import FileMetadata
+try:
+    # Try relative import first (for CLI/TUI context)
+    from ..scanner.media import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
+    from ..scanner.models import FileMetadata
+except (ImportError, ValueError):
+    # Fall back to absolute import (for API context)
+    from scanner.media import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
+    from scanner.models import FileMetadata
 
 
 FileLike = Union[FileMetadata, Mapping[str, Any]]

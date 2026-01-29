@@ -23,6 +23,11 @@ from pydantic import BaseModel, Field
 
 from api.dependencies import AuthContext, get_auth_context
 
+try:
+    from cli.services.projects_service import ProjectsService, ProjectsServiceError
+except ModuleNotFoundError:  # pragma: no cover - test/import fallback
+    from backend.src.cli.services.projects_service import ProjectsService, ProjectsServiceError
+
 # Add parent directory to path for absolute imports (needed for lazy imports in background tasks)
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -368,13 +373,6 @@ class ResumeItem(BaseModel):
     created_at: str
 
 
-class SelectionRequest(BaseModel):
-    project_order: List[str] = Field(default_factory=list)
-    skill_order: List[str] = Field(default_factory=list)
-    selected_project_ids: List[str] = Field(default_factory=list)
-    selected_skill_ids: List[str] = Field(default_factory=list)
-
-
 class TimelineItem(BaseModel):
     project_id: str
     name: str
@@ -435,7 +433,6 @@ _upload_store: Dict[str, Upload] = {}
 _scan_store: Dict[str, ScanStatus] = {}
 _project_store: Dict[str, ProjectDetail] = {}
 _resume_store: Dict[str, ResumeItem] = {}
-_selection_store: Dict[str, SelectionRequest] = {}
 _consent_store: Dict[str, ConsentStatus] = {}
 
 # Thread lock for scan store access
@@ -443,6 +440,10 @@ _scan_store_lock = threading.Lock()
 
 # Lazy-initialized scan service
 _scan_service = None
+
+# Lazy-initialized projects service for dedup reports
+_projects_service: Optional[ProjectsService] = None
+_projects_service_lock = threading.Lock()
 
 
 def _get_scan_service():
@@ -452,6 +453,16 @@ def _get_scan_service():
         from src.cli.services.scan_service import ScanService
         _scan_service = ScanService()
     return _scan_service
+
+
+def _get_projects_service() -> ProjectsService:
+    """Get or create the singleton projects service instance (thread-safe)."""
+    global _projects_service
+    if _projects_service is None:
+        with _projects_service_lock:
+            if _projects_service is None:
+                _projects_service = ProjectsService()
+    return _projects_service
 
 
 def _update_scan_status(
@@ -708,6 +719,7 @@ def _run_scan_background(
                 "path": meta.path,
                 "size_bytes": meta.size_bytes,
                 "mime_type": meta.mime_type,
+                "file_hash": meta.file_hash,
             })
 
         result_payload = {
@@ -1024,94 +1036,98 @@ def append_upload(project_id: str, upload_id: str):
     return {"project_id": project_id, "upload_id": upload_id, "state": JobState.succeeded}
 
 
-@router.post("/api/projects/{project_id}/rank", response_model=RankResponse)
-def rank_project(project_id: str, payload: RankRequest):
-    if project_id not in _project_store:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-    score = sum(payload.weights.values())
-    return RankResponse(score=score, reasons=["Stubbed ranking"])
+# Commented out - Real implementations now in project_routes.py
+# @router.post("/api/projects/{project_id}/rank", response_model=RankResponse)
+# def rank_project(project_id: str, payload: RankRequest):
+#     if project_id not in _project_store:
+#         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+#     score = sum(payload.weights.values())
+#     return RankResponse(score=score, reasons=["Stubbed ranking"])
 
 
-@router.get("/api/projects/top", response_model=List[ProjectSummary])
-def top_projects(limit: int = 3):
-    items = list(_project_store.values())[:limit]
-    return [
-        ProjectSummary(
-            project_id=p.project_id,
-            name=p.name,
-            project_type=p.project_type,
-            languages=p.languages,
-            frameworks=p.frameworks,
-            rank_score=p.rank_score,
-            created_at=p.created_at,
-        )
-        for p in items
-    ]
+# Commented out - Real implementation now in project_routes.py
+# @router.get("/api/projects/top", response_model=List[ProjectSummary])
+# def top_projects(limit: int = 3):
+#     items = list(_project_store.values())[:limit]
+#     return [
+#         ProjectSummary(
+#             project_id=p.project_id,
+#             name=p.name,
+#             project_type=p.project_type,
+#             languages=p.languages,
+#             frameworks=p.frameworks,
+#             rank_score=p.rank_score,
+#             created_at=p.created_at,
+#         )
+#         for p in items
+#     ]
 
 
-@router.get("/api/projects/timeline", response_model=List[TimelineItem])
-def project_timeline():
-    items: List[TimelineItem] = []
-    for p in _project_store.values():
-        items.append(
-            TimelineItem(
-                project_id=p.project_id,
-                name=p.name,
-                start_date=p.scan_timestamp,
-                end_date=p.project_end_date,
-                duration_days=None,
-            )
-        )
-    return items
+# Commented out - Real implementation now in project_routes.py
+# @router.get("/api/projects/timeline", response_model=List[TimelineItem])
+# def project_timeline():
+#     items: List[TimelineItem] = []
+#     for p in _project_store.values():
+#         items.append(
+#             TimelineItem(
+#                 project_id=p.project_id,
+#                 name=p.name,
+#                 start_date=p.scan_timestamp,
+#                 end_date=p.project_end_date,
+#                 duration_days=None,
+#             )
+#         )
+#     return items
 
 
-@router.get("/api/resume/items", response_model=Dict[str, Any])
-def list_resume_items(limit: int = 20, offset: int = 0):
-    items = list(_resume_store.values())[offset : offset + limit]
-    return {
-        "items": items,
-        "page": Pagination(limit=limit, offset=offset, total=len(_resume_store)),
-    }
-
-
-class ResumeCreateRequest(BaseModel):
-    project_id: str
-    title: str
-    role: Optional[str] = None
-    summary: Optional[str] = None
-    evidence: List[str] = Field(default_factory=list)
-    thumbnail_url: Optional[str] = None
-
-
-@router.post("/api/resume/items", response_model=ResumeItem)
-def create_resume_item(payload: ResumeCreateRequest):
-    item_id = str(uuid.uuid4())
-    item = ResumeItem(
-        id=item_id,
-        project_id=payload.project_id,
-        title=payload.title,
-        role=payload.role,
-        summary=payload.summary,
-        evidence=payload.evidence,
-        thumbnail_url=payload.thumbnail_url,
-        created_at=_now_iso(),
-    )
-    _resume_store[item_id] = item
-    return item
-
-
-@router.get("/api/resume/items/{item_id}", response_model=ResumeItem)
-def get_resume_item(item_id: str):
-    item = _resume_store.get(item_id)
-    if not item:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resume item not found")
-    return item
-
-
-@router.delete("/api/resume/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_resume_item(item_id: str):
-    _resume_store.pop(item_id, None)
-    return
+# Commented out - Real implementation now in resume_routes.py
+# @router.get("/api/resume/items", response_model=Dict[str, Any])
+# def list_resume_items(limit: int = 20, offset: int = 0):
+#     items = list(_resume_store.values())[offset : offset + limit]
+#     return {
+#         "items": items,
+#         "page": Pagination(limit=limit, offset=offset, total=len(_resume_store)),
+#     }
+#
+#
+# class ResumeCreateRequest(BaseModel):
+#     project_id: str
+#     title: str
+#     role: Optional[str] = None
+#     summary: Optional[str] = None
+#     evidence: List[str] = Field(default_factory=list)
+#     thumbnail_url: Optional[str] = None
+#
+#
+# @router.post("/api/resume/items", response_model=ResumeItem)
+# def create_resume_item(payload: ResumeCreateRequest):
+#     item_id = str(uuid.uuid4())
+#     item = ResumeItem(
+#         id=item_id,
+#         project_id=payload.project_id,
+#         title=payload.title,
+#         role=payload.role,
+#         summary=payload.summary,
+#         evidence=payload.evidence,
+#         thumbnail_url=payload.thumbnail_url,
+#         created_at=_now_iso(),
+#     )
+#     _resume_store[item_id] = item
+#     return item
+#
+#
+# @router.get("/api/resume/items/{item_id}", response_model=ResumeItem)
+# def get_resume_item(item_id: str):
+#     item = _resume_store.get(item_id)
+#     if not item:
+#         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resume item not found")
+#     return item
+#
+#
+# @router.delete("/api/resume/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+# def delete_resume_item(item_id: str):
+#     _resume_store.pop(item_id, None)
+#     return
 
 
 @router.get("/api/config", response_model=ConfigResponse)
@@ -1195,28 +1211,116 @@ def save_profile(payload: ProfileUpsertRequest, authorization: Optional[str] = H
     }
 
 
-@router.get("/api/search")
-def search(q: Optional[str] = None, scope: Optional[str] = None, project_id: Optional[str] = None, limit: int = 50):
-    return {"items": [], "page": Pagination(limit=limit, offset=0, total=0)}
+# NOTE: `/api/search` endpoint moved to `project_routes.py` (as `/api/projects/search`).
+# The previous implementation lived here; it was removed to avoid duplicate routes.
+
+
+def _build_dedup_report(files: List[Dict[str, Any]]) -> DedupReport:
+    total_files_analyzed = len(files)
+    files_with_hash = 0
+    hash_groups: Dict[str, List[Dict[str, Any]]] = {}
+
+    for entry in files:
+        file_hash = entry.get("file_hash")
+        if not file_hash:
+            continue
+        files_with_hash += 1
+        hash_groups.setdefault(file_hash, []).append(entry)
+
+    duplicate_groups: List[DedupGroup] = []
+    total_duplicate_files = 0
+    total_wasted_bytes = 0
+    total_dup_size = 0
+
+    for file_hash, group_files in hash_groups.items():
+        if len(group_files) < 2:
+            continue
+        sizes: List[int] = []
+        dedup_files: List[DedupFile] = []
+        for entry in group_files:
+            size_value = int(entry.get("size_bytes") or 0)
+            sizes.append(size_value)
+            dedup_files.append(
+                DedupFile(
+                    path=entry.get("path") or "unknown",
+                    size_bytes=size_value,
+                    mime_type=entry.get("mime_type"),
+                )
+            )
+        total_size_bytes = sum(sizes)
+        wasted_bytes = sum(sizes[1:])
+        total_dup_size += total_size_bytes
+        total_wasted_bytes += wasted_bytes
+        total_duplicate_files += len(group_files)
+        duplicate_groups.append(
+            DedupGroup(
+                hash=file_hash,
+                file_count=len(group_files),
+                total_size_bytes=total_size_bytes,
+                wasted_bytes=wasted_bytes,
+                files=dedup_files,
+            )
+        )
+
+    duplicate_groups.sort(key=lambda group: group.wasted_bytes, reverse=True)
+    space_savings_percent = (total_wasted_bytes / total_dup_size * 100.0) if total_dup_size else 0.0
+
+    summary = {
+        "total_files_analyzed": total_files_analyzed,
+        "files_with_hash": files_with_hash,
+        "duplicate_groups_count": len(duplicate_groups),
+        "total_duplicate_files": total_duplicate_files,
+        "total_wasted_bytes": total_wasted_bytes,
+        "space_savings_percent": round(space_savings_percent, 2),
+    }
+    return DedupReport(summary=summary, duplicate_groups=duplicate_groups)
 
 
 @router.get("/api/dedup", response_model=DedupReport)
-def dedup(project_id: str):
-    return DedupReport(
-        summary={
-            "total_files_analyzed": 0,
-            "files_with_hash": 0,
-            "duplicate_groups_count": 0,
-            "total_duplicate_files": 0,
-            "total_wasted_bytes": 0,
-            "space_savings_percent": 0.0,
-        },
-        duplicate_groups=[],
-    )
+def dedup(project_id: str, auth: AuthContext = Depends(get_auth_context)):
+    if not project_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "validation_error", "message": "project_id is required"},
+        )
 
+    try:
+        uuid.UUID(project_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "validation_error", "message": "project_id must be a valid UUID"},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "validation_error", "message": "project_id is required"},
+        )
 
-@router.post("/api/selection")
-def save_selection(payload: SelectionRequest):
-    key = "default"
-    _selection_store[key] = payload
-    return {"status": "saved"}
+    try:
+        service = _get_projects_service()
+        project = service.get_project_scan(auth.user_id, project_id)
+    except ProjectsServiceError as exc:
+        logger.error(f"Failed to load project for dedup: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "project_error", "message": str(exc)},
+        )
+    except Exception as exc:
+        logger.exception("Failed to load project for dedup")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "project_error", "message": "Unable to load project"},
+        ) from exc
+
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found", "message": f"Project {project_id} not found"},
+        )
+
+    scan_data = project.get("scan_data") or {}
+    files = scan_data.get("files") or []
+    if not isinstance(files, list):
+        files = []
+
+    return _build_dedup_report(files)
