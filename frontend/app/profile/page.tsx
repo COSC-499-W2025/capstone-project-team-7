@@ -90,10 +90,10 @@ export default function ProfilePage() {
         const result = await window.desktop!.openFile({
           filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp"] }],
         });
-        if (result) {
-          // result is a file path string; use as local preview
+        if (result && result.length > 0) {
+          // result is an array of file path strings; use the first one as local preview
           // TODO: upload to Supabase storage and use the returned URL
-          setAvatarPreview(result as string);
+          setAvatarPreview(result[0]);
         }
       } catch {
         // user cancelled
