@@ -23,4 +23,6 @@ contextBridge.exposeInMainWorld("desktop", {
   ping: () => ipcRenderer.invoke(IPC_CHANNELS.PING),
   openFile: (options?: Electron.OpenDialogOptions) => ipcRenderer.invoke(IPC_CHANNELS.OPEN_FILE, options),
   selectDirectory: (options?: Electron.OpenDialogOptions) => ipcRenderer.invoke(IPC_CHANNELS.SELECT_DIRECTORY, options),
+  saveSettings: (settings?: any) => ipcRenderer.invoke(IPC_CHANNELS.SAVE_SETTINGS, settings),
+  loadSettings: () => ipcRenderer.invoke(IPC_CHANNELS.LOAD_SETTINGS),
 });

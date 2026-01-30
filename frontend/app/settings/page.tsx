@@ -18,15 +18,30 @@ export default function SettingsPage() {
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
 
   useEffect(() => {
-    const local = loadSettings();
-    setSettings(local);
-    setConsents(loadConsents());
+    let cancelled = false;
 
-    // Try to load consent status from backend; fallback to local state
     (async () => {
+      // try desktop persisted settings first
+      try {
+        const res = await (window.desktop?.loadSettings?.() as Promise<any> | undefined);
+        if (!cancelled && res && res.ok && res.settings) {
+          setSettings(res.settings);
+        } else {
+          const local = loadSettings();
+          if (!cancelled) setSettings(local);
+        }
+      } catch {
+        const local = loadSettings();
+        if (!cancelled) setSettings(local);
+      }
+
+      // load consents from local storage (desktop save currently only persists settings.json)
+      if (!cancelled) setConsents(loadConsents());
+
+      // Try to load consent status from backend; fallback to local state
       try {
         const res = await consentApi.get();
-        if (res.ok) {
+        if (!cancelled && res.ok) {
           // Map backend consent to local flags
           setSettings((s) => ({ ...(s ?? {}), enableAnalytics: !!res.data.external_services }));
         }
@@ -41,6 +56,9 @@ export default function SettingsPage() {
         // ignore
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const update = (patch: Partial<AppSettings>) => setSettings((s) => ({ ...(s ?? {}), ...(patch ?? {}) }));
