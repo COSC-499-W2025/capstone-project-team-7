@@ -2,7 +2,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { api } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 
 const setupSteps = [
   {
@@ -22,7 +24,8 @@ const setupSteps = [
 export default function HomePage() {
   return (
     <main className="space-y-8">
-      <div className="space-y-3">
+      <div className="flex items-start justify-between">
+        <div className="space-y-3">
         <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Desktop migration</p>
         <h1 className="text-4xl font-semibold tracking-tight text-slate-50">
           Next.js renderer scaffold is ready
@@ -31,6 +34,12 @@ export default function HomePage() {
           This page is the landing spot for the new desktop UI. Wire it to the FastAPI backend and Electron IPC as
           you add screens for scans, resumes, and settings.
         </p>
+        </div>
+        <div className="pt-3">
+          <Link href="/settings">
+            <Button variant="secondary">Settings</Button>
+          </Link>
+        </div>
       </div>
 
       <section className="grid gap-4 sm:grid-cols-3">

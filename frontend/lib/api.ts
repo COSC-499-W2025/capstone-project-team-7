@@ -1,4 +1,4 @@
-import type { ApiResult } from "./api.types";
+import type { ApiResult, ConsentStatus, ConsentNotice, ConsentUpdateRequest, ConfigResponse, ProfilesResponse, ProfileUpsertRequest, ConfigUpdateRequest } from "./api.types";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
 
@@ -34,4 +34,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T
 
 export const api = {
   health: () => request<{ status: string; message?: string }>("/health")
+};
+
+export const consent = {
+  get: (): Promise<ApiResult<ConsentStatus>> => request<ConsentStatus>("/api/consent"),
+  set: (payload: ConsentUpdateRequest): Promise<ApiResult<ConsentStatus>> =>
+    request<ConsentStatus>("/api/consent", { method: "POST", body: JSON.stringify(payload) }),
+  notice: (service: string): Promise<ApiResult<ConsentNotice>> =>
+    request<ConsentNotice>(`/api/consent/notice?service=${encodeURIComponent(service)}`),
+};
+
+export const config = {
+  get: (): Promise<ApiResult<ConfigResponse>> => request<ConfigResponse>("/api/config"),
+  update: (payload: ConfigUpdateRequest): Promise<ApiResult<ConfigResponse>> =>
+    request<ConfigResponse>("/api/config", { method: "PUT", body: JSON.stringify(payload) }),
+  listProfiles: (): Promise<ApiResult<ProfilesResponse>> => request<ProfilesResponse>("/api/config/profiles"),
+  saveProfile: (payload: ProfileUpsertRequest): Promise<ApiResult<any>> =>
+    request<any>("/api/config/profiles", { method: "POST", body: JSON.stringify(payload) }),
 };

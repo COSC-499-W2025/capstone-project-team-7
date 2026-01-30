@@ -1,3 +1,50 @@
+export type ApiResult<T> = { ok: true; data: T } | { ok: false; error?: string; status?: number };
+
+export type ConsentStatus = {
+  user_id: string;
+  data_access: boolean;
+  external_services: boolean;
+  updated_at: string;
+};
+
+export type ConsentNotice = {
+  service: string;
+  privacy_notice: string;
+  implications: string[];
+  options: string[];
+  version: string;
+};
+
+export type ConsentUpdateRequest = {
+  data_access: boolean;
+  external_services: boolean;
+  notice_acknowledged_at?: string | null;
+};
+
+export type ConfigResponse = {
+  scan_profiles?: Record<string, Record<string, any>>;
+  current_profile?: string | null;
+  max_file_size_mb?: number | null;
+  follow_symlinks?: boolean | null;
+};
+
+export type ProfilesResponse = {
+  current_profile: string;
+  profiles: Record<string, Record<string, any>>;
+};
+
+export type ProfileUpsertRequest = {
+  name: string;
+  extensions?: string[];
+  exclude_dirs?: string[];
+  description?: string;
+};
+
+export type ConfigUpdateRequest = {
+  current_profile?: string | null;
+  max_file_size_mb?: number | null;
+  follow_symlinks?: boolean | null;
+};
 // Typed contracts for the renderer ↔ FastAPI calls used by the desktop app.
 // These are client-side shapes; backend models should mirror them.
 

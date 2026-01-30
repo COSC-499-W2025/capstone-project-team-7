@@ -5,8 +5,10 @@
   "main": "dist/main.js",
   "type": "commonjs",
   "scripts": {
-    "dev": "ts-node main.ts",
+    "dev": "npm run build:electron && electron .",
     "build": "tsc -p tsconfig.json",
+    "build:electron": "tsc -p tsconfig.json",
+    "build:watch": "tsc -p tsconfig.json -w",
     "start": "node dist/main.js"
   },
   "dependencies": {
