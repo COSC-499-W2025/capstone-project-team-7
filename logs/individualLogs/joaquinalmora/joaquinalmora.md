@@ -1,7 +1,7 @@
 # Joaquin Almora / @joaquinalmora
 
 ### Weekly Navigation
-- [Week 18] (#week-18)
+- [Week 18](#week-18)
 - [Week 17](#week-17)
 - [Week 16](#week-16)
 - [Week 15](#week-15)
@@ -20,7 +20,7 @@
 - [Week 3](#week-3-september-15th---21st)
 
 ## Week 18 (January 26th – February 1st)
-This week focused on strengthening API correctness with contract tests, cleaning up legacy UI code, and shipping a complete authentication flow. The work was delivered in [PR #255 – “Add API contract tests using FastAPI TestClient”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/255), [PR #216 – “Remove deprecated Textual TUI”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/216), and [PR #258 – “Auth pages, consent popovers, Playwright tests, dev scripts”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/258).
+This week focused on strengthening API correctness with contract tests, cleaning up legacy UI code, and shipping a complete authentication flow. The work was delivered in [PR #255 – “Add API contract tests using FastAPI TestClient”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/255), [PR #216 – “Tui deletion”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/216), and [PR #258 – “Electron login and signup”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/258).
 
 On the backend, I created 61 comprehensive contract tests using FastAPI’s `TestClient` (no live server required). The tests validate status codes, error envelopes, and response payload shapes across major endpoint groups. During test development, I uncovered and fixed real bugs: a syntax error in `portfolio_routes.py` (unclosed `HTTPException` parenthesis), and missing service locks in `project_routes.py` (`_projects_service_lock`, `_overrides_service_lock`) that were causing 500 errors on project endpoints. I also resolved rebase conflicts after syncing with `main`, merging newly added encryption locks with existing service locks.
 
