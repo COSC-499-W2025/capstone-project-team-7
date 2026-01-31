@@ -3,6 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { UserProfile, UpdateProfileRequest } from "@/lib/api.types";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Avatar } from "@/components/ui/avatar";
+import { Label } from "@/components/ui/label";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -92,8 +97,6 @@ export default function ProfilePage() {
           filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp"] }],
         });
         if (result && result.length > 0) {
-          // result is an array of file path strings; use the first one as local preview
-          // TODO: upload to Supabase storage and use the returned URL
           setAvatarPreview(result[0]);
         }
       } catch {
@@ -221,33 +224,38 @@ export default function ProfilePage() {
   if (loading) {
     return (
       <main className="flex items-center justify-center py-24">
-        <p className="text-sm text-gray-500">Loading profile...</p>
+        <p className="text-sm text-muted-foreground">Loading profile...</p>
       </main>
     );
   }
 
   return (
-    <main className="pc-no-shadow space-y-6">
+    <main className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Profile</h1>
-          <p className="mt-1 text-sm text-gray-500">Manage your account settings</p>
+          <h1 className="text-[30px] leading-[36px] font-bold tracking-tight">Profile</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">Manage your account settings</p>
         </div>
-        <a href="/" className="pc-btn pc-btn-secondary text-sm">
+        <Button
+          variant="outline"
+          className="rounded-full"
+          onClick={() => window.history.back()}
+        >
           Back
-        </a>
+        </Button>
       </div>
 
-      <div className="pc-divider" />
+      <hr className="border-border" />
 
       {/* Feedback banner */}
       {message && (
         <div
-          className={`pc-surface px-4 py-2 text-sm ${
+          role="alert"
+          className={`rounded-[4px] border px-3 py-2 text-sm ${
             message.type === "ok"
-              ? "border-green-600 text-green-400"
-              : "border-red-600 text-red-400"
+              ? "border-green-600 text-green-700 bg-green-50"
+              : "border-red-600 text-red-700 bg-red-50"
           }`}
         >
           {message.text}
@@ -255,233 +263,223 @@ export default function ProfilePage() {
       )}
 
       {/* 2-column layout */}
-      <div className="grid gap-8 md:grid-cols-[280px_1fr]">
+      <div className="grid gap-6 md:grid-cols-[260px_1fr]">
         {/* -------- LEFT COLUMN -------- */}
-        <section className="space-y-6">
+        <div className="space-y-4">
           {/* Avatar */}
-          <div className="pc-surface pc-dense flex flex-col items-center gap-3 p-6">
-            <div className="relative h-28 w-28 overflow-hidden rounded-full border-2 border-current">
-              {avatarPreview ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={avatarPreview}
-                  alt="Avatar preview"
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center bg-gray-200 text-3xl font-bold text-gray-600">
-                  {(draft.display_name ?? draft.email ?? "?").charAt(0).toUpperCase()}
-                </div>
-              )}
-            </div>
+          <Card className="shadow-none">
+            <CardContent className="flex flex-col items-center gap-3 p-4">
+              <Avatar
+                src={avatarPreview ?? undefined}
+                alt="Avatar preview"
+                fallback={(draft.display_name ?? draft.email ?? "?").charAt(0).toUpperCase()}
+                className="h-28 w-28 border-2 border-border text-3xl font-bold"
+              />
 
-            <div className="flex gap-2">
-              <button type="button" onClick={pickAvatar} className="pc-btn pc-btn-primary text-xs">
-                Change
-              </button>
-              {avatarPreview && (
-                <button type="button" onClick={removeAvatar} className="pc-btn pc-btn-secondary text-xs">
-                  Remove
-                </button>
-              )}
-            </div>
+              <div className="flex gap-2">
+                <Button size="sm" className="rounded-full" onClick={pickAvatar}>
+                  Change
+                </Button>
+                {avatarPreview && (
+                  <Button variant="outline" size="sm" className="rounded-full" onClick={removeAvatar}>
+                    Remove
+                  </Button>
+                )}
+              </div>
 
-            {/* Hidden file input for browser fallback */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handleFileInput}
-            />
-          </div>
+              {/* Hidden file input for browser fallback */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                data-testid="avatar-file-input"
+                onChange={handleFileInput}
+              />
+            </CardContent>
+          </Card>
 
           {/* Identity summary */}
-          <div className="pc-surface pc-dense space-y-2 p-4">
-            <p className="text-sm font-semibold">{draft.display_name || "No display name"}</p>
-            <p className="text-xs text-gray-500">{draft.email || "No email"}</p>
-            {draft.career_title && (
-              <span className="pc-pill text-xs">{draft.career_title}</span>
-            )}
-          </div>
+          <Card className="shadow-none">
+            <CardContent className="space-y-1 p-4">
+              <p className="text-sm font-semibold">{draft.display_name || "No display name"}</p>
+              <p className="text-xs text-muted-foreground">{draft.email || "No email"}</p>
+              {draft.career_title && (
+                <span className="inline-block rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+                  {draft.career_title}
+                </span>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Logout */}
-          <button
-            type="button"
+          <Button
+            variant="outline"
+            className="w-full rounded-full border-red-500 text-red-600 hover:bg-red-50"
             onClick={handleLogout}
-            className="pc-btn pc-btn-secondary w-full border-red-600 text-red-400 hover:bg-red-950"
           >
             Log out
-          </button>
-        </section>
+          </Button>
+        </div>
 
         {/* -------- RIGHT COLUMN -------- */}
-        <section className="space-y-6">
+        <div className="space-y-4">
           {/* Basic info */}
-          <fieldset className="pc-surface pc-dense space-y-4 p-5">
-            <legend className="px-1 text-sm font-semibold">Basic Information</legend>
+          <Card className="shadow-none">
+            <CardHeader className="p-4 pb-0">
+              <CardTitle className="text-sm">Basic Information</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 p-4">
+              <div className="space-y-1">
+                <Label htmlFor="display_name">Display Name</Label>
+                <Input
+                  id="display_name"
+                  className="rounded-[4px] shadow-none"
+                  value={draft.display_name ?? ""}
+                  onChange={(e) => set("display_name", e.target.value)}
+                />
+              </div>
 
-            <div>
-              <label htmlFor="display_name" className="mb-1 block text-xs font-medium">
-                Display Name
-              </label>
-              <input
-                id="display_name"
-                className="pc-input"
-                value={draft.display_name ?? ""}
-                onChange={(e) => set("display_name", e.target.value)}
-              />
-            </div>
+              <div className="space-y-1">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  className="rounded-[4px] shadow-none opacity-60"
+                  value={draft.email ?? ""}
+                  readOnly
+                  title="Email is managed by your auth provider"
+                />
+                <p className="text-xs text-muted-foreground">Managed by your auth provider</p>
+              </div>
 
-            <div>
-              <label htmlFor="email" className="mb-1 block text-xs font-medium">
-                Email
-              </label>
-              <input
-                id="email"
-                className="pc-input opacity-60"
-                value={draft.email ?? ""}
-                readOnly
-                title="Email is managed by your auth provider"
-              />
-              <p className="mt-1 text-xs text-gray-500">Managed by your auth provider</p>
-            </div>
+              <div className="space-y-1">
+                <Label htmlFor="education">Education</Label>
+                <Input
+                  id="education"
+                  className="rounded-[4px] shadow-none"
+                  placeholder="e.g. B.Sc. Computer Science"
+                  value={draft.education ?? ""}
+                  onChange={(e) => set("education", e.target.value)}
+                />
+              </div>
 
-            <div>
-              <label htmlFor="education" className="mb-1 block text-xs font-medium">
-                Education
-              </label>
-              <input
-                id="education"
-                className="pc-input"
-                placeholder="e.g. B.Sc. Computer Science"
-                value={draft.education ?? ""}
-                onChange={(e) => set("education", e.target.value)}
-              />
-            </div>
-
-            <div>
-              <label htmlFor="career_title" className="mb-1 block text-xs font-medium">
-                Career Title
-              </label>
-              <input
-                id="career_title"
-                className="pc-input"
-                placeholder="e.g. Software Engineer"
-                value={draft.career_title ?? ""}
-                onChange={(e) => set("career_title", e.target.value)}
-              />
-            </div>
-          </fieldset>
+              <div className="space-y-1">
+                <Label htmlFor="career_title">Career Title</Label>
+                <Input
+                  id="career_title"
+                  className="rounded-[4px] shadow-none"
+                  placeholder="e.g. Software Engineer"
+                  value={draft.career_title ?? ""}
+                  onChange={(e) => set("career_title", e.target.value)}
+                />
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Links */}
-          <fieldset className="pc-surface pc-dense space-y-4 p-5">
-            <legend className="px-1 text-sm font-semibold">Links &amp; Resources</legend>
+          <Card className="shadow-none">
+            <CardHeader className="p-4 pb-0">
+              <CardTitle className="text-sm">Links &amp; Resources</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 p-4">
+              <div className="space-y-1">
+                <Label htmlFor="schema_url">GitHub Profile URL</Label>
+                <Input
+                  id="schema_url"
+                  className="rounded-[4px] shadow-none"
+                  type="url"
+                  placeholder="https://github.com/username"
+                  value={draft.schema_url ?? ""}
+                  onChange={(e) => set("schema_url", e.target.value)}
+                />
+              </div>
 
-            <div>
-              <label htmlFor="schema_url" className="mb-1 block text-xs font-medium">
-                Database Schema URL
-              </label>
-              <input
-                id="schema_url"
-                className="pc-input"
-                type="url"
-                placeholder="https://..."
-                value={draft.schema_url ?? ""}
-                onChange={(e) => set("schema_url", e.target.value)}
-              />
-            </div>
-
-            <div>
-              <label htmlFor="drive_url" className="mb-1 block text-xs font-medium">
-                Team Google Drive URL
-              </label>
-              <input
-                id="drive_url"
-                className="pc-input"
-                type="url"
-                placeholder="https://drive.google.com/..."
-                value={draft.drive_url ?? ""}
-                onChange={(e) => set("drive_url", e.target.value)}
-              />
-            </div>
-          </fieldset>
+              <div className="space-y-1">
+                <Label htmlFor="drive_url">Team Google Drive URL</Label>
+                <Input
+                  id="drive_url"
+                  className="rounded-[4px] shadow-none"
+                  type="url"
+                  placeholder="https://drive.google.com/..."
+                  value={draft.drive_url ?? ""}
+                  onChange={(e) => set("drive_url", e.target.value)}
+                />
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Password */}
-          <fieldset className="pc-surface pc-dense space-y-4 p-5">
-            <legend className="px-1 text-sm font-semibold">Change Password</legend>
+          <Card className="shadow-none">
+            <CardHeader className="p-4 pb-0">
+              <CardTitle className="text-sm">Change Password</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 p-4">
+              <div className="space-y-1">
+                <Label htmlFor="current_password">Current Password</Label>
+                <Input
+                  id="current_password"
+                  className="rounded-[4px] shadow-none"
+                  type="password"
+                  autoComplete="current-password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                />
+              </div>
 
-            <div>
-              <label htmlFor="current_password" className="mb-1 block text-xs font-medium">
-                Current Password
-              </label>
-              <input
-                id="current_password"
-                className="pc-input"
-                type="password"
-                autoComplete="current-password"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-              />
-            </div>
+              <div className="space-y-1">
+                <Label htmlFor="new_password">New Password</Label>
+                <Input
+                  id="new_password"
+                  className="rounded-[4px] shadow-none"
+                  type="password"
+                  autoComplete="new-password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                />
+              </div>
 
-            <div>
-              <label htmlFor="new_password" className="mb-1 block text-xs font-medium">
-                New Password
-              </label>
-              <input
-                id="new_password"
-                className="pc-input"
-                type="password"
-                autoComplete="new-password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-              />
-            </div>
+              <div className="space-y-1">
+                <Label htmlFor="confirm_password">Confirm New Password</Label>
+                <Input
+                  id="confirm_password"
+                  className="rounded-[4px] shadow-none"
+                  type="password"
+                  autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                />
+              </div>
 
-            <div>
-              <label htmlFor="confirm_password" className="mb-1 block text-xs font-medium">
-                Confirm New Password
-              </label>
-              <input
-                id="confirm_password"
-                className="pc-input"
-                type="password"
-                autoComplete="new-password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-              />
-            </div>
-
-            <button
-              type="button"
-              className="pc-btn pc-btn-secondary text-sm"
-              onClick={handlePasswordChange}
-            >
-              Update Password
-            </button>
-          </fieldset>
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-full"
+                onClick={handlePasswordChange}
+              >
+                Update Password
+              </Button>
+            </CardContent>
+          </Card>
 
           {/* Action bar */}
           <div className="flex gap-3">
-            <button
-              type="button"
+            <Button
+              className="rounded-full"
               onClick={handleSave}
               disabled={!dirty || saving}
-              className="pc-btn pc-btn-primary text-sm"
             >
               {saving ? "Saving..." : "Save Changes"}
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="outline"
+              className="rounded-full"
               onClick={handleCancel}
               disabled={!dirty}
-              className="pc-btn pc-btn-secondary text-sm"
             >
               Cancel
-            </button>
+            </Button>
           </div>
-        </section>
+        </div>
       </div>
     </main>
   );
