@@ -1,6 +1,7 @@
 # Joaquin Almora / @joaquinalmora
 
 ### Weekly Navigation
+- [Week 18] (#week-18)
 - [Week 17](#week-17)
 - [Week 16](#week-16)
 - [Week 15](#week-15)
@@ -17,6 +18,32 @@
 - [Week 5](#week-5-september-29th---october-5th)
 - [Week 4](#week-4-september-22nd---28th)
 - [Week 3](#week-3-september-15th---21st)
+
+## Week 18 (January 26th – February 1st)
+This week focused on strengthening API correctness with contract tests, cleaning up legacy UI code, and shipping a complete authentication flow. The work was delivered in [PR #255 – “Add API contract tests using FastAPI TestClient”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/255), [PR #216 – “Remove deprecated Textual TUI”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/216), and [PR #258 – “Auth pages, consent popovers, Playwright tests, dev scripts”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/258).
+
+On the backend, I created 61 comprehensive contract tests using FastAPI’s `TestClient` (no live server required). The tests validate status codes, error envelopes, and response payload shapes across major endpoint groups. During test development, I uncovered and fixed real bugs: a syntax error in `portfolio_routes.py` (unclosed `HTTPException` parenthesis), and missing service locks in `project_routes.py` (`_projects_service_lock`, `_overrides_service_lock`) that were causing 500 errors on project endpoints. I also resolved rebase conflicts after syncing with `main`, merging newly added encryption locks with existing service locks.
+
+I removed the deprecated Textual TUI and related UI-only helpers to keep the repository API-focused. TUI-only tests were pruned, and the unused CLI `parse_zip` entrypoint was removed since it’s no longer part of the Electron + API workflow. To preserve functionality, I moved the LLM media analysis helper into a shared analyzer module and added focused tests. The API plan was updated to reference this shared helper for `llm_media` usage.
+
+On the frontend, I implemented login and signup pages with consent checks, a password strength indicator, and a light theme. I added Playwright E2E tests for authentication flows and corrected a mismatch where the UI labeled a password as “Strong” while the test expected “Good.” I also added dev setup scripts to start backend and frontend together, and updated `.gitignore` to exclude Playwright artifacts.
+
+### Reflection
+
+**What went well:**  
+Contract testing immediately surfaced real defects and significantly improved confidence in API behavior. Removing the TUI reduced architectural noise and clarified project direction. Auth flows are now end-to-end tested, and local development setup is smoother and more reproducible.
+
+**What didn’t go well:**  
+Auth validation order caused unexpected 401s where tests expected 422s (consent routes validate authentication before body/query parsing). Authentication patterns are inconsistent across routes (simple JWT decode vs Supabase API call), which complicated test token handling. Rebasing onto `main` introduced conflicts around service locks that required careful merging.
+
+### Next Steps
+
+- Add contract tests for remaining endpoints (`/api/resume/*`, `/api/analysis/*`, `/api/portfolio/*`, `/api/selection/*`)
+- Consider mocking `get_auth_context` to isolate validation logic in consent route tests
+- Add edge-case tests (malformed JSON, oversized payloads, rate limiting)
+- Integrate contract tests into CI (GitHub Actions)
+- Add OpenAPI schema validation to enforce response contracts
+- Improve consent popover UX (click-outside / escape close behavior)
 
 ## Week 17 (January 19th - 25th)
 This week focused on building and integrating the Project Overrides layer into the existing project and timeline APIs. The work was delivered in [PR #241 – “Project-overrides: add database layer and service”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/241) and [PR #243 – “Add API endpoints and integration tests”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/243), introducing a full override system so users can customize project metadata and timeline dates beyond computed scan values.
