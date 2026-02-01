@@ -24,7 +24,7 @@ const createWindow = () => {
   const mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
-    backgroundColor: "#0f172a",
+    backgroundColor: "#ffffff",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -34,15 +34,27 @@ const createWindow = () => {
   });
 
   const startUrl = resolveRendererUrl();
+  console.log("Loading URL:", startUrl);
+  
   if (startUrl.startsWith("http")) {
     mainWindow.loadURL(startUrl);
   } else {
     mainWindow.loadURL(startUrl);
   }
 
+  // Open DevTools in development
+  if (isDev) {
+    mainWindow.webContents.openDevTools();
+  }
+
   mainWindow.webContents.setWindowOpenHandler(({ url: targetUrl }) => {
     shell.openExternal(targetUrl);
     return { action: "deny" };
+  });
+
+  // Log any load failures
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    console.error('Failed to load:', validatedURL, 'Error:', errorDescription);
   });
 };
 
