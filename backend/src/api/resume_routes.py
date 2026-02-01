@@ -318,6 +318,7 @@ def update_resume_item(
 @router.delete(
     "/items/{resume_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
     responses={
         401: {"model": ErrorResponse, "description": "Unauthorized"},
         404: {"model": ErrorResponse, "description": "Resume item not found"},

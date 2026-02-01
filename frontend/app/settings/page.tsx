@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { loadSettings, saveSettings, AppSettings } from "@/lib/settings";
 import { loadTheme, saveTheme, applyTheme, type Theme } from "@/lib/theme";
 import { consent as consentApi, config as configApi } from "@/lib/api";
-import { auth as authApi } from "@/lib/auth";
+import { auth as authApi, getStoredToken, setStoredToken, clearStoredToken } from "@/lib/auth";
 import type { AuthSessionInfo } from "@/lib/auth";
 import type { ConfigResponse, ProfilesResponse } from "@/lib/api.types";
 
@@ -38,6 +38,22 @@ export default function SettingsPage() {
   const [configLoading, setConfigLoading] = useState(false);
   const [configStatus, setConfigStatus] = useState<string | null>(null);
 
+  // Profile creation/editing
+  const [showProfileDialog, setShowProfileDialog] = useState(false);
+  const [editingProfile, setEditingProfile] = useState<string | null>(null);
+  const [profileForm, setProfileForm] = useState({
+    name: "",
+    description: "",
+    extensions: [] as string[],
+    exclude_dirs: [] as string[]
+  });
+  const [extensionsInput, setExtensionsInput] = useState("");
+  const [excludeDirsInput, setExcludeDirsInput] = useState("");
+
+  // Login/Auth
+  const [showLoginDialog, setShowLoginDialog] = useState(false);
+  const [tokenInput, setTokenInput] = useState("");
+
   useEffect(() => {
     let cancelled = false;
 
@@ -49,15 +65,23 @@ export default function SettingsPage() {
         applyTheme(savedTheme);
       }
 
-      // Try to load user session
-      try {
-        const sessionRes = await authApi.getSession();
-        if (!cancelled && sessionRes.ok) {
-          setUserSession(sessionRes.data);
+      // Try to load user session (check if token exists and is valid)
+      const existingToken = getStoredToken();
+      if (existingToken) {
+        try {
+          const sessionRes = await authApi.getSession();
+          if (!cancelled && sessionRes.ok) {
+            setUserSession(sessionRes.data);
+          } else {
+            // Token invalid, clear it
+            clearStoredToken();
+          }
+        } catch {
+          clearStoredToken();
+        } finally {
+          if (!cancelled) setSessionLoading(false);
         }
-      } catch {
-        // Not logged in or session unavailable
-      } finally {
+      } else {
         if (!cancelled) setSessionLoading(false);
       }
 
@@ -75,33 +99,20 @@ export default function SettingsPage() {
         if (!cancelled) setSettings(local);
       }
 
-      // Try to load consent status from backend
-      try {
-        const res = await consentApi.get();
-        if (!cancelled && res.ok) {
-          setConsentData({
-            data_access: res.data.data_access,
-            external_services: res.data.external_services
-          });
-          setSettings((s) => ({ ...(s ?? {}), enableAnalytics: res.data.external_services }));
-        }
-      } catch {
-        // Backend not available, use local settings
-      }
-
-      // Try to load config and profiles if authenticated
-      if (userSession) {
+      // Try to load consent status from backend (only if authenticated)
+      const storedToken = getStoredToken();
+      if (storedToken) {
         try {
-          const [configRes, profilesRes] = await Promise.all([
-            configApi.get(),
-            configApi.listProfiles()
-          ]);
-          if (!cancelled) {
-            if (configRes.ok) setServerConfig(configRes.data);
-            if (profilesRes.ok) setProfiles(profilesRes.data.profiles || {});
+          const res = await consentApi.get();
+          if (!cancelled && res.ok) {
+            setConsentData({
+              data_access: res.data.data_access,
+              external_services: res.data.external_services
+            });
+            setSettings((s) => ({ ...(s ?? {}), enableAnalytics: res.data.external_services }));
           }
         } catch {
-          // Backend not available
+          // Backend not available, use local settings
         }
       }
     })();
@@ -110,6 +121,31 @@ export default function SettingsPage() {
       cancelled = true;
     };
   }, []);
+
+  // Load config and profiles when user session changes
+  useEffect(() => {
+    if (!userSession) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const [configRes, profilesRes] = await Promise.all([
+          configApi.get(),
+          configApi.listProfiles()
+        ]);
+        if (!cancelled) {
+          if (configRes.ok) setServerConfig(configRes.data);
+          if (profilesRes.ok) setProfiles(profilesRes.data.profiles || {});
+        }
+      } catch {
+        // Backend not available
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userSession]);
 
   const update = (patch: Partial<AppSettings>) => setSettings((s) => ({ ...(s ?? {}), ...(patch ?? {}) }));
 
@@ -187,6 +223,95 @@ export default function SettingsPage() {
     setShowRevokeDialog(false);
   };
 
+  const handleLogin = async () => {
+    if (!tokenInput.trim()) {
+      alert("Please enter an access token");
+      return;
+    }
+
+    setSessionLoading(true);
+    try {
+      // Store the token
+      setStoredToken(tokenInput.trim());
+      
+      // Verify it works by fetching session
+      const sessionRes = await authApi.getSession();
+      if (sessionRes.ok) {
+        setUserSession(sessionRes.data);
+        setShowLoginDialog(false);
+        setTokenInput("");
+        
+        // Load consent and config data
+        const [consentRes, configRes, profilesRes] = await Promise.all([
+          consentApi.get(),
+          configApi.get(),
+          configApi.listProfiles()
+        ]);
+        
+        if (consentRes.ok) {
+          setConsentData({
+            data_access: consentRes.data.data_access,
+            external_services: consentRes.data.external_services
+          });
+        }
+        if (configRes.ok) setServerConfig(configRes.data);
+        if (profilesRes.ok) setProfiles(profilesRes.data.profiles || {});
+      } else {
+        clearStoredToken();
+        alert("Invalid access token. Please check and try again.");
+      }
+    } catch (err) {
+      clearStoredToken();
+      alert("Failed to authenticate. Please check your token.");
+    } finally {
+      setSessionLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    clearStoredToken();
+    setUserSession(null);
+    setConsentData({ data_access: false, external_services: false });
+    setServerConfig(null);
+    setProfiles({});
+  };
+
+  const handleProfileSwitch = async (profileName: string) => {
+    if (!serverConfig) return;
+    
+    // Optimistically update UI
+    setServerConfig({ ...serverConfig, current_profile: profileName });
+    
+    // Save the profile switch to backend
+    setConfigLoading(true);
+    try {
+      const res = await configApi.update({
+        current_profile: profileName,
+        max_file_size_mb: serverConfig.max_file_size_mb,
+        follow_symlinks: serverConfig.follow_symlinks,
+      });
+      
+      if (res.ok) {
+        setServerConfig(res.data);
+        setConfigStatus(`Switched to profile: ${profileName}`);
+        setTimeout(() => setConfigStatus(null), 2500);
+      } else {
+        // Revert on failure
+        setServerConfig(serverConfig);
+        setConfigStatus("Failed to switch profile");
+        setTimeout(() => setConfigStatus(null), 2500);
+      }
+    } catch (err) {
+      console.error("Failed to switch profile:", err);
+      // Revert on failure
+      setServerConfig(serverConfig);
+      setConfigStatus("Failed to switch profile");
+      setTimeout(() => setConfigStatus(null), 2500);
+    } finally {
+      setConfigLoading(false);
+    }
+  };
+
   const onSaveConfig = async () => {
     if (!serverConfig) return;
     
@@ -211,9 +336,85 @@ export default function SettingsPage() {
       setConfigStatus("Failed to save configuration");
     } finally {
       setConfigLoading(false);
-      setTimeout(() => setConfigStatus(null), 3000);
+      setTimeout(() => setConfigStatus(null), 2500);
     }
   };
+
+  const openCreateProfileDialog = () => {
+    setEditingProfile(null);
+    setProfileForm({
+      name: "",
+      description: "",
+      extensions: [],
+      exclude_dirs: []
+    });
+    setExtensionsInput("");
+    setExcludeDirsInput("");
+    setShowProfileDialog(true);
+  };
+
+  const openEditProfileDialog = (profileName: string) => {
+    const profile = profiles[profileName];
+    if (!profile) return;
+
+    setEditingProfile(profileName);
+    setProfileForm({
+      name: profileName,
+      description: profile.description || "",
+      extensions: profile.extensions || [],
+      exclude_dirs: profile.exclude_dirs || []
+    });
+    setExtensionsInput((profile.extensions || []).join(", "));
+    setExcludeDirsInput((profile.exclude_dirs || []).join(", "));
+    setShowProfileDialog(true);
+  };
+
+  const handleSaveProfile = async () => {
+    if (!profileForm.name.trim()) {
+      alert("Profile name is required");
+      return;
+    }
+
+    setConfigLoading(true);
+    try {
+      // Parse comma-separated inputs
+      const extensions = extensionsInput
+        .split(",")
+        .map(e => e.trim())
+        .filter(e => e.length > 0);
+      
+      const exclude_dirs = excludeDirsInput
+        .split(",")
+        .map(d => d.trim())
+        .filter(d => d.length > 0);
+
+      const res = await configApi.saveProfile({
+        name: profileForm.name,
+        description: profileForm.description || undefined,
+        extensions: extensions.length > 0 ? extensions : undefined,
+        exclude_dirs: exclude_dirs.length > 0 ? exclude_dirs : undefined
+      });
+
+      if (res.ok) {
+        // Refresh profiles list
+        const profilesRes = await configApi.listProfiles();
+        if (profilesRes.ok) {
+          setProfiles(profilesRes.data.profiles || {});
+        }
+        setShowProfileDialog(false);
+        setConfigStatus(editingProfile ? "Profile updated successfully" : "Profile created successfully");
+        setTimeout(() => setConfigStatus(null), 2500);
+      } else {
+        alert("Failed to save profile");
+      }
+    } catch (err) {
+      console.error("Failed to save profile:", err);
+      alert("Failed to save profile");
+    } finally {
+      setConfigLoading(false);
+    }
+  };
+
 
   return (
     <div className="p-8">
@@ -235,11 +436,27 @@ export default function SettingsPage() {
                 <div>
                   <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Logged in as</p>
                   <p className="text-sm font-semibold text-gray-900 mt-1">{userSession.email || userSession.user_id.slice(0, 8)}</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleLogout}
+                    className="mt-2 border-red-300 text-red-600 hover:bg-red-50"
+                  >
+                    Logout
+                  </Button>
                 </div>
               ) : (
                 <div>
                   <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Status</p>
                   <p className="text-sm text-gray-600 mt-1">Guest mode</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowLoginDialog(true)}
+                    className="mt-2 border-gray-300 hover:bg-gray-50"
+                  >
+                    Login
+                  </Button>
                 </div>
               )}
             </div>
@@ -296,12 +513,12 @@ export default function SettingsPage() {
               <div className="flex gap-2">
                 <Input
                   id="save-path"
-                  className="border-gray-300"
+                  className="border-gray-300 text-gray-900"
                   value={settings.defaultSavePath ?? ""}
                   onChange={(e) => update({ defaultSavePath: e.target.value })}
                   placeholder="/path/to/directory"
                 />
-                <Button variant="outline" onClick={selectDirectory} className="border-gray-300 hover:bg-gray-50">
+                <Button variant="outline" onClick={selectDirectory} className="border-gray-300 hover:bg-gray-50 text-gray-900">
                   Browse
                 </Button>
               </div>
@@ -333,23 +550,71 @@ export default function SettingsPage() {
               {serverConfig ? (
                 <>
                   <div className="space-y-2">
-                    <Label htmlFor="profile-select" className="text-sm font-medium text-gray-900">Scan Profile</Label>
-                    <Select 
-                      value={serverConfig.current_profile || "all"} 
-                      onValueChange={(value) => setServerConfig({ ...serverConfig, current_profile: value })}
-                    >
-                      <SelectTrigger id="profile-select" className="border-gray-300">
-                        <SelectValue placeholder="Select profile" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Object.entries(profiles).map(([name, profile]: [string, any]) => (
-                          <SelectItem key={name} value={name}>
-                            {name} {profile.description ? `- ${profile.description}` : ''}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-gray-500 mt-1">Choose which files to analyze during scans</p>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="profile-select" className="text-sm font-medium text-gray-900">Scan Profile</Label>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={openCreateProfileDialog}
+                        className="border-gray-300 hover:bg-gray-50 text-gray-900"
+                      >
+                        Create Profile
+                      </Button>
+                    </div>
+                    {Object.keys(profiles).length > 0 ? (
+                      <>
+                        <Select 
+                          value={serverConfig.current_profile || "all"} 
+                          onValueChange={handleProfileSwitch}
+                          disabled={configLoading}
+                        >
+                          <SelectTrigger id="profile-select" className="border-gray-300">
+                            <SelectValue placeholder="Select profile" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Object.entries(profiles).map(([name, profile]: [string, any]) => (
+                              <SelectItem key={name} value={name}>
+                                {name} {profile.description ? `- ${profile.description}` : ''}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {configLoading ? "Switching profile..." : "Changes are saved automatically when you switch profiles"}
+                        </p>
+                        {serverConfig.current_profile && profiles[serverConfig.current_profile] && (
+                          <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs font-medium text-gray-700">Profile Details</p>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => openEditProfileDialog(serverConfig.current_profile!)}
+                                className="h-6 px-2 text-xs"
+                              >
+                                Edit
+                              </Button>
+                            </div>
+                            {profiles[serverConfig.current_profile].extensions && profiles[serverConfig.current_profile].extensions.length > 0 && (
+                              <div>
+                                <p className="text-xs text-gray-600">Extensions:</p>
+                                <p className="text-xs text-gray-900 font-mono">{profiles[serverConfig.current_profile].extensions.join(", ")}</p>
+                              </div>
+                            )}
+                            {profiles[serverConfig.current_profile].exclude_dirs && profiles[serverConfig.current_profile].exclude_dirs.length > 0 && (
+                              <div>
+                                <p className="text-xs text-gray-600">Excluded Directories:</p>
+                                <p className="text-xs text-gray-900 font-mono">{profiles[serverConfig.current_profile].exclude_dirs.join(", ")}</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                        <p className="text-sm text-yellow-800">No profiles found. Create your first scan profile to get started.</p>
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -357,7 +622,7 @@ export default function SettingsPage() {
                     <Input
                       id="max-file-size"
                       type="number"
-                      className="border-gray-300"
+                      className="border-gray-300 text-gray-900"
                       value={serverConfig.max_file_size_mb || 100}
                       onChange={(e) => setServerConfig({ ...serverConfig, max_file_size_mb: parseInt(e.target.value) || 100 })}
                       min={1}
@@ -385,19 +650,22 @@ export default function SettingsPage() {
               )}
             </CardContent>
             <CardFooter className="bg-gray-50 border-t border-gray-200 p-6">
-              <div className="flex items-center gap-3">
-                <Button 
-                  onClick={onSaveConfig} 
-                  disabled={!serverConfig || configLoading}
-                  className="bg-gray-900 text-white hover:bg-gray-800 shadow-sm"
-                >
-                  {configLoading ? "Saving..." : "Save Configuration"}
-                </Button>
-                {configStatus && (
-                  <span className={`text-sm font-medium ${configStatus.includes("success") ? "text-green-600" : "text-red-600"}`}>
-                    {configStatus}
-                  </span>
-                )}
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-3">
+                  <Button 
+                    onClick={onSaveConfig} 
+                    disabled={!serverConfig || configLoading}
+                    className="bg-gray-900 text-white hover:bg-gray-800 shadow-sm"
+                  >
+                    {configLoading ? "Saving..." : "Save Settings"}
+                  </Button>
+                  {configStatus && (
+                    <span className={`text-sm font-medium ${configStatus.includes("success") || configStatus.includes("Switched") ? "text-green-600" : "text-red-600"}`}>
+                      {configStatus}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500">Profile selection is saved automatically. This button saves file size and symlink settings.</p>
               </div>
             </CardFooter>
           </Card>
@@ -481,11 +749,124 @@ export default function SettingsPage() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowRevokeDialog(false)} className="border-gray-300">
+            <Button variant="outline" onClick={() => setShowRevokeDialog(false)} className="border-gray-300 text-gray-900">
               Cancel
             </Button>
             <Button onClick={revokeAllConsents} className="bg-red-600 text-white hover:bg-red-700">
               Revoke All
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showLoginDialog} onOpenChange={setShowLoginDialog}>
+        <DialogContent className="bg-white">
+          <DialogHeader>
+            <DialogTitle className="text-gray-900">Login with Access Token</DialogTitle>
+            <DialogDescription className="text-gray-600">
+              Enter your Supabase access token to authenticate. You can get this by running the test script.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="token-input" className="text-sm font-medium text-gray-900">Access Token</Label>
+              <Input
+                id="token-input"
+                type="password"
+                className="border-gray-300 text-gray-900"
+                value={tokenInput}
+                onChange={(e) => setTokenInput(e.target.value)}
+                placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleLogin();
+                }}
+              />
+              <p className="text-xs text-gray-500">
+                Run: <code className="bg-gray-100 px-1 rounded">python scripts/get_test_token.py</code>
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowLoginDialog(false)} className="border-gray-300 text-gray-900">
+              Cancel
+            </Button>
+            <Button onClick={handleLogin} disabled={!tokenInput.trim()} className="bg-gray-900 text-white hover:bg-gray-800">
+              Login
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showProfileDialog} onOpenChange={setShowProfileDialog}>
+        <DialogContent className="bg-white max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-gray-900">
+              {editingProfile ? `Edit Profile: ${editingProfile}` : "Create New Scan Profile"}
+            </DialogTitle>
+            <DialogDescription className="text-gray-600">
+              Configure file extensions and directories for this scan profile
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="profile-name" className="text-sm font-medium text-gray-900">Profile Name</Label>
+              <Input
+                id="profile-name"
+                className="border-gray-300 text-gray-900"
+                value={profileForm.name}
+                onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
+                placeholder="e.g., python_only, web_only"
+                disabled={!!editingProfile}
+              />
+              <p className="text-xs text-gray-500">Unique identifier for this profile</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="profile-description" className="text-sm font-medium text-gray-900">Description</Label>
+              <Input
+                id="profile-description"
+                className="border-gray-300 text-gray-900"
+                value={profileForm.description}
+                onChange={(e) => setProfileForm({ ...profileForm, description: e.target.value })}
+                placeholder="e.g., Python projects only"
+              />
+              <p className="text-xs text-gray-500">Brief description of what this profile includes</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="profile-extensions" className="text-sm font-medium text-gray-900">File Extensions</Label>
+              <Input
+                id="profile-extensions"
+                className="border-gray-300 text-gray-900"
+                value={extensionsInput}
+                onChange={(e) => setExtensionsInput(e.target.value)}
+                placeholder=".py, .pyx, .pyi"
+              />
+              <p className="text-xs text-gray-500">Comma-separated list of file extensions to include</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="profile-exclude" className="text-sm font-medium text-gray-900">Excluded Directories</Label>
+              <Input
+                id="profile-exclude"
+                className="border-gray-300 text-gray-900"
+                value={excludeDirsInput}
+                onChange={(e) => setExcludeDirsInput(e.target.value)}
+                placeholder="node_modules, .git, __pycache__"
+              />
+              <p className="text-xs text-gray-500">Comma-separated list of directories to exclude</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowProfileDialog(false)} className="border-gray-300 text-gray-900">
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleSaveProfile} 
+              disabled={!profileForm.name.trim() || configLoading}
+              className="bg-gray-900 text-white hover:bg-gray-800"
+            >
+              {configLoading ? "Saving..." : editingProfile ? "Update Profile" : "Create Profile"}
             </Button>
           </DialogFooter>
         </DialogContent>

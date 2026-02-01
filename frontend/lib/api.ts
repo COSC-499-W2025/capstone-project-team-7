@@ -1,4 +1,5 @@
 import type { ApiResult, ConsentStatus, ConsentNotice, ConsentUpdateRequest, ConfigResponse, ProfilesResponse, ProfileUpsertRequest, ConfigUpdateRequest } from "./api.types";
+import { getStoredToken } from "./auth";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
 
@@ -10,13 +11,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T
   const baseUrl = getApiBaseUrl();
   const url = `${baseUrl}${path}`;
 
+  // Automatically inject Authorization header if token exists
+  const token = getStoredToken();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(init?.headers as Record<string, string> ?? {}),
+  };
+  
+  if (token && !headers.Authorization) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
   try {
     const res = await fetch(url, {
       ...init,
-      headers: {
-        "Content-Type": "application/json",
-        ...(init?.headers ?? {})
-      }
+      headers,
     });
 
     if (!res.ok) {

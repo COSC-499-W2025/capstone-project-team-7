@@ -188,7 +188,7 @@ def save_consent(user_id: str, service_name: str, consent_given: bool, access_to
     Returns:
         dict: Confirmation with stored data.
     """
-    timestamp = datetime.datetime.now(datetime.UTC).isoformat()
+    timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
     data = {
         "user_id": user_id,
         "service_name": service_name,
