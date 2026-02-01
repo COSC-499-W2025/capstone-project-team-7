@@ -1,8 +1,8 @@
 export const IPC_CHANNELS = {
   PING: "desktop:ping",
   OPEN_FILE: "desktop:openFile",
-  SELECT_DIRECTORY: "desktop:selectDirectory"
-  , SAVE_SETTINGS: "desktop:saveSettings",
+  SELECT_DIRECTORY: "desktop:selectDirectory",
+  SAVE_SETTINGS: "desktop:saveSettings",
   LOAD_SETTINGS: "desktop:loadSettings"
 } as const;
 
