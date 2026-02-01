@@ -45,6 +45,7 @@ class UpdateProfileRequest(BaseModel):
 
 
 class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., min_length=1)
     new_password: str = Field(..., min_length=6)
 
 
@@ -219,10 +220,9 @@ async def upload_avatar(
             detail={"code": "file_too_large", "message": "Avatar must be under 5 MB"},
         )
 
-    ext = (file.filename or "avatar.png").rsplit(".", 1)[-1].lower()
-    if ext not in ("png", "jpg", "jpeg", "gif", "webp"):
-        ext = "png"
-    storage_path = f"{auth.user_id}/avatar.{ext}"
+    # Use a fixed filename so upsert always overwrites the same path,
+    # preventing orphaned files when the user changes image format.
+    storage_path = f"{auth.user_id}/avatar"
 
     base_url = os.getenv("SUPABASE_URL", "")
     key = (
@@ -262,12 +262,11 @@ async def upload_avatar(
     return AvatarUploadResponse(avatar_url=public_url)
 
 
-@router.post("/password")
-async def change_password(
-    body: ChangePasswordRequest,
-    auth: AuthContext = Depends(get_auth_context),
-):
-    """Change the authenticated user's password via the Supabase Auth API."""
+@router.delete("/avatar")
+async def delete_avatar(auth: AuthContext = Depends(get_auth_context)):
+    """Delete the avatar file from Supabase Storage and clear the profile URL."""
+    storage_path = f"{auth.user_id}/avatar"
+
     base_url = os.getenv("SUPABASE_URL", "")
     key = (
         os.getenv("SUPABASE_SERVICE_ROLE_KEY")
@@ -275,6 +274,62 @@ async def change_password(
         or os.getenv("SUPABASE_ANON_KEY", "")
     )
 
+    delete_url = f"{base_url}/storage/v1/object/avatars/{storage_path}"
+    headers = {
+        "Authorization": f"Bearer {auth.access_token}",
+        "apikey": key,
+    }
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        await client.delete(delete_url, headers=headers)
+
+    # Clear the URL in the profiles table regardless of storage result
+    await update_profile(UpdateProfileRequest(avatar_url=""), auth)
+
+    return {"ok": True, "message": "Avatar removed"}
+
+
+@router.post("/password")
+async def change_password(
+    body: ChangePasswordRequest,
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """Change the authenticated user's password via the Supabase Auth API.
+
+    Verifies the current password first by attempting a sign-in, then
+    updates to the new password.
+    """
+    base_url = os.getenv("SUPABASE_URL", "")
+    key = (
+        os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        or os.getenv("SUPABASE_KEY")
+        or os.getenv("SUPABASE_ANON_KEY", "")
+    )
+
+    # --- Step 1: verify current password via sign-in ---
+    verify_url = f"{base_url}/auth/v1/token?grant_type=password"
+    verify_headers = {
+        "apikey": key,
+        "Content-Type": "application/json",
+    }
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        verify_resp = await client.post(
+            verify_url,
+            json={"email": auth.email, "password": body.current_password},
+            headers=verify_headers,
+        )
+
+    if verify_resp.status_code >= 400:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": "invalid_current_password",
+                "message": "Current password is incorrect.",
+            },
+        )
+
+    # --- Step 2: update to the new password ---
     url = f"{base_url}/auth/v1/user"
     headers = {
         "Authorization": f"Bearer {auth.access_token}",

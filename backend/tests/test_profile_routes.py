@@ -235,3 +235,67 @@ class TestUpdateProfile:
             )
 
         assert resp.status_code == 502
+
+
+# ---------------------------------------------------------------------------
+# POST /api/profile/password
+# ---------------------------------------------------------------------------
+
+
+class TestChangePassword:
+    def test_successful_password_change(self, client):
+        """POST changes password when current password is verified."""
+        fake_verify = httpx.Response(
+            200,
+            json={"access_token": "new-tok", "user": {"id": "user-123"}},
+            request=httpx.Request("POST", "https://test.supabase.co/auth/v1/token"),
+        )
+        fake_update = httpx.Response(
+            200,
+            json={"id": "user-123"},
+            request=httpx.Request("PUT", "https://test.supabase.co/auth/v1/user"),
+        )
+
+        instance = AsyncMock()
+        instance.post.return_value = fake_verify
+        instance.put.return_value = fake_update
+        with patch.object(profile_mod.httpx, "AsyncClient") as MockClient:
+            _mock_httpx(MockClient, instance)
+            resp = client.post(
+                "/api/profile/password",
+                json={"current_password": "oldpass", "new_password": "newpass123"},
+                headers={"Authorization": "Bearer tok-abc"},
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
+
+    def test_wrong_current_password_returns_401(self, client):
+        """POST returns 401 when the current password is incorrect."""
+        fake_verify = httpx.Response(
+            400,
+            json={"error": "invalid_grant", "error_description": "Invalid login credentials"},
+            request=httpx.Request("POST", "https://test.supabase.co/auth/v1/token"),
+        )
+
+        instance = AsyncMock()
+        instance.post.return_value = fake_verify
+        with patch.object(profile_mod.httpx, "AsyncClient") as MockClient:
+            _mock_httpx(MockClient, instance)
+            resp = client.post(
+                "/api/profile/password",
+                json={"current_password": "wrong", "new_password": "newpass123"},
+                headers={"Authorization": "Bearer tok-abc"},
+            )
+
+        assert resp.status_code == 401
+        assert resp.json()["detail"]["code"] == "invalid_current_password"
+
+    def test_missing_current_password_returns_422(self, client):
+        """POST returns 422 when current_password is missing."""
+        resp = client.post(
+            "/api/profile/password",
+            json={"new_password": "newpass123"},
+            headers={"Authorization": "Bearer tok-abc"},
+        )
+        assert resp.status_code == 422

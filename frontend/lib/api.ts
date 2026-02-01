@@ -74,11 +74,17 @@ export const api = {
       }
     },
 
-    changePassword: (token: string, newPassword: string) =>
+    deleteAvatar: (token: string) =>
+      request<{ ok: boolean; message: string }>("/api/profile/avatar", {
+        method: "DELETE",
+        headers: authHeaders(token),
+      }),
+
+    changePassword: (token: string, currentPassword: string, newPassword: string) =>
       request<{ ok: boolean; message: string }>("/api/profile/password", {
         method: "POST",
         headers: authHeaders(token),
-        body: JSON.stringify({ new_password: newPassword }),
+        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
       }),
   },
 };

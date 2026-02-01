@@ -143,8 +143,8 @@ export default function ProfilePage() {
       }
       setAvatarFile(null);
     } else if (avatarPreview === null && profile.avatar_url) {
-      // Avatar was removed — clear it on the backend
-      await api.profile.update(token, { avatar_url: "" });
+      // Avatar was removed — delete file from storage and clear URL
+      await api.profile.deleteAvatar(token);
     }
 
     const payload: UpdateProfileRequest = {};
@@ -196,7 +196,7 @@ export default function ProfilePage() {
       setMessage({ type: "err", text: "Not authenticated. Please log in." });
       return;
     }
-    if (!newPassword || !confirmPassword) {
+    if (!currentPassword || !newPassword || !confirmPassword) {
       setMessage({ type: "err", text: "Please fill in all password fields." });
       return;
     }
@@ -209,7 +209,7 @@ export default function ProfilePage() {
       return;
     }
 
-    const res = await api.profile.changePassword(token, newPassword);
+    const res = await api.profile.changePassword(token, currentPassword, newPassword);
     if (res.ok) {
       setCurrentPassword("");
       setNewPassword("");

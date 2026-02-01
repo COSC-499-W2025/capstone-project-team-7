@@ -199,9 +199,11 @@ describe("ProfilePage", () => {
 
   it("password validation - mismatch error", async () => {
     await renderAndWait();
+    const currentPwInput = screen.getByLabelText("Current Password");
     const newPwInput = screen.getByLabelText("New Password");
     const confirmPwInput = screen.getByLabelText("Confirm New Password");
 
+    await userEvent.type(currentPwInput, "oldpass123");
     await userEvent.type(newPwInput, "password123");
     await userEvent.type(confirmPwInput, "different456");
 
@@ -215,9 +217,11 @@ describe("ProfilePage", () => {
 
   it("password validation - too short error", async () => {
     await renderAndWait();
+    const currentPwInput = screen.getByLabelText("Current Password");
     const newPwInput = screen.getByLabelText("New Password");
     const confirmPwInput = screen.getByLabelText("Confirm New Password");
 
+    await userEvent.type(currentPwInput, "oldpass123");
     await userEvent.type(newPwInput, "abc");
     await userEvent.type(confirmPwInput, "abc");
 
@@ -241,9 +245,11 @@ describe("ProfilePage", () => {
 
   it("password change calls API on success", async () => {
     await renderAndWait();
+    const currentPwInput = screen.getByLabelText("Current Password");
     const newPwInput = screen.getByLabelText("New Password");
     const confirmPwInput = screen.getByLabelText("Confirm New Password");
 
+    await userEvent.type(currentPwInput, "oldpass123");
     await userEvent.type(newPwInput, "newpass123");
     await userEvent.type(confirmPwInput, "newpass123");
 
@@ -251,7 +257,7 @@ describe("ProfilePage", () => {
     await userEvent.click(updatePwBtn);
 
     await waitFor(() => {
-      expect(mockChangePassword).toHaveBeenCalledWith("test-token", "newpass123");
+      expect(mockChangePassword).toHaveBeenCalledWith("test-token", "oldpass123", "newpass123");
     });
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent("Password updated successfully.");
