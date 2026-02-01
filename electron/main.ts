@@ -4,7 +4,7 @@ import url from "node:url";
 import { promises as fsPromises } from "node:fs";
 import { IPC_CHANNELS } from "./ipc/channels";
 
-const isDev = process.env.NODE_ENV === "development";
+const isDev = process.env.NODE_ENV !== "production";
 
 const resolveRendererUrl = () => {
   const envUrl = process.env.ELECTRON_START_URL;

@@ -25,7 +25,12 @@ export const saveTheme = (theme: Theme): boolean => {
 
 export const applyTheme = (theme: Theme) => {
   if (typeof document !== "undefined") {
-    document.documentElement.classList.toggle("dark", theme === "dark");
-    document.documentElement.classList.toggle("light", theme === "light");
+    if (theme === "dark") {
+      document.documentElement.classList.add("dark");
+      document.documentElement.classList.remove("light");
+    } else {
+      document.documentElement.classList.add("light");
+      document.documentElement.classList.remove("dark");
+    }
   }
 };

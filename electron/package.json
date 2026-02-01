@@ -5,7 +5,7 @@
   "main": "dist/main.js",
   "type": "commonjs",
   "scripts": {
-    "dev": "npm run build:electron && electron .",
+    "dev": "npm run build:electron && cross-env NODE_ENV=development electron .",
     "build": "tsc -p tsconfig.json",
     "build:electron": "tsc -p tsconfig.json",
     "build:watch": "tsc -p tsconfig.json -w",
@@ -16,6 +16,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.7.4",
+    "cross-env": "^10.1.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.6.3"
   }
