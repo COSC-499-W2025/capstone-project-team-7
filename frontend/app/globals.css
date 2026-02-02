@@ -41,8 +41,9 @@
     --accent: 0 0% 96%;
     --accent-foreground: 0 0% 0%;
 
-    --destructive: 0 0% 0%;
-    --destructive-foreground: 0 0% 100%;
+    /* UPDATED: Destructive now uses red for visual distinction */
+    --destructive: 0 84% 60%;  /* red */
+    --destructive-foreground: 0 0% 100%;  /* white text */
 
     /* Radius: sharper */
     --radius: 8px;
@@ -52,6 +53,30 @@
     --pc-focus-ring: 2px;
     --pc-density-y: 0.5rem; /* 8px */
     --pc-density-x: 0.75rem; /* 12px */
+    
+    color-scheme: light;
+  }
+
+  .dark {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 240 5.9% 10%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 240 4.9% 83.9%;
   }
 
   /* Base document */
@@ -70,36 +95,43 @@
     text-rendering: geometricPrecision;
   }
 
-  /* Typography scale (Inter / shadcn defaults) */
-  h1 {
+  /* UPDATED: Typography scoped to .pc-typography wrapper to avoid conflicts with shadcn */
+  .pc-typography h1 {
     font-size: 30px;
     line-height: 36px;
-    font-weight: 700; /* Pro Contrast: stronger */
+    font-weight: 700;
     letter-spacing: -0.02em;
   }
 
-  h2 {
+  .pc-typography h2 {
     font-size: 24px;
     line-height: 32px;
     font-weight: 600;
     letter-spacing: -0.015em;
   }
 
-  h3 {
+  .pc-typography h3 {
     font-size: 20px;
     line-height: 28px;
     font-weight: 500;
     letter-spacing: -0.01em;
   }
 
-  p, li, input, button, textarea, label {
+  .pc-typography p,
+  .pc-typography li {
     font-size: 14px;
     line-height: 21px;
   }
 
-  small {
+  .pc-typography small {
     font-size: 12px;
     line-height: 16px;
+  }
+
+  /* Keep form elements global for consistency */
+  input, button, textarea, label {
+    font-size: 14px;
+    line-height: 21px;
   }
 
   /* Make focus states crisp + visible */
@@ -111,7 +143,7 @@
 
 @layer components {
   /* -----------------------------------------
-     Pro Contrast “component feel” helpers
+     Pro Contrast "component feel" helpers
      Use these classes in your JSX when needed.
      ----------------------------------------- */
 
@@ -170,6 +202,17 @@
 
   .pc-btn-secondary:hover {
     background: hsl(var(--muted));
+  }
+
+  /* NEW: Destructive button style with red */
+  .pc-btn-destructive {
+    background: hsl(var(--destructive));
+    color: hsl(var(--destructive-foreground));
+    border-color: hsl(var(--destructive));
+  }
+
+  .pc-btn-destructive:hover {
+    background: hsl(0 84% 50%);
   }
 
   /* Table gridlines: visible + structural */
