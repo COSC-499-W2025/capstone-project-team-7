@@ -1,4 +1,5 @@
 import type { ApiResult, UserProfile, UpdateProfileRequest } from "./api.types";
+import type { ApiResult, AuthCredentials, AuthSessionResponse, ConsentRequest } from "./api.types";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
 
@@ -87,4 +88,29 @@ export const api = {
         body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
       }),
   },
+  auth: {
+    login: (email: string, password: string) =>
+      request<AuthSessionResponse>("/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password })
+      }),
+    signup: (email: string, password: string) =>
+      request<AuthSessionResponse>("/api/auth/signup", {
+        method: "POST",
+        body: JSON.stringify({ email, password })
+      }),
+    refresh: (refreshToken: string) =>
+      request<AuthSessionResponse>("/api/auth/refresh", {
+        method: "POST",
+        body: JSON.stringify({ refresh_token: refreshToken })
+      }),
+    saveConsent: (userId: string, serviceName: string, consentGiven: boolean, accessToken: string) =>
+      request<{ success: boolean }>("/api/auth/consent", {
+        method: "POST",
+        body: JSON.stringify({ user_id: userId, service_name: serviceName, consent_given: consentGiven }),
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      })
+  }
 };

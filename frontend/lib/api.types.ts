@@ -205,3 +205,28 @@ export interface ResumeView {
   name: string;
   items: ResumeItem[];
 }
+
+// ---------- Auth ----------
+
+export interface AuthCredentials {
+  email: string;
+  password: string;
+}
+
+export interface AuthSessionResponse {
+  user_id: string;
+  email: string;
+  access_token: string;
+  refresh_token: string | null;
+}
+
+export interface ConsentRequest {
+  user_id: string;
+  service_name: string;
+  consent_given: boolean;
+}
+
+export interface User {
+  id: string;
+  email: string;
+}
