@@ -269,10 +269,39 @@ class ProjectMetadata(BaseModel):
     role: Optional[str] = Field(None, description="User's role in the project (author, contributor, lead, maintainer, reviewer)")
 
 
+class ProjectOverrides(BaseModel):
+    """User-defined overrides for project display and metadata.
+    
+    Note on encryption:
+    - role and comparison_attributes are encrypted at rest when encryption is available
+    - Other fields (evidence, highlighted_skills, dates) are stored unencrypted
+    - If encryption service is unavailable, all fields are stored unencrypted with a warning logged
+    """
+    role: Optional[str] = Field(None, description="User's role/title for this project")
+    evidence: Optional[List[str]] = Field(None, description="List of accomplishment bullet points")
+    thumbnail_url: Optional[str] = Field(None, description="Custom thumbnail URL")
+    custom_rank: Optional[float] = Field(None, description="Manual ranking override (0-100)")
+    start_date_override: Optional[str] = Field(None, description="Override for project start date (ISO date)")
+    end_date_override: Optional[str] = Field(None, description="Override for project end date (ISO date)")
+    comparison_attributes: Optional[Dict[str, str]] = Field(
+        None, 
+        description="Custom key-value pairs for comparisons (encrypted at rest)"
+    )
+    highlighted_skills: Optional[List[str]] = Field(None, description="Skills to highlight for this project")
+    
+    @field_validator('custom_rank')
+    @classmethod
+    def validate_custom_rank(cls, v: Optional[float]) -> Optional[float]:
+        """Validate custom_rank is between 0 and 100."""
+        if v is not None and not (0 <= v <= 100):
+            raise ValueError('custom_rank must be between 0 and 100')
+        return v
+
+
 class ProjectDetail(ProjectMetadata):
     """Full project details including scan data."""
     scan_data: Optional[Dict[str, Any]] = None
-    user_overrides: Optional["ProjectOverrides"] = None
+    user_overrides: Optional[ProjectOverrides] = None
 
 
 class CreateProjectResponse(BaseModel):
@@ -388,35 +417,6 @@ class ProjectTimelineResponse(BaseModel):
 # ============================================================================
 # Project Overrides Models
 # ============================================================================
-
-class ProjectOverrides(BaseModel):
-    """User-defined overrides for project display and metadata.
-    
-    Note on encryption:
-    - role and comparison_attributes are encrypted at rest when encryption is available
-    - Other fields (evidence, highlighted_skills, dates) are stored unencrypted
-    - If encryption service is unavailable, all fields are stored unencrypted with a warning logged
-    """
-    role: Optional[str] = Field(None, description="User's role/title for this project")
-    evidence: Optional[List[str]] = Field(None, description="List of accomplishment bullet points")
-    thumbnail_url: Optional[str] = Field(None, description="Custom thumbnail URL")
-    custom_rank: Optional[float] = Field(None, description="Manual ranking override (0-100)")
-    start_date_override: Optional[str] = Field(None, description="Override for project start date (ISO date)")
-    end_date_override: Optional[str] = Field(None, description="Override for project end date (ISO date)")
-    comparison_attributes: Optional[Dict[str, str]] = Field(
-        None, 
-        description="Custom key-value pairs for comparisons (encrypted at rest)"
-    )
-    highlighted_skills: Optional[List[str]] = Field(None, description="Skills to highlight for this project")
-    
-    @field_validator('custom_rank')
-    @classmethod
-    def validate_custom_rank(cls, v: Optional[float]) -> Optional[float]:
-        """Validate custom_rank is between 0 and 100."""
-        if v is not None and not (0 <= v <= 100):
-            raise ValueError('custom_rank must be between 0 and 100')
-        return v
-
 
 class ProjectOverridesRequest(BaseModel):
     """Request model for updating project overrides (partial update supported)."""

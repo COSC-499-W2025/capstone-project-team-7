@@ -1,3 +1,5 @@
+import type { ApiResult, ConsentStatus, ConsentNotice, ConsentUpdateRequest, ConfigResponse, ProfilesResponse, ProfileUpsertRequest, ConfigUpdateRequest } from "./api.types";
+import { getStoredToken } from "./auth";
 import type { ApiResult, UserProfile, UpdateProfileRequest } from "./api.types";
 import type { ApiResult, AuthCredentials, AuthSessionResponse, ConsentRequest } from "./api.types";
 
@@ -11,13 +13,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T
   const baseUrl = getApiBaseUrl();
   const url = `${baseUrl}${path}`;
 
+  // Automatically inject Authorization header if token exists
+  const token = getStoredToken();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(init?.headers as Record<string, string> ?? {}),
+  };
+  
+  if (token && !headers.Authorization) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
   try {
     const res = await fetch(url, {
       ...init,
-      headers: {
-        "Content-Type": "application/json",
-        ...(init?.headers ?? {})
-      }
+      headers,
     });
 
     if (!res.ok) {
@@ -113,4 +123,21 @@ export const api = {
         }
       })
   }
+};
+
+export const consent = {
+  get: (): Promise<ApiResult<ConsentStatus>> => request<ConsentStatus>("/api/consent"),
+  set: (payload: ConsentUpdateRequest): Promise<ApiResult<ConsentStatus>> =>
+    request<ConsentStatus>("/api/consent", { method: "POST", body: JSON.stringify(payload) }),
+  notice: (service: string): Promise<ApiResult<ConsentNotice>> =>
+    request<ConsentNotice>(`/api/consent/notice?service=${encodeURIComponent(service)}`),
+};
+
+export const config = {
+  get: (): Promise<ApiResult<ConfigResponse>> => request<ConfigResponse>("/api/config"),
+  update: (payload: ConfigUpdateRequest): Promise<ApiResult<ConfigResponse>> =>
+    request<ConfigResponse>("/api/config", { method: "PUT", body: JSON.stringify(payload) }),
+  listProfiles: (): Promise<ApiResult<ProfilesResponse>> => request<ProfilesResponse>("/api/config/profiles"),
+  saveProfile: (payload: ProfileUpsertRequest): Promise<ApiResult<any>> =>
+    request<any>("/api/config/profiles", { method: "POST", body: JSON.stringify(payload) }),
 };
