@@ -132,6 +132,26 @@ async def update_profile(
     auth: AuthContext = Depends(get_auth_context),
 ):
     """Upsert profile fields for the authenticated user."""
+    # --- URL validation ---
+    if body.schema_url is not None and body.schema_url != "":
+        if not body.schema_url.startswith("https://github.com/"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "invalid_url",
+                    "message": "GitHub URL must start with https://github.com/",
+                },
+            )
+    if body.drive_url is not None and body.drive_url != "":
+        if not body.drive_url.startswith("https://drive.google.com/"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "invalid_url",
+                    "message": "Drive URL must start with https://drive.google.com/",
+                },
+            )
+
     rest = _supabase_rest_url()
     url = f"{rest}/{_PROFILE_TABLE}?id=eq.{auth.user_id}"
 

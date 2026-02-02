@@ -210,6 +210,87 @@ class TestUpdateProfile:
         assert resp.status_code == 200
         assert resp.json()["display_name"] == "Dave"
 
+    def test_invalid_github_url_returns_400(self, client):
+        """PATCH returns 400 when schema_url doesn't start with https://github.com/."""
+        resp = client.patch(
+            "/api/profile",
+            json={"schema_url": "https://evil.com/repo"},
+            headers={"Authorization": "Bearer tok-abc"},
+        )
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_url"
+        assert "github.com" in resp.json()["detail"]["message"].lower()
+
+    def test_invalid_drive_url_returns_400(self, client):
+        """PATCH returns 400 when drive_url doesn't start with https://drive.google.com/."""
+        resp = client.patch(
+            "/api/profile",
+            json={"drive_url": "https://evil.com/folder"},
+            headers={"Authorization": "Bearer tok-abc"},
+        )
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_url"
+        assert "drive.google.com" in resp.json()["detail"]["message"].lower()
+
+    def test_valid_github_url_accepted(self, client):
+        """PATCH accepts a valid GitHub URL."""
+        patched_row = {
+            "id": "user-123",
+            "full_name": None,
+            "email": "user@example.com",
+            "education": None,
+            "career_title": None,
+            "avatar_url": None,
+            "schema_url": "https://github.com/octocat",
+            "drive_url": None,
+            "updated_at": "2026-01-30T01:00:00Z",
+        }
+        fake_patch = httpx.Response(
+            200,
+            json=[patched_row],
+            request=httpx.Request("PATCH", "https://test.supabase.co/rest/v1/profiles"),
+        )
+        instance = AsyncMock()
+        instance.patch.return_value = fake_patch
+        with patch.object(profile_mod.httpx, "AsyncClient") as MockClient:
+            _mock_httpx(MockClient, instance)
+            resp = client.patch(
+                "/api/profile",
+                json={"schema_url": "https://github.com/octocat"},
+                headers={"Authorization": "Bearer tok-abc"},
+            )
+        assert resp.status_code == 200
+        assert resp.json()["schema_url"] == "https://github.com/octocat"
+
+    def test_empty_url_fields_accepted(self, client):
+        """PATCH accepts empty string URL fields (clearing them)."""
+        patched_row = {
+            "id": "user-123",
+            "full_name": None,
+            "email": "user@example.com",
+            "education": None,
+            "career_title": None,
+            "avatar_url": None,
+            "schema_url": "",
+            "drive_url": "",
+            "updated_at": "2026-01-30T01:00:00Z",
+        }
+        fake_patch = httpx.Response(
+            200,
+            json=[patched_row],
+            request=httpx.Request("PATCH", "https://test.supabase.co/rest/v1/profiles"),
+        )
+        instance = AsyncMock()
+        instance.patch.return_value = fake_patch
+        with patch.object(profile_mod.httpx, "AsyncClient") as MockClient:
+            _mock_httpx(MockClient, instance)
+            resp = client.patch(
+                "/api/profile",
+                json={"schema_url": "", "drive_url": ""},
+                headers={"Authorization": "Bearer tok-abc"},
+            )
+        assert resp.status_code == 200
+
     def test_insert_failure_returns_502(self, client):
         """PATCH returns 502 when the INSERT fallback also fails."""
         fake_patch = httpx.Response(

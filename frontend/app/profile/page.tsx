@@ -49,6 +49,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{ schema_url?: string; drive_url?: string }>({});
 
   // password fields (handled separately)
   const [currentPassword, setCurrentPassword] = useState("");
@@ -89,6 +90,37 @@ export default function ProfilePage() {
     draft.drive_url !== profile.drive_url ||
     avatarPreview !== (profile.avatar_url || null);
 
+  // ---- validation helpers ----
+  const MAX_AVATAR_BYTES = 5 * 1024 * 1024; // 5 MB
+
+  const validateUrls = (): boolean => {
+    const errors: { schema_url?: string; drive_url?: string } = {};
+    const ghUrl = draft.schema_url?.trim();
+    if (ghUrl) {
+      try {
+        new URL(ghUrl);
+        if (!ghUrl.startsWith("https://github.com/")) {
+          errors.schema_url = "GitHub URL must start with https://github.com/";
+        }
+      } catch {
+        errors.schema_url = "Please enter a valid URL.";
+      }
+    }
+    const driveUrl = draft.drive_url?.trim();
+    if (driveUrl) {
+      try {
+        new URL(driveUrl);
+        if (!driveUrl.startsWith("https://drive.google.com/")) {
+          errors.drive_url = "Drive URL must start with https://drive.google.com/";
+        }
+      } catch {
+        errors.drive_url = "Please enter a valid URL.";
+      }
+    }
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   // ---- avatar ----
   const pickAvatar = async () => {
     if (isElectron()) {
@@ -110,6 +142,10 @@ export default function ProfilePage() {
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > MAX_AVATAR_BYTES) {
+      setMessage({ type: "err", text: "Avatar must be under 5 MB." });
+      return;
+    }
     if (avatarPreview?.startsWith("blob:")) URL.revokeObjectURL(avatarPreview);
     const url = URL.createObjectURL(file);
     setAvatarPreview(url);
@@ -129,6 +165,8 @@ export default function ProfilePage() {
       setMessage({ type: "err", text: "Not authenticated. Please log in." });
       return;
     }
+
+    if (!validateUrls()) return;
 
     setSaving(true);
     setMessage(null);
@@ -178,6 +216,7 @@ export default function ProfilePage() {
     setNewPassword("");
     setConfirmPassword("");
     setMessage(null);
+    setFieldErrors({});
   };
 
   // ---- logout ----
@@ -392,6 +431,9 @@ export default function ProfilePage() {
                   value={draft.schema_url ?? ""}
                   onChange={(e) => set("schema_url", e.target.value)}
                 />
+                {fieldErrors.schema_url && (
+                  <p className="text-xs text-red-600">{fieldErrors.schema_url}</p>
+                )}
               </div>
 
               <div className="space-y-1">
@@ -404,6 +446,9 @@ export default function ProfilePage() {
                   value={draft.drive_url ?? ""}
                   onChange={(e) => set("drive_url", e.target.value)}
                 />
+                {fieldErrors.drive_url && (
+                  <p className="text-xs text-red-600">{fieldErrors.drive_url}</p>
+                )}
               </div>
             </CardContent>
           </Card>

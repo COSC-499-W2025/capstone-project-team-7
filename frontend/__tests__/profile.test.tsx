@@ -14,7 +14,7 @@ const MOCK_PROFILE = {
   education: "B.Sc. CS",
   career_title: "Engineer",
   avatar_url: "",
-  schema_url: "https://schema.example.com",
+  schema_url: "https://github.com/janedoe",
   drive_url: "https://drive.google.com/example",
   updated_at: null,
 };
@@ -112,7 +112,7 @@ describe("ProfilePage", () => {
     expect(screen.getByLabelText("Email")).toHaveValue("jane@example.com");
     expect(screen.getByLabelText("Education")).toHaveValue("B.Sc. CS");
     expect(screen.getByLabelText("Career Title")).toHaveValue("Engineer");
-    expect(screen.getByLabelText("GitHub Profile URL")).toHaveValue("https://schema.example.com");
+    expect(screen.getByLabelText("GitHub Profile URL")).toHaveValue("https://github.com/janedoe");
     expect(screen.getByLabelText("Team Google Drive URL")).toHaveValue("https://drive.google.com/example");
   });
 
@@ -289,6 +289,75 @@ describe("ProfilePage", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent("Server error");
+    });
+  });
+
+  it("rejects invalid GitHub URL on save", async () => {
+    await renderAndWait();
+    const ghInput = screen.getByLabelText("GitHub Profile URL");
+    await userEvent.clear(ghInput);
+    await userEvent.type(ghInput, "https://notgithub.com/user");
+
+    const saveBtn = screen.getByRole("button", { name: "Save Changes" });
+    await userEvent.click(saveBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub URL must start with https://github.com/")).toBeInTheDocument();
+    });
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid Drive URL on save", async () => {
+    await renderAndWait();
+    const driveInput = screen.getByLabelText("Team Google Drive URL");
+    await userEvent.clear(driveInput);
+    await userEvent.type(driveInput, "https://notdrive.com/folder");
+
+    const saveBtn = screen.getByRole("button", { name: "Save Changes" });
+    await userEvent.click(saveBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText("Drive URL must start with https://drive.google.com/")).toBeInTheDocument();
+    });
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("allows empty URL fields on save", async () => {
+    await renderAndWait();
+    const ghInput = screen.getByLabelText("GitHub Profile URL");
+    const driveInput = screen.getByLabelText("Team Google Drive URL");
+    await userEvent.clear(ghInput);
+    await userEvent.clear(driveInput);
+
+    // Also change name so dirty flag is true
+    const nameInput = screen.getByLabelText("Display Name");
+    await userEvent.clear(nameInput);
+    await userEvent.type(nameInput, "New Name");
+
+    mockUpdate.mockResolvedValue({
+      ok: true,
+      data: { ...MOCK_PROFILE, display_name: "New Name", schema_url: "", drive_url: "" },
+    });
+
+    const saveBtn = screen.getByRole("button", { name: "Save Changes" });
+    await userEvent.click(saveBtn);
+
+    await waitFor(() => {
+      expect(mockUpdate).toHaveBeenCalled();
+    });
+  });
+
+  it("rejects avatar file over 5 MB", async () => {
+    await renderAndWait();
+    const fileInput = screen.getByTestId("avatar-file-input") as HTMLInputElement;
+
+    const largeFile = new File(["x".repeat(6 * 1024 * 1024)], "big.png", { type: "image/png" });
+    Object.defineProperty(largeFile, "size", { value: 6 * 1024 * 1024 });
+
+    fireEvent.change(fileInput, { target: { files: [largeFile] } });
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent("Avatar must be under 5 MB.");
     });
   });
 
