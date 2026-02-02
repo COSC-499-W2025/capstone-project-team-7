@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent, useMemo } from "react";
+import { useEffect, useState, FormEvent, useMemo } from "react";
 import type { ChangeEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -14,7 +14,7 @@ import { PasswordStrength } from "@/components/password-strength";
 
 export default function SignupPage() {
   const router = useRouter();
-  const { signup, isLoading } = useAuth();
+  const { signup, isLoading, isAuthenticated } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -25,6 +25,16 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeNotice, setActiveNotice] = useState<"privacy" | "external" | null>(null);
+
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      router.replace("/");
+    }
+  }, [isAuthenticated, isLoading, router]);
+
+  if (isLoading || isAuthenticated) {
+    return null;
+  }
 
   const passwordValidation = useMemo(() => {
     const hasMinLength = password.length >= 8;

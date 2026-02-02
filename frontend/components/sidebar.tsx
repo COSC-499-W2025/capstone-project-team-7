@@ -111,7 +111,10 @@ export const Sidebar: React.FC = () => {
           />
         </div>
 
-        <div className="bg-gradient-to-br from-gray-800/40 to-gray-900/40 rounded-xl p-3.5 border border-gray-700/30 backdrop-blur-sm">
+        <Link
+          href="/profile"
+          className="bg-gradient-to-br from-gray-800/40 to-gray-900/40 rounded-xl p-3.5 border border-gray-700/30 backdrop-blur-sm block transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20"
+        >
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-600 to-gray-800 flex items-center justify-center flex-shrink-0 shadow-md">
               <span className="text-white font-semibold text-sm">JD</span>
@@ -121,7 +124,7 @@ export const Sidebar: React.FC = () => {
               <p className="text-xs text-gray-400 truncate">Dameryjac@gmail.com</p>
             </div>
           </div>
-        </div>
+        </Link>
       </div>
     </div>
   );
