@@ -42,6 +42,15 @@ export default function HomePage() {
         ))}
       </section>
 
+      <section className="flex gap-4">
+        <a
+          href="/profile"
+          className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-medium text-slate-50 transition-colors hover:bg-slate-800"
+        >
+          Profile &amp; Settings
+        </a>
+      </section>
+
       <section className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5 shadow-inner shadow-slate-950/40">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>

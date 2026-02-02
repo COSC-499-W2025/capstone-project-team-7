@@ -161,6 +161,29 @@ export interface SetThumbnailRequest {
   imageId: string;
 }
 
+// ---------- User profile ----------
+
+export interface UserProfile {
+  user_id: string;
+  display_name?: string | null;
+  email?: string | null;
+  education?: string | null;
+  career_title?: string | null;
+  avatar_url?: string | null;
+  schema_url?: string | null;
+  drive_url?: string | null;
+  updated_at?: string | null;
+}
+
+export interface UpdateProfileRequest {
+  display_name?: string;
+  education?: string;
+  career_title?: string;
+  avatar_url?: string;
+  schema_url?: string;
+  drive_url?: string;
+}
+
 // ---------- Read models ----------
 
 export interface ShowcaseProject {
