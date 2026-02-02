@@ -1,6 +1,31 @@
 
 # Jacob Damery
 
+## Week 18
+
+This week, I focused on laying the groundwork for a more complete and cohesive user interface in the Electron application. My work centered on establishing global styling conventions and implementing a modern sidebar-based navigation layout. This marked an important step toward transitioning the project from isolated components into a unified, full-featured UI.
+
+**Key Accomplishments:**
+
+**Global Styling & Visual System (PR #XXX):** Implemented a refactored global CSS structure to define consistent colors, typography, and layout behavior across the application. Established a high-contrast, clarity-first visual style to improve readability and reduce visual noise. Standardized base styles for common UI elements to minimize per-component overrides moving forward.
+[PR #260](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/260)
+
+**Sidebar & Application Layout:** Designed and implemented a fixed sidebar navigation system suitable for a desktop Electron environment. Introduced a new application layout wrapper to manage the relationship between the sidebar and main content area. Structured navigation to support current and upcoming application sections in a scalable way. Integrated routing to ensure smooth navigation between views within the new layout.
+[PR #264](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/264)
+
+
+**Challenges & Learning:**
+
+The main friction was encountering a tricky merge conflict in `package-lock.json` that took extra time to diagnose and resolve. Resolving dependency-related conflicts highlighted the need for more caution when rebasing or merging branches that modify lockfiles. I also learned through code review that initial implementation of typography and destructive colors required refinement to avoid component conflicts and improve UX.
+
+**Next Week Priorities:**
+
+Next week, I'll continue expanding the UI using the new layout and styling foundations. I'll refine navigation behavior and visual polish across additional views, apply the global styling system to remaining components for consistency, and update existing components to use the new `.pc-typography` wrapper where appropriate. I'll also test destructive button styles across different use cases to ensure consistent behavior.
+
+**Impact:**
+
+This work establishes a solid foundation for building out the full desktop UI experience. Taking time to align with the team on UI structure and design decisions led to strong consensus and fewer reworks. The foundational layout and styling system creates a clearer path for future feature development and ensures visual consistency across the application.
+
 ## Week 17
 
 This week, I focused on two major PRs: integrating config/profile APIs into the TUI and delivering resume items CRUD via the API.
