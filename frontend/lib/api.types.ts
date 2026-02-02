@@ -208,6 +208,29 @@ export interface SetThumbnailRequest {
   imageId: string;
 }
 
+// ---------- User profile ----------
+
+export interface UserProfile {
+  user_id: string;
+  display_name?: string | null;
+  email?: string | null;
+  education?: string | null;
+  career_title?: string | null;
+  avatar_url?: string | null;
+  schema_url?: string | null;
+  drive_url?: string | null;
+  updated_at?: string | null;
+}
+
+export interface UpdateProfileRequest {
+  display_name?: string;
+  education?: string;
+  career_title?: string;
+  avatar_url?: string;
+  schema_url?: string;
+  drive_url?: string;
+}
+
 // ---------- Read models ----------
 
 export interface ShowcaseProject {
@@ -228,4 +251,29 @@ export interface ResumeView {
   resumeId: string;
   name: string;
   items: ResumeItem[];
+}
+
+// ---------- Auth ----------
+
+export interface AuthCredentials {
+  email: string;
+  password: string;
+}
+
+export interface AuthSessionResponse {
+  user_id: string;
+  email: string;
+  access_token: string;
+  refresh_token: string | null;
+}
+
+export interface ConsentRequest {
+  user_id: string;
+  service_name: string;
+  consent_given: boolean;
+}
+
+export interface User {
+  id: string;
+  email: string;
 }
