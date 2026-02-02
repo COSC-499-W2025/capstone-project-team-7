@@ -105,6 +105,8 @@ bash scripts/run_textual_cli.sh
 ```
 
 ## Testing
+
+### Backend
 ```bash
 cd backend
 python -m venv .venv && source .venv/bin/activate  # or use existing venv
@@ -112,6 +114,14 @@ pip install -r requirements.txt
 pytest -q
 ```
 Tests cover the Textual services, analyzers (PDF/doc/media/git), consent flows, Supabase-backed services, and API routes. Some suites load Torch/vision/audio; allow extra time on first install.
+
+### Frontend
+```bash
+cd frontend
+npm run test          # single run (vitest)
+npm run test:watch    # watch mode
+```
+Tests use Vitest + Testing Library (jsdom). Test files are in `frontend/__tests__/`.
 
 ## Key references
 - Architecture + diagrams: `docs/systemArchitecture.md`, `docs/dfd.md`
