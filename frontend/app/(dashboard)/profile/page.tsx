@@ -200,6 +200,9 @@ export default function ProfilePage() {
       setDraft(res.data);
       if (res.data.avatar_url) setAvatarPreview(res.data.avatar_url);
       else setAvatarPreview(null);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("profile:updated"));
+      }
       setMessage({ type: "ok", text: "Profile saved." });
     } else {
       setMessage({ type: "err", text: res.error ?? "Save failed." });
@@ -269,7 +272,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <main className="space-y-4">
+    <main className="max-w-4xl mx-auto p-6 space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
