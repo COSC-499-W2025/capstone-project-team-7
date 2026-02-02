@@ -17,6 +17,27 @@
 - [Week 4 (September 22 - 28)](#week-4-september-22---28)
 - [Week 3 (September 15 - 21)](#week-3-september-15---21)
 
+
+## Week 18 (Jaunary 20th - Febuary 1st)
+
+**Jacob**I implemented the frontend UI foundations this week, including global styling and application navigation. I authored [PR #260 – "Refactor globals.css for Pro Contrast styling and improved accessibility"](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/260), which establishes a high-contrast, clarity-first global visual system. This work introduced consistent grayscale color tokens, standardized typography, enforced structural borders, and removed decorative shadows to reduce visual noise. The goal was to create a strong, reusable styling baseline that components could rely on without requiring per-component overrides.
+
+I also authored [PR #264 – "Sidebar and dashboard navigation"](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/264). This PR replaces the previous basic navigation with a modern fixed-position sidebar and introduces a new layout wrapper to manage the sidebar and main content area consistently across the app. I integrated Electron-friendly routing using a MemoryRouter and added placeholder routes for all primary navigation entries, ensuring the structure is scalable as new pages are added.
+
+In addition, I reviewed [Om's PR #266 – "Settings Page Implementation"](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/266). The feature set is comprehensive and well integrated with the backend. My feedback focused on frontend consistency with the new sidebar layout and Pro Contrast styles, particularly around text visibility, spacing, and layout behavior within the shared layout wrapper. I also paid attention to loading and disabled states to ensure predictable UI behavior during async operations.
+
+Finally, I reviewed [Joaquin's PR #258 – "Electron login and signup"](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/258). My review focused on how authentication flows interacted with the application layout and routing in an Electron context. I verified that login and signup transitions cleanly handed off to the main app layout and that routing assumptions remained compatible with MemoryRouter usage. The implementation was solid, and no blocking issues were identified.
+
+**Joaquin**
+
+**Aaron**
+
+**Om**
+
+**Vlad**
+
+**Samarth**
+
 ## Week 17 (January 19th - 25th)
 
 **Joaquin:** I reviewed Vlad’s **PR [#242 – “Implemented all features, tests and documentation”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/242)**. Overall, the implementation is strong and well tested, but there’s a subtle edge case around deduplication for projects scanned via the TUI. The current duplicate detection relies on SHA-256 hashes, but files cached through `_build_cached_file_records` do not store a `sha256` field—only path, size, MIME type, metadata, and timestamps. As a result, when `append_upload_to_project` builds `existing_hashes`, it ends up empty for those projects, and the duplicate check never fires. In practice, this would cause files that should be skipped to be marked as “added” and re-upserted, leading to incorrect status reporting and unnecessary database writes. I suggested persisting hashes in the TUI cache going forward and, if feasible, adding a one-time backfill for older cached records. I also reviewed Om’s **PR [#244 – “Feature/portfolio items API”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/244)**. The structure is clean and consistent with existing service and router patterns in the codebase. One issue I flagged is that `delete_portfolio_item` returns `True` unconditionally, even when no row is deleted. Supabase returns an empty list (`[]`) when nothing matches the delete criteria, so the method should check something like `len(response.data) > 0`. I also recommended tightening the related test in `test_portfolio_items_api` to assert 404 instead of allowing 204 in that case. Other than that, the PR looks ready. Finally, I reviewed Aaron’s **PR [#245 – “Cross entity”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/245)**. The feature is well structured, and I like the API-first approach with a direct DB fallback. I suggested two changes. First, in `on_project_search_selected`, the DB fallback assigns the entire project record returned by `get_project_scan()` directly to `scan_data`, while the API path correctly extracts `scan_data` from the JSON response. This mismatch will cause `FileSkillsSearchScreen` to fail to display files. The fix is to extract `scan_data` from the returned project record (e.g., `project = service.get_project_scan(...); scan_data = project.get("scan_data") if project else None`). Second, there is a minor rendering issue in `screens.py` where an `e` character appears instead of proper bullet-style formatting for fields like total lines and code lines.
