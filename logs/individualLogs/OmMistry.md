@@ -1,5 +1,56 @@
 # Om Mistry (@OM200401)
 
+## Week 18: January 26 - February 1
+
+This week I implemented a comprehensive settings page for the Electron app with full backend integration. The work included authentication system, scan profile management, consent handling, and multiple backend bug fixes to ensure smooth API integration.
+
+**Core Implementation:**
+
+1. **Settings Page UI & Authentication:**
+   - Designed modern card-based layout with theme switching, preferences, scan configuration, and consent management
+   - Implemented JWT token-based login/logout with automatic Authorization header injection across all API calls
+   - Added token storage utilities and session management with visual user status display
+   - Created token generation script (`scripts/get_test_token.py`) for testing authentication flows
+
+2. **Scan Profile Management:**
+   - Built complete CRUD interface for custom scan profiles with file extensions and excluded directories
+   - Implemented automatic profile switching with immediate backend persistence
+   - Added profile details display panel with edit capabilities
+   - Handled empty state scenarios with helpful user guidance
+
+3. **Backend Fixes & Integration:**
+   - Fixed `resume_routes.py` DELETE endpoint (added `response_model=None` for HTTP 204 compatibility)
+   - Resolved `project_routes.py` Pydantic forward reference issues by reordering class definitions
+   - Fixed Python 3.10 compatibility in `consent.py` (`datetime.UTC` → `datetime.timezone.utc`)
+   - Corrected Authorization header injection in `api.ts` for consent and config endpoints
+
+4. **UI/UX Polish:**
+   - Fixed text visibility issues by adding explicit color classes to all inputs and buttons
+   - Added loading states, status messages, and disabled states for all async operations
+   - Implemented two-tier consent model with validation (external services requires data access)
+
+**What Went Well:**
+- Systematic approach to fixing backend startup errors prevented deployment delays
+- Breaking down authentication into token management utilities improved code maintainability
+- Comprehensive testing strategy caught integration issues early
+- Clean separation between profile switching (auto-save) and settings (manual save) improved UX
+
+**What Didn't Go Well:**
+- Initial API integration missing Authorization headers required debugging across multiple files
+- Text visibility issues weren't caught until manual testing - should add accessibility checks earlier
+- Multiple backend startup errors required iterative fixes - better local testing before commit needed
+
+**Next Steps:**
+- Monitor settings page in production for edge cases and performance
+- Add profile deletion functionality
+- Implement profile import/export for sharing configurations
+- Consider adding profile templates for common use cases
+
+Issues resolved: [#262 - Settings page functionality](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/262)
+
+PR: [#266 - Settings Page Implementation](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/266)
+
+
 ## Week 17: January 19 - January 25
 
 This week I focused on implementing Portfolio Items CRUD functionality, integrating the API with the Textual UI, adding tests, and updating documentation. The work includes model and migration additions, TUI wiring for create/view/update/delete flows, and several bug fixes from peer reviews.
