@@ -274,28 +274,33 @@ class ProjectsService:
     def get_user_projects(self, user_id: str) -> List[Dict[str, Any]]:
         """
         Get all projects for a user, ordered by most recent first.
+        Includes scan_data for metadata extraction.
         
         Returns:
-            List of project records (without full scan_data)
+            List of project records with scan_data included
         """
         try:
             response = self.client.table("projects").select(
                 "id, project_name, project_path, scan_timestamp, "
-                "total_files, total_lines, languages, "
+                "total_files, total_lines, languages, scan_data, "
                 "has_media_analysis, has_pdf_analysis, has_code_analysis, has_git_analysis, "
                 "has_contribution_metrics, contribution_score, user_commit_share, total_commits, "
                 "primary_contributor, project_end_date, has_skills_progress, has_skills_analysis, has_document_analysis, "
                 "thumbnail_url, created_at"
             ).eq("user_id", user_id).order("scan_timestamp", desc=True).execute()
             
-            return response.data or []
+            projects = response.data or []
+            # Decrypt scan_data for each project
+            for project in projects:
+                project["scan_data"] = self._decrypt_scan_data(project.get("scan_data"))
+            return projects
             
         except Exception as exc:
             # Fall back if older schema does not include has_skills_progress
             if "has_skills_progress" in str(exc):
                 response = self.client.table("projects").select(
                     "id, project_name, project_path, scan_timestamp, "
-                    "total_files, total_lines, languages, "
+                    "total_files, total_lines, languages, scan_data, "
                     "has_media_analysis, has_pdf_analysis, has_code_analysis, has_git_analysis, "
                     "has_contribution_metrics, contribution_score, user_commit_share, total_commits, "
                     "primary_contributor, project_end_date, thumbnail_url, "
@@ -305,6 +310,7 @@ class ProjectsService:
                 projects = response.data or []
                 for project in projects:
                     project.setdefault("has_skills_progress", False)
+                    project["scan_data"] = self._decrypt_scan_data(project.get("scan_data"))
                 return projects
             raise ProjectsServiceError(f"Failed to get projects: {exc}") from exc
     

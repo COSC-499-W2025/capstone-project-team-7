@@ -2,15 +2,19 @@
 
 import { useState, useEffect } from "react";
 import { ProjectsTable } from "@/components/projects/projects-table";
-import { getProjects, deleteProject } from "@/lib/api/projects";
-import { ProjectMetadata } from "@/types/project";
+import { getProjects, deleteProject, getProjectById } from "@/lib/api/projects";
+import { ProjectMetadata, ProjectDetail } from "@/types/project";
 import { Loader2, RefreshCw } from "lucide-react";
 import { getStoredToken } from "@/lib/auth";
+import { ProjectDetailModal } from "@/components/projects/project-detail-modal";
 
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<ProjectMetadata[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedProject, setSelectedProject] = useState<ProjectDetail | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [loadingDetail, setLoadingDetail] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   // Get auth token using the same method as Settings page
@@ -37,6 +41,7 @@ export default function ProjectsPage() {
       console.log("Fetching projects with token...");
       const response = await getProjects(token);
       console.log("Projects fetched successfully:", response);
+      console.log("First project data:", response.projects[0]);
       setProjects(response.projects);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to load projects";
@@ -85,11 +90,29 @@ export default function ProjectsPage() {
     }
   };
 
-  const handleView = (projectId: string) => {
-    // TODO: Navigate to project detail page
-    // For now, just log it
-    console.log("View project:", projectId);
-    alert(`Project detail view coming soon! Project ID: ${projectId}`);
+  const handleView = async (projectId: string) => {
+    const token = getAuthToken();
+    if (!token) {
+      alert("Not authenticated. Please log in through Settings.");
+      return;
+    }
+
+    setLoadingDetail(true);
+    try {
+      const projectDetail = await getProjectById(token, projectId);
+      setSelectedProject(projectDetail);
+      setIsModalOpen(true);
+    } catch (err) {
+      console.error("Failed to fetch project details:", err);
+      alert(err instanceof Error ? err.message : "Failed to load project details");
+    } finally {
+      setLoadingDetail(false);
+    }
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setSelectedProject(null);
   };
 
   if (loading) {
@@ -156,6 +179,23 @@ export default function ProjectsPage() {
           />
         </div>
       </div>
+
+      {/* Loading overlay when fetching project details */}
+      {loadingDetail && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-4 flex items-center gap-3">
+            <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+            <span className="text-gray-700">Loading project details...</span>
+          </div>
+        </div>
+      )}
+
+      {/* Project Detail Modal */}
+      <ProjectDetailModal
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+        project={selectedProject}
+      />
     </div>
   );
 }
