@@ -2,6 +2,7 @@ import type { ApiResult } from "./api.types";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
 const TOKEN_STORAGE_KEY = "auth_access_token";
+const LEGACY_TOKEN_STORAGE_KEY = "access_token";
 
 const getApiBaseUrl = () => {
   return process.env.NEXT_PUBLIC_API_BASE_URL || DEFAULT_API_BASE_URL;
@@ -10,7 +11,7 @@ const getApiBaseUrl = () => {
 // Token management functions
 export const getStoredToken = (): string | null => {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem(TOKEN_STORAGE_KEY);
+  return localStorage.getItem(TOKEN_STORAGE_KEY) || localStorage.getItem(LEGACY_TOKEN_STORAGE_KEY);
 };
 
 export const setStoredToken = (token: string): void => {
