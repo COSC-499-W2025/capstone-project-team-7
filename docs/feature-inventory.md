@@ -26,6 +26,15 @@ Priority key: P0 = launch-critical parity; P1 = nice-to-have once P0 is stable; 
 | Resume generation | P1 | Build resume item from scan artifacts | `backend/src/cli/services/resume_generation_service.py` | Local; optional AI; writes markdown | Scan detail → Create resume |
 | Resume storage & browsing | P1 | View/delete saved resumes | `backend/src/cli/services/resume_storage_service.py` | Supabase table `resume_items`; encrypted content | Resumes list/detail |
 
+## Project Page (Wireframe)
+| Aspect | Detail |
+| --- | --- |
+| Route | `/project` |
+| Status | Wireframe — overview tab implemented, remaining 15 tabs show placeholder |
+| Sidebar | "Project Analysis" nav item with `FlaskConical` icon, below "Scanned Results" |
+| Tabs (16) | Show Overview, View File List, Language Breakdown, Code Analysis, Skills Analysis, Run Git Analysis, Contribution Metrics, Generate Resume Item, Find Duplicate Files, Search and Filter Files, Export JSON Report, Export HTML Report, Export Printable Report, Analyze PDF Files, Document Analysis, Media Analysis |
+| Overview content | Project Information, Summary Statistics, Top 5 Languages, Git Repositories, Media Files, Documents |
+
 ## Deep dives
 
 ### Supabase auth & session caching
