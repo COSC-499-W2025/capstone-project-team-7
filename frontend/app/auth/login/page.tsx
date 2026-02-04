@@ -27,7 +27,16 @@ export default function LoginPage() {
   }, [isAuthenticated, isLoading, router]);
 
   if (isLoading || isAuthenticated) {
-    return null;
+    return (
+      <main
+        className="min-h-screen flex items-center justify-center p-4"
+        role="status"
+        aria-busy="true"
+        aria-live="polite"
+      >
+        <p className="text-sm text-muted-foreground">Loading...</p>
+      </main>
+    );
   }
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {

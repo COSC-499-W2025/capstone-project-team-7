@@ -16,7 +16,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [isAuthenticated, isLoading, router]);
 
   if (isLoading || !isAuthenticated) {
-    return null;
+    return (
+      <main
+        className="min-h-screen flex items-center justify-center"
+        role="status"
+        aria-busy="true"
+        aria-live="polite"
+      >
+        <p className="text-sm text-muted-foreground">Loading...</p>
+      </main>
+    );
   }
 
   return (

@@ -32,10 +32,6 @@ export default function SignupPage() {
     }
   }, [isAuthenticated, isLoading, router]);
 
-  if (isLoading || isAuthenticated) {
-    return null;
-  }
-
   const passwordValidation = useMemo(() => {
     const hasMinLength = password.length >= 8;
     const hasUppercase = /[A-Z]/.test(password);
@@ -55,6 +51,19 @@ export default function SignupPage() {
     const trimmed = email.trim();
     return trimmed.length > 0 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
   }, [email]);
+
+  if (isLoading || isAuthenticated) {
+    return (
+      <main
+        className="min-h-screen flex items-center justify-center p-4"
+        role="status"
+        aria-busy="true"
+        aria-live="polite"
+      >
+        <p className="text-sm text-muted-foreground">Loading...</p>
+      </main>
+    );
+  }
 
   const passwordsMatch = password === confirmPassword && confirmPassword.length > 0;
 
