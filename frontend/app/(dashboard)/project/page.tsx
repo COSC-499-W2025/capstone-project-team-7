@@ -71,11 +71,11 @@ export default function ProjectPage() {
       </div>
 
       <Tabs defaultValue="overview">
-        <TabsList className="flex flex-wrap gap-1 h-auto bg-gray-100 rounded-lg p-1.5">
+        <TabsList className="flex justify-start overflow-x-auto gap-1 h-auto bg-gray-100 rounded-lg p-1.5 scrollbar-thin">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             return (
-              <TabsTrigger key={tab.value} value={tab.value} className="gap-1.5 text-xs px-2.5 py-1.5">
+              <TabsTrigger key={tab.value} value={tab.value} className="gap-1.5 text-xs px-2.5 py-1.5 shrink-0">
                 <Icon size={14} />
                 {tab.label}
               </TabsTrigger>
