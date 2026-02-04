@@ -3,6 +3,7 @@
 import { ProjectMetadata } from "@/types/project";
 import { formatDistanceToNow } from "date-fns";
 import { Trash2, Eye, FolderOpen } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 interface ProjectsTableProps {
   projects: ProjectMetadata[];
@@ -11,6 +12,8 @@ interface ProjectsTableProps {
 }
 
 export function ProjectsTable({ projects, onDelete, onView }: ProjectsTableProps) {
+  const router = useRouter();
+
   const formatDate = (dateString?: string) => {
     if (!dateString) return "N/A";
     try {
@@ -105,8 +108,13 @@ export function ProjectsTable({ projects, onDelete, onView }: ProjectsTableProps
             
             return (
             <tr key={project.id} className="hover:bg-gray-50 transition-colors">
-              <td className="px-6 py-4 whitespace-nowrap">
-                <div className="text-sm font-medium text-gray-900">{project.project_name}</div>
+              <td 
+                className="px-6 py-4 whitespace-nowrap cursor-pointer"
+                onClick={() => router.push(`/projects/${project.id}/analysis`)}
+              >
+                <div className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline">
+                  {project.project_name}
+                </div>
               </td>
               <td className="px-6 py-4 whitespace-nowrap">
                 <div className="text-sm text-gray-500 max-w-xs truncate" title={project.project_path}>
