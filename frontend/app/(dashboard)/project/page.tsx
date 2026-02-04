@@ -63,7 +63,7 @@ export default function ProjectPage() {
   return (
     <div className="p-8">
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 mb-6">
-        <Link href="/scanned-results" className="text-sm text-gray-600 hover:text-gray-900 mb-2 inline-block">
+        <Link href={"/scanned-results" as any} className="text-sm text-gray-600 hover:text-gray-900 mb-2 inline-block">
           ← Back
         </Link>
         <h1 className="text-4xl font-bold text-gray-900 tracking-tight">Project: My Capstone App</h1>
