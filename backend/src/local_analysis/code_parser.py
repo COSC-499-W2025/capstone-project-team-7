@@ -590,6 +590,42 @@ class DirectoryResult:
                         'context': ds.context
                     })
         return {k: v[:10] for k, v in by_type.items()}
+    
+    def to_dict(self) -> Dict:
+        """
+        Serialize DirectoryResult for database storage.
+        
+        Returns a dict containing:
+        - success: bool indicating analysis completed
+        - path: analyzed directory path
+        - summary: aggregate counts and statistics
+        - dead_code: list of unused code items with examples
+        - duplicates: duplicate code blocks with locations
+        - call_graph: function call relationships
+        - magic_values: hardcoded values that should be constants
+        - error_handling: error handling quality issues
+        - naming_issues: naming convention violations
+        - nesting_issues: deeply nested code
+        - data_structures: data structure usage with examples
+        - files: per-file analysis results
+        """
+        return {
+            'success': True,
+            'path': self.path,
+            'total_files': len(self.files),
+            'successful_files': self.successful,
+            'failed_files': self.failed,
+            'summary': self.summary,
+            'dead_code': self.get_all_dead_code()[:50],
+            'duplicates': self.get_all_duplicates()[:30],
+            'call_graph': self.get_call_graph(),
+            'magic_values': self.get_all_magic_values()[:50],
+            'error_handling': self.get_error_handling_issues()[:50],
+            'naming_issues': self.get_naming_issues()[:50],
+            'nesting_issues': self.get_nesting_issues()[:30],
+            'data_structures': self.get_data_structure_summary(),
+            'files': [f.to_dict() for f in self.files]
+        }
 
 
 # =============================================================================
