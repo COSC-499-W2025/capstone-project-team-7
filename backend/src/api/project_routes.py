@@ -139,7 +139,12 @@ def normalize_project_data(project: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize project data from database to match model expectations.
     
     Handles None values for boolean and list fields by converting to defaults.
+    Extracts total_files and total_lines from scan_data.summary if not present at root.
     """
+    # Extract scan_data for potential fallback values
+    scan_data = project.get('scan_data', {}) or {}
+    summary = scan_data.get('summary', {}) or {} if isinstance(scan_data, dict) else {}
+    
     # Convert None boolean fields to False
     boolean_fields = [
         'has_media_analysis', 'has_pdf_analysis', 'has_code_analysis',
@@ -149,6 +154,26 @@ def normalize_project_data(project: Dict[str, Any]) -> Dict[str, Any]:
     for field in boolean_fields:
         if field in project and project[field] is None:
             project[field] = False
+    
+    # Extract total_files and total_lines from scan_data.summary if not at root
+    if not project.get('total_files') and isinstance(summary, dict):
+        project['total_files'] = summary.get('total_files', 0)
+    
+    if not project.get('total_lines') and isinstance(summary, dict):
+        project['total_lines'] = summary.get('total_lines', 0)
+    
+    # Extract languages from scan_data if not at root
+    if not project.get('languages') and isinstance(scan_data, dict):
+        scan_languages = scan_data.get('languages')
+        if isinstance(scan_languages, dict):
+            # If languages is a dict with language stats, extract keys
+            project['languages'] = list(scan_languages.keys())
+        elif isinstance(scan_languages, list):
+            # If languages is a list of objects with 'language' field, extract names
+            if scan_languages and isinstance(scan_languages[0], dict):
+                project['languages'] = [lang.get('language') for lang in scan_languages if lang.get('language')]
+            else:
+                project['languages'] = scan_languages
     
     # Normalize languages list to strings and drop null entries
     if 'languages' in project:
