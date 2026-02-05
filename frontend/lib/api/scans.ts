@@ -40,13 +40,18 @@ export async function startScan(
 /**
  * Get the status of a scan
  */
-export async function getScanStatus(token: string, scanId: string): Promise<ScanStatusResponse> {
+export async function getScanStatus(
+  token: string,
+  scanId: string,
+  signal?: AbortSignal
+): Promise<ScanStatusResponse> {
   const response = await fetch(`${API_BASE_URL}/api/scans/${scanId}`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
+    signal,
   });
 
   if (!response.ok) {

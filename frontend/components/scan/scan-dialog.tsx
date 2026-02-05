@@ -20,15 +20,16 @@ import { FolderOpen, AlertTriangle, CheckCircle2, XCircle, Loader2 } from "lucid
 interface ScanDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onScanComplete?: () => void;
 }
 
-export function ScanDialog({ open, onOpenChange }: ScanDialogProps) {
+export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogProps) {
   const [sourcePath, setSourcePath] = useState("");
   const [isElectron, setIsElectron] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isBrowsing, setIsBrowsing] = useState(false);
 
-  const { state, progress, error, result, isScanning, start, reset } = useScan();
+  const { state, progress, error, result, isScanning, start, reset } = useScan(onScanComplete);
 
   // Check for Electron and auth on mount
   useEffect(() => {

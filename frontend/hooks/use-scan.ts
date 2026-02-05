@@ -16,9 +16,10 @@ interface UseScanReturn {
   isScanning: boolean;
   start: (sourcePath: string) => Promise<void>;
   reset: () => void;
+  onScanComplete?: () => void;
 }
 
-export function useScan(): UseScanReturn {
+export function useScan(onScanComplete?: () => void): UseScanReturn {
   const [scanId, setScanId] = useState<string | null>(null);
   const [state, setState] = useState<JobState | null>(null);
   const [progress, setProgress] = useState<ScanProgress | null>(null);
@@ -28,11 +29,16 @@ export function useScan(): UseScanReturn {
 
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const scanIdRef = useRef<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const clearPolling = useCallback(() => {
     if (pollIntervalRef.current) {
       clearInterval(pollIntervalRef.current);
       pollIntervalRef.current = null;
+    }
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
     }
   }, []);
 
@@ -56,8 +62,11 @@ export function useScan(): UseScanReturn {
       return;
     }
 
+    // Create new AbortController for this request
+    abortControllerRef.current = new AbortController();
+
     try {
-      const status = await getScanStatus(token, currentScanId);
+      const status = await getScanStatus(token, currentScanId, abortControllerRef.current.signal);
 
       setState(status.state);
       setProgress(status.progress ?? null);
@@ -66,17 +75,22 @@ export function useScan(): UseScanReturn {
         clearPolling();
         setResult(status.result ?? null);
         setIsScanning(false);
+        onScanComplete?.();
       } else if (status.state === "failed" || status.state === "canceled") {
         clearPolling();
         setError(status.error ?? "Scan failed");
         setIsScanning(false);
       }
     } catch (err) {
+      // Ignore abort errors
+      if (err instanceof Error && err.name === "AbortError") {
+        return;
+      }
       clearPolling();
       setError(err instanceof Error ? err.message : "Failed to poll scan status");
       setIsScanning(false);
     }
-  }, [clearPolling]);
+  }, [clearPolling, onScanComplete]);
 
   const start = useCallback(
     async (sourcePath: string) => {

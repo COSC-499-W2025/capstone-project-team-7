@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Plus, Loader2, FolderOpen } from "lucide-react";
 import { ScanDialog } from "@/components/scan/scan-dialog";
 import { RecentScanCard } from "@/components/scan/recent-scan-card";
@@ -14,7 +14,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchRecentProject = async () => {
+  const fetchRecentProject = useCallback(async () => {
     const token = getStoredToken();
     if (!token) {
       setLoading(false);
@@ -39,22 +39,16 @@ export default function HomePage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchRecentProject();
-  }, []);
+  }, [fetchRecentProject]);
 
-  // Refresh recent project when scan dialog closes (after a successful scan)
-  const handleScanDialogChange = (open: boolean) => {
-    setScanDialogOpen(open);
-    if (!open) {
-      // Refresh after dialog closes in case a new scan was completed
-      setTimeout(() => {
-        fetchRecentProject();
-      }, 500);
-    }
-  };
+  // Callback when scan completes successfully
+  const handleScanComplete = useCallback(() => {
+    fetchRecentProject();
+  }, [fetchRecentProject]);
 
   return (
     <div className="p-8 space-y-6">
@@ -105,7 +99,7 @@ export default function HomePage() {
         )}
       </div>
 
-      <ScanDialog open={scanDialogOpen} onOpenChange={handleScanDialogChange} />
+      <ScanDialog open={scanDialogOpen} onOpenChange={setScanDialogOpen} onScanComplete={handleScanComplete} />
     </div>
   );
 }
