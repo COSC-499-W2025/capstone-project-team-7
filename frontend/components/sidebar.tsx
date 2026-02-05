@@ -12,6 +12,7 @@ import {
   Settings,
   HelpCircle,
   Search,
+  FlaskConical,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/hooks/use-auth';
@@ -159,6 +160,11 @@ export const Sidebar: React.FC = () => {
             href="/scanned-results"
             icon={<Scan size={20} />}
             label="Scanned Results"
+          />
+          <NavItem
+            href="/project"
+            icon={<FlaskConical size={20} />}
+            label="Project Analysis"
           />
         </div>
       </div>
