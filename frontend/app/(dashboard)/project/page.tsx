@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { DocumentAnalysisTab } from "@/components/project/document-analysis-tab";
 import {
   LayoutDashboard,
   FileText,
@@ -206,8 +207,13 @@ export default function ProjectPage() {
           </div>
         </TabsContent>
 
+        {/* Document Analysis tab with real content */}
+        <TabsContent value="doc-analysis">
+          <DocumentAnalysisTab />
+        </TabsContent>
+
         {/* Placeholder tabs */}
-        {tabs.slice(1).map((tab) => (
+        {tabs.slice(1).filter(tab => tab.value !== "doc-analysis").map((tab) => (
           <TabsContent key={tab.value} value={tab.value}>
             <PlaceholderContent label={tab.label} />
           </TabsContent>
