@@ -12,6 +12,7 @@ import {
   Settings,
   HelpCircle,
   Search,
+  FlaskConical,
 } from 'lucide-react';
 
 interface NavItemProps {
@@ -88,6 +89,11 @@ export const Sidebar: React.FC = () => {
             href="/scanned-results"
             icon={<Scan size={20} />}
             label="Scanned Results"
+          />
+          <NavItem
+            href="/project"
+            icon={<FlaskConical size={20} />}
+            label="Project Analysis"
           />
         </div>
       </div>
