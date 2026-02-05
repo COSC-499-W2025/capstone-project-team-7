@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent, useMemo } from "react";
+import { useEffect, useState, FormEvent, useMemo } from "react";
 import type { ChangeEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -14,7 +14,7 @@ import { PasswordStrength } from "@/components/password-strength";
 
 export default function SignupPage() {
   const router = useRouter();
-  const { signup, isLoading } = useAuth();
+  const { signup, isLoading, isAuthenticated } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -25,6 +25,12 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeNotice, setActiveNotice] = useState<"privacy" | "external" | null>(null);
+
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      router.replace("/");
+    }
+  }, [isAuthenticated, isLoading, router]);
 
   const passwordValidation = useMemo(() => {
     const hasMinLength = password.length >= 8;
@@ -45,6 +51,19 @@ export default function SignupPage() {
     const trimmed = email.trim();
     return trimmed.length > 0 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
   }, [email]);
+
+  if (isLoading || isAuthenticated) {
+    return (
+      <main
+        className="min-h-screen flex items-center justify-center p-4"
+        role="status"
+        aria-busy="true"
+        aria-live="polite"
+      >
+        <p className="text-sm text-muted-foreground">Loading...</p>
+      </main>
+    );
+  }
 
   const passwordsMatch = password === confirmPassword && confirmPassword.length > 0;
 

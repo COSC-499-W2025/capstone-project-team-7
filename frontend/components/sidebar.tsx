@@ -1,6 +1,6 @@
 "use client";
 
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -14,6 +14,14 @@ import {
   Search,
   FlaskConical,
 } from 'lucide-react';
+import { api } from '@/lib/api';
+import { useAuth } from '@/hooks/use-auth';
+
+type SidebarProfile = {
+  displayName: string;
+  email: string;
+  avatarUrl: string | null;
+};
 
 interface NavItemProps {
   href: string;
@@ -51,6 +59,69 @@ const SectionLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 };
 
 export const Sidebar: React.FC = () => {
+  const { user, isAuthenticated } = useAuth();
+  const [profile, setProfile] = useState<SidebarProfile>({
+    displayName: "Guest",
+    email: "",
+    avatarUrl: null,
+  });
+  const [avatarLoadError, setAvatarLoadError] = useState(false);
+
+  const initials = useMemo(() => {
+    const source = profile.displayName || profile.email || "?";
+    return source.trim().charAt(0).toUpperCase() || "?";
+  }, [profile.displayName, profile.email]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setProfile({ displayName: "Guest", email: "", avatarUrl: null });
+      return;
+    }
+
+    const fallbackEmail = user?.email ?? "";
+    setProfile((prev) => ({
+      ...prev,
+      displayName:
+        prev.displayName === "Guest" && fallbackEmail
+          ? fallbackEmail.split("@")[0]
+          : prev.displayName,
+      email: fallbackEmail || prev.email,
+    }));
+
+    let cancelled = false;
+    const fetchProfile = () => {
+      api.profile
+        .get()
+        .then((res) => {
+          if (!res.ok) {
+            throw new Error(res.error || `Failed to fetch profile (${res.status ?? "unknown"})`);
+          }
+          if (cancelled) return;
+          setProfile({
+            displayName: res.data.display_name || res.data.email || "User",
+            email: res.data.email || "",
+            avatarUrl: res.data.avatar_url || null,
+          });
+        })
+        .catch((error) => {
+          console.error("Failed to fetch profile:", error);
+        });
+    };
+
+    fetchProfile();
+    const handleProfileUpdated = () => fetchProfile();
+    window.addEventListener("profile:updated", handleProfileUpdated);
+
+    return () => {
+      window.removeEventListener("profile:updated", handleProfileUpdated);
+      cancelled = true;
+    };
+  }, [isAuthenticated, user?.email]);
+
+  useEffect(() => {
+    setAvatarLoadError(false);
+  }, [profile.avatarUrl]);
+
   return (
     <div className="fixed left-0 top-0 h-screen w-[280px] bg-gradient-to-b from-gray-900 via-gray-950 to-black border-r border-gray-800/50 flex flex-col shadow-2xl">
       <div className="flex-shrink-0 px-6 py-6 border-b border-gray-800/50">
@@ -117,17 +188,34 @@ export const Sidebar: React.FC = () => {
           />
         </div>
 
-        <div className="bg-gradient-to-br from-gray-800/40 to-gray-900/40 rounded-xl p-3.5 border border-gray-700/30 backdrop-blur-sm">
+        <Link
+          href="/profile"
+          className="bg-gradient-to-br from-gray-800/40 to-gray-900/40 rounded-xl p-3.5 border border-gray-700/30 backdrop-blur-sm block transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20"
+        >
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-600 to-gray-800 flex items-center justify-center flex-shrink-0 shadow-md">
-              <span className="text-white font-semibold text-sm">JD</span>
+              {profile.avatarUrl && !avatarLoadError ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={profile.avatarUrl}
+                  alt={`${profile.displayName} avatar`}
+                  className="h-full w-full rounded-full object-cover"
+                  onError={() => setAvatarLoadError(true)}
+                />
+              ) : (
+                <span className="text-white font-semibold text-sm">{initials}</span>
+              )}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-white truncate">Jacob</p>
-              <p className="text-xs text-gray-400 truncate">Dameryjac@gmail.com</p>
+              <p className="text-sm font-semibold text-white truncate">{profile.displayName}</p>
+              {profile.email ? (
+                <p className="text-xs text-gray-400 truncate">{profile.email}</p>
+              ) : (
+                <p className="text-xs text-gray-400 truncate">Sign in to view profile</p>
+              )}
             </div>
           </div>
-        </div>
+        </Link>
       </div>
     </div>
   );

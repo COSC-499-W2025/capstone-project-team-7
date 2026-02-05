@@ -51,10 +51,15 @@ export const api = {
   health: () => request<{ status: string; message?: string }>("/health"),
 
   profile: {
-    get: (token: string) =>
-      request<UserProfile>("/api/profile", {
-        headers: authHeaders(token),
-      }),
+    get: (token?: string) =>
+      request<UserProfile>(
+        "/api/profile",
+        token
+          ? {
+              headers: authHeaders(token),
+            }
+          : undefined
+      ),
 
     update: (token: string, data: UpdateProfileRequest) =>
       request<UserProfile>("/api/profile", {
