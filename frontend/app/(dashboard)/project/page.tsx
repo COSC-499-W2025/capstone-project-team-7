@@ -1,8 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { MediaAnalysisTab, type MediaAnalysisPayload } from "@/components/project/media-analysis-tab";
+import { getProjects, getProjectById } from "@/lib/api/projects";
+import { getStoredToken } from "@/lib/auth";
+import type { ProjectDetail } from "@/types/project";
 import {
   LayoutDashboard,
   FileText,
@@ -60,13 +66,76 @@ function PlaceholderContent({ label }: { label: string }) {
 }
 
 export default function ProjectPage() {
+  const searchParams = useSearchParams();
+  const projectIdParam = searchParams.get("projectId");
+  const [project, setProject] = useState<ProjectDetail | null>(null);
+  const [loadingProject, setLoadingProject] = useState(true);
+  const [projectError, setProjectError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadProject() {
+      const token = getStoredToken();
+      if (!token) {
+        if (isMounted) {
+          setProjectError("Not authenticated. Please log in through Settings.");
+          setLoadingProject(false);
+        }
+        return;
+      }
+
+      try {
+        setProjectError(null);
+        setLoadingProject(true);
+
+        if (projectIdParam) {
+          const details = await getProjectById(token, projectIdParam);
+          if (isMounted) setProject(details);
+          return;
+        }
+
+        const response = await getProjects(token);
+        const mostRecent = response.projects?.[0];
+        if (!mostRecent) {
+          if (isMounted) setProject(null);
+          return;
+        }
+        const details = await getProjectById(token, mostRecent.id);
+        if (isMounted) setProject(details);
+      } catch (err) {
+        if (isMounted) {
+          const message = err instanceof Error ? err.message : "Failed to load project";
+          setProjectError(message);
+        }
+      } finally {
+        if (isMounted) setLoadingProject(false);
+      }
+    }
+
+    loadProject();
+    return () => {
+      isMounted = false;
+    };
+  }, [projectIdParam]);
+
+  const mediaAnalysis = useMemo<MediaAnalysisPayload | null>(() => {
+    if (!project?.scan_data) return null;
+    return (project.scan_data as Record<string, any>).media_analysis ?? null;
+  }, [project]);
+
+  const headerTitle = project?.project_name ?? "Project Analysis";
+  // TODO: wire project path into header detail when the overall page is data-driven
+
   return (
     <div className="p-8">
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 mb-6">
         <Link href={"/scanned-results" as any} className="text-sm text-gray-600 hover:text-gray-900 mb-2 inline-block">
           ← Back
         </Link>
-        <h1 className="text-4xl font-bold text-gray-900 tracking-tight">Project: My Capstone App</h1>
+        <h1 className="text-4xl font-bold text-gray-900 tracking-tight">
+          {project ? `Project: ${project.project_name}` : headerTitle}
+        </h1>
         <p className="text-gray-500 mt-1 text-sm">Scanned project analysis and reports</p>
       </div>
 
@@ -207,11 +276,24 @@ export default function ProjectPage() {
         </TabsContent>
 
         {/* Placeholder tabs */}
-        {tabs.slice(1).map((tab) => (
-          <TabsContent key={tab.value} value={tab.value}>
-            <PlaceholderContent label={tab.label} />
-          </TabsContent>
-        ))}
+        {tabs.slice(1).map((tab) => {
+          if (tab.value === "media-analysis") {
+            return (
+              <TabsContent key={tab.value} value={tab.value}>
+                <MediaAnalysisTab
+                  loading={loadingProject}
+                  error={projectError}
+                  mediaAnalysis={mediaAnalysis}
+                />
+              </TabsContent>
+            );
+          }
+          return (
+            <TabsContent key={tab.value} value={tab.value}>
+              <PlaceholderContent label={tab.label} />
+            </TabsContent>
+          );
+        })}
       </Tabs>
     </div>
   );
