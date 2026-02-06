@@ -1,6 +1,7 @@
 # Joaquin Almora / @joaquinalmora
 
 ### Weekly Navigation
+- [Week 19](#week-19)
 - [Week 18](#week-18)
 - [Week 17](#week-17)
 - [Week 16](#week-16)
@@ -19,6 +20,29 @@
 - [Week 4](#week-4-september-22nd---28th)
 - [Week 3](#week-3-september-15th---21st)
 
+## Week 19 (February 2nd - 8th)
+This week focused on getting the skills analysis flow working end-to-end, keeping PRs small and reviewable, and improving the login experience. The work was delivered in [PR #289 – “Backend skills timeline + from-upload persistence”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/289) and [PR #290 – “Frontend skills tabs + project detail integration”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/290).
+
+On the backend, I added endpoints for skills timeline and summary data so we can track progression over time. While wiring everything up, I realized projects weren’t showing up because `scan_data` wasn’t actually being saved. I fixed this by adding a dedicated “from-upload” project creation endpoint that persists the scan immediately. I also fixed a backend startup issue caused by an incorrect import path in `language_stats`.
+
+On the frontend, I connected the skills data to the project detail view. This included adding skills tabs, updating routing, and wiring up the typed API client. The full flow now works: scan → persist → analyze → display progression. I also improved the login UX with clearer error messages and a password visibility toggle.
+
+I ran into a few dev issues along the way: missing dependencies like `pypdf` and `happy-dom`, plus some `typedRoutes` problems, which caused test and startup hiccups. These are identified and partially fixed, but still need cleanup.
+
+### Reflection
+
+**What went well:**  
+Splitting the work into two smaller PRs made everything easier to review and reason about. The skills flow now feels cohesive and properly integrated. Backend and frontend responsibilities are clearer, and the project detail view is much more useful.
+
+**What didn’t go well:**  
+The missing `scan_data` persistence wasn’t obvious at first and slowed things down. The backend import issue blocked startup unexpectedly. Dev environment and dependency issues added friction during testing.
+
+### Next Steps
+
+- Merge the scan button PR and wire the scan → from-upload flow in the UI  
+- Test skills tabs with a freshly scanned project and add screenshots  
+- Add integration tests for scan to persistence to skills rendering
+- 
 ## Week 18 (January 26th – February 1st)
 This week focused on strengthening API correctness with contract tests, cleaning up legacy UI code, and shipping a complete authentication flow. The work was delivered in [PR #255 – “Add API contract tests using FastAPI TestClient”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/255), [PR #216 – “Tui deletion”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/216), and [PR #258 – “Electron login and signup”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/258).
 
