@@ -9,6 +9,49 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Eye, EyeOff } from "lucide-react";
+
+const invalidCredentialsMessage = "Invalid email or password. Please try again.";
+
+function getLoginErrorMessage(error?: string | null): string {
+  if (!error) return invalidCredentialsMessage;
+
+  try {
+    const parsed = JSON.parse(error) as { detail?: { code?: string; message?: string } };
+    const code = parsed.detail?.code;
+    const message = parsed.detail?.message;
+    const lowered = message?.toLowerCase() ?? "";
+
+    if (code === "authentication_failed") {
+      return invalidCredentialsMessage;
+    }
+
+    if (code === "configuration_error") {
+      return "Login is temporarily unavailable. Please contact support.";
+    }
+
+    if (lowered.includes("invalid") && lowered.includes("credential")) {
+      return invalidCredentialsMessage;
+    }
+
+    if (message) {
+      return message;
+    }
+  } catch {
+    const lowered = error.toLowerCase();
+    if (lowered.includes("authentication_failed")) {
+      return invalidCredentialsMessage;
+    }
+    if (lowered.includes("invalid") && lowered.includes("credential")) {
+      return invalidCredentialsMessage;
+    }
+    if (lowered.includes("network")) {
+      return "Network error while signing in. Check your connection and try again.";
+    }
+  }
+
+  return "Unable to sign in. Please try again.";
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -17,6 +60,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -63,7 +107,7 @@ export default function LoginPage() {
     if (result.ok) {
       router.push("/");
     } else {
-      setError(result.error || "Invalid email or password");
+      setError(getLoginErrorMessage(result.error));
     }
 
     setIsSubmitting(false);
@@ -108,16 +152,27 @@ export default function LoginPage() {
 
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                data-testid="password"
-                type="password"
-                placeholder="Enter your password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                disabled={isSubmitting}
-                autoComplete="current-password"
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  data-testid="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={isSubmitting}
+                  autoComplete="current-password"
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  className="absolute inset-y-0 right-2 flex items-center text-muted-foreground hover:text-foreground"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
             </div>
 
             <div className="flex items-center justify-between">
