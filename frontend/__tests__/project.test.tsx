@@ -26,6 +26,7 @@ const TAB_LABELS = [
   "Language Breakdown",
   "Code Analysis",
   "Skills Analysis",
+  "Skills Progression",
   "Run Git Analysis",
   "Contribution Metrics",
   "Generate Resume Item",
@@ -68,7 +69,7 @@ describe("ProjectPage — rendering", () => {
 // ---------------------------------------------------------------------------
 
 describe("ProjectPage — tab bar", () => {
-  it("renders all 16 tab triggers", () => {
+  it("renders all 17 tab triggers", () => {
     render(<ProjectPage />);
     for (const label of TAB_LABELS) {
       expect(screen.getByText(label)).toBeInTheDocument();
@@ -178,7 +179,9 @@ describe("ProjectPage — tab switching", () => {
 // ---------------------------------------------------------------------------
 
 describe("ProjectPage — placeholder tabs", () => {
-  const placeholderTabs = TAB_LABELS.slice(1); // all except "Show Overview"
+  const placeholderTabs = TAB_LABELS.filter(
+    (label) => !["Show Overview", "Skills Progression", "Skills Analysis"].includes(label)
+  );
 
   it.each(placeholderTabs)(
     "tab '%s' displays its label in the placeholder message",
@@ -194,4 +197,18 @@ describe("ProjectPage — placeholder tabs", () => {
       ).toBeInTheDocument();
     }
   );
+});
+
+describe("ProjectPage — skills analysis tab", () => {
+  it("shows empty state message when no skills analysis data", async () => {
+    const user = userEvent.setup();
+    render(<ProjectPage />);
+
+    const skillsBtn = screen.getByText("Skills Analysis").closest("button")!;
+    await user.click(skillsBtn);
+
+    expect(
+      screen.getByText("No skills analysis available yet. Run a scan with skills extraction enabled.")
+    ).toBeInTheDocument();
+  });
 });

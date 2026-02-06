@@ -110,7 +110,7 @@ export function ProjectsTable({ projects, onDelete, onView }: ProjectsTableProps
             <tr key={project.id} className="hover:bg-gray-50 transition-colors">
               <td 
                 className="px-6 py-4 whitespace-nowrap cursor-pointer"
-                onClick={() => router.push(`/projects/${project.id}/analysis`)}
+                onClick={() => router.push(`/project?projectId=${project.id}`)}
               >
                 <div className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline">
                   {project.project_name}
