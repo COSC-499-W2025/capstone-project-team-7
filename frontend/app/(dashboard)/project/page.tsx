@@ -121,7 +121,8 @@ export default function ProjectPage() {
 
   const mediaAnalysis = useMemo<MediaAnalysisPayload | null>(() => {
     if (!project?.scan_data) return null;
-    return (project.scan_data as Record<string, any>).media_analysis ?? null;
+    const scanData = project.scan_data as Record<string, any>;
+    return resolveMediaAnalysis(scanData);
   }, [project]);
 
   const headerTitle = project?.project_name ?? "Project Analysis";
@@ -297,4 +298,63 @@ export default function ProjectPage() {
       </Tabs>
     </div>
   );
+}
+
+function resolveMediaAnalysis(scanData: Record<string, any>): MediaAnalysisPayload | null {
+  const aiPayload = scanData.llm_media;
+  if (isNonEmptyMedia(aiPayload)) {
+    const normalized = normalizeMediaPayload(aiPayload);
+    if (normalized) return normalized;
+  }
+
+  const localPayload = scanData.media_analysis;
+  if (isNonEmptyMedia(localPayload)) {
+    const normalized = normalizeMediaPayload(localPayload);
+    if (normalized) return normalized;
+  }
+
+  return null;
+}
+
+function isNonEmptyMedia(value: any): boolean {
+  if (!value) return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "string") return value.trim().length > 0;
+  if (typeof value === "object") return Object.keys(value).length > 0;
+  return false;
+}
+
+function normalizeMediaPayload(value: any): MediaAnalysisPayload | null {
+  if (!value) return null;
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) return null;
+    if (value.every((entry) => typeof entry === "string")) {
+      return { insights: value };
+    }
+    return value;
+  }
+
+  if (typeof value === "string") {
+    return { insights: [value] };
+  }
+
+  if (typeof value === "object") {
+    if (Array.isArray(value.media_briefings)) {
+      return { insights: value.media_briefings };
+    }
+    if (Array.isArray(value.media_assets)) {
+      return { insights: value.media_assets };
+    }
+    if (typeof value.media_assets === "string") {
+      const lines = value.media_assets
+        .split("\n")
+        .map((line: string) => line.replace(/^[•\-\s]+/, "").trim())
+        .filter(Boolean);
+      return { insights: lines };
+    }
+    return value as MediaAnalysisPayload;
+  }
+
+  return null;
 }
