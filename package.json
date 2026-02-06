@@ -14,7 +14,7 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev:desktop": "concurrently -k -n backend,frontend,electron \"cd backend && uvicorn src.main:app --reload\" \"cd frontend && npm run dev\" \"cd electron && ELECTRON_START_URL=http://localhost:3000 npm run dev\"",
+    "dev:desktop": "concurrently -k -n backend,frontend,electron \"cd backend && uvicorn src.main:app --reload\" \"cd frontend && npm run dev\" \"cd electron && cross-env ELECTRON_START_URL=http://localhost:3000 npm run dev\"",
     "preview:desktop": "npm run export --workspace frontend && npm run build --workspace electron && npm run start --workspace electron"
   },
   "repository": {
@@ -32,6 +32,7 @@
     "@supabase/supabase-js": "^2.75.1"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "cross-env": "^10.1.0"
   }
 }
