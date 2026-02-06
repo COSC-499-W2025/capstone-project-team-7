@@ -42,7 +42,9 @@ The missing `scan_data` persistence wasn’t obvious at first and slowed things 
 - Merge the scan button PR and wire the scan → from-upload flow in the UI  
 - Test skills tabs with a freshly scanned project and add screenshots  
 - Add integration tests for scan to persistence to skills rendering
-- 
+
+![Peer Eval](./images/w19peer.png)
+
 ## Week 18 (January 26th – February 1st)
 This week focused on strengthening API correctness with contract tests, cleaning up legacy UI code, and shipping a complete authentication flow. The work was delivered in [PR #255 – “Add API contract tests using FastAPI TestClient”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/255), [PR #216 – “Tui deletion”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/216), and [PR #258 – “Electron login and signup”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/258).
 
