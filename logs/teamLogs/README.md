@@ -18,7 +18,7 @@
 - [Week 3 (September 15 - 21)](#week-3-september-15---21)
 
 
-## Week 18 (Jaunary 20th - Febuary 1st)
+## Week 18/19 (Jaunary 26th - Febuary 8th)
 
 **Jacob**I implemented the frontend UI foundations this week, including global styling and application navigation. I authored [PR #260](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/260), which establishes a high-contrast, clarity-first global visual system. This work introduced consistent grayscale color tokens, standardized typography, enforced structural borders, and removed decorative shadows to reduce visual noise. The goal was to create a strong, reusable styling baseline that components could rely on without requiring per-component overrides.
 
