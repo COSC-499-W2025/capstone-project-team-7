@@ -670,7 +670,7 @@ export default function ProjectPage() {
                               className="px-3 py-1 rounded-full bg-gray-900 text-white text-xs"
                             >
                               {skill.name}
-                              {skill.proficiency ? ` · ${skill.proficiency}` : ""}
+                              {skill.proficiency ? ` · ${formatConfidence(skill.proficiency)}` : ""}
                             </span>
                           ))}
                         </div>
@@ -717,4 +717,16 @@ function formatCount(value: number | string): string {
   const numeric = Number(value);
   if (Number.isNaN(numeric)) return String(value);
   return numeric.toLocaleString();
+}
+
+function formatConfidence(value: number | string): string {
+  const numeric = Number(value);
+  if (Number.isNaN(numeric)) return String(value);
+  if (numeric <= 1) {
+    return `${(numeric * 100).toFixed(0)}%`;
+  }
+  if (numeric <= 100) {
+    return `${numeric.toFixed(0)}%`;
+  }
+  return numeric.toFixed(2);
 }
