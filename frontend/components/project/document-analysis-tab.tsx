@@ -9,7 +9,6 @@ import {
   Search,
   FileIcon,
   BookOpen,
-  HardDrive,
 } from "lucide-react";
 import type { DocumentSummary, DocumentAnalysisStats } from "@/types/document";
 
@@ -24,6 +23,7 @@ function getFileName(path: string): string {
   return path.split('/').pop() || path;
 }
 
+// TODO: Replace mockDocuments with API data (backend document analysis payload)
 // Mock data aligned with backend schema
 const mockDocuments: DocumentSummary[] = [
   {
@@ -62,14 +62,6 @@ const mockDocuments: DocumentSummary[] = [
     headings: [],
   },
 ];
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
-}
 
 function getFileIcon(fileType: string) {
   switch (fileType) {
@@ -124,6 +116,8 @@ function calculateStats(documents: DocumentSummary[]): DocumentAnalysisStats {
 export function DocumentAnalysisTab() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState<string>("all");
+  const [isLoading] = useState(false);
+  const [errorMessage] = useState<string | null>(null);
 
   const stats = calculateStats(mockDocuments);
 
@@ -249,12 +243,22 @@ export function DocumentAnalysisTab() {
           </CardTitle>
         </CardHeader>
         <CardContent className="p-6">
+          {isLoading && (
+            <div className="text-center py-8 text-gray-500">
+              Loading document analysis…
+            </div>
+          )}
+          {errorMessage && !isLoading && (
+            <div className="text-center py-8 text-red-600">
+              {errorMessage}
+            </div>
+          )}
           <div className="space-y-4">
-            {filteredDocuments.length === 0 ? (
+            {!isLoading && !errorMessage && filteredDocuments.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
                 No documents found matching your criteria
               </div>
-            ) : (
+            ) : (!isLoading && !errorMessage ? (
               filteredDocuments.map((doc, index) => (
                 <div
                   key={index}
@@ -340,7 +344,7 @@ export function DocumentAnalysisTab() {
                   </div>
                 </div>
               ))
-            )}
+            ) : null)}
           </div>
         </CardContent>
       </Card>
