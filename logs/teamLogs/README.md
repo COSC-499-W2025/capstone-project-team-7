@@ -1,6 +1,7 @@
 # Capstone Team 7 Logs
 
 ## Quick Navigation
+- [Week 18/19 (January 26th - February 8th)](#week-1819-january-26th---february-8th)
 - [Week 17 (January 19th - 25th)](#week-17-january-19th---25th)
 - [Week 16 (January 12th - 18th)](#week-16-january-12th---18th)
 - [Week 15 (January 5th - 11th)](#week-15-january-5th---11th)
@@ -28,7 +29,23 @@ In addition, I reviewed [Om's PR #266](https://github.com/COSC-499-W2025/capston
 
 Finally, I reviewed [Joaquin's PR #258](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/258). My review focused on how authentication flows interacted with the application layout and routing in an Electron context. I verified that login and signup transitions cleanly handed off to the main app layout and that routing assumptions remained compatible with MemoryRouter usage. The implementation was solid, and no blocking issues were identified.
 
-**Joaquin**
+**Joaquin:** These weeks I reviewed several frontend and Electron-focused PRs, mainly looking at structure, auth correctness, and long-term maintainability.
+
+I reviewed Jacob’s **PR [#260 – “Refactor globals.css for Pro Contrast styling and improved accessibility”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/260)**. The refactor is clean and provides a strong base for consistent UI styling moving forward. The Pro Contrast updates improve accessibility without overcomplicating the design system. Overall, a solid foundational change.
+
+I also reviewed Jacob’s **PR [#264 – “Sidebar and dashboard navigation”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/264)**. This sets up a strong structural foundation for the app. The routing placeholders make future feature additions straightforward, and the layout is well thought out — fixed sidebar, scrollable navigation, and a pinned bottom section for settings/help/profile. It’s clean, intuitive, and extensible.
+
+For Vlad’s **PR [#265 – “Electron profile page”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/265)**, the implementation is strong overall. The separation between backend, frontend, and shared types is clear, and test coverage is solid. I flagged one important issue before merge: the password change flow does not verify the current password. The frontend collects `currentPassword`, but it is never sent to or validated by the backend. Since the `ChangePasswordRequest` model only accepts `new_password`, any user with a valid session token could change the account password without knowing the current one. I suggested adding `current_password` to the request model and verifying it server-side.
+
+I also noted two non-blocking improvements. First, avatar uploads can leak storage objects when file extensions change (`avatar.png` → `avatar.jpg`), since upsert only replaces identical paths. Second, avatar removal clears the URL but does not delete the file from storage. Both are minor but worth addressing.
+
+I reviewed Jacob’s **PR [#278 – “Wiring profile login create account”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/278)**. The redirect logic and cleanup are well structured. I agreed with the feedback around centralizing auth token access, consolidating profile sync logic, and improving fetch/image error handling. Before merging, I suggested two checks: ensure no hooks (`useEffect`, `useMemo`, etc.) are declared after early returns (`isLoading` / `isAuthenticated`), and route logout through the `useAuth` hook instead of manually clearing storage keys to avoid inconsistent auth state.
+
+Aaron’s **PR [#280 – “Electron view saved proj page”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/280)** is a clean feature addition. Component boundaries are clear, the UI is intuitive, and test coverage is solid. Approved.
+
+Finally, I reviewed Aaron’s **PR [#283 – “Code analysis enhancement”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/283)**. The improvements to the code analysis flow are well implemented and address prior peer feedback directly. The changes feel iterative and thoughtful rather than rushed.
+
+Overall, most PRs are in good shape. The main concerns raised were around authentication correctness, storage edge cases, and maintaining a single source of truth for auth state. 
 
 **Aaron**
 
@@ -37,6 +54,17 @@ Finally, I reviewed [Joaquin's PR #258](https://github.com/COSC-499-W2025/capsto
 **Vlad**
 
 **Samarth**
+
+## Reflection
+
+### What went well
+- PRs this week were generally well structured, easy to review, and aligned with existing architecture patterns.
+
+### Challenges
+- A few auth and storage edge cases required extra attention to ensure correctness before merging.
+
+## **Next Steps**
+- Continue tightening auth flows and addressing small edge cases before upcoming feature merges.
 
 ## Week 17 (January 19th - 25th)
 
