@@ -20,7 +20,7 @@ function getFileType(path: string): string {
 
 // Helper function to extract filename from path
 function getFileName(path: string): string {
-  return path.split('/').pop() || path;
+  return path.split(/[\\/]/).pop() || path;
 }
 
 type DocumentAnalysisPayload =
