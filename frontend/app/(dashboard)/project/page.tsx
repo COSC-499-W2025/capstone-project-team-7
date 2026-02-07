@@ -421,7 +421,11 @@ export default function ProjectPage() {
 
         {/* Document Analysis tab with real content */}
         <TabsContent value="doc-analysis">
-          <DocumentAnalysisTab />
+          <DocumentAnalysisTab
+            documentAnalysis={scanData.document_analysis}
+            isLoading={projectLoading}
+            errorMessage={projectError}
+          />
         </TabsContent>
 
         {/* Placeholder tabs */}
