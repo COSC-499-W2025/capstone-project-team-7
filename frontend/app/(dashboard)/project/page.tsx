@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { DocumentAnalysisTab } from "@/components/project/document-analysis-tab";
 import { getStoredToken } from "@/lib/auth";
 import {
   getProjectById,
@@ -230,7 +231,14 @@ export default function ProjectPage() {
   const gitRepos = scanData.git_analysis?.repositories?.length ?? fallbackProject.gitRepos;
   const mediaFiles = scanData.media_analysis?.length ?? fallbackProject.mediaFiles;
   const pdfDocs = scanData.pdf_analysis?.length ?? fallbackProject.pdfDocs;
-  const otherDocs = scanData.documents_analysis?.length ?? fallbackProject.otherDocs;
+  const documentAnalysis = scanData.document_analysis;
+  const otherDocs = Array.isArray(documentAnalysis)
+    ? documentAnalysis.length
+    : Array.isArray(documentAnalysis?.documents)
+      ? documentAnalysis.documents.length
+      : Array.isArray(documentAnalysis?.items)
+        ? documentAnalysis.items.length
+        : fallbackProject.otherDocs;
 
   const topSkills = useMemo(() => {
     const counts = new Map<string, number>();
@@ -418,6 +426,21 @@ export default function ProjectPage() {
           </div>
         </TabsContent>
 
+        {/* Document Analysis tab with real content */}
+        <TabsContent value="doc-analysis">
+          <DocumentAnalysisTab
+            documentAnalysis={scanData.document_analysis}
+            isLoading={projectLoading}
+            errorMessage={projectError}
+          />
+        </TabsContent>
+
+        {/* Placeholder tabs */}
+        {tabs.slice(1).filter(tab => tab.value !== "doc-analysis").map((tab) => (
+          <TabsContent key={tab.value} value={tab.value}>
+            <PlaceholderContent label={tab.label} />
+          </TabsContent>
+        ))}
         <TabsContent value="skills-progress">
           <div className="space-y-6">
             <Card className="bg-white border border-gray-200">

@@ -120,7 +120,7 @@ Priority key: P0 = launch-critical parity; P1 = nice-to-have once P0 is stable; 
 - Current behavior: After scan, can analyze document candidates for metadata (word count, headings, code blocks) and summaries using PDF summarizer; supports `.txt/.md/.markdown/.rst/.log/.docx`.
 - Components: `backend/src/local_analysis/document_analyzer.py`, `backend/src/local_analysis/docx_analyzer.py`, `backend/src/local_analysis/pdf_summarizer.py`.
 - Data: Local files extracted from archive or disk; no external services.
-- Migration notes: Documents panel showing per-file summaries/keywords/metadata; allow export inclusion; handle optional docx dependency; avoid re-reading large files in renderer.
+- Migration notes: Document Analysis tab now reads from `scan_data.document_analysis` and expects payloads shaped like `{ documents: [...] }` (or `items`/array fallback). Each document may include `file_name`, `summary`, `metadata.word_count`, `metadata.headings`, `keywords`, and `success`.
 
 ### PDF analysis
 - Current behavior: Detects PDFs during scan, prompts to analyze; parses metadata/text via `pdf_parser`, summarizes via `pdf_summarizer`, stores results for display/export.
