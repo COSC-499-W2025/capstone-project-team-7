@@ -21,7 +21,7 @@
 - [Week 3](#week-3-september-15th---21st)
 
 ## Week 19 (February 2nd - 8th)
-This week focused on getting the skills analysis flow working end-to-end, keeping PRs small and reviewable, and improving the login experience. The work was delivered in [PR #289 – “Backend skills timeline”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/289) and [PR #290 – “Frontend skills tabs](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/290).
+This week focused on getting the skills analysis flow working end-to-end, keeping PRs small and reviewable, and improving the login experience. The work was delivered in [PR #289 – “Backend: Skills analysis project endpoints”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/289) and [PR #290 – “Frontend: Skills analysis UI"](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/290).
 
 On the backend, I added endpoints for skills timeline and summary data so we can track progression over time. While wiring everything up, I realized projects weren’t showing up because `scan_data` wasn’t actually being saved. I fixed this by adding a dedicated “from-upload” project creation endpoint that persists the scan immediately. I also fixed a backend startup issue caused by an incorrect import path in `language_stats`.
 
