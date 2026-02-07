@@ -94,6 +94,9 @@ function toKeywordArray(value: unknown): string[] {
   return value
     .map((entry) => {
       if (typeof entry === "string") return entry.trim();
+      if (Array.isArray(entry) && typeof entry[0] === "string") {
+        return entry[0].trim();
+      }
       if (entry && typeof entry === "object") {
         const keyword =
           (entry as { word?: string; keyword?: string; text?: string }).word ||
