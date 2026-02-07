@@ -2,18 +2,21 @@
 # Provides models, services, and utilities for project scan CRUD operations
 # Endpoints are registered in this module's router
 
-from fastapi import APIRouter, HTTPException, status, Header, Depends, File, UploadFile
+from fastapi import APIRouter, HTTPException, status, Header, Depends, File, UploadFile, Query
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, cast
 from datetime import datetime
 import asyncio
 import logging
 import sys
 import os
 from pathlib import Path
+from dataclasses import asdict, is_dataclass
 import uuid
 import tempfile
 import threading
+import zipfile
+from pathlib import PurePosixPath
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -21,10 +24,14 @@ try:
     from cli.services.projects_service import ProjectsService, ProjectsServiceError
     from cli.services.encryption import EncryptionService
     from cli.services.project_overrides_service import ProjectOverridesService, ProjectOverridesServiceError
+    from auth.consent_validator import ConsentValidator
+    from api.llm_routes import get_user_client
 except ModuleNotFoundError:  # pragma: no cover - test/import fallback
     from backend.src.cli.services.projects_service import ProjectsService, ProjectsServiceError
     from backend.src.cli.services.encryption import EncryptionService
     from backend.src.cli.services.project_overrides_service import ProjectOverridesService, ProjectOverridesServiceError
+    from backend.src.auth.consent_validator import ConsentValidator
+    from backend.src.api.llm_routes import get_user_client
 
 try:
     from scanner.parser import parse_zip
@@ -35,6 +42,24 @@ try:
     from scanner.parser import parse_zip
 except ModuleNotFoundError:  # pragma: no cover - test/import fallback
     from backend.src.scanner.parser import parse_zip
+
+try:
+    from scanner.models import ScanPreferences
+except ModuleNotFoundError:  # pragma: no cover - test/import fallback
+    from backend.src.scanner.models import ScanPreferences
+
+try:
+    from cli.language_stats import summarize_languages
+    from cli.services.skills_analysis_service import SkillsAnalysisService
+    from cli.services.contribution_analysis_service import ContributionAnalysisService
+    from local_analysis.git_repo import analyze_git_repo
+    from api.upload_routes import uploads_store
+except ModuleNotFoundError:  # pragma: no cover - test/import fallback
+    from backend.src.cli.language_stats import summarize_languages
+    from backend.src.cli.services.skills_analysis_service import SkillsAnalysisService
+    from backend.src.cli.services.contribution_analysis_service import ContributionAnalysisService
+    from backend.src.local_analysis.git_repo import analyze_git_repo
+    from backend.src.api.upload_routes import uploads_store
 
 logger = logging.getLogger(__name__)
 
@@ -73,22 +98,6 @@ def get_projects_service() -> ProjectsService:
                     encryption_required=False,  # Graceful degradation if encryption unavailable
                 )
     return _projects_service
-
-
-def get_overrides_service() -> ProjectOverridesService:
-    """Get or create the ProjectOverridesService singleton."""
-    global _overrides_service
-    if _overrides_service is None:
-        try:
-            _encryption_service_instance = EncryptionService()
-        except Exception:
-            _encryption_service_instance = None
-        
-        _overrides_service = ProjectOverridesService(
-            encryption_service=_encryption_service_instance,
-            encryption_required=False,
-        )
-    return _overrides_service
 
 
 def get_encryption_service() -> Optional[EncryptionService]:
@@ -184,6 +193,275 @@ def normalize_project_data(project: Dict[str, Any]) -> Dict[str, Any]:
             project['languages'] = [str(lang) for lang in languages if lang]
     
     return project
+
+
+def _coerce_skill_summary(summary: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if not isinstance(summary, dict):
+        return None
+    overview = summary.get("overview") or summary.get("narrative")
+    if not overview:
+        return None
+    return {
+        "overview": overview,
+        "timeline": summary.get("timeline") or summary.get("milestones") or [],
+        "skills_focus": summary.get("skills_focus") or summary.get("strengths") or [],
+        "suggested_next_steps": summary.get("suggested_next_steps") or summary.get("gaps") or [],
+        "validation_warning": summary.get("validation_warning"),
+    }
+
+
+def _period_to_dict(period: Any) -> Dict[str, Any]:
+    return {
+        "period_label": period.period_label,
+        "commits": period.commits,
+        "tests_changed": period.tests_changed,
+        "skill_count": period.skill_count,
+        "evidence_count": period.evidence_count,
+        "top_skills": period.top_skills,
+        "languages": period.languages,
+        "contributors": period.contributors,
+        "commit_messages": period.commit_messages,
+        "top_files": period.top_files,
+        "activity_types": period.activity_types,
+        "period_languages": period.period_languages,
+    }
+
+
+def _dict_to_metrics(data: Dict[str, Any]):
+    from local_analysis.contribution_analyzer import (
+        ProjectContributionMetrics,
+        ContributorMetrics,
+        ActivityBreakdown,
+    )
+
+    contributors = []
+    for c in data.get("contributors", []):
+        c_activity = c.get("activity_breakdown", {})
+        contributor_activity = ActivityBreakdown(
+            code_lines=c_activity.get("code_lines", 0),
+            test_lines=c_activity.get("test_lines", 0),
+            documentation_lines=c_activity.get("documentation_lines", 0),
+            design_lines=c_activity.get("design_lines", 0),
+            config_lines=c_activity.get("config_lines", 0),
+        )
+
+        contributor = ContributorMetrics(
+            name=c.get("name", ""),
+            email=c.get("email"),
+            commits=c.get("commits", 0),
+            commit_percentage=c.get("commit_percentage", 0.0),
+            first_commit_date=c.get("first_commit_date"),
+            last_commit_date=c.get("last_commit_date"),
+            active_days=c.get("active_days", 0),
+            activity_breakdown=contributor_activity,
+            files_touched=set(c.get("files_touched", [])),
+            languages_used=set(c.get("languages_used", [])),
+        )
+        contributors.append(contributor)
+
+    activity = data.get("activity_breakdown", {})
+    activity_breakdown = ActivityBreakdown(
+        code_lines=activity.get("code_lines", 0),
+        test_lines=activity.get("test_lines", 0),
+        documentation_lines=activity.get("documentation_lines", 0),
+        design_lines=activity.get("design_lines", 0),
+        config_lines=activity.get("config_lines", 0),
+    )
+
+    return ProjectContributionMetrics(
+        project_path=data.get("project_path", ""),
+        project_type=data.get("project_type", "unknown"),
+        total_commits=data.get("total_commits", 0),
+        total_contributors=data.get("total_contributors", 0),
+        project_duration_days=data.get("project_duration_days"),
+        project_start_date=data.get("project_start_date"),
+        project_end_date=data.get("project_end_date"),
+        contributors=contributors,
+        overall_activity_breakdown=activity_breakdown,
+        commit_frequency=data.get("commit_frequency", 0.0),
+        languages_detected=set(data.get("languages_detected", [])),
+        timeline=data.get("timeline", []),
+    )
+
+
+def _build_skill_progression_from_scan(
+    scan_data: Dict[str, Any],
+    author_email: Optional[str] = None,
+) -> tuple[List[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str]]:
+    skills_progress = scan_data.get("skills_progress")
+    if isinstance(skills_progress, dict):
+        existing_timeline = skills_progress.get("timeline") or []
+        summary = _coerce_skill_summary(skills_progress.get("summary"))
+        if existing_timeline:
+            return existing_timeline, summary, None
+
+    skills_analysis = scan_data.get("skills_analysis") or {}
+    chronological = skills_analysis.get("chronological_overview") or []
+    if not chronological:
+        return [], None, "No skill progression timeline available."
+
+    contribution_metrics = scan_data.get("contribution_metrics")
+    metrics_obj = _dict_to_metrics(contribution_metrics) if isinstance(contribution_metrics, dict) else None
+
+    from local_analysis.skill_progress_timeline import build_skill_progression
+
+    author_emails = {author_email} if author_email else None
+    progression = build_skill_progression(
+        chronological,
+        metrics_obj,
+        author_emails=author_emails,
+    )
+    timeline = [_period_to_dict(p) for p in progression.timeline]
+    if not timeline:
+        return [], None, "No skill progression timeline available."
+    return timeline, None, None
+
+
+def _run_git_analysis_for_path(target_path: Path) -> List[Dict[str, Any]]:
+    git_results: List[Dict[str, Any]] = []
+    if (target_path / ".git").exists():
+        result = analyze_git_repo(str(target_path))
+        if "error" not in result:
+            git_results.append(result)
+    for git_dir in target_path.rglob(".git"):
+        if git_dir.is_dir():
+            repo_path = git_dir.parent
+            if repo_path != target_path:
+                result = analyze_git_repo(str(repo_path))
+                if "error" not in result:
+                    git_results.append(result)
+    return git_results
+
+
+def _score_to_proficiency(score: float) -> str:
+    if score >= 0.8:
+        return "Expert"
+    if score >= 0.6:
+        return "Advanced"
+    if score >= 0.4:
+        return "Intermediate"
+    return "Beginner"
+
+
+def _build_skills_analysis(service: SkillsAnalysisService) -> Dict[str, Any]:
+    exported = service._extractor.export_to_dict()
+    skills = exported.get("skills", [])
+    skills_by_category: Dict[str, List[Dict[str, Any]]] = {}
+    for skill in skills:
+        category = skill.get("category", "other")
+        skills_by_category.setdefault(category, []).append(
+            {
+                "name": skill.get("name"),
+                "proficiency": _score_to_proficiency(float(skill.get("proficiency_score", 0.0))),
+            }
+        )
+    return {
+        "success": True,
+        "total_skills": exported.get("summary", {}).get("total_skills", len(skills)),
+        "skills_by_category": skills_by_category,
+        "skills": skills,
+        "chronological_overview": exported.get("chronological_overview", []),
+        "skill_progression": exported.get("skill_progression", {}),
+        "skill_adoption_timeline": exported.get("skill_adoption_timeline", []),
+    }
+
+
+def _serialize_parse_files(files: List[Any]) -> List[Dict[str, Any]]:
+    serialized = []
+    for meta in files:
+        created_at = getattr(meta, "created_at", None)
+        modified_at = getattr(meta, "modified_at", None)
+        media_info = getattr(meta, "media_info", None)
+        if media_info is not None and is_dataclass(media_info) and not isinstance(media_info, type):
+            media_info = asdict(cast(Any, media_info))
+        serialized.append(
+            {
+                "path": meta.path,
+                "size_bytes": meta.size_bytes,
+                "mime_type": meta.mime_type,
+                "created_at": created_at.isoformat() if created_at else None,
+                "modified_at": modified_at.isoformat() if modified_at else None,
+                "file_hash": getattr(meta, "file_hash", None),
+                "media_info": media_info,
+            }
+        )
+    return serialized
+
+
+def _serialize_parse_issues(issues: List[Any]) -> List[Dict[str, Any]]:
+    return [{"path": issue.path, "code": issue.code, "message": issue.message} for issue in issues]
+
+
+def _serialize_contribution_metrics(metrics: Any) -> Dict[str, Any]:
+    payload = asdict(metrics)
+    if "languages_detected" in payload and isinstance(payload["languages_detected"], set):
+        payload["languages_detected"] = list(payload["languages_detected"])
+    return payload
+
+
+def _extract_archive_for_analysis(storage_path: Path, temp_path: Path) -> Path:
+    with zipfile.ZipFile(storage_path, "r") as zf:
+        for member in zf.namelist():
+            member_path = PurePosixPath(member)
+            if member_path.is_absolute():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Archive contains absolute paths",
+                )
+            if any(part == ".." for part in member_path.parts):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Archive contains invalid path traversal",
+                )
+
+            target_path_member = temp_path / member
+            try:
+                target_path_member.resolve().relative_to(temp_path.resolve())
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Archive contains invalid path traversal",
+                )
+
+            zf.extract(member, temp_path)
+
+    content_dirs = list(temp_path.iterdir())
+    if len(content_dirs) == 1 and content_dirs[0].is_dir():
+        return content_dirs[0]
+    return temp_path
+
+
+def _run_code_analysis_for_path(
+    target_path: Path,
+    preferences: Optional[ScanPreferences],
+) -> Optional[Dict[str, Any]]:
+    try:
+        from cli.services.code_analysis_service import CodeAnalysisService, CodeAnalysisUnavailableError
+    except ImportError:
+        logger.info("Code analysis unavailable (cli.services.code_analysis_service not installed)")
+        return None
+
+    try:
+        service = CodeAnalysisService()
+        result = service.run_analysis(target_path, preferences)
+
+        summary = getattr(result, "summary", {}) or {}
+        return {
+            "total_files": summary.get("total_files", 0),
+            "total_lines": summary.get("total_lines", 0),
+            "code_lines": summary.get("total_code", 0),
+            "comment_lines": summary.get("total_comments", 0),
+            "functions": summary.get("total_functions", 0),
+            "classes": summary.get("total_classes", 0),
+            "avg_complexity": summary.get("avg_complexity"),
+            "avg_maintainability": summary.get("avg_maintainability"),
+        }
+    except Exception as exc:
+        if "CodeAnalysisUnavailableError" in type(exc).__name__ or "tree-sitter" in str(exc).lower():
+            logger.info("Code analysis unavailable (tree-sitter not installed)")
+        else:
+            logger.warning(f"Code analysis failed: {exc}")
+        return None
 
 
 def verify_auth_token(authorization: Optional[str] = Header(None)) -> str:
@@ -439,6 +717,59 @@ class ProjectTimelineResponse(BaseModel):
     )
 
 
+class SkillProgressPeriodModel(BaseModel):
+    """Single period entry in a skills progression timeline."""
+    period_label: str
+    commits: int = 0
+    tests_changed: int = 0
+    skill_count: int = 0
+    evidence_count: int = 0
+    top_skills: List[str] = Field(default_factory=list)
+    languages: Dict[str, int] = Field(default_factory=dict)
+    contributors: int = 0
+    commit_messages: List[str] = Field(default_factory=list)
+    top_files: List[str] = Field(default_factory=list)
+    activity_types: List[str] = Field(default_factory=list)
+    period_languages: Dict[str, int] = Field(default_factory=dict)
+
+
+class SkillProgressSummaryModel(BaseModel):
+    """Summary of skill progression generated by an LLM."""
+    overview: str
+    timeline: List[str] = Field(default_factory=list)
+    skills_focus: List[str] = Field(default_factory=list)
+    suggested_next_steps: List[str] = Field(default_factory=list)
+    validation_warning: Optional[str] = None
+
+
+class SkillProgressTimelineResponse(BaseModel):
+    """Timeline response for skill progression."""
+    project_id: str
+    timeline: List[SkillProgressPeriodModel]
+    note: Optional[str] = None
+    summary: Optional[SkillProgressSummaryModel] = None
+
+
+class SkillProgressSummaryResponse(BaseModel):
+    """Summary response for skill progression."""
+    project_id: str
+    summary: Optional[SkillProgressSummaryModel] = None
+    note: Optional[str] = None
+    llm_status: Optional[str] = None
+
+
+class ProjectFromUploadRequest(BaseModel):
+    """Request to create a project from an uploaded archive."""
+    upload_id: str = Field(..., description="Upload ID from /api/uploads")
+    project_name: Optional[str] = Field(None, description="Override project name")
+    project_path: Optional[str] = Field(None, description="Optional display path for the project")
+    relevant_only: bool = Field(False, description="Only include relevant files")
+    preferences: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Optional scan preferences (allowed_extensions, excluded_dirs, max_file_size_bytes, follow_symlinks)",
+    )
+
+
 # ============================================================================
 # Project Overrides Models
 # ============================================================================
@@ -562,6 +893,151 @@ async def create_project(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred",
+        )
+
+
+@router.post(
+    "/from-upload",
+    response_model=CreateProjectResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid request"},
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        403: {"model": ErrorResponse, "description": "Forbidden"},
+        404: {"model": ErrorResponse, "description": "Not found"},
+        500: {"model": ErrorResponse, "description": "Server error"},
+    },
+)
+async def create_project_from_upload(
+    request: ProjectFromUploadRequest,
+    user_id: str = Depends(verify_auth_token),
+) -> CreateProjectResponse:
+    """Create a project from an uploaded zip using the existing analysis pipeline."""
+    try:
+        upload_id = request.upload_id.strip()
+        if not upload_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="upload_id cannot be empty",
+            )
+
+        if upload_id not in uploads_store:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Upload with ID '{upload_id}' not found",
+            )
+
+        upload_data = uploads_store[upload_id]
+        if upload_data.get("user_id") != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied to this upload",
+            )
+
+        storage_path = Path(upload_data["storage_path"])
+        if not storage_path.exists():
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Upload file not found on disk",
+            )
+
+        preferences = None
+        if request.preferences:
+            preferences = ScanPreferences(
+                allowed_extensions=request.preferences.get("allowed_extensions"),
+                excluded_dirs=request.preferences.get("excluded_dirs"),
+                max_file_size_bytes=request.preferences.get("max_file_size_bytes"),
+                follow_symlinks=request.preferences.get("follow_symlinks"),
+            )
+
+        parse_result = parse_zip(
+            storage_path,
+            relevant_only=request.relevant_only,
+            preferences=preferences,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            analysis_target = _extract_archive_for_analysis(storage_path, Path(temp_dir))
+            languages = summarize_languages(parse_result.files)
+            summary: Dict[str, Any] = dict(parse_result.summary)
+            summary["languages"] = languages
+
+            git_analysis = _run_git_analysis_for_path(analysis_target)
+            git_data = git_analysis[0] if git_analysis else None
+
+            code_analysis = _run_code_analysis_for_path(analysis_target, preferences)
+
+            skills_service = SkillsAnalysisService()
+            skills_service.extract_skills(
+                target_path=analysis_target,
+                code_analysis_result=code_analysis,
+                git_analysis_result=git_data,
+            )
+            skills_analysis = _build_skills_analysis(skills_service)
+
+            contribution_metrics_payload = None
+            metrics_obj = None
+            if git_data:
+                try:
+                    metrics_obj = ContributionAnalysisService().analyze_contributions(
+                        git_analysis=git_data,
+                        code_analysis=code_analysis,
+                        parse_result=parse_result,
+                    )
+                    contribution_metrics_payload = _serialize_contribution_metrics(metrics_obj)
+                except Exception:
+                    contribution_metrics_payload = None
+
+            skills_progress = None
+            chronological = skills_analysis.get("chronological_overview") or []
+            if chronological:
+                from local_analysis.skill_progress_timeline import build_skill_progression
+
+                progression = build_skill_progression(chronological, metrics_obj)
+                skills_progress = {
+                    "timeline": [_period_to_dict(period) for period in progression.timeline],
+                }
+
+            scan_data: Dict[str, Any] = {
+                "archive": str(storage_path),
+                "summary": summary,
+                "files": _serialize_parse_files(parse_result.files),
+                "issues": _serialize_parse_issues(parse_result.issues),
+                "languages": languages,
+                "git_analysis": git_analysis,
+                "contribution_metrics": contribution_metrics_payload,
+                "skills_analysis": skills_analysis,
+                "skills_progress": skills_progress,
+            }
+
+            if code_analysis:
+                scan_data["code_analysis"] = {"metrics": code_analysis}
+
+        project_path = request.project_path or upload_data.get("metadata", {}).get("original_filename") or storage_path.name
+        project_name = request.project_name or Path(project_path).stem
+
+        service = get_projects_service()
+        result = service.save_scan(
+            user_id=user_id,
+            project_name=project_name,
+            project_path=project_path,
+            scan_data=scan_data,
+        )
+
+        return CreateProjectResponse(
+            id=result.get("id", ""),
+            project_name=result.get("project_name", project_name),
+            scan_timestamp=result.get("scan_timestamp", datetime.now().isoformat()),
+            message="Project scan saved successfully",
+        )
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Project creation from upload failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create project: {str(exc)}",
         )
 
 
@@ -907,6 +1383,155 @@ async def get_project_timeline(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch project timeline: {str(exc)}",
+        )
+
+
+@router.get(
+    "/{project_id}/skills/timeline",
+    response_model=SkillProgressTimelineResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def get_project_skill_timeline(
+    project_id: str,
+    author_email: Optional[str] = Query(None, description="Filter timeline to a specific contributor email"),
+    user_id: str = Depends(verify_auth_token),
+) -> SkillProgressTimelineResponse:
+    """Get skill progression timeline for a project."""
+    try:
+        service = get_projects_service()
+        project = await asyncio.to_thread(service.get_project_scan, user_id, project_id)
+
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Project {project_id} not found",
+            )
+
+        scan_data = project.get("scan_data") or {}
+        timeline, summary, note = _build_skill_progression_from_scan(scan_data, author_email)
+
+        return SkillProgressTimelineResponse(
+            project_id=project_id,
+            timeline=[SkillProgressPeriodModel(**entry) for entry in timeline],
+            note=note,
+            summary=SkillProgressSummaryModel(**summary) if summary else None,
+        )
+
+    except HTTPException:
+        raise
+    except ProjectsServiceError as exc:
+        logger.error(f"Projects service error: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve skill progression: {str(exc)}",
+        )
+    except Exception as exc:
+        logger.exception("Unexpected error fetching skill progression timeline")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred",
+        )
+
+
+@router.post(
+    "/{project_id}/skills/summary",
+    response_model=SkillProgressSummaryResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def generate_project_skill_summary(
+    project_id: str,
+    user_id: str = Depends(verify_auth_token),
+) -> SkillProgressSummaryResponse:
+    """Generate an LLM summary for the skill progression timeline."""
+    try:
+        service = get_projects_service()
+        project = await asyncio.to_thread(service.get_project_scan, user_id, project_id)
+
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Project {project_id} not found",
+            )
+
+        scan_data = project.get("scan_data") or {}
+        timeline, summary, note = _build_skill_progression_from_scan(scan_data)
+        if not timeline:
+            return SkillProgressSummaryResponse(
+                project_id=project_id,
+                summary=SkillProgressSummaryModel(**summary) if summary else None,
+                note=note or "No skill progression timeline available.",
+                llm_status="skipped:no_timeline",
+            )
+
+        if summary:
+            return SkillProgressSummaryResponse(
+                project_id=project_id,
+                summary=SkillProgressSummaryModel(**summary),
+                llm_status="used:cached",
+            )
+
+        consent_validator = ConsentValidator()
+        try:
+            has_consent = consent_validator.validate_external_services_consent(user_id)
+        except Exception:
+            return SkillProgressSummaryResponse(
+                project_id=project_id,
+                note="Consent check failed. Please retry.",
+                llm_status="skipped:consent_check_failed",
+            )
+
+        if not has_consent:
+            return SkillProgressSummaryResponse(
+                project_id=project_id,
+                note="External services consent not granted.",
+                llm_status="skipped:consent_not_granted",
+            )
+
+        client = get_user_client(user_id)
+        if client is None:
+            return SkillProgressSummaryResponse(
+                project_id=project_id,
+                note="No API key verified. Please verify your key in Settings.",
+                llm_status="skipped:no_api_key",
+            )
+
+        from analyzer.llm.skill_progress_summary import summarize_skill_progress
+
+        def call_model(prompt: str) -> str:
+            return client._make_llm_call(
+                [{"role": "user", "content": prompt}],
+                max_tokens=1200,
+                temperature=0.6,
+                response_format={"type": "json_object"},
+            )
+
+        summary_result = summarize_skill_progress(timeline, call_model)
+
+        return SkillProgressSummaryResponse(
+            project_id=project_id,
+            summary=SkillProgressSummaryModel(
+                overview=summary_result.overview,
+                timeline=summary_result.timeline,
+                skills_focus=summary_result.skills_focus,
+                suggested_next_steps=summary_result.suggested_next_steps,
+                validation_warning=summary_result.validation_warning,
+            ),
+            llm_status="used",
+        )
+
+    except HTTPException:
+        raise
+    except ProjectsServiceError as exc:
+        logger.error(f"Projects service error: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate skill summary: {str(exc)}",
+        )
+    except Exception as exc:
+        logger.exception("Unexpected error generating skill progression summary")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred",
         )
 
 
