@@ -207,6 +207,10 @@ export function DocumentAnalysisTab({
 
     return matchesSearch && matchesType;
   });
+  const emptyMessage =
+    documents.length === 0 && searchQuery === "" && selectedType === "all"
+      ? "No document analysis available for this project yet"
+      : "No documents found matching your criteria";
 
   return (
     <div className="space-y-6">
@@ -329,7 +333,7 @@ export function DocumentAnalysisTab({
           <div className="space-y-4">
             {!isLoading && !errorMessage && filteredDocuments.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
-                No documents found matching your criteria
+                {emptyMessage}
               </div>
             ) : (!isLoading && !errorMessage ? (
               filteredDocuments.map((doc, index) => (
