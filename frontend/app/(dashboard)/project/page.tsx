@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { DocumentAnalysisTab } from "@/components/project/document-analysis-tab";
 import { getStoredToken } from "@/lib/auth";
 import {
   getProjectById,
@@ -418,6 +419,17 @@ export default function ProjectPage() {
           </div>
         </TabsContent>
 
+        {/* Document Analysis tab with real content */}
+        <TabsContent value="doc-analysis">
+          <DocumentAnalysisTab />
+        </TabsContent>
+
+        {/* Placeholder tabs */}
+        {tabs.slice(1).filter(tab => tab.value !== "doc-analysis").map((tab) => (
+          <TabsContent key={tab.value} value={tab.value}>
+            <PlaceholderContent label={tab.label} />
+          </TabsContent>
+        ))}
         <TabsContent value="skills-progress">
           <div className="space-y-6">
             <Card className="bg-white border border-gray-200">
