@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FileImage, Film } from "lucide-react";
 
@@ -55,66 +56,90 @@ export type MediaAnalysisMetrics = {
   };
 };
 
-export type MediaAnalysisPayload =
-  | {
-      summary?: MediaAnalysisSummary;
-      metrics?: MediaAnalysisMetrics;
-      insights?: string[];
-      issues?: string[];
-    }
-  | Array<Record<string, any>>;
+export type MediaListItem = {
+  label: string;
+  type?: string;
+  analysis?: string;
+  metadata?: Record<string, unknown>;
+  path?: string;
+  file_name?: string;
+};
+
+export type MediaAnalysisPayload = {
+  summary?: MediaAnalysisSummary;
+  metrics?: MediaAnalysisMetrics;
+  insights?: string[];
+  issues?: string[];
+  assetItems?: MediaListItem[];
+  briefingItems?: MediaListItem[];
+};
 
 export function MediaAnalysisTab({
   loading,
   error,
   mediaAnalysis,
+  onRetry,
 }: {
   loading: boolean;
   error: string | null;
   mediaAnalysis: MediaAnalysisPayload | null;
+  onRetry?: () => void;
 }) {
   if (loading) {
-    return (
-      <Card className="bg-white border border-gray-200">
-        <CardContent className="p-10 text-center text-sm text-gray-500">
-          Loading media analysis…
-        </CardContent>
-      </Card>
-    );
+    return <LoadingState />;
   }
 
   if (error) {
-    return (
-      <Card className="bg-white border border-gray-200">
-        <CardContent className="p-10 text-center text-sm text-red-600">
-          {error}
-        </CardContent>
-      </Card>
-    );
+    return <ErrorState message={error} onRetry={onRetry} />;
   }
 
   if (!mediaAnalysis) {
-    return <PlaceholderContent label="Media Analysis" />;
+    return <EmptyState onRetry={onRetry} />;
   }
 
-  if (Array.isArray(mediaAnalysis)) {
-    return <MediaAnalysisList items={mediaAnalysis} />;
+  const hasSummaryData =
+    Boolean(mediaAnalysis.summary) ||
+    Boolean(mediaAnalysis.metrics) ||
+    Boolean(mediaAnalysis.insights && mediaAnalysis.insights.length > 0) ||
+    Boolean(mediaAnalysis.issues && mediaAnalysis.issues.length > 0);
+
+  const hasListItems =
+    Boolean(mediaAnalysis.assetItems && mediaAnalysis.assetItems.length > 0) ||
+    Boolean(mediaAnalysis.briefingItems && mediaAnalysis.briefingItems.length > 0);
+
+  if (!hasSummaryData && hasListItems) {
+    return (
+      <div className="space-y-6">
+        {mediaAnalysis.assetItems && mediaAnalysis.assetItems.length > 0 && (
+          <MediaAnalysisListSection title="Media Assets" items={mediaAnalysis.assetItems} />
+        )}
+        {mediaAnalysis.briefingItems && mediaAnalysis.briefingItems.length > 0 && (
+          <MediaAnalysisListSection title="Media Briefings" items={mediaAnalysis.briefingItems} />
+        )}
+      </div>
+    );
+  }
+
+  if (!hasSummaryData && !hasListItems) {
+    return <EmptyState onRetry={onRetry} />;
   }
 
   return <MediaAnalysisSummaryView payload={mediaAnalysis} />;
 }
 
-function PlaceholderContent({ label }: { label: string }) {
+function MediaAnalysisListSection({ title, items }: { title: string; items: MediaListItem[] }) {
   return (
-    <Card className="bg-white border border-gray-200">
-      <CardContent className="p-12 text-center">
-        <p className="text-gray-500 text-sm">{label} — This section will be available soon.</p>
-      </CardContent>
-    </Card>
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
+        <span className="text-xs text-gray-500">{items.length.toLocaleString()} items</span>
+      </div>
+      <MediaAnalysisList items={items} />
+    </div>
   );
 }
 
-function MediaAnalysisList({ items }: { items: Array<Record<string, any>> }) {
+function MediaAnalysisList({ items }: { items: MediaListItem[] }) {
   if (items.length === 0) {
     return (
       <Card className="bg-white border border-gray-200">
@@ -128,31 +153,33 @@ function MediaAnalysisList({ items }: { items: Array<Record<string, any>> }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       {items.map((item, idx) => (
-        <Card key={idx} className="bg-white border border-gray-200">
-          <CardContent className="p-4">
-            <div className="flex items-start gap-3">
-              <div className="mt-1 text-gray-500">
-                {item.type === "image" ? <FileImage size={18} /> : <Film size={18} />}
+          <Card key={idx} className="bg-white border border-gray-200">
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <div className="mt-1 text-gray-500">
+                  {item.type === "image" ? <FileImage size={18} /> : <Film size={18} />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">
+                    {item.label || item.file_name || item.path || "Untitled"}
+                  </p>
+                  {item.analysis && (
+                    <p className="text-xs text-gray-600 mt-1">{item.analysis}</p>
+                  )}
+                  {item.metadata && (
+                    <div className="mt-2 text-xs text-gray-500 flex flex-wrap gap-2">
+                      {"duration" in item.metadata && item.metadata.duration && (
+                        <span>Duration: {String(item.metadata.duration)}s</span>
+                      )}
+                      {"resolution" in item.metadata && item.metadata.resolution && (
+                        <span>{String(item.metadata.resolution)}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">
-                  {item.file_name || item.path || "Untitled"}
-                </p>
-                {item.analysis && (
-                  <p className="text-xs text-gray-600 mt-1">{item.analysis}</p>
-                )}
-                {item.metadata && (
-                  <div className="mt-2 text-xs text-gray-500 flex flex-wrap gap-2">
-                    {item.metadata.duration && (
-                      <span>Duration: {item.metadata.duration}s</span>
-                    )}
-                    {item.metadata.resolution && <span>{item.metadata.resolution}</span>}
-                  </div>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
       ))}
     </div>
   );
@@ -166,6 +193,8 @@ function MediaAnalysisSummaryView({
     metrics?: MediaAnalysisMetrics;
     insights?: string[];
     issues?: string[];
+    assetItems?: MediaListItem[];
+    briefingItems?: MediaListItem[];
   };
 }) {
   const summary = payload.summary || {};
@@ -268,6 +297,13 @@ function MediaAnalysisSummaryView({
         <InsightCard title="Insights" items={payload.insights} emptyLabel="No insights available yet." />
         <InsightCard title="Issues" items={payload.issues} emptyLabel="No issues detected." />
       </div>
+
+      {payload.assetItems && payload.assetItems.length > 0 && (
+        <MediaAnalysisListSection title="Media Assets" items={payload.assetItems} />
+      )}
+      {payload.briefingItems && payload.briefingItems.length > 0 && (
+        <MediaAnalysisListSection title="Media Briefings" items={payload.briefingItems} />
+      )}
     </div>
   );
 }
@@ -376,6 +412,54 @@ function StatCard({ label, value }: { label: string; value: string | number }) {
       <CardContent className="p-4">
         <p className="text-xs text-gray-500">{label}</p>
         <p className="text-lg font-semibold text-gray-900 mt-1">{value}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function LoadingState() {
+  return (
+    <Card className="bg-white border border-gray-200">
+      <CardContent className="p-10 text-center text-sm text-gray-500 space-y-3">
+        <div className="flex justify-center">
+          <div className="h-8 w-8 rounded-full border-2 border-gray-300 border-t-gray-700 animate-spin" />
+        </div>
+        <p>Analyzing media…</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  return (
+    <Card className="bg-white border border-gray-200">
+      <CardContent className="p-10 text-center text-sm text-red-600 space-y-3">
+        <p>{message}</p>
+        {onRetry && (
+          <div>
+            <Button variant="outline" onClick={onRetry}>
+              Retry
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function EmptyState({ onRetry }: { onRetry?: () => void }) {
+  return (
+    <Card className="bg-white border border-gray-200">
+      <CardContent className="p-10 text-center space-y-3">
+        <p className="text-sm text-gray-600">No media analysis available yet.</p>
+        <p className="text-xs text-gray-400">Run analysis or add media assets to generate results.</p>
+        {onRetry && (
+          <div>
+            <Button variant="outline" onClick={onRetry}>
+              Retry
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

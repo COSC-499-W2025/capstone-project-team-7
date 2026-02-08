@@ -1,11 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { MediaAnalysisTab, type MediaAnalysisPayload } from "@/components/project/media-analysis-tab";
+import {
+  MediaAnalysisTab,
+  type MediaAnalysisPayload,
+  type MediaAnalysisMetrics,
+  type MediaAnalysisSummary,
+  type MediaListItem,
+} from "@/components/project/media-analysis-tab";
 import { getProjects, getProjectById } from "@/lib/api/projects";
 import { getStoredToken } from "@/lib/auth";
 import type { ProjectDetail } from "@/types/project";
@@ -71,57 +77,57 @@ export default function ProjectPage() {
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [loadingProject, setLoadingProject] = useState(true);
   const [projectError, setProjectError] = useState<string | null>(null);
+  const isMountedRef = useRef(true);
 
-  useEffect(() => {
-    let isMounted = true;
+  const loadProject = useCallback(async () => {
+    const token = getStoredToken();
+    if (!token) {
+      if (isMountedRef.current) {
+        setProjectError("Not authenticated. Please log in through Settings.");
+        setLoadingProject(false);
+      }
+      return;
+    }
 
-    async function loadProject() {
-      const token = getStoredToken();
-      if (!token) {
-        if (isMounted) {
-          setProjectError("Not authenticated. Please log in through Settings.");
-          setLoadingProject(false);
-        }
+    try {
+      setProjectError(null);
+      setLoadingProject(true);
+
+      if (projectIdParam) {
+        const details = await getProjectById(token, projectIdParam);
+        if (isMountedRef.current) setProject(details);
         return;
       }
 
-      try {
-        setProjectError(null);
-        setLoadingProject(true);
-
-        if (projectIdParam) {
-          const details = await getProjectById(token, projectIdParam);
-          if (isMounted) setProject(details);
-          return;
-        }
-
-        const response = await getProjects(token);
-        const mostRecent = response.projects?.[0];
-        if (!mostRecent) {
-          if (isMounted) setProject(null);
-          return;
-        }
-        const details = await getProjectById(token, mostRecent.id);
-        if (isMounted) setProject(details);
-      } catch (err) {
-        if (isMounted) {
-          const message = err instanceof Error ? err.message : "Failed to load project";
-          setProjectError(message);
-        }
-      } finally {
-        if (isMounted) setLoadingProject(false);
+      const response = await getProjects(token);
+      const mostRecent = response.projects?.[0];
+      if (!mostRecent) {
+        if (isMountedRef.current) setProject(null);
+        return;
       }
+      const details = await getProjectById(token, mostRecent.id);
+      if (isMountedRef.current) setProject(details);
+    } catch (err) {
+      if (isMountedRef.current) {
+        const message = err instanceof Error ? err.message : "Failed to load project";
+        setProjectError(message);
+      }
+    } finally {
+      if (isMountedRef.current) setLoadingProject(false);
     }
+  }, [projectIdParam]);
 
+  useEffect(() => {
+    isMountedRef.current = true;
     loadProject();
     return () => {
-      isMounted = false;
+      isMountedRef.current = false;
     };
-  }, [projectIdParam]);
+  }, [loadProject]);
 
   const mediaAnalysis = useMemo<MediaAnalysisPayload | null>(() => {
     if (!project?.scan_data) return null;
-    const scanData = project.scan_data as Record<string, any>;
+    const scanData = project.scan_data as Record<string, unknown>;
     return resolveMediaAnalysis(scanData);
   }, [project]);
 
@@ -285,6 +291,7 @@ export default function ProjectPage() {
                   loading={loadingProject}
                   error={projectError}
                   mediaAnalysis={mediaAnalysis}
+                  onRetry={loadProject}
                 />
               </TabsContent>
             );
@@ -300,7 +307,7 @@ export default function ProjectPage() {
   );
 }
 
-function resolveMediaAnalysis(scanData: Record<string, any>): MediaAnalysisPayload | null {
+function resolveMediaAnalysis(scanData: Record<string, unknown>): MediaAnalysisPayload | null {
   const aiPayload = scanData.llm_media;
   if (isNonEmptyMedia(aiPayload)) {
     const normalized = normalizeMediaPayload(aiPayload);
@@ -316,7 +323,7 @@ function resolveMediaAnalysis(scanData: Record<string, any>): MediaAnalysisPaylo
   return null;
 }
 
-function isNonEmptyMedia(value: any): boolean {
+function isNonEmptyMedia(value: unknown): boolean {
   if (!value) return false;
   if (Array.isArray(value)) return value.length > 0;
   if (typeof value === "string") return value.trim().length > 0;
@@ -324,15 +331,18 @@ function isNonEmptyMedia(value: any): boolean {
   return false;
 }
 
-function normalizeMediaPayload(value: any): MediaAnalysisPayload | null {
+export function normalizeMediaPayload(value: unknown): MediaAnalysisPayload | null {
   if (!value) return null;
 
   if (Array.isArray(value)) {
     if (value.length === 0) return null;
-    if (value.every((entry) => typeof entry === "string")) {
+    if (isStringArray(value)) {
       return { insights: value };
     }
-    return value;
+    if (isObjectArray(value)) {
+      return { assetItems: mapMediaItems(value) };
+    }
+    return { insights: [] };
   }
 
   if (typeof value === "string") {
@@ -340,21 +350,138 @@ function normalizeMediaPayload(value: any): MediaAnalysisPayload | null {
   }
 
   if (typeof value === "object") {
-    if (Array.isArray(value.media_briefings)) {
-      return { insights: value.media_briefings };
+    const record = value as Record<string, unknown>;
+    const insights: string[] = [];
+    let assetItems: MediaListItem[] = [];
+    let briefingItems: MediaListItem[] = [];
+
+    if (isStringArray(record.insights)) {
+      insights.push(...record.insights);
     }
-    if (Array.isArray(value.media_assets)) {
-      return { insights: value.media_assets };
+    if (isStringArray(record.issues)) {
+      // handled later
     }
-    if (typeof value.media_assets === "string") {
-      const lines = value.media_assets
-        .split("\n")
-        .map((line: string) => line.replace(/^[•\-\s]+/, "").trim())
-        .filter(Boolean);
-      return { insights: lines };
+
+    if (isStringArray(record.media_briefings)) {
+      insights.push(...record.media_briefings);
+    } else if (isObjectArray(record.media_briefings)) {
+      briefingItems = mapMediaItems(record.media_briefings);
+    } else if (typeof record.media_briefings === "string") {
+      insights.push(...splitLines(record.media_briefings));
     }
-    return value as MediaAnalysisPayload;
+
+    if (isStringArray(record.media_assets)) {
+      insights.push(...record.media_assets);
+    } else if (isObjectArray(record.media_assets)) {
+      assetItems = mapMediaItems(record.media_assets);
+    } else if (typeof record.media_assets === "string") {
+      insights.push(...splitLines(record.media_assets));
+    }
+
+    if (isObjectArray(record.assetItems)) {
+      assetItems = assetItems.concat(mapMediaItems(record.assetItems));
+    }
+    if (isObjectArray(record.briefingItems)) {
+      briefingItems = briefingItems.concat(mapMediaItems(record.briefingItems));
+    }
+
+    const payload: MediaAnalysisPayload = {
+      summary: isPlainObject(record.summary)
+        ? (record.summary as MediaAnalysisSummary)
+        : undefined,
+      metrics: isPlainObject(record.metrics)
+        ? (record.metrics as MediaAnalysisMetrics)
+        : undefined,
+      insights: insights.length > 0 ? insights : undefined,
+      issues: isStringArray(record.issues) ? record.issues : undefined,
+      assetItems: assetItems.length > 0 ? assetItems : undefined,
+      briefingItems: briefingItems.length > 0 ? briefingItems : undefined,
+    };
+
+    const hasAny =
+      payload.summary ||
+      payload.metrics ||
+      (payload.insights && payload.insights.length > 0) ||
+      (payload.issues && payload.issues.length > 0) ||
+      (payload.assetItems && payload.assetItems.length > 0) ||
+      (payload.briefingItems && payload.briefingItems.length > 0);
+
+    return hasAny ? payload : { insights: [] };
   }
 
   return null;
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+}
+
+function isObjectArray(value: unknown): value is Array<Record<string, unknown>> {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (entry) =>
+        entry !== null &&
+        typeof entry === "object" &&
+        !Array.isArray(entry)
+    )
+  );
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function splitLines(value: string): string[] {
+  return value
+    .split("\n")
+    .map((line) => line.replace(/^[•\-\s]+/, "").trim())
+    .filter(Boolean);
+}
+
+function mapMediaItems(items: Array<Record<string, unknown>>): MediaListItem[] {
+  return items.map((item) => ({
+    label: deriveItemLabel(item),
+    type: typeof item.type === "string" ? item.type : undefined,
+    analysis:
+      typeof item.analysis === "string"
+        ? item.analysis
+        : typeof item.description === "string"
+        ? item.description
+        : typeof item.summary === "string"
+        ? item.summary
+        : undefined,
+    metadata: isPlainObject(item.metadata) ? item.metadata : undefined,
+    path: typeof item.path === "string" ? item.path : undefined,
+    file_name: typeof item.file_name === "string" ? item.file_name : undefined,
+  }));
+}
+
+function deriveItemLabel(item: Record<string, unknown>): string {
+  const candidates = [
+    item.summary,
+    item.title,
+    item.path,
+    item.filename,
+    item.file_name,
+    item.source,
+    item.name,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return truncateText(candidate.trim(), 120);
+    }
+  }
+
+  try {
+    return truncateText(JSON.stringify(item), 120);
+  } catch {
+    return "Media item";
+  }
+}
+
+function truncateText(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, Math.max(0, maxLength - 1)).trim()}…`;
 }
