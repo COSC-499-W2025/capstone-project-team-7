@@ -1,5 +1,45 @@
 # Om Mistry (@OM200401)
 
+## Week 19: February 2 - February 8
+
+This week I delivered the Document Analysis UI end-to-end and wired it to the backend payload, with tests and documentation updates to validate the new flow.
+
+**Core Implementation:**
+
+1. **Document Analysis Tab UI:**
+   - Built a dedicated Document Analysis tab with stats, type breakdown, search, and filtering
+   - Added document cards with summaries, keywords, headings, and word counts
+   - Implemented responsive layout and ensured visual alignment with the existing design system
+
+2. **Backend Payload Integration:**
+   - Connected the tab to `scan_data.document_analysis` with normalization for legacy shapes
+   - Added robust empty-state handling and updated Overview "Documents" count
+   - Ensured support for alternate keys (`items`, `file_name`, `metadata.word_count`, etc.)
+
+3. **Testing & Documentation:**
+   - Added unit tests for payload normalization, filtering, and empty-state messaging
+   - Added Playwright E2E coverage for the Document Analysis tab
+   - Updated `docs/feature-inventory.md` and `docs/user-tasks.md` with the new flow
+
+**What Went Well:**
+- Clear API contract made frontend integration straightforward
+- Test coverage caught normalization and empty-state edge cases early
+- UI and data model alignment reduced rework during review
+
+**What Didn't Go Well:**
+- Payload shape differences required more defensive parsing than expected
+- Needed extra iteration to ensure filtering handled all legacy fields
+
+**Next Steps:**
+- Add real-time refresh on new scan completion
+- Expand document-type heuristics for uncommon formats
+
+Issues resolved: [#275 - Document analysis tab](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/275), [#293 - Backend document analysis integration](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/293)
+
+PRs: [#288 - Feature/document analysis tab](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/288), [#294 - Backend Document Analysis Integration](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/294)
+
+![Tasks Completed](./assets/Omistry_T2_Week5.png)
+
 ## Week 18: January 26 - February 1
 
 This week I implemented a comprehensive settings page for the Electron app with full backend integration. The work included authentication system, scan profile management, consent handling, and multiple backend bug fixes to ensure smooth API integration.
