@@ -1,3 +1,33 @@
+# Week 18 & 19: January 26 - February 8
+ Code Contributions                                                                                       
+  - https://github.com/COSC-499-W2025/capstone-project-team-7/pull/285 — Built the Project Analysis     
+  wireframe page with a scrollable tab bar, sidebar navigation, and back-link routing. Wrote 27
+  automated tests. Closes #271.
+  - https://github.com/COSC-499-W2025/capstone-project-team-7/pull/265 — Implemented the user Profile   
+  page with editable fields (name, avatar, education, career, GitHub/Drive URLs), password change with  
+  current-password verification, dirty-state detection, and logout. Wrote 16 automated tests. Closes    
+  #256.
+
+  Code Reviews
+  - https://github.com/COSC-499-W2025/capstone-project-team-7/pull/288 — Document Analysis Tab.
+  Approved; noted mock data will need future API integration.
+  - https://github.com/COSC-499-W2025/capstone-project-team-7/pull/286 — Run New Scan. Approved; agreed 
+  with requested fixes for polling memory leaks and race conditions, suggested exponential backoff for  
+  long scans.
+  - https://github.com/COSC-499-W2025/capstone-project-team-7/pull/266 — Settings Page. Approved with   
+  detailed feedback: flagged duplicated request helpers, a hardcoded preload fallback map, and incorrect
+   isDev logic. Recommended moving token storage to Electron safeStorage before production.
+  - https://github.com/COSC-499-W2025/capstone-project-team-7/pull/264 — Sidebar Navigation. Approved;  
+  clean minimal setup with good placeholders.
+  - https://github.com/COSC-499-W2025/capstone-project-team-7/pull/260 — Pro Contrast Global Styles.    
+  Requested changes: destructive buttons need red color distinction, and typography rules should be     
+  scoped to a wrapper class to avoid shadcn conflicts.
+  - https://github.com/COSC-499-W2025/capstone-project-team-7/pull/258 — Electron Auth. Approved;       
+  well-structured auth infrastructure with password strength indicator and theme switching.
+  - https://github.com/COSC-499-W2025/capstone-project-team-7/pull/255 — API Contract Tests. Approved.
+
+<img width="1081" height="635" alt="Screenshot 2026-02-08 222808" src="https://github.com/user-attachments/assets/fa464a26-4d2e-4b55-ab82-31787dc5b34d" />
+
 # Week 17: January 19 - January 25
 This week I worked on PR [PR #242](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/242) which implements incremental portfolio refresh with deduplication, a key feature for Milestone #2. This PR adds two new API endpoints: POST /api/portfolio/refresh which scans all user projects and detects files duplicated across multiple projects using SHA-256 hash comparison, and POST /api/projects/{project_id}/append-upload/{upload_id} which merges files from a new upload into an existing project while automatically skipping duplicates, updating changed files, and adding new ones. The implementation includes TUI client methods in PortfolioRefreshAPIService for seamless integration, comprehensive test coverage (13 tests), and updated API documentation. Other than my PR I also reviewed [PR #252](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/252), [PR #250](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/250), [PR #249](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/249), [PR #245](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/245), and [PR #243](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/243), giving feedback and approving these requests.
 
