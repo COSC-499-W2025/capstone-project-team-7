@@ -21,7 +21,6 @@
 
 ## Week 18/19 (Jaunary 26th - Febuary 8th)
 
-**Jacob**I
 **Jacob** This week, I focused on establishing strong frontend foundations for the application while also contributing through code reviews to ensure consistency and long-term scalability across the UI.
 I implemented the frontend UI foundations, including global styling and application navigation. I authored (PR #260)[https://github.com/COSC-499-W2025/capstone-project-team-7/pull/260], which establishes a high-contrast, clarity-first global visual system. This work introduced consistent grayscale color tokens, standardized typography, enforced structural borders, and removed decorative shadows to reduce visual noise. The intent was to create a reusable styling baseline that components can rely on without requiring per-component overrides, improving visual consistency and maintainability across the app.
 I also authored (PR #264)[https://github.com/COSC-499-W2025/capstone-project-team-7/pull/264], which replaces the previous basic navigation with a modern fixed-position sidebar and introduces a new layout wrapper to manage the sidebar and main content area consistently across all pages. This PR integrated Electron-friendly routing using a MemoryRouter and added placeholder routes for all primary navigation entries, ensuring the navigation structure is scalable as new features and pages are added.
