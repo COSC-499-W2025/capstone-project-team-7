@@ -2,9 +2,17 @@ from __future__ import annotations
 
 from collections import defaultdict
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, TypedDict
 
-from ..scanner.models import FileMetadata
+from scanner.models import FileMetadata
+
+
+class _LanguageEntry(TypedDict):
+    language: str
+    files: int
+    file_percent: float
+    bytes: int
+    byte_percent: float
 
 LANGUAGE_EXTENSIONS: dict[str, str] = {
     ".py": "Python",
@@ -74,7 +82,7 @@ def summarize_languages(files: Iterable[FileMetadata]) -> list[dict[str, object]
     total_files = sum(stats["files"] for stats in totals.values())
     total_bytes = sum(stats["bytes"] for stats in totals.values())
 
-    breakdown: list[dict[str, object]] = []
+    breakdown: list[_LanguageEntry] = []
     if total_files == 0:
         return breakdown
     for language, stats in totals.items():

@@ -49,6 +49,43 @@ export interface ProjectListResponse {
   projects: ProjectMetadata[];
 }
 
+export interface SkillProgressPeriod {
+  period_label: string;
+  commits: number;
+  tests_changed: number;
+  skill_count: number;
+  evidence_count: number;
+  top_skills: string[];
+  languages: Record<string, number>;
+  contributors: number;
+  commit_messages: string[];
+  top_files: string[];
+  activity_types: string[];
+  period_languages: Record<string, number>;
+}
+
+export interface SkillProgressSummary {
+  overview: string;
+  timeline: string[];
+  skills_focus: string[];
+  suggested_next_steps: string[];
+  validation_warning?: string | null;
+}
+
+export interface SkillProgressTimelineResponse {
+  project_id: string;
+  timeline: SkillProgressPeriod[];
+  note?: string | null;
+  summary?: SkillProgressSummary | null;
+}
+
+export interface SkillProgressSummaryResponse {
+  project_id: string;
+  summary?: SkillProgressSummary | null;
+  note?: string | null;
+  llm_status?: string | null;
+}
+
 export interface CreateProjectRequest {
   project_name: string;
   project_path: string;
