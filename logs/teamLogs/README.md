@@ -49,8 +49,11 @@ Overall, most PRs are in good shape. The main concerns raised were around authen
 
 **Aaron**
 
-**Om**
+**Om:**
 
+During Jan 26–Feb 8, I shipped three merged PRs and focused on frontend feature delivery plus documentation/testing support. I authored [PR #251](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/251) to add TUI ↔ API integration docs and an integration test for the portfolio CRUD flow using FastAPI TestClient with dependency overrides, plus README updates to guide reproduction. I delivered the Electron settings page in [PR #266](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/266), covering JWT login/logout, scan profile CRUD and switching, consent persistence, and UI/UX polish, along with backend fixes (204 delete handling, Pydantic forward refs, Python 3.10 timezone compatibility, and auth header injection). I also built the Document Analysis tab UI in [PR #288](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/288), including stats, type breakdown, search/filtering, and detailed document cards aligned with backend schema, plus component tests and responsiveness checks.
+
+On the review side, I reviewed merged PRs for this window: [#243](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/243) (override API endpoints + integration tests), [#250](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/250) (resume items CRUD and API integration in TUI), [#252](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/252) (config/profile API integration into TUI), [#265](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/265) (Electron profile page), [#278](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/278) (profile login/create account wiring), [#280](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/280) (view saved projects page), [#283](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/283) (code analysis enhancements), [#285](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/285) (project analysis wireframe), [#286](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/286) (run new scan flow), and [#289](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/289) (backend skills analysis endpoints). These reviews emphasized auth correctness, payload shape consistency, and keeping Electron flows aligned with the new UI patterns.
 **Vlad**
 
 **Samarth**
@@ -59,12 +62,15 @@ Overall, most PRs are in good shape. The main concerns raised were around authen
 
 ### What went well
 - PRs this week were generally well structured, easy to review, and aligned with existing architecture patterns.
+- Frontend features and Electron flows landed smoothly with good test coverage and documentation support.
 
 ### Challenges
 - A few auth and storage edge cases required extra attention to ensure correctness before merging.
+- Normalizing payload shapes across legacy and new endpoints required extra review iterations.
 
 ## **Next Steps**
 - Continue tightening auth flows and addressing small edge cases before upcoming feature merges.
+- Expand end-to-end coverage for Electron user flows to catch UI regressions earlier.
 
 <p align="center">
   <img src="./charts/w19burnup.png" alt="Week 15 Burnup Chart width="400"/>
