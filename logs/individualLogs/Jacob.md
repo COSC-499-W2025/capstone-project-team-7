@@ -29,6 +29,8 @@ Next week, I'll continue expanding the UI using the new layout and styling found
 
 This work establishes a solid foundation for building out the full desktop UI experience. Taking time to align with the team on UI structure and design decisions led to strong consensus and fewer reworks. The foundational layout and styling system creates a clearer path for future feature development and ensures visual consistency across the application.
 
+<img width="900" height="613" alt="image" src="https://github.com/user-attachments/assets/80441a79-2eeb-4623-8c69-d6afdaced815" />
+
 ## Week 17
 
 This week, I focused on two major PRs: integrating config/profile APIs into the TUI and delivering resume items CRUD via the API.
