@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { DocumentAnalysisTab } from "@/components/project/document-analysis-tab";
 import { getStoredToken } from "@/lib/auth";
 import {
+  getProjects,
   getProjectById,
   getProjectSkillTimeline,
   generateProjectSkillSummary,
@@ -16,6 +18,13 @@ import type {
   SkillProgressPeriod,
   SkillProgressSummary,
 } from "@/types/project";
+import {
+  MediaAnalysisTab,
+  type MediaAnalysisPayload,
+  type MediaAnalysisMetrics,
+  type MediaAnalysisSummary,
+  type MediaListItem,
+} from "@/components/project/media-analysis-tab";
 import {
   LayoutDashboard,
   FileText,
@@ -82,70 +91,101 @@ function PlaceholderContent({ label }: { label: string }) {
   return (
     <Card className="bg-white border border-gray-200">
       <CardContent className="p-12 text-center">
-        <p className="text-gray-500 text-sm">{label} — This section will be available soon.</p>
+        <p className="text-gray-500 text-sm">
+          {label} — This section will be available soon.
+        </p>
       </CardContent>
     </Card>
   );
 }
 
-
 export default function ProjectPage() {
-  const [projectId, setProjectId] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+  const projectIdParam = searchParams.get("projectId");
+
+  const [projectId, setProjectId] = useState<string | null>(projectIdParam);
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [projectError, setProjectError] = useState<string | null>(null);
-  const [projectLoading, setProjectLoading] = useState(false);
+  const [projectLoading, setProjectLoading] = useState(true);
 
-  const [skillsTimeline, setSkillsTimeline] = useState<SkillProgressPeriod[]>([]);
-  const [skillsSummary, setSkillsSummary] = useState<SkillProgressSummary | null>(null);
+  const isMountedRef = useRef(true);
+
+  // Skills / progression state (from main)
+  const [skillsTimeline, setSkillsTimeline] = useState<SkillProgressPeriod[]>(
+    []
+  );
+  const [skillsSummary, setSkillsSummary] =
+    useState<SkillProgressSummary | null>(null);
   const [skillsNote, setSkillsNote] = useState<string | null>(null);
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [summaryLoading, setSummaryLoading] = useState(false);
 
+  // Keep local projectId in sync with URL
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    const id = params.get("projectId");
-    setProjectId(id);
-  }, []);
+    setProjectId(projectIdParam);
+  }, [projectIdParam]);
 
-  useEffect(() => {
-    if (!projectId) return;
+  const loadProject = useCallback(async () => {
     const token = getStoredToken();
     if (!token) {
-      setProjectError("Not authenticated. Please log in through Settings.");
+      if (isMountedRef.current) {
+        setProjectError("Not authenticated. Please log in through Settings.");
+        setProjectLoading(false);
+      }
       return;
     }
 
-    let cancelled = false;
-    setProjectLoading(true);
-    setProjectError(null);
-    getProjectById(token, projectId)
-      .then((data) => {
-        if (cancelled) return;
-        setProject(data);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setProjectError(err instanceof Error ? err.message : "Failed to load project.");
-      })
-      .finally(() => {
-        if (!cancelled) setProjectLoading(false);
-      });
+    try {
+      setProjectError(null);
+      setProjectLoading(true);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId]);
+      // If projectId in URL, load it. Otherwise load most recent.
+      if (projectIdParam) {
+        const details = await getProjectById(token, projectIdParam);
+        if (isMountedRef.current) setProject(details);
+        return;
+      }
+
+      const response = await getProjects(token);
+      const mostRecent = response.projects?.[0];
+      if (!mostRecent) {
+        if (isMountedRef.current) setProject(null);
+        return;
+      }
+      const details = await getProjectById(token, mostRecent.id);
+      if (isMountedRef.current) setProject(details);
+    } catch (err) {
+      if (isMountedRef.current) {
+        const message =
+          err instanceof Error ? err.message : "Failed to load project";
+        setProjectError(message);
+      }
+    } finally {
+      if (isMountedRef.current) setProjectLoading(false);
+    }
+  }, [projectIdParam]);
 
   useEffect(() => {
-    if (!projectId) return;
+    isMountedRef.current = true;
+    loadProject();
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, [loadProject]);
+
+  // Fetch skills timeline/summary when we have a projectId
+  useEffect(() => {
+    const effectiveProjectId = projectId ?? project?.id ?? null;
+    if (!effectiveProjectId) return;
+
     const token = getStoredToken();
     if (!token) return;
 
     let cancelled = false;
     setSkillsLoading(true);
     setSkillsNote(null);
-    getProjectSkillTimeline(token, projectId)
+
+    getProjectSkillTimeline(token, effectiveProjectId)
       .then((data) => {
         if (cancelled) return;
         setSkillsTimeline(data.timeline || []);
@@ -154,7 +194,9 @@ export default function ProjectPage() {
       })
       .catch((err) => {
         if (cancelled) return;
-        setSkillsNote(err instanceof Error ? err.message : "Failed to load skills timeline.");
+        setSkillsNote(
+          err instanceof Error ? err.message : "Failed to load skills timeline."
+        );
       })
       .finally(() => {
         if (!cancelled) setSkillsLoading(false);
@@ -163,33 +205,38 @@ export default function ProjectPage() {
     return () => {
       cancelled = true;
     };
-  }, [projectId]);
+  }, [projectId, project?.id]);
 
-  const scanData = project?.scan_data || {};
-  const summary = scanData.summary || {};
-  const skillsAnalysis = scanData.skills_analysis || {};
-  const skillsByCategory = skillsAnalysis.skills_by_category || {};
-  const totalSkills = skillsAnalysis.total_skills || 0;
+  const scanData = (project?.scan_data ?? {}) as any;
+  const summary = (scanData.summary ?? {}) as any;
+  const skillsAnalysis = (scanData.skills_analysis ?? {}) as any;
+  const skillsByCategory = (skillsAnalysis.skills_by_category ?? {}) as any;
+  const totalSkills = (skillsAnalysis.total_skills ?? 0) as number;
 
   const projectName = project?.project_name ?? fallbackProject.name;
   const projectPath = project?.project_path ?? fallbackProject.path;
   const scanTimestamp = project?.scan_timestamp ?? fallbackProject.scanTimestamp;
 
-  const filesProcessed = summary.total_files ?? project?.total_files ?? fallbackProject.filesProcessed;
+  const filesProcessed =
+    summary.total_files ??
+    project?.total_files ??
+    fallbackProject.filesProcessed;
   const totalSizeBytes = summary.bytes_processed;
-  const issuesFound = summary.issues_found ?? summary.issue_count ?? fallbackProject.issuesFound;
-  const totalLines = summary.total_lines ?? project?.total_lines ?? fallbackProject.totalLines;
+  const issuesFound =
+    summary.issues_found ?? summary.issue_count ?? fallbackProject.issuesFound;
+  const totalLines =
+    summary.total_lines ?? project?.total_lines ?? fallbackProject.totalLines;
+
   const filesProcessedLabel = formatCount(filesProcessed);
   const issuesFoundLabel = formatCount(issuesFound);
   const totalLinesLabel = formatCount(totalLines);
 
   const languageStats = useMemo(() => {
     const rawLanguages = scanData.languages;
-    if (!rawLanguages || typeof rawLanguages !== "object") {
-      return null;
-    }
+    if (!rawLanguages || typeof rawLanguages !== "object") return null;
 
     const entries: Array<{ name: string; value: number }> = [];
+
     if (Array.isArray(rawLanguages)) {
       if (rawLanguages.length > 0 && typeof rawLanguages[0] === "object") {
         rawLanguages.forEach((lang: any) => {
@@ -215,12 +262,13 @@ export default function ProjectPage() {
       });
     }
 
-    const total = entries.reduce((sum, entry) => sum + entry.value, 0);
+    const total = entries.reduce((sum, e) => sum + e.value, 0);
     if (total <= 0) return null;
+
     return entries
-      .map((entry) => ({
-        name: entry.name,
-        percentage: Number(((entry.value / total) * 100).toFixed(1)),
+      .map((e) => ({
+        name: e.name,
+        percentage: Number(((e.value / total) * 100).toFixed(1)),
       }))
       .sort((a, b) => b.percentage - a.percentage)
       .slice(0, 5);
@@ -228,17 +276,33 @@ export default function ProjectPage() {
 
   const topLanguages = languageStats ?? overviewLanguages;
 
-  const gitRepos = scanData.git_analysis?.repositories?.length ?? fallbackProject.gitRepos;
-  const mediaFiles = scanData.media_analysis?.length ?? fallbackProject.mediaFiles;
-  const pdfDocs = scanData.pdf_analysis?.length ?? fallbackProject.pdfDocs;
+  const gitRepos =
+    scanData.git_analysis?.repositories?.length ?? fallbackProject.gitRepos;
+
   const documentAnalysis = scanData.document_analysis;
   const otherDocs = Array.isArray(documentAnalysis)
     ? documentAnalysis.length
     : Array.isArray(documentAnalysis?.documents)
-      ? documentAnalysis.documents.length
-      : Array.isArray(documentAnalysis?.items)
-        ? documentAnalysis.items.length
-        : fallbackProject.otherDocs;
+    ? documentAnalysis.documents.length
+    : Array.isArray(documentAnalysis?.items)
+    ? documentAnalysis.items.length
+    : fallbackProject.otherDocs;
+
+  // Media analysis (from feature/media-analysis)
+  const mediaAnalysis = useMemo<MediaAnalysisPayload | null>(() => {
+    if (!project?.scan_data) return null;
+    const data = project.scan_data as Record<string, unknown>;
+    return resolveMediaAnalysis(data);
+  }, [project]);
+
+  const mediaFiles =
+    // prefer resolved payload counts if you want, otherwise scanData
+    (Array.isArray(scanData.media_analysis) ? scanData.media_analysis.length : 0) ||
+    fallbackProject.mediaFiles;
+
+  const pdfDocs =
+    (Array.isArray(scanData.pdf_analysis) ? scanData.pdf_analysis.length : 0) ||
+    fallbackProject.pdfDocs;
 
   const topSkills = useMemo(() => {
     const counts = new Map<string, number>();
@@ -253,7 +317,9 @@ export default function ProjectPage() {
   }, [skillsTimeline]);
 
   const handleGenerateSummary = async () => {
-    if (!projectId) return;
+    const effectiveProjectId = projectId ?? project?.id ?? null;
+    if (!effectiveProjectId) return;
+
     const token = getStoredToken();
     if (!token) {
       setSkillsNote("Not authenticated. Please log in through Settings.");
@@ -262,7 +328,7 @@ export default function ProjectPage() {
 
     setSummaryLoading(true);
     try {
-      const response = await generateProjectSkillSummary(token, projectId);
+      const response = await generateProjectSkillSummary(token, effectiveProjectId);
       setSkillsSummary(response.summary ?? null);
       setSkillsNote(response.note ?? null);
     } catch (err) {
@@ -275,17 +341,23 @@ export default function ProjectPage() {
   return (
     <div className="p-8">
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 mb-6">
-        <Link href={"/scanned-results" as any} className="text-sm text-gray-600 hover:text-gray-900 mb-2 inline-block">
+        <Link
+          href={"/scanned-results" as any}
+          className="text-sm text-gray-600 hover:text-gray-900 mb-2 inline-block"
+        >
           ← Back
         </Link>
-        <h1 className="text-4xl font-bold text-gray-900 tracking-tight">Project: {projectName}</h1>
+
+        <h1 className="text-4xl font-bold text-gray-900 tracking-tight">
+          Project: {projectName}
+        </h1>
+
         <p className="text-gray-500 mt-1 text-sm">Scanned project analysis and reports</p>
+
         {projectLoading && (
           <p className="text-xs text-gray-400 mt-2">Loading project data…</p>
         )}
-        {projectError && (
-          <p className="text-xs text-red-600 mt-2">{projectError}</p>
-        )}
+        {projectError && <p className="text-xs text-red-600 mt-2">{projectError}</p>}
       </div>
 
       <Tabs defaultValue="overview">
@@ -293,7 +365,11 @@ export default function ProjectPage() {
           {tabs.map((tab) => {
             const Icon = tab.icon;
             return (
-              <TabsTrigger key={tab.value} value={tab.value} className="gap-1.5 text-xs px-2.5 py-1.5 shrink-0">
+              <TabsTrigger
+                key={tab.value}
+                value={tab.value}
+                className="gap-1.5 text-xs px-2.5 py-1.5 shrink-0"
+              >
                 <Icon size={14} />
                 {tab.label}
               </TabsTrigger>
@@ -301,113 +377,149 @@ export default function ProjectPage() {
           })}
         </TabsList>
 
-        {/* Overview tab with real content */}
+        {/* Overview */}
         <TabsContent value="overview">
           <div className="space-y-6">
-            {/* Project Info */}
             <Card className="bg-white border border-gray-200">
               <CardHeader className="border-b border-gray-200">
-                <CardTitle className="text-xl font-bold text-gray-900">Project Information</CardTitle>
+                <CardTitle className="text-xl font-bold text-gray-900">
+                  Project Information
+                </CardTitle>
               </CardHeader>
               <CardContent className="p-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Project Name</p>
-                    <p className="text-sm font-semibold text-gray-900 mt-1">{projectName}</p>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Project Name
+                    </p>
+                    <p className="text-sm font-semibold text-gray-900 mt-1">
+                      {projectName}
+                    </p>
                   </div>
                   <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Path</p>
-                    <p className="text-sm font-mono text-gray-900 mt-1">{projectPath}</p>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Path
+                    </p>
+                    <p className="text-sm font-mono text-gray-900 mt-1">
+                      {projectPath}
+                    </p>
                   </div>
                   <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Scan Timestamp</p>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Scan Timestamp
+                    </p>
                     <p className="text-sm text-gray-900 mt-1">{scanTimestamp}</p>
                   </div>
                   <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Scan Duration</p>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Scan Duration
+                    </p>
                     <p className="text-sm text-gray-900 mt-1">3.2 seconds</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Summary Stats */}
             <Card className="bg-white border border-gray-200">
               <CardHeader className="border-b border-gray-200">
-                <CardTitle className="text-xl font-bold text-gray-900">Summary Statistics</CardTitle>
+                <CardTitle className="text-xl font-bold text-gray-900">
+                  Summary Statistics
+                </CardTitle>
               </CardHeader>
               <CardContent className="p-6">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                   <div className="bg-gray-50 rounded-lg p-4 text-center">
-                    <p className="text-2xl font-bold text-gray-900">{filesProcessedLabel}</p>
+                    <p className="text-2xl font-bold text-gray-900">
+                      {filesProcessedLabel}
+                    </p>
                     <p className="text-xs text-gray-500 mt-1">Files Processed</p>
                   </div>
                   <div className="bg-gray-50 rounded-lg p-4 text-center">
                     <p className="text-2xl font-bold text-gray-900">
-                      {totalSizeBytes ? formatBytes(Number(totalSizeBytes)) : fallbackProject.totalSizeLabel}
+                      {totalSizeBytes
+                        ? formatBytes(Number(totalSizeBytes))
+                        : fallbackProject.totalSizeLabel}
                     </p>
                     <p className="text-xs text-gray-500 mt-1">Total Size</p>
                   </div>
                   <div className="bg-gray-50 rounded-lg p-4 text-center">
-                    <p className="text-2xl font-bold text-gray-900">{issuesFoundLabel}</p>
+                    <p className="text-2xl font-bold text-gray-900">
+                      {issuesFoundLabel}
+                    </p>
                     <p className="text-xs text-gray-500 mt-1">Issues Found</p>
                   </div>
                   <div className="bg-gray-50 rounded-lg p-4 text-center">
-                    <p className="text-2xl font-bold text-gray-900">{totalLinesLabel}</p>
+                    <p className="text-2xl font-bold text-gray-900">
+                      {totalLinesLabel}
+                    </p>
                     <p className="text-xs text-gray-500 mt-1">Lines of Code</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Top Languages */}
             <Card className="bg-white border border-gray-200">
               <CardHeader className="border-b border-gray-200">
-                <CardTitle className="text-xl font-bold text-gray-900">Top 5 Languages</CardTitle>
+                <CardTitle className="text-xl font-bold text-gray-900">
+                  Top 5 Languages
+                </CardTitle>
               </CardHeader>
               <CardContent className="p-6">
                 <div className="space-y-3">
                   {topLanguages.map((lang) => (
                     <div key={lang.name} className="flex items-center gap-3">
-                      <span className="text-sm text-gray-900 w-28 font-medium">{lang.name}</span>
+                      <span className="text-sm text-gray-900 w-28 font-medium">
+                        {lang.name}
+                      </span>
                       <div className="flex-1 bg-gray-100 rounded-full h-2.5">
                         <div
                           className="bg-gray-900 h-2.5 rounded-full"
                           style={{ width: `${lang.percentage}%` }}
                         />
                       </div>
-                      <span className="text-sm text-gray-500 w-14 text-right">{lang.percentage}%</span>
+                      <span className="text-sm text-gray-500 w-14 text-right">
+                        {lang.percentage}%
+                      </span>
                     </div>
                   ))}
                 </div>
               </CardContent>
             </Card>
 
-            {/* Additional Counts */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <Card className="bg-white border border-gray-200">
                 <CardHeader className="border-b border-gray-200">
-                  <CardTitle className="text-base font-bold text-gray-900">Git Repositories</CardTitle>
+                  <CardTitle className="text-base font-bold text-gray-900">
+                    Git Repositories
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className="p-6">
                   <p className="text-3xl font-bold text-gray-900">{gitRepos}</p>
-                  <p className="text-xs text-gray-500 mt-1">Repositories detected</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Repositories detected
+                  </p>
                 </CardContent>
               </Card>
 
               <Card className="bg-white border border-gray-200">
                 <CardHeader className="border-b border-gray-200">
-                  <CardTitle className="text-base font-bold text-gray-900">Media Files</CardTitle>
+                  <CardTitle className="text-base font-bold text-gray-900">
+                    Media Files
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className="p-6">
                   <p className="text-3xl font-bold text-gray-900">{mediaFiles}</p>
-                  <p className="text-xs text-gray-500 mt-1">Images, videos, and audio</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Images, videos, and audio
+                  </p>
                 </CardContent>
               </Card>
 
               <Card className="bg-white border border-gray-200">
                 <CardHeader className="border-b border-gray-200">
-                  <CardTitle className="text-base font-bold text-gray-900">Documents</CardTitle>
+                  <CardTitle className="text-base font-bold text-gray-900">
+                    Documents
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className="p-6">
                   <div className="flex gap-6">
@@ -426,7 +538,7 @@ export default function ProjectPage() {
           </div>
         </TabsContent>
 
-        {/* Document Analysis tab with real content */}
+        {/* Document Analysis */}
         <TabsContent value="doc-analysis">
           <DocumentAnalysisTab
             documentAnalysis={scanData.document_analysis}
@@ -435,27 +547,37 @@ export default function ProjectPage() {
           />
         </TabsContent>
 
-        {/* Placeholder tabs */}
-        {tabs.slice(1).filter(tab => tab.value !== "doc-analysis").map((tab) => (
-          <TabsContent key={tab.value} value={tab.value}>
-            <PlaceholderContent label={tab.label} />
-          </TabsContent>
-        ))}
+        {/* Media Analysis */}
+        <TabsContent value="media-analysis">
+          <MediaAnalysisTab
+            loading={projectLoading}
+            error={projectError}
+            mediaAnalysis={mediaAnalysis}
+            onRetry={loadProject}
+          />
+        </TabsContent>
+
+        {/* Skills Progress */}
         <TabsContent value="skills-progress">
           <div className="space-y-6">
             <Card className="bg-white border border-gray-200">
               <CardHeader className="border-b border-gray-200">
-                <CardTitle className="text-xl font-bold text-gray-900">Skill progression timeline</CardTitle>
+                <CardTitle className="text-xl font-bold text-gray-900">
+                  Skill progression timeline
+                </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4">
                 {skillsLoading && (
-                  <p className="text-sm text-gray-500">Loading skill progression…</p>
+                  <p className="text-sm text-gray-500">
+                    Loading skill progression…
+                  </p>
                 )}
                 {!skillsLoading && skillsTimeline.length === 0 && (
                   <p className="text-sm text-gray-500">
                     {skillsNote || "No skill progression timeline available yet."}
                   </p>
                 )}
+
                 {skillsTimeline.length > 0 && (
                   <div className="space-y-4">
                     <div className="flex flex-wrap gap-2">
@@ -469,19 +591,26 @@ export default function ProjectPage() {
                           </span>
                         ))
                       ) : (
-                        <span className="text-xs text-gray-400">No top skills yet.</span>
+                        <span className="text-xs text-gray-400">
+                          No top skills yet.
+                        </span>
                       )}
                     </div>
 
                     <div className="grid gap-4">
                       {skillsTimeline.map((period) => (
-                        <div key={period.period_label} className="rounded-xl border border-gray-200 p-4">
+                        <div
+                          key={period.period_label}
+                          className="rounded-xl border border-gray-200 p-4"
+                        >
                           <div className="flex flex-wrap items-center justify-between gap-3">
                             <div>
                               <h4 className="text-base font-semibold text-gray-900">
                                 {formatPeriodLabel(period.period_label)}
                               </h4>
-                              <p className="text-xs text-gray-500">{period.period_label}</p>
+                              <p className="text-xs text-gray-500">
+                                {period.period_label}
+                              </p>
                             </div>
                             <div className="flex flex-wrap gap-2 text-xs font-semibold">
                               <span className="px-2.5 py-1 rounded-full bg-gray-900 text-white">
@@ -510,13 +639,17 @@ export default function ProjectPage() {
                                 </span>
                               ))
                             ) : (
-                              <span className="text-xs text-gray-400">No activity labels</span>
+                              <span className="text-xs text-gray-400">
+                                No activity labels
+                              </span>
                             )}
                           </div>
 
                           <div className="mt-4 grid gap-4 md:grid-cols-2">
                             <div>
-                              <p className="text-xs font-semibold text-gray-500 uppercase">Top skills</p>
+                              <p className="text-xs font-semibold text-gray-500 uppercase">
+                                Top skills
+                              </p>
                               <div className="mt-2 flex flex-wrap gap-2">
                                 {period.top_skills.length > 0 ? (
                                   period.top_skills.map((skill) => (
@@ -528,24 +661,33 @@ export default function ProjectPage() {
                                     </span>
                                   ))
                                 ) : (
-                                  <span className="text-xs text-gray-400">No skills recorded</span>
+                                  <span className="text-xs text-gray-400">
+                                    No skills recorded
+                                  </span>
                                 )}
                               </div>
                             </div>
+
                             <div>
-                              <p className="text-xs font-semibold text-gray-500 uppercase">Languages</p>
+                              <p className="text-xs font-semibold text-gray-500 uppercase">
+                                Languages
+                              </p>
                               <div className="mt-2 flex flex-wrap gap-2">
                                 {Object.keys(period.period_languages).length > 0 ? (
-                                  Object.entries(period.period_languages).map(([lang, count]) => (
-                                    <span
-                                      key={lang}
-                                      className="px-2.5 py-1 rounded-full bg-gray-100 text-gray-700 text-xs"
-                                    >
-                                      {lang} · {count}
-                                    </span>
-                                  ))
+                                  Object.entries(period.period_languages).map(
+                                    ([lang, count]) => (
+                                      <span
+                                        key={lang}
+                                        className="px-2.5 py-1 rounded-full bg-gray-100 text-gray-700 text-xs"
+                                      >
+                                        {lang} · {count}
+                                      </span>
+                                    )
+                                  )
                                 ) : (
-                                  <span className="text-xs text-gray-400">No language data</span>
+                                  <span className="text-xs text-gray-400">
+                                    No language data
+                                  </span>
                                 )}
                               </div>
                             </div>
@@ -553,28 +695,45 @@ export default function ProjectPage() {
 
                           <div className="mt-4 grid gap-4 md:grid-cols-2">
                             <div>
-                              <p className="text-xs font-semibold text-gray-500 uppercase">Recent commits</p>
+                              <p className="text-xs font-semibold text-gray-500 uppercase">
+                                Recent commits
+                              </p>
                               <ul className="mt-2 space-y-1 text-sm text-gray-700">
-                                {period.commit_messages.slice(0, 4).map((msg, index) => (
-                                  <li key={`${period.period_label}-commit-${index}`} className="truncate">
-                                    {msg}
-                                  </li>
-                                ))}
+                                {period.commit_messages
+                                  .slice(0, 4)
+                                  .map((msg, index) => (
+                                    <li
+                                      key={`${period.period_label}-commit-${index}`}
+                                      className="truncate"
+                                    >
+                                      {msg}
+                                    </li>
+                                  ))}
                                 {period.commit_messages.length === 0 && (
-                                  <li className="text-xs text-gray-400">No commit messages recorded.</li>
+                                  <li className="text-xs text-gray-400">
+                                    No commit messages recorded.
+                                  </li>
                                 )}
                               </ul>
                             </div>
+
                             <div>
-                              <p className="text-xs font-semibold text-gray-500 uppercase">Files touched</p>
+                              <p className="text-xs font-semibold text-gray-500 uppercase">
+                                Files touched
+                              </p>
                               <ul className="mt-2 space-y-1 text-sm text-gray-700">
                                 {period.top_files.slice(0, 4).map((file, index) => (
-                                  <li key={`${period.period_label}-file-${index}`} className="truncate">
+                                  <li
+                                    key={`${period.period_label}-file-${index}`}
+                                    className="truncate"
+                                  >
                                     {file}
                                   </li>
                                 ))}
                                 {period.top_files.length === 0 && (
-                                  <li className="text-xs text-gray-400">No file highlights recorded.</li>
+                                  <li className="text-xs text-gray-400">
+                                    No file highlights recorded.
+                                  </li>
                                 )}
                               </ul>
                             </div>
@@ -590,15 +749,23 @@ export default function ProjectPage() {
             <Card className="bg-white border border-gray-200">
               <CardHeader className="border-b border-gray-200 flex flex-row items-center justify-between">
                 <div>
-                  <CardTitle className="text-xl font-bold text-gray-900">AI summary</CardTitle>
-                  <p className="text-xs text-gray-500 mt-1">Summarize skill growth from the timeline.</p>
+                  <CardTitle className="text-xl font-bold text-gray-900">
+                    AI summary
+                  </CardTitle>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Summarize skill growth from the timeline.
+                  </p>
                 </div>
                 <button
                   onClick={handleGenerateSummary}
                   disabled={summaryLoading}
                   className="px-3 py-2 text-xs font-semibold rounded-md bg-gray-900 text-white disabled:opacity-60"
                 >
-                  {summaryLoading ? "Generating…" : skillsSummary ? "Regenerate" : "Generate"}
+                  {summaryLoading
+                    ? "Generating…"
+                    : skillsSummary
+                    ? "Regenerate"
+                    : "Generate"}
                 </button>
               </CardHeader>
               <CardContent className="p-6 space-y-4">
@@ -607,43 +774,62 @@ export default function ProjectPage() {
                   <div className="space-y-4">
                     <div>
                       <p className="text-sm font-semibold text-gray-700">Overview</p>
-                      <p className="text-sm text-gray-700 mt-1">{skillsSummary.overview}</p>
+                      <p className="text-sm text-gray-700 mt-1">
+                        {skillsSummary.overview}
+                      </p>
                       {skillsSummary.validation_warning && (
-                        <p className="text-xs text-amber-600 mt-2">{skillsSummary.validation_warning}</p>
+                        <p className="text-xs text-amber-600 mt-2">
+                          {skillsSummary.validation_warning}
+                        </p>
                       )}
                     </div>
+
                     <div className="grid gap-4 md:grid-cols-2">
                       <div>
-                        <p className="text-sm font-semibold text-gray-700">Timeline highlights</p>
+                        <p className="text-sm font-semibold text-gray-700">
+                          Timeline highlights
+                        </p>
                         <ul className="mt-2 space-y-1 text-sm text-gray-700 list-disc list-inside">
                           {skillsSummary.timeline.map((item, index) => (
                             <li key={`timeline-${index}`}>{item}</li>
                           ))}
                           {skillsSummary.timeline.length === 0 && (
-                            <li className="text-xs text-gray-400">No timeline highlights.</li>
+                            <li className="text-xs text-gray-400">
+                              No timeline highlights.
+                            </li>
                           )}
                         </ul>
                       </div>
+
                       <div>
-                        <p className="text-sm font-semibold text-gray-700">Skills focus</p>
+                        <p className="text-sm font-semibold text-gray-700">
+                          Skills focus
+                        </p>
                         <ul className="mt-2 space-y-1 text-sm text-gray-700 list-disc list-inside">
                           {skillsSummary.skills_focus.map((item, index) => (
                             <li key={`skills-${index}`}>{item}</li>
                           ))}
                           {skillsSummary.skills_focus.length === 0 && (
-                            <li className="text-xs text-gray-400">No skill focus notes.</li>
+                            <li className="text-xs text-gray-400">
+                              No skill focus notes.
+                            </li>
                           )}
                         </ul>
                       </div>
                     </div>
+
                     <div>
-                      <p className="text-sm font-semibold text-gray-700">Suggested next steps</p>
+                      <p className="text-sm font-semibold text-gray-700">
+                        Suggested next steps
+                      </p>
                       <ul className="mt-2 space-y-1 text-sm text-gray-700 list-disc list-inside">
                         {skillsSummary.suggested_next_steps.map((item, index) => (
                           <li key={`steps-${index}`}>{item}</li>
                         ))}
                         {skillsSummary.suggested_next_steps.length === 0 && (
-                          <li className="text-xs text-gray-400">No suggestions yet.</li>
+                          <li className="text-xs text-gray-400">
+                            No suggestions yet.
+                          </li>
                         )}
                       </ul>
                     </div>
@@ -654,11 +840,14 @@ export default function ProjectPage() {
           </div>
         </TabsContent>
 
+        {/* Skills */}
         <TabsContent value="skills">
           <div className="space-y-6">
             <Card className="bg-white border border-gray-200">
               <CardHeader className="border-b border-gray-200">
-                <CardTitle className="text-xl font-bold text-gray-900">Skills analysis</CardTitle>
+                <CardTitle className="text-xl font-bold text-gray-900">
+                  Skills analysis
+                </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4">
                 {skillsAnalysis.success === false && (
@@ -666,11 +855,14 @@ export default function ProjectPage() {
                     Skills analysis did not complete for this scan.
                   </p>
                 )}
-                {skillsAnalysis.success !== false && Object.keys(skillsByCategory).length === 0 && (
-                  <p className="text-sm text-gray-500">
-                    No skills analysis available yet. Run a scan with skills extraction enabled.
-                  </p>
-                )}
+
+                {skillsAnalysis.success !== false &&
+                  Object.keys(skillsByCategory).length === 0 && (
+                    <p className="text-sm text-gray-500">
+                      No skills analysis available yet. Run a scan with skills extraction enabled.
+                    </p>
+                  )}
+
                 {Object.keys(skillsByCategory).length > 0 && (
                   <div className="space-y-6">
                     <div className="flex flex-wrap gap-3">
@@ -681,21 +873,24 @@ export default function ProjectPage() {
                         Categories · {Object.keys(skillsByCategory).length}
                       </span>
                     </div>
+
                     {Object.entries(skillsByCategory).map(([category, skills]) => (
                       <div key={category} className="border border-gray-200 rounded-lg p-4">
                         <p className="text-xs font-semibold text-gray-500 uppercase">
                           {category.replace(/_/g, " ")}
                         </p>
                         <div className="mt-3 flex flex-wrap gap-2">
-                          {(skills as Array<{ name: string; proficiency?: string }>).map((skill) => (
-                            <span
-                              key={`${category}-${skill.name}`}
-                              className="px-3 py-1 rounded-full bg-gray-900 text-white text-xs"
-                            >
-                              {skill.name}
-                              {skill.proficiency ? ` · ${formatConfidence(skill.proficiency)}` : ""}
-                            </span>
-                          ))}
+                          {(skills as Array<{ name: string; proficiency?: string }>).map(
+                            (skill) => (
+                              <span
+                                key={`${category}-${skill.name}`}
+                                className="px-3 py-1 rounded-full bg-gray-900 text-white text-xs"
+                              >
+                                {skill.name}
+                                {skill.proficiency ? ` · ${formatConfidence(skill.proficiency)}` : ""}
+                              </span>
+                            )
+                          )}
                         </div>
                       </div>
                     ))}
@@ -706,9 +901,18 @@ export default function ProjectPage() {
           </div>
         </TabsContent>
 
-        {/* Placeholder tabs */}
+        {/* Remaining placeholders (exclude tabs we rendered above) */}
         {tabs
-          .filter((tab) => !["overview", "skills-progress", "skills"].includes(tab.value))
+          .filter(
+            (tab) =>
+              ![
+                "overview",
+                "doc-analysis",
+                "media-analysis",
+                "skills-progress",
+                "skills",
+              ].includes(tab.value)
+          )
           .map((tab) => (
             <TabsContent key={tab.value} value={tab.value}>
               <PlaceholderContent label={tab.label} />
@@ -718,6 +922,156 @@ export default function ProjectPage() {
     </div>
   );
 }
+
+/** ------------------ Media helpers (from feature/media-analysis) ------------------ */
+
+function resolveMediaAnalysis(scanData: Record<string, unknown>): MediaAnalysisPayload | null {
+  const aiPayload = (scanData as any).llm_media;
+  if (isNonEmptyMedia(aiPayload)) {
+    const normalized = normalizeMediaPayload(aiPayload);
+    if (normalized) return normalized;
+  }
+
+  const localPayload = (scanData as any).media_analysis;
+  if (isNonEmptyMedia(localPayload)) {
+    const normalized = normalizeMediaPayload(localPayload);
+    if (normalized) return normalized;
+  }
+
+  return null;
+}
+
+function isNonEmptyMedia(value: unknown): boolean {
+  if (!value) return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "string") return value.trim().length > 0;
+  if (typeof value === "object") return Object.keys(value).length > 0;
+  return false;
+}
+
+function normalizeMediaPayload(value: unknown): MediaAnalysisPayload | null {
+  if (!value) return null;
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) return null;
+    if (isStringArray(value)) return { insights: value };
+    if (isObjectArray(value)) return { assetItems: mapMediaItems(value) };
+    return { insights: [] };
+  }
+
+  if (typeof value === "string") return { insights: [value] };
+
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const insights: string[] = [];
+    let assetItems: MediaListItem[] = [];
+    let briefingItems: MediaListItem[] = [];
+
+    if (isStringArray(record.insights)) insights.push(...record.insights);
+    if (isStringArray(record.media_briefings)) insights.push(...record.media_briefings);
+    else if (isObjectArray(record.media_briefings)) briefingItems = mapMediaItems(record.media_briefings);
+    else if (typeof record.media_briefings === "string") insights.push(...splitLines(record.media_briefings));
+
+    if (isStringArray(record.media_assets)) insights.push(...record.media_assets);
+    else if (isObjectArray(record.media_assets)) assetItems = mapMediaItems(record.media_assets);
+    else if (typeof record.media_assets === "string") insights.push(...splitLines(record.media_assets));
+
+    if (isObjectArray(record.assetItems)) assetItems = assetItems.concat(mapMediaItems(record.assetItems));
+    if (isObjectArray(record.briefingItems)) briefingItems = briefingItems.concat(mapMediaItems(record.briefingItems));
+
+    const payload: MediaAnalysisPayload = {
+      summary: isPlainObject(record.summary) ? (record.summary as MediaAnalysisSummary) : undefined,
+      metrics: isPlainObject(record.metrics) ? (record.metrics as MediaAnalysisMetrics) : undefined,
+      insights: insights.length > 0 ? insights : undefined,
+      issues: isStringArray(record.issues) ? record.issues : undefined,
+      assetItems: assetItems.length > 0 ? assetItems : undefined,
+      briefingItems: briefingItems.length > 0 ? briefingItems : undefined,
+    };
+
+    const hasAny =
+      payload.summary ||
+      payload.metrics ||
+      (payload.insights && payload.insights.length > 0) ||
+      (payload.issues && payload.issues.length > 0) ||
+      (payload.assetItems && payload.assetItems.length > 0) ||
+      (payload.briefingItems && payload.briefingItems.length > 0);
+
+    return hasAny ? payload : { insights: [] };
+  }
+
+  return null;
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+}
+
+function isObjectArray(value: unknown): value is Array<Record<string, unknown>> {
+  return (
+    Array.isArray(value) &&
+    value.every((entry) => entry !== null && typeof entry === "object" && !Array.isArray(entry))
+  );
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function splitLines(value: string): string[] {
+  return value
+    .split("\n")
+    .map((line) => line.replace(/^[•\-\s]+/, "").trim())
+    .filter(Boolean);
+}
+
+function mapMediaItems(items: Array<Record<string, unknown>>): MediaListItem[] {
+  return items.map((item) => ({
+    label: deriveItemLabel(item),
+    type: typeof item.type === "string" ? item.type : undefined,
+    analysis:
+      typeof item.analysis === "string"
+        ? item.analysis
+        : typeof item.description === "string"
+        ? item.description
+        : typeof item.summary === "string"
+        ? item.summary
+        : undefined,
+    metadata: isPlainObject(item.metadata) ? item.metadata : undefined,
+    path: typeof item.path === "string" ? item.path : undefined,
+    file_name: typeof item.file_name === "string" ? item.file_name : undefined,
+  }));
+}
+
+function deriveItemLabel(item: Record<string, unknown>): string {
+  const candidates = [
+    item.summary,
+    item.title,
+    item.path,
+    item.filename,
+    item.file_name,
+    item.source,
+    item.name,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return truncateText(candidate.trim(), 120);
+    }
+  }
+
+  try {
+    return truncateText(JSON.stringify(item), 120);
+  } catch {
+    return "Media item";
+  }
+}
+
+function truncateText(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, Math.max(0, maxLength - 1)).trim()}…`;
+}
+
+/** ------------------ Formatting helpers (from main) ------------------ */
 
 function formatPeriodLabel(value: string) {
   const [year, month] = value.split("-");
@@ -745,11 +1099,7 @@ function formatCount(value: number | string): string {
 function formatConfidence(value: number | string): string {
   const numeric = Number(value);
   if (Number.isNaN(numeric)) return String(value);
-  if (numeric <= 1) {
-    return `${(numeric * 100).toFixed(0)}%`;
-  }
-  if (numeric <= 100) {
-    return `${numeric.toFixed(0)}%`;
-  }
+  if (numeric <= 1) return `${(numeric * 100).toFixed(0)}%`;
+  if (numeric <= 100) return `${numeric.toFixed(0)}%`;
   return numeric.toFixed(2);
 }
