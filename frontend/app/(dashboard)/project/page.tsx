@@ -231,7 +231,14 @@ export default function ProjectPage() {
   const gitRepos = scanData.git_analysis?.repositories?.length ?? fallbackProject.gitRepos;
   const mediaFiles = scanData.media_analysis?.length ?? fallbackProject.mediaFiles;
   const pdfDocs = scanData.pdf_analysis?.length ?? fallbackProject.pdfDocs;
-  const otherDocs = scanData.documents_analysis?.length ?? fallbackProject.otherDocs;
+  const documentAnalysis = scanData.document_analysis;
+  const otherDocs = Array.isArray(documentAnalysis)
+    ? documentAnalysis.length
+    : Array.isArray(documentAnalysis?.documents)
+      ? documentAnalysis.documents.length
+      : Array.isArray(documentAnalysis?.items)
+        ? documentAnalysis.items.length
+        : fallbackProject.otherDocs;
 
   const topSkills = useMemo(() => {
     const counts = new Map<string, number>();
@@ -421,7 +428,11 @@ export default function ProjectPage() {
 
         {/* Document Analysis tab with real content */}
         <TabsContent value="doc-analysis">
-          <DocumentAnalysisTab />
+          <DocumentAnalysisTab
+            documentAnalysis={scanData.document_analysis}
+            isLoading={projectLoading}
+            errorMessage={projectError}
+          />
         </TabsContent>
 
         {/* Placeholder tabs */}

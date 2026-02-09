@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
@@ -20,48 +20,17 @@ function getFileType(path: string): string {
 
 // Helper function to extract filename from path
 function getFileName(path: string): string {
-  return path.split('/').pop() || path;
+  return path.split(/[\\/]/).pop() || path;
 }
 
-// TODO: Replace mockDocuments with API data (backend document analysis payload)
-// Mock data aligned with backend schema
-const mockDocuments: DocumentSummary[] = [
-  {
-    path: "/docs/Project_Proposal.md",
-    word_count: 3200,
-    summary_text: "Comprehensive project proposal outlining the portfolio analysis system architecture, requirements, and implementation plan.",
-    keywords: ["portfolio", "analysis", "capstone", "architecture", "requirements"],
-    headings: ["Introduction", "System Architecture", "Requirements", "User Stories", "Timeline"],
-  },
-  {
-    path: "/docs/Requirements_Document.md",
-    word_count: 5400,
-    summary_text: "Detailed requirements specification including functional requirements, use cases, and system constraints.",
-    keywords: ["requirements", "functional", "non-functional", "use-cases", "constraints"],
-    headings: ["Functional Requirements", "Non-Functional Requirements", "Use Cases", "System Constraints"],
-  },
-  {
-    path: "/docs/api/API_Documentation.md",
-    word_count: 6800,
-    summary_text: "Complete API reference for the portfolio system including authentication, endpoints, and request/response formats.",
-    keywords: ["API", "endpoints", "authentication", "REST", "FastAPI", "JWT"],
-    headings: ["Authentication", "Endpoints", "Request/Response", "Error Handling", "Rate Limiting"],
-  },
-  {
-    path: "/README.md",
-    word_count: 1200,
-    summary_text: "Getting started guide and project overview including setup instructions and usage examples.",
-    keywords: ["setup", "installation", "usage", "Node.js", "npm", "Docker"],
-    headings: ["Setup", "Installation", "Usage", "Development", "Testing"],
-  },
-  {
-    path: "/docs/design/Design_Spec.txt",
-    word_count: 2500,
-    summary_text: "UI/UX design specifications and component guidelines for the portfolio interface.",
-    keywords: ["design", "UI", "UX", "components", "Tailwind", "Figma"],
-    headings: [],
-  },
-];
+type DocumentAnalysisPayload =
+  | {
+      documents?: unknown[];
+      items?: unknown[];
+    }
+  | unknown[]
+  | null
+  | undefined;
 
 function getFileIcon(fileType: string) {
   switch (fileType) {
@@ -113,15 +82,122 @@ function calculateStats(documents: DocumentSummary[]): DocumentAnalysisStats {
   return stats;
 }
 
-export function DocumentAnalysisTab() {
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => (typeof entry === "string" ? entry.trim() : null))
+    .filter((entry): entry is string => Boolean(entry));
+}
+
+function toKeywordArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => {
+      if (typeof entry === "string") return entry.trim();
+      if (Array.isArray(entry) && typeof entry[0] === "string") {
+        return entry[0].trim();
+      }
+      if (entry && typeof entry === "object") {
+        const keyword =
+          (entry as { word?: string; keyword?: string; text?: string }).word ||
+          (entry as { word?: string; keyword?: string; text?: string }).keyword ||
+          (entry as { word?: string; keyword?: string; text?: string }).text;
+        return keyword ? keyword.trim() : null;
+      }
+      return null;
+    })
+    .filter((entry): entry is string => Boolean(entry));
+}
+
+function normalizeDocumentItem(item: unknown): DocumentSummary | null {
+  if (!item || typeof item !== "object") return null;
+  const record = item as Record<string, any>;
+  if (record.success === false) return null;
+  const metadata = record.metadata && typeof record.metadata === "object" ? record.metadata : {};
+
+  const path =
+    record.path ||
+    record.file_name ||
+    record.fileName ||
+    record.name ||
+    "Unknown";
+
+  const word_count =
+    record.word_count ??
+    metadata.word_count ??
+    metadata.wordCount;
+
+  const summary_text =
+    record.summary_text ??
+    record.summary ??
+    record.summaryText ??
+    record.text_summary ??
+    null;
+
+  const headings =
+    toStringArray(record.headings).length > 0
+      ? toStringArray(record.headings)
+      : toStringArray(metadata.headings);
+
+  const keywords =
+    toKeywordArray(record.keywords).length > 0
+      ? toKeywordArray(record.keywords)
+      : toKeywordArray(record.key_topics).length > 0
+        ? toKeywordArray(record.key_topics)
+        : [];
+
+  return {
+    path: String(path),
+    word_count: typeof word_count === "number" ? word_count : undefined,
+    summary_text: typeof summary_text === "string" ? summary_text : undefined,
+    keywords,
+    headings,
+  };
+}
+
+function normalizeDocumentAnalysis(payload: DocumentAnalysisPayload): DocumentSummary[] {
+  if (!payload) return [];
+  if (Array.isArray(payload)) {
+    return payload
+      .map((item) => normalizeDocumentItem(item))
+      .filter((item): item is DocumentSummary => Boolean(item));
+  }
+
+  if (typeof payload === "object") {
+    const items =
+      Array.isArray(payload.documents)
+        ? payload.documents
+        : Array.isArray(payload.items)
+          ? payload.items
+          : [];
+    return items
+      .map((item) => normalizeDocumentItem(item))
+      .filter((item): item is DocumentSummary => Boolean(item));
+  }
+
+  return [];
+}
+
+type DocumentAnalysisTabProps = {
+  documentAnalysis?: DocumentAnalysisPayload;
+  isLoading?: boolean;
+  errorMessage?: string | null;
+};
+
+export function DocumentAnalysisTab({
+  documentAnalysis,
+  isLoading = false,
+  errorMessage = null,
+}: DocumentAnalysisTabProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState<string>("all");
-  const [isLoading] = useState(false);
-  const [errorMessage] = useState<string | null>(null);
+  const documents = useMemo(
+    () => normalizeDocumentAnalysis(documentAnalysis),
+    [documentAnalysis]
+  );
+  const stats = calculateStats(documents);
 
-  const stats = calculateStats(mockDocuments);
-
-  const filteredDocuments = mockDocuments.filter((doc) => {
+  const filteredDocuments = documents.filter((doc) => {
     const matchesSearch =
       searchQuery === "" ||
       doc.path.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -134,6 +210,10 @@ export function DocumentAnalysisTab() {
 
     return matchesSearch && matchesType;
   });
+  const emptyMessage =
+    documents.length === 0 && searchQuery === "" && selectedType === "all"
+      ? "No document analysis available for this project yet"
+      : "No documents found matching your criteria";
 
   return (
     <div className="space-y-6">
@@ -256,7 +336,7 @@ export function DocumentAnalysisTab() {
           <div className="space-y-4">
             {!isLoading && !errorMessage && filteredDocuments.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
-                No documents found matching your criteria
+                {emptyMessage}
               </div>
             ) : (!isLoading && !errorMessage ? (
               filteredDocuments.map((doc, index) => (
