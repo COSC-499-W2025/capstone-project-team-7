@@ -1,8 +1,7 @@
 
 # Jacob Damery
-## Week 19
 
-## Week 18
+## Week 18 - 19
 
 This week, I focused on laying the groundwork for a more complete and cohesive user interface in the Electron application. My work centered on establishing global styling conventions and implementing a modern sidebar-based navigation layout. This marked an important step toward transitioning the project from isolated components into a unified, full-featured UI.
 
@@ -13,6 +12,9 @@ This week, I focused on laying the groundwork for a more complete and cohesive u
 
 **Sidebar & Application Layout:** Designed and implemented a fixed sidebar navigation system suitable for a desktop Electron environment. Introduced a new application layout wrapper to manage the relationship between the sidebar and main content area. Structured navigation to support current and upcoming application sections in a scalable way. Integrated routing to ensure smooth navigation between views within the new layout.
 [PR #264](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/264)
+
+Feature / UI Integration: Implemented the Media Analysis tab within the Project Analysis section, establishing a clear, AI-first insights pipeline. The UI prioritizes AI-generated media insights from scan_data.llm_media, with a robust fallback to local scan_data.media_analysis when AI results are unavailable. This ensures consistent insight delivery across different project states. 
+[PR 292](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/292)
 
 
 **Challenges & Learning:**
