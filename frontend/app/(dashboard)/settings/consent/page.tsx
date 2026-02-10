@@ -174,16 +174,17 @@ export default function ConsentManagementPage() {
     );
   };
 
-  const revokeDataAccess = async () => {
-    await updateConsent(false, false, "Data access consent withdrawn.");
-  };
-
-  const revokeExternalServices = async () => {
-    await updateConsent(Boolean(status?.data_access), false, "External services consent withdrawn.");
-  };
-
-  const revokeAll = async () => {
-    await updateConsent(false, false, "All consent settings withdrawn.");
+  const formatNoticeService = (service: string) => {
+    if (service === "file_analysis" || service === "file_access") {
+      return "File Access";
+    }
+    if (service === "external_services" || service === "external_data") {
+      return "External Data";
+    }
+    return service
+      .split("_")
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
   };
 
   return (
@@ -236,7 +237,7 @@ export default function ConsentManagementPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card className="bg-white border border-gray-200">
               <CardHeader>
-                <CardTitle className="text-gray-900">Data Access Consent</CardTitle>
+                <CardTitle className="text-gray-900">File Access</CardTitle>
                 <CardDescription>
                   Allows file analysis and metadata storage for your account.
                 </CardDescription>
@@ -244,7 +245,7 @@ export default function ConsentManagementPage() {
               <CardContent className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <Label className="text-sm font-medium text-gray-900">Data analysis and storage</Label>
+                    <Label className="text-sm font-medium text-gray-900">File analysis and storage</Label>
                     <p className="text-xs text-gray-500 mt-1">
                       Required for project scanning, history, and persistence.
                     </p>
@@ -256,29 +257,20 @@ export default function ConsentManagementPage() {
                   />
                 </div>
 
-                <div className="flex items-center justify-between border-t border-gray-200 pt-3">
+                <div className="border-t border-gray-200 pt-3">
                   <div>
                     <span className="text-sm text-gray-700 block">
                       {status?.data_access ? "Granted" : "Not granted"}
                     </span>
                     <span className="text-xs text-gray-500 block mt-1">Updated: {dataAccessUpdatedAtLabel}</span>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={revokeDataAccess}
-                    disabled={saving || !status?.data_access}
-                    className="border-red-300 text-red-600 hover:bg-red-50"
-                  >
-                    Withdraw
-                  </Button>
                 </div>
               </CardContent>
             </Card>
 
             <Card className="bg-white border border-gray-200">
               <CardHeader>
-                <CardTitle className="text-gray-900">External AI Services Consent</CardTitle>
+                <CardTitle className="text-gray-900">External Data</CardTitle>
                 <CardDescription>
                   Allows external AI/LLM providers for advanced analysis features.
                 </CardDescription>
@@ -302,22 +294,13 @@ export default function ConsentManagementPage() {
                   <p className="text-xs text-amber-600">Enable data access first to grant external services consent.</p>
                 )}
 
-                <div className="flex items-center justify-between border-t border-gray-200 pt-3">
+                <div className="border-t border-gray-200 pt-3">
                   <div>
                     <span className="text-sm text-gray-700 block">
                       {status?.external_services ? "Granted" : "Not granted"}
                     </span>
                     <span className="text-xs text-gray-500 block mt-1">Updated: {externalUpdatedAtLabel}</span>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={revokeExternalServices}
-                    disabled={saving || !status?.external_services}
-                    className="border-red-300 text-red-600 hover:bg-red-50"
-                  >
-                    Withdraw
-                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -333,7 +316,7 @@ export default function ConsentManagementPage() {
             <CardContent className="space-y-4">
               {[notices.dataAccess, notices.externalServices].filter(Boolean).map((notice) => (
                 <div key={notice!.service} className="border border-gray-200 rounded-lg p-4">
-                  <p className="text-sm font-semibold text-gray-900">{notice!.service}</p>
+                  <p className="text-sm font-semibold text-gray-900">{formatNoticeService(notice!.service)}</p>
                   <p className="text-sm text-gray-600 mt-1">{notice!.privacy_notice}</p>
                   {notice!.implications.length > 0 && (
                     <ul className="list-disc pl-5 mt-2 text-xs text-gray-600 space-y-1">
@@ -347,24 +330,6 @@ export default function ConsentManagementPage() {
             </CardContent>
           </Card>
 
-          <Card className="bg-white border border-gray-200">
-            <CardHeader>
-              <CardTitle className="text-gray-900">Global Action</CardTitle>
-              <CardDescription>
-                Revoke both consent categories in one action.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button
-                variant="outline"
-                onClick={revokeAll}
-                disabled={saving || (!status?.data_access && !status?.external_services)}
-                className="border-red-300 text-red-600 hover:bg-red-50"
-              >
-                Revoke all consent
-              </Button>
-            </CardContent>
-          </Card>
         </div>
       )}
     </div>
