@@ -44,16 +44,6 @@ export default function ConsentManagementPage() {
           return;
         }
 
-        if (!sessionRes.ok) {
-          setIsAuthenticated(false);
-          setError("You must be logged in to manage consent settings.");
-          setLoading(false);
-          setAuthChecked(true);
-          return;
-        }
-
-        setIsAuthenticated(true);
-
         const [statusRes, dataNoticeRes, externalNoticeRes] = await Promise.all([
           consentApi.get(),
           consentApi.notice("file_analysis"),
@@ -64,17 +54,28 @@ export default function ConsentManagementPage() {
           return;
         }
 
-        if (!statusRes.ok) {
-          if (statusRes.status === 401 || statusRes.status === 403) {
+        if (statusRes.ok) {
+          setIsAuthenticated(true);
+          setStatus(statusRes.data);
+        } else {
+          const authFailed = statusRes.status === 401 || statusRes.status === 403;
+          if (authFailed && !sessionRes.ok) {
+            setIsAuthenticated(false);
+            setError("You must be logged in to manage consent settings.");
+            setLoading(false);
+            setAuthChecked(true);
+            return;
+          }
+          if (authFailed) {
             setIsAuthenticated(false);
             setError("Your session expired. Please log in again to manage consent settings.");
             setLoading(false);
             setAuthChecked(true);
             return;
           }
+
+          setIsAuthenticated(Boolean(sessionRes.ok));
           setError(statusRes.error || "Failed to load consent status.");
-        } else {
-          setStatus(statusRes.data);
         }
 
         setNotices({
