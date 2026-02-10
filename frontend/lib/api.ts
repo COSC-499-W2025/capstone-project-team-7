@@ -12,7 +12,7 @@ import type {
   UpdateProfileRequest,
   UserProfile,
 } from "./api.types";
-import { getStoredTokenCandidates, setStoredToken } from "./auth";
+import { getStoredTokenCandidates, refreshAccessToken, setStoredToken } from "./auth";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
 
@@ -55,11 +55,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T
   };
 
   try {
-    const first = await run(headers);
+    let result = await run(headers);
 
     const canRetryWithFallback =
-      !first.ok &&
-      first.status === 401 &&
+      !result.ok &&
+      result.status === 401 &&
       !hasExplicitAuthorization &&
       tokenCandidates.length > 1;
 
@@ -72,11 +72,29 @@ async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T
       const second = await run(fallbackHeaders);
       if (second.ok) {
         setStoredToken(fallbackToken);
+        return second;
       }
-      return second;
+      result = second;
     }
 
-    return first;
+    const canRetryWithRefresh =
+      !result.ok &&
+      result.status === 401 &&
+      !hasExplicitAuthorization &&
+      path !== "/api/auth/refresh";
+
+    if (canRetryWithRefresh) {
+      const refreshedToken = await refreshAccessToken();
+      if (refreshedToken) {
+        const refreshedHeaders = {
+          ...headers,
+          Authorization: `Bearer ${refreshedToken}`,
+        };
+        return run(refreshedHeaders);
+      }
+    }
+
+    return result;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Network error";
     return { ok: false, error: message };

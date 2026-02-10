@@ -2,7 +2,13 @@
 
 import { useState, useEffect } from "react";
 import { api, consent as consentApi } from "@/lib/api";
-import { clearStoredToken, getStoredToken, setStoredToken } from "@/lib/auth";
+import {
+  clearStoredRefreshToken,
+  clearStoredToken,
+  getStoredToken,
+  setStoredRefreshToken,
+  setStoredToken,
+} from "@/lib/auth";
 import type { User, AuthSessionResponse, ApiResult } from "@/lib/api.types";
 
 interface UseAuthReturn {
@@ -33,7 +39,7 @@ export function useAuth(): UseAuthReturn {
       } catch (error) {
         localStorage.removeItem("user");
         clearStoredToken();
-        localStorage.removeItem("refresh_token");
+        clearStoredRefreshToken();
       }
     }
 
@@ -52,7 +58,7 @@ export function useAuth(): UseAuthReturn {
 
       setStoredToken(access_token);
       if (refresh_token) {
-        localStorage.setItem("refresh_token", refresh_token);
+        setStoredRefreshToken(refresh_token);
       }
 
       const userData: User = { id: user_id, email: userEmail };
@@ -77,7 +83,7 @@ export function useAuth(): UseAuthReturn {
 
       setStoredToken(access_token);
       if (refresh_token) {
-        localStorage.setItem("refresh_token", refresh_token);
+        setStoredRefreshToken(refresh_token);
       }
 
       await consentApi.set({
@@ -100,7 +106,7 @@ export function useAuth(): UseAuthReturn {
     localStorage.removeItem("access_token");
     localStorage.removeItem("auth_access_token");
     clearStoredToken();
-    localStorage.removeItem("refresh_token");
+    clearStoredRefreshToken();
     localStorage.removeItem("user");
 
     setUser(null);
