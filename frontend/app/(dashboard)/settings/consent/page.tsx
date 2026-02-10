@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { consent as consentApi } from "@/lib/api";
-import { getStoredToken } from "@/lib/auth";
+import { auth as authApi } from "@/lib/auth";
 import type { ConsentNotice, ConsentStatus } from "@/lib/api.types";
 
 type NoticeState = {
@@ -31,31 +31,29 @@ export default function ConsentManagementPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
-    const token = getStoredToken();
-    setIsAuthenticated(Boolean(token));
-    setAuthChecked(true);
-  }, []);
-
-  useEffect(() => {
     let cancelled = false;
 
     const load = async () => {
-      if (!authChecked) {
-        return;
-      }
-
-      if (!isAuthenticated) {
-        if (!cancelled) {
-          setError("You must be logged in to manage consent settings.");
-          setLoading(false);
-        }
-        return;
-      }
-
       setLoading(true);
       setError(null);
 
       try {
+        const sessionRes = await authApi.getSession();
+
+        if (cancelled) {
+          return;
+        }
+
+        if (!sessionRes.ok) {
+          setIsAuthenticated(false);
+          setError("You must be logged in to manage consent settings.");
+          setLoading(false);
+          setAuthChecked(true);
+          return;
+        }
+
+        setIsAuthenticated(true);
+
         const [statusRes, dataNoticeRes, externalNoticeRes] = await Promise.all([
           consentApi.get(),
           consentApi.notice("file_analysis"),
@@ -71,6 +69,7 @@ export default function ConsentManagementPage() {
             setIsAuthenticated(false);
             setError("Your session expired. Please log in again to manage consent settings.");
             setLoading(false);
+            setAuthChecked(true);
             return;
           }
           setError(statusRes.error || "Failed to load consent status.");
@@ -89,6 +88,7 @@ export default function ConsentManagementPage() {
         }
       } finally {
         if (!cancelled) {
+          setAuthChecked(true);
           setLoading(false);
         }
       }
@@ -98,7 +98,7 @@ export default function ConsentManagementPage() {
     return () => {
       cancelled = true;
     };
-  }, [authChecked, isAuthenticated]);
+  }, []);
 
   const updatedAtLabel = status?.updated_at
     ? new Date(status.updated_at).toLocaleString()
