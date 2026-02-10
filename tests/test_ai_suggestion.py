@@ -20,7 +20,7 @@ from unittest.mock import MagicMock, Mock, patch, call
 
 import pytest
 
-from backend.src.cli.services.ai_service import AIService
+from services.ai_service import AIService
 from backend.src.scanner.models import ParseResult, FileMetadata
 
 
@@ -140,7 +140,7 @@ class TestAIClientConfiguration:
     
     def test_verify_client_success(self, ai_service):
         """Test successful client verification."""
-        with patch("backend.src.analyzer.llm.client.LLMClient") as mock_client_class:
+        with patch("analyzer.llm.client.LLMClient") as mock_client_class:
             mock_instance = Mock()
             mock_instance.get_config.return_value = {
                 "temperature": 0.7,
@@ -171,7 +171,7 @@ class TestAIClientConfiguration:
     
     def test_verify_client_invalid_api_key(self, ai_service):
         """Test that invalid API key raises AIProviderError."""
-        with patch("backend.src.analyzer.llm.client.LLMClient") as mock_client_class:
+        with patch("analyzer.llm.client.LLMClient") as mock_client_class:
             mock_instance = Mock()
             mock_instance.verify_api_key.side_effect = Exception("Invalid API key")
             mock_client_class.return_value = mock_instance
@@ -188,7 +188,7 @@ class TestAIClientConfiguration:
         """Test that missing LLMClient raises AIDependencyError."""
         # The verify_client method imports LLMClient internally,
         # so we simulate an import failure within that context
-        with patch("backend.src.analyzer.llm.client.OpenAI", side_effect=ImportError("Missing OpenAI")):
+        with patch("analyzer.llm.client.OpenAI", side_effect=ImportError("Missing OpenAI")):
             with pytest.raises(Exception) as exc_info:
                 ai_service.verify_client(
                     api_key="test-key",

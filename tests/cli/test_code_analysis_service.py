@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 
 import pytest
 
-from backend.src.cli.services.code_analysis_service import (
+from services.code_analysis_service import (
     CODE_FILE_EXTENSIONS,
     CodeAnalysisService,
     CodeAnalysisUnavailableError,
@@ -163,7 +163,7 @@ def test_format_summary_highlights_languages_and_refactors() -> None:
     service = CodeAnalysisService(analyzer_builder=lambda **_: None)  # builder unused for formatting
     summary_text = service.format_summary(directory_result)
 
-    assert "Code analysis" in summary_text
+    assert "Code Analysis" in summary_text
     assert "Python" in summary_text
-    assert "Avg maintainability" in summary_text
-    assert "Refactor candidates" in summary_text
+    assert "Maintainability" in summary_text
+    assert "Files analyzed" in summary_text

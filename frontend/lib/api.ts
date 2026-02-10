@@ -1,7 +1,19 @@
-import type { ApiResult, ConsentStatus, ConsentNotice, ConsentUpdateRequest, ConfigResponse, ProfilesResponse, ProfileUpsertRequest, ConfigUpdateRequest } from "./api.types";
+import type {
+  ApiResult,
+  AuthCredentials,
+  AuthSessionResponse,
+  ConfigResponse,
+  ConfigUpdateRequest,
+  ConsentNotice,
+  ConsentRequest,
+  ConsentStatus,
+  ConsentUpdateRequest,
+  ProfilesResponse,
+  ProfileUpsertRequest,
+  UpdateProfileRequest,
+  UserProfile,
+} from "./api.types";
 import { getStoredToken } from "./auth";
-import type { ApiResult, UserProfile, UpdateProfileRequest } from "./api.types";
-import type { ApiResult, AuthCredentials, AuthSessionResponse, ConsentRequest } from "./api.types";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
 

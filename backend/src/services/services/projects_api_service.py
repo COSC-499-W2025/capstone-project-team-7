@@ -33,7 +33,7 @@ class ProjectsAPIService:
     for drop-in replacement.
     
     Usage:
-        # In textual_app.py, replace:
+        # In backend API, replace:
         # self._projects_service = ProjectsService()
         # with:
         # self._projects_service = ProjectsAPIService()

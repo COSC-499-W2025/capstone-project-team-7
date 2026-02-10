@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from backend.src.cli.display import format_media_summary
+from display import format_media_summary
 
 
 def test_format_media_summary_image():

@@ -3,10 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from ...scanner.models import FileMetadata, ParseResult, ScanPreferences
+from scanner.models import FileMetadata, ParseResult, ScanPreferences
 
 try:  # tree-sitter / parser extras are optional
-    from ...local_analysis.code_parser import (
+    from local_analysis.code_parser import (
         CodeAnalyzer,
         DirectoryResult,
         EXCLUDED_DIRS,
@@ -53,7 +53,7 @@ AnalyzerBuilder = Callable[..., Any]
 
 
 class CodeAnalysisService:
-    """Bridge between the Textual UI and the tree-sitter powered analyzer.
+    """Bridge between the backend API and the tree-sitter powered analyzer.
     
     Provides access to rich code analysis features:
     - Dead code detection

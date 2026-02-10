@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 from datetime import datetime, timedelta
 
-from backend.src.cli.services.search_service import SearchService, SearchFilters
+from services.search_service import SearchService, SearchFilters
 
 
 def test_modified_date_none_excluded():

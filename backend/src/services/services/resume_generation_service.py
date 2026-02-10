@@ -3,7 +3,7 @@ Resume Generation Service
 
 Creates concise, resume-ready bullet points from existing project analysis data.
 Designed to work offline using scan results, code analysis metrics, and git
-signals already collected by the Textual CLI flow.
+signals already collected by the backend API flow.
 """
 
 from __future__ import annotations
@@ -15,18 +15,18 @@ import re
 import sys
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 
-from ...scanner.models import ParseResult
+from scanner.models import ParseResult
 
 try:  # Optional import – contribution analysis is not always available
-    from ...local_analysis.contribution_analyzer import ProjectContributionMetrics
+    from local_analysis.contribution_analyzer import ProjectContributionMetrics
 except Exception:  # pragma: no cover - optional dependency missing
     ProjectContributionMetrics = None  # type: ignore[assignment]
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from ...analyzer.project_detector import ProjectInfo
-    from ...analyzer.skills_extractor import Skill
-    from ...local_analysis.document_analyzer import DocumentAnalysisResult
-    from ...local_analysis.pdf_summarizer import DocumentSummary
+    from analyzer.project_detector import ProjectInfo
+    from analyzer.skills_extractor import Skill
+    from local_analysis.document_analyzer import DocumentAnalysisResult
+    from local_analysis.pdf_summarizer import DocumentSummary
 
 _DATACLASS_KWARGS = {"slots": True} if sys.version_info >= (3, 10) else {}
 
@@ -593,7 +593,7 @@ Write the Markdown block only, no extra text.
         mappings = [
             ("dockerized tooling", {"dockerfile", "docker-compose.yml", "docker-compose.yaml"}),
             ("Supabase workflows", {"supabase"}),
-            ("Textual CLI dashboards", {"textual"}),
+            ("API dashboards", {"textual"}),
             ("command-line UX", {"/cli/", "\\cli\\"}),
             ("Next.js/Node tooling", {"next.config", "package.json"}),
             ("Tailwind styling", {"tailwind.config"}),

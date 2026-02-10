@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 # Stub optional dependencies pulled in by local_analysis import chain
 sys.modules.setdefault("pypdf", types.SimpleNamespace(PdfReader=object))
 
-from backend.src.cli.services.contribution_analysis_service import ContributionAnalysisService
+from services.contribution_analysis_service import ContributionAnalysisService
 from backend.src.local_analysis.contribution_analyzer import (
     ProjectContributionMetrics,
     ContributorMetrics,

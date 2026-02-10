@@ -21,15 +21,15 @@ from pathlib import PurePosixPath
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 try:
-    from cli.services.projects_service import ProjectsService, ProjectsServiceError
-    from cli.services.encryption import EncryptionService
-    from cli.services.project_overrides_service import ProjectOverridesService, ProjectOverridesServiceError
+    from services.services.projects_service import ProjectsService, ProjectsServiceError
+    from services.services.encryption import EncryptionService
+    from services.services.project_overrides_service import ProjectOverridesService, ProjectOverridesServiceError
     from auth.consent_validator import ConsentValidator
     from api.llm_routes import get_user_client
 except ModuleNotFoundError:  # pragma: no cover - test/import fallback
-    from backend.src.cli.services.projects_service import ProjectsService, ProjectsServiceError
-    from backend.src.cli.services.encryption import EncryptionService
-    from backend.src.cli.services.project_overrides_service import ProjectOverridesService, ProjectOverridesServiceError
+    from backend.src.services.services.projects_service import ProjectsService, ProjectsServiceError
+    from backend.src.services.services.encryption import EncryptionService
+    from backend.src.services.services.project_overrides_service import ProjectOverridesService, ProjectOverridesServiceError
     from backend.src.auth.consent_validator import ConsentValidator
     from backend.src.api.llm_routes import get_user_client
 
@@ -49,15 +49,15 @@ except ModuleNotFoundError:  # pragma: no cover - test/import fallback
     from backend.src.scanner.models import ScanPreferences
 
 try:
-    from cli.language_stats import summarize_languages
-    from cli.services.skills_analysis_service import SkillsAnalysisService
-    from cli.services.contribution_analysis_service import ContributionAnalysisService
+    from services.language_stats import summarize_languages
+    from services.services.skills_analysis_service import SkillsAnalysisService
+    from services.services.contribution_analysis_service import ContributionAnalysisService
     from local_analysis.git_repo import analyze_git_repo
     from api.upload_routes import uploads_store
 except ModuleNotFoundError:  # pragma: no cover - test/import fallback
-    from backend.src.cli.language_stats import summarize_languages
-    from backend.src.cli.services.skills_analysis_service import SkillsAnalysisService
-    from backend.src.cli.services.contribution_analysis_service import ContributionAnalysisService
+    from backend.src.services.language_stats import summarize_languages
+    from backend.src.services.services.skills_analysis_service import SkillsAnalysisService
+    from backend.src.services.services.contribution_analysis_service import ContributionAnalysisService
     from backend.src.local_analysis.git_repo import analyze_git_repo
     from backend.src.api.upload_routes import uploads_store
 
@@ -68,9 +68,9 @@ router = APIRouter(prefix="/api/projects", tags=["Projects"])
 
 # Import ALLOWED_ROLES from the service that manages roles
 try:
-    from cli.services.project_overrides_service import ALLOWED_ROLES
+    from services.services.project_overrides_service import ALLOWED_ROLES
 except ImportError:
-    from backend.src.cli.services.project_overrides_service import ALLOWED_ROLES
+    from backend.src.services.services.project_overrides_service import ALLOWED_ROLES
 
 # Initialize services
 _projects_service: Optional[ProjectsService] = None
@@ -436,9 +436,9 @@ def _run_code_analysis_for_path(
     preferences: Optional[ScanPreferences],
 ) -> Optional[Dict[str, Any]]:
     try:
-        from cli.services.code_analysis_service import CodeAnalysisService, CodeAnalysisUnavailableError
+        from services.services.code_analysis_service import CodeAnalysisService, CodeAnalysisUnavailableError
     except ImportError:
-        logger.info("Code analysis unavailable (cli.services.code_analysis_service not installed)")
+        logger.info("Code analysis unavailable (services.services.code_analysis_service not installed)")
         return None
 
     try:
@@ -1694,7 +1694,7 @@ async def rank_project(
             ContributorMetrics,
             ActivityBreakdown,
         )
-        from cli.services.contribution_analysis_service import ContributionAnalysisService
+        from services.services.contribution_analysis_service import ContributionAnalysisService
         from datetime import datetime, timezone
         
         service = get_projects_service()

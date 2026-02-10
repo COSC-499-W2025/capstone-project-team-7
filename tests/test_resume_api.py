@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "backend" / "src"))
 from main import app
 from api.dependencies import AuthContext, get_auth_context
 from api.resume_routes import get_resume_service
-from cli.services.resume_storage_service import ResumeStorageError, ResumeStorageService
+from services.resume_storage_service import ResumeStorageError, ResumeStorageService
 
 client = TestClient(app)
 
