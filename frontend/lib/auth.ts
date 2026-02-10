@@ -22,6 +22,7 @@ export const setStoredToken = (token: string): void => {
 export const clearStoredToken = (): void => {
   if (typeof window === "undefined") return;
   localStorage.removeItem(TOKEN_STORAGE_KEY);
+  localStorage.removeItem(LEGACY_TOKEN_STORAGE_KEY);
 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> {

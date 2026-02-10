@@ -1,7 +1,18 @@
-import type { ApiResult, ConsentStatus, ConsentNotice, ConsentUpdateRequest, ConfigResponse, ProfilesResponse, ProfileUpsertRequest, ConfigUpdateRequest } from "./api.types";
+import type {
+  ApiResult,
+  AuthCredentials,
+  AuthSessionResponse,
+  ConfigResponse,
+  ConfigUpdateRequest,
+  ConsentNotice,
+  ConsentStatus,
+  ConsentUpdateRequest,
+  ProfilesResponse,
+  ProfileUpsertRequest,
+  UpdateProfileRequest,
+  UserProfile,
+} from "./api.types";
 import { getStoredToken } from "./auth";
-import type { ApiResult, UserProfile, UpdateProfileRequest } from "./api.types";
-import type { ApiResult, AuthCredentials, AuthSessionResponse, ConsentRequest } from "./api.types";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
 
@@ -118,14 +129,6 @@ export const api = {
       request<AuthSessionResponse>("/api/auth/refresh", {
         method: "POST",
         body: JSON.stringify({ refresh_token: refreshToken })
-      }),
-    saveConsent: (userId: string, serviceName: string, consentGiven: boolean, accessToken: string) =>
-      request<{ success: boolean }>("/api/auth/consent", {
-        method: "POST",
-        body: JSON.stringify({ user_id: userId, service_name: serviceName, consent_given: consentGiven }),
-        headers: {
-          Authorization: `Bearer ${accessToken}`
-        }
       })
   }
 };

@@ -168,11 +168,14 @@ function MediaAnalysisList({ items }: { items: MediaListItem[] }) {
                   )}
                   {item.metadata && (
                     <div className="mt-2 text-xs text-gray-500 flex flex-wrap gap-2">
-                      {"duration" in item.metadata && item.metadata.duration && (
-                        <span>Duration: {String(item.metadata.duration)}s</span>
+                      {typeof item.metadata.duration === "number" && (
+                        <span>Duration: {item.metadata.duration}s</span>
                       )}
-                      {"resolution" in item.metadata && item.metadata.resolution && (
-                        <span>{String(item.metadata.resolution)}</span>
+                      {typeof item.metadata.duration === "string" && item.metadata.duration.trim() && (
+                        <span>Duration: {item.metadata.duration}s</span>
+                      )}
+                      {typeof item.metadata.resolution === "string" && item.metadata.resolution.trim() && (
+                        <span>{item.metadata.resolution}</span>
                       )}
                     </div>
                   )}

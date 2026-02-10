@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -21,6 +21,8 @@ class ConsentStatus(BaseModel):
     data_access: bool
     external_services: bool
     updated_at: datetime
+    data_access_updated_at: Optional[datetime] = None
+    external_services_updated_at: Optional[datetime] = None
 
 
 class ConsentUpdateRequest(BaseModel):
@@ -61,6 +63,11 @@ def _latest_timestamp(values: List[Optional[str]]) -> datetime:
     return max(parsed) if parsed else datetime.now(timezone.utc)
 
 
+def _latest_timestamp_or_none(values: List[Optional[str]]) -> Optional[datetime]:
+    parsed = [ts for ts in (_parse_timestamp(value) for value in values) if ts]
+    return max(parsed) if parsed else None
+
+
 def _build_status(user_id: str, access_token: str) -> ConsentStatus:
     validator = ConsentValidator()
     file_consent = consent_store.get_consent(
@@ -79,6 +86,17 @@ def _build_status(user_id: str, access_token: str) -> ConsentStatus:
         and metadata_consent.get("consent_given")
     )
     external_services = bool(external_consent and external_consent.get("consent_given"))
+
+    data_access_updated_at = _latest_timestamp_or_none(
+        [
+            file_consent.get("consent_timestamp") if file_consent else None,
+            metadata_consent.get("consent_timestamp") if metadata_consent else None,
+        ]
+    )
+    external_services_updated_at = _parse_timestamp(
+        external_consent.get("consent_timestamp") if external_consent else None
+    )
+
     updated_at = _latest_timestamp(
         [
             file_consent.get("consent_timestamp") if file_consent else None,
@@ -91,6 +109,8 @@ def _build_status(user_id: str, access_token: str) -> ConsentStatus:
         data_access=data_access,
         external_services=external_services,
         updated_at=updated_at,
+        data_access_updated_at=data_access_updated_at,
+        external_services_updated_at=external_services_updated_at,
     )
 
 
