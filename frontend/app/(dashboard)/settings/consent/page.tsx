@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,14 +27,24 @@ export default function ConsentManagementPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  const hasToken = useMemo(() => Boolean(getStoredToken()), []);
+  useEffect(() => {
+    const token = getStoredToken();
+    setIsAuthenticated(Boolean(token));
+    setAuthChecked(true);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
 
     const load = async () => {
-      if (!hasToken) {
+      if (!authChecked) {
+        return;
+      }
+
+      if (!isAuthenticated) {
         if (!cancelled) {
           setError("You must be logged in to manage consent settings.");
           setLoading(false);
@@ -57,6 +67,12 @@ export default function ConsentManagementPage() {
         }
 
         if (!statusRes.ok) {
+          if (statusRes.status === 401 || statusRes.status === 403) {
+            setIsAuthenticated(false);
+            setError("Your session expired. Please log in again to manage consent settings.");
+            setLoading(false);
+            return;
+          }
           setError(statusRes.error || "Failed to load consent status.");
         } else {
           setStatus(statusRes.data);
@@ -82,7 +98,7 @@ export default function ConsentManagementPage() {
     return () => {
       cancelled = true;
     };
-  }, [hasToken]);
+  }, [authChecked, isAuthenticated]);
 
   const updatedAtLabel = status?.updated_at
     ? new Date(status.updated_at).toLocaleString()
@@ -182,7 +198,7 @@ export default function ConsentManagementPage() {
         <p className="text-xs text-gray-500 mt-3">Last updated: {updatedAtLabel}</p>
       </div>
 
-      {!hasToken && (
+      {authChecked && !isAuthenticated && (
         <Card className="bg-white border border-gray-200">
           <CardHeader>
             <CardTitle className="text-gray-900">Authentication Required</CardTitle>
@@ -196,13 +212,13 @@ export default function ConsentManagementPage() {
         </Card>
       )}
 
-      {hasToken && loading && (
+      {isAuthenticated && loading && (
         <Card className="bg-white border border-gray-200">
           <CardContent className="p-6 text-sm text-gray-600">Loading consent preferences...</CardContent>
         </Card>
       )}
 
-      {hasToken && !loading && (
+      {isAuthenticated && !loading && (
         <div className="space-y-6">
           {error && (
             <Card className="bg-red-50 border border-red-200">
