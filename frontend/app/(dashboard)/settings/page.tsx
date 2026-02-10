@@ -70,18 +70,18 @@ export default function SettingsPage() {
       if (hasSessionCredential) {
         try {
           const sessionRes = await authApi.getSession();
-          if (!cancelled && sessionRes.ok) {
-            setUserSession(sessionRes.data);
-          } else {
-            // Token invalid, clear it using logout hook
-            logout();
-            if (!cancelled) {
+          if (!cancelled) {
+            if (sessionRes.ok) {
+              setUserSession(sessionRes.data);
+            } else {
+              // Token invalid, clear it using logout hook
+              logout();
               setUserSession(null);
             }
           }
         } catch {
-          logout();
           if (!cancelled) {
+            logout();
             setUserSession(null);
           }
         } finally {
