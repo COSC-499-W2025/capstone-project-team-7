@@ -14,9 +14,17 @@ export const getStoredToken = (): string | null => {
   return localStorage.getItem(TOKEN_STORAGE_KEY) || localStorage.getItem(LEGACY_TOKEN_STORAGE_KEY);
 };
 
+export const getStoredTokenCandidates = (): string[] => {
+  if (typeof window === "undefined") return [];
+  const primary = localStorage.getItem(TOKEN_STORAGE_KEY);
+  const legacy = localStorage.getItem(LEGACY_TOKEN_STORAGE_KEY);
+  return [primary, legacy].filter((value, index, arr): value is string => Boolean(value) && arr.indexOf(value) === index);
+};
+
 export const setStoredToken = (token: string): void => {
   if (typeof window === "undefined") return;
   localStorage.setItem(TOKEN_STORAGE_KEY, token);
+  localStorage.setItem(LEGACY_TOKEN_STORAGE_KEY, token);
 };
 
 export const clearStoredToken = (): void => {
@@ -30,7 +38,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T
   const url = `${baseUrl}${path}`;
   
   // Automatically inject Authorization header if token exists
-  const token = getStoredToken();
+  const tokenCandidates = getStoredTokenCandidates();
+  const token = tokenCandidates[0] ?? null;
+  const hasExplicitAuthorization = Boolean(
+    (init?.headers as Record<string, string> | undefined)?.Authorization
+  );
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(init?.headers as Record<string, string> ?? {}),
@@ -40,19 +52,44 @@ async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T
     headers.Authorization = `Bearer ${token}`;
   }
 
-  try {
+  const run = async (requestHeaders: Record<string, string>) => {
     const res = await fetch(url, {
       ...init,
-      headers,
+      headers: requestHeaders,
     });
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      return { ok: false, status: res.status, error: text || res.statusText };
+      return { ok: false as const, status: res.status, error: text || res.statusText };
     }
 
     const data = (await res.json()) as T;
-    return { ok: true, data };
+    return { ok: true as const, data };
+  };
+
+  try {
+    const first = await run(headers);
+
+    const canRetryWithFallback =
+      !first.ok &&
+      first.status === 401 &&
+      !hasExplicitAuthorization &&
+      tokenCandidates.length > 1;
+
+    if (canRetryWithFallback) {
+      const fallbackToken = tokenCandidates[1];
+      const fallbackHeaders = {
+        ...headers,
+        Authorization: `Bearer ${fallbackToken}`,
+      };
+      const second = await run(fallbackHeaders);
+      if (second.ok) {
+        setStoredToken(fallbackToken);
+      }
+      return second;
+    }
+
+    return first;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Network error";
     return { ok: false, error: message };

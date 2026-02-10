@@ -75,9 +75,15 @@ export default function SettingsPage() {
            } else {
              // Token invalid, clear it using logout hook
              logout();
+             if (!cancelled) {
+               setUserSession(null);
+             }
            }
          } catch {
            logout();
+           if (!cancelled) {
+             setUserSession(null);
+           }
          } finally {
            if (!cancelled) setSessionLoading(false);
          }
