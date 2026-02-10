@@ -1,5 +1,31 @@
 # Samarth Grover (@Samarth-G)
 
+## Week 18 & 19: January 26 - February 8
+This week I was focused on implementing the **New Scan Workflow** feature for the frontend Electron dashboard. The main work landed through **[PR 279 run new scan implementation](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/286)**, adding a complete scan workflow that lets users select a local folder, monitor scan progress, and view results; all integrated with the Electron desktop app for native file system access.
+
+I started by defining TypeScript interfaces in `types/scan.ts` for the scan API contract: `JobState`, `ScanProgress`, `ScanError`, `ScanResult`, etc. These types mirror the backend models and provide type safety throughout the frontend. Then I built the API client layer in `lib/api/scans.ts` with `startScan()` and `getScanStatus()` functions that handle auth headers, error parsing, and `AbortSignal` support for request cancellation.
+
+The core state management lives in the `useScan` hook (`hooks/use-scan.ts`). It manages the full scan lifecycle: starting scans via POST `/api/scans`, polling for status every 500ms, tracking progress/errors/results, and cleaning up with `AbortController` when the component unmounts or the user closes the dialog. The hook accepts an `onScanComplete` callback so parent components can react to successful scans.
+
+For the UI layer, I created three components in `components/scan/`: `ScanDialog` handles folder selection (using Electron's native picker via `window.desktop.selectDirectory`), displays auth/desktop-app warnings when needed, shows progress during scanning, and renders success/error states with appropriate actions. `ScanProgress` is a visual progress bar with both determinate and indeterminate animation modes. `RecentScanCard` displays the most recent scan with stats (files, lines, languages, size) and language badges.
+
+Finally, I integrated everything into the dashboard (`app/(dashboard)/page.tsx`) with a "New Scan" button, automatic fetching of the most recent project, and a refresh callback that updates the display when a scan completes.
+
+## Reflection
+
+**What went well:**
+The `useScan` hook encapsulated all the polling complexity cleanly, making the dialog component straightforward to implement. Using `AbortController` prevented memory leaks and race conditions when users close the dialog mid-scan. The Electron detection (`window.desktop?.selectDirectory`) degrades gracefully in browser contexts with a helpful warning message.
+
+**What didn't go well:**
+The scan dialog component grew fairly large (~245 lines) handling multiple states (initial, scanning, success, failed, auth warning, desktop warning). It could benefit from being split into smaller sub-components. Also, the 500ms polling interval is hardcoded—for longer scans, this creates unnecessary network traffic that could be reduced with exponential backoff. Will be fixing these issues in a future PR.
+
+### Next Steps
+- Adding Code Analysis page to Project Results view 
+- Adding backend support for Code Analysis page
+
+## Week 17: January 19 - January 25
+
+
 ## Week 16: January 12 - January 18
 This week I was focused on implementing the Portfolio Analysis API into the TUI with optional LLM enhancement. The main work landed through the **[PR 215 Portfolio analysis api with TUI integration](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/215)**, adding a comprehensive analysis endpoint that runs local analysis by default and gracefully upgrades to LLM-powered insights when the user has granted consent and configured an API key.
 
