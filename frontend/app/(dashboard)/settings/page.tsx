@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { loadSettings, saveSettings, AppSettings } from "@/lib/settings";
 import { loadTheme, saveTheme, applyTheme, type Theme } from "@/lib/theme";
 import { consent as consentApi, config as configApi } from "@/lib/api";
-import { auth as authApi, getStoredToken } from "@/lib/auth";
+import { auth as authApi, getStoredToken, getStoredRefreshToken } from "@/lib/auth";
 import { useAuth } from "@/hooks/use-auth";
 import type { AuthSessionInfo } from "@/lib/auth";
 import type { ConfigResponse, ProfilesResponse } from "@/lib/api.types";
@@ -66,27 +66,27 @@ export default function SettingsPage() {
       }
 
       // Try to load user session (check if token exists and is valid)
-      const existingToken = getStoredToken();
-       if (existingToken) {
-         try {
-           const sessionRes = await authApi.getSession();
-           if (!cancelled && sessionRes.ok) {
-             setUserSession(sessionRes.data);
-           } else {
-             // Token invalid, clear it using logout hook
-             logout();
-             if (!cancelled) {
-               setUserSession(null);
-             }
-           }
-         } catch {
-           logout();
-           if (!cancelled) {
-             setUserSession(null);
-           }
-         } finally {
-           if (!cancelled) setSessionLoading(false);
-         }
+      const hasSessionCredential = Boolean(getStoredToken() || getStoredRefreshToken());
+      if (hasSessionCredential) {
+        try {
+          const sessionRes = await authApi.getSession();
+          if (!cancelled && sessionRes.ok) {
+            setUserSession(sessionRes.data);
+          } else {
+            // Token invalid, clear it using logout hook
+            logout();
+            if (!cancelled) {
+              setUserSession(null);
+            }
+          }
+        } catch {
+          logout();
+          if (!cancelled) {
+            setUserSession(null);
+          }
+        } finally {
+          if (!cancelled) setSessionLoading(false);
+        }
       } else {
         if (!cancelled) setSessionLoading(false);
       }
