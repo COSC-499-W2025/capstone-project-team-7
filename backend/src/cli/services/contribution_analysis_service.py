@@ -23,7 +23,7 @@ try:
     )
 except ImportError:
     # Fall back to relative import (for CLI context)
-    from ...local_analysis.contribution_analyzer import (
+    from local_analysis.contribution_analyzer import (
         ContributionAnalyzer,
         ProjectContributionMetrics,
         ContributorMetrics,
