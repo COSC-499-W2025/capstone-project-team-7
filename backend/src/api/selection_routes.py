@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from api.dependencies import AuthContext, get_auth_context
-from cli.services.selection_service import SelectionService, SelectionServiceError
+from services.services.selection_service import SelectionService, SelectionServiceError
 
 
 logger = logging.getLogger(__name__)

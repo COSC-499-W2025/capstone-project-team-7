@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from backend.src.cli.services.ai_service import AIService
+from services.ai_service import AIService
 
 
 def test_format_analysis_includes_sections() -> None:

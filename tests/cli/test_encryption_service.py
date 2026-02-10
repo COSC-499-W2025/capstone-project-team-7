@@ -5,7 +5,7 @@ import pytest
 
 pytest.importorskip("cryptography")
 
-from backend.src.cli.services.encryption import (
+from services.encryption import (
     EncryptionEnvelope,
     EncryptionError,
     EncryptionService,

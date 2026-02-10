@@ -1,5 +1,5 @@
 """
-Upload API Service for TUI
+Upload API Service
 Provides HTTP client to interact with upload and parse API endpoints
 """
 
@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
-from ...scanner.models import ParseResult, FileMetadata, ParseIssue, ScanPreferences
+from scanner.models import ParseResult, FileMetadata, ParseIssue, ScanPreferences
 
 
 @dataclass
@@ -211,7 +211,7 @@ class UploadAPIService:
                 
                 # Add media info if present
                 if "media_info" in file_data and file_data["media_info"]:
-                    from ...scanner.media_types import ImageMetadata, AudioMetadata, VideoMetadata
+                    from scanner.media_types import ImageMetadata, AudioMetadata, VideoMetadata
                     media_data = file_data["media_info"]
                     media_type = media_data.get("media_type", "")
                     

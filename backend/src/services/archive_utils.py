@@ -6,7 +6,7 @@ import zipfile
 from pathlib import Path
 from typing import Any, Dict, Iterator, Set, Tuple
 
-from ..scanner.models import ScanPreferences
+from scanner.models import ScanPreferences
 
 _ZIP_EXCLUDE_DIRS = {
     ".git",

@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ...scanner.models import FileMetadata, ParseResult
+from scanner.models import FileMetadata, ParseResult
 
 _DATACLASS_KWARGS = {"slots": True} if sys.version_info >= (3, 10) else {}
 
@@ -234,7 +234,7 @@ class DuplicateDetectionService:
         max_groups: int = 20,
         max_files_per_group: int = 10,
     ) -> str:
-        """Format an API dedup report for display in the TUI."""
+        """Format an API dedup report for display in the API."""
         summary = report.get("summary", {}) if isinstance(report, dict) else {}
         duplicate_groups = report.get("duplicate_groups", []) if isinstance(report, dict) else []
         if not isinstance(duplicate_groups, list):

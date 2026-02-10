@@ -13,7 +13,7 @@ Run with: pytest tests/test_project_overrides_service.py -v
 from unittest.mock import MagicMock, patch
 import pytest
 
-from backend.src.cli.services.project_overrides_service import (
+from services.project_overrides_service import (
     ProjectOverridesService,
     ProjectOverridesServiceError,
 )

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from backend.src.cli.services.preferences_service import PreferencesService
+from services.preferences_service import PreferencesService
 
 
 def test_load_preferences_returns_fallback_without_user() -> None:

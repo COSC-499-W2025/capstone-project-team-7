@@ -5,11 +5,11 @@ import os
 
 import httpx
 
-from ...auth.session import AuthError, Session
+from auth.session import AuthError, Session
 
 
 class AuthAPIService:
-    """HTTP client for authentication endpoints used by the TUI."""
+    """HTTP client for authentication endpoints used by the API."""
 
     def __init__(self, base_url: Optional[str] = None, timeout: float = 10.0) -> None:
         self._base_url = base_url or os.getenv("PORTFOLIO_API_URL", "http://127.0.0.1:8000")

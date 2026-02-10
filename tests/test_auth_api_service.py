@@ -1,8 +1,8 @@
 import httpx
 import pytest
 
-from backend.src.cli.services.auth_api_service import AuthAPIService
-from backend.src.auth.session import AuthError
+from services.auth_api_service import AuthAPIService
+from auth.session import AuthError
 
 
 class DummyResponse:

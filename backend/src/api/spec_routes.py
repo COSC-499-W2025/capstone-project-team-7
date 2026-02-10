@@ -24,9 +24,9 @@ from pydantic import BaseModel, Field
 from api.dependencies import AuthContext, get_auth_context
 
 try:
-    from cli.services.projects_service import ProjectsService, ProjectsServiceError
+    from services.services.projects_service import ProjectsService, ProjectsServiceError
 except ModuleNotFoundError:  # pragma: no cover - test/import fallback
-    from backend.src.cli.services.projects_service import ProjectsService, ProjectsServiceError
+    from backend.src.services.services.projects_service import ProjectsService, ProjectsServiceError
 
 # Add parent directory to path for absolute imports (needed for lazy imports in background tasks)
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -450,7 +450,7 @@ def _get_scan_service():
     """Get or create the singleton scan service instance."""
     global _scan_service
     if _scan_service is None:
-        from src.cli.services.scan_service import ScanService
+        from src.services.services.scan_service import ScanService
         _scan_service = ScanService()
     return _scan_service
 
@@ -741,7 +741,7 @@ def _run_scan_background(
         project_id = None
         if persist_project and profile_id:
             try:
-                from src.cli.services.projects_service import ProjectsService
+                from src.services.services.projects_service import ProjectsService
                 projects_service = ProjectsService()
                 project_name = target.name or "scan"
                 saved = projects_service.save_scan(

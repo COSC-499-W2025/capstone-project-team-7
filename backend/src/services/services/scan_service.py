@@ -10,8 +10,8 @@ from typing import Callable, Dict, List, Optional, Tuple, TypeVar, Any
 from ..archive_utils import ensure_zip
 from ..language_stats import summarize_languages
 from ..state import ScanState
-from ...scanner.models import FileMetadata, ParseResult, ScanPreferences
-from ...scanner.parser import parse_zip
+from scanner.models import FileMetadata, ParseResult, ScanPreferences
+from scanner.parser import parse_zip
 from .upload_api_service import UploadAPIService, UploadAPIError, AuthenticationError
 
 T = TypeVar("T")
@@ -158,7 +158,7 @@ class ScanService:
         )
 
     def format_scan_overview(self, state: ScanState) -> str:
-        """Render the overview block shown in the Textual detail panel."""
+        """Render the overview block shown in the API detail panel."""
         lines = ["[b]Run Portfolio Scan[/b]"]
         if state.target:
             lines.append(f"Target: {state.target}")
