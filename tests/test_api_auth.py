@@ -95,3 +95,26 @@ def test_get_session():
     payload = response.json()
     assert payload["user_id"] == "user-123"
     assert payload["email"] == "user@example.com"
+
+
+def test_expired_token_returns_unauthorized(monkeypatch):
+    """Test that expired or invalid tokens are rejected with 401 Unauthorized"""
+    
+    # Override auth context to raise exception simulating expired token
+    async def override_auth_expired() -> AuthContext:
+        from fastapi import HTTPException, status
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "unauthorized", "message": "Invalid or expired access token"},
+        )
+    
+    app.dependency_overrides[get_auth_context] = override_auth_expired
+    
+    try:
+        response = client.get("/api/auth/session")
+        # Should return 401 Unauthorized when token is expired
+        assert response.status_code == 401
+        payload = response.json()
+        assert "detail" in payload
+    finally:
+        app.dependency_overrides.clear()
