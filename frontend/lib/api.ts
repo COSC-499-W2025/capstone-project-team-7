@@ -1,13 +1,19 @@
-import type { ApiResult, ConsentStatus, ConsentNotice, ConsentUpdateRequest, ConfigResponse, ProfilesResponse, ProfileUpsertRequest, ConfigUpdateRequest } from "./api.types";
+import type { ApiResult, ConsentStatus, ConsentNotice, ConsentUpdateRequest, ConfigResponse, ProfilesResponse, ProfileUpsertRequest, ConfigUpdateRequest, UserProfile, UpdateProfileRequest, AuthCredentials, AuthSessionResponse, ConsentRequest } from "./api.types";
 import { getStoredToken } from "./auth";
-import type { ApiResult, UserProfile, UpdateProfileRequest } from "./api.types";
-import type { ApiResult, AuthCredentials, AuthSessionResponse, ConsentRequest } from "./api.types";
+import { toast } from "sonner";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
 
 const getApiBaseUrl = () => {
   return process.env.NEXT_PUBLIC_API_BASE_URL || DEFAULT_API_BASE_URL;
 };
+
+function showLogoutNotification() {
+  toast.error("Your session expired. Please login again.", {
+    duration: 5000,
+    description: "Redirecting to login page..."
+  });
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> {
   const baseUrl = getApiBaseUrl();
@@ -31,6 +37,27 @@ async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T
     });
 
     if (!res.ok) {
+      // Handle 401 Unauthorized and 403 Forbidden (auth errors)
+      if (res.status === 401 || res.status === 403) {
+        // Clear all auth data
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("auth_access_token");
+        localStorage.removeItem("refresh_token");
+        localStorage.removeItem("user");
+        
+        // Show notification to user
+        showLogoutNotification();
+        
+        // Redirect to home page (dashboard layout will redirect to login)
+        window.location.href = "/";
+        
+        return { 
+          ok: false, 
+          status: res.status, 
+          error: "Session expired" 
+        };
+      }
+
       const text = await res.text().catch(() => "");
       return { ok: false, status: res.status, error: text || res.statusText };
     }
