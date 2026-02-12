@@ -1,19 +1,11 @@
 import type { ApiResult, ConsentStatus, ConsentNotice, ConsentUpdateRequest, ConfigResponse, ProfilesResponse, ProfileUpsertRequest, ConfigUpdateRequest, UserProfile, UpdateProfileRequest, AuthCredentials, AuthSessionResponse, ConsentRequest } from "./api.types";
 import { getStoredToken } from "./auth";
-import { toast } from "sonner";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
 
 const getApiBaseUrl = () => {
   return process.env.NEXT_PUBLIC_API_BASE_URL || DEFAULT_API_BASE_URL;
 };
-
-function showLogoutNotification() {
-  toast.error("Your session expired. Please login again.", {
-    duration: 5000,
-    description: "Redirecting to login page..."
-  });
-}
 
 async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> {
   const baseUrl = getApiBaseUrl();
@@ -44,19 +36,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T
         localStorage.removeItem("auth_access_token");
         localStorage.removeItem("refresh_token");
         localStorage.removeItem("user");
-        
-        // Show notification to user
-        showLogoutNotification();
-        
-        // Redirect to login page directly (with delay to show toast)
-        setTimeout(() => {
-          window.location.href = "/auth/login";
-        }, 1500);
-        
-        return { 
-          ok: false, 
-          status: res.status, 
-          error: "Session expired" 
+
+        // Notify all useAuth instances to update React state and show toast
+        window.dispatchEvent(new CustomEvent("auth:signout", { detail: { expired: true } }));
+
+        return {
+          ok: false,
+          status: res.status,
+          error: "Session expired"
         };
       }
 

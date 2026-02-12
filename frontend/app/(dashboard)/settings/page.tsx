@@ -70,20 +70,18 @@ export default function SettingsPage() {
 
       // Try to load user session (check if token exists and is valid)
       const existingToken = getStoredToken();
-       if (existingToken) {
-         try {
-           const sessionRes = await authApi.getSession();
-           if (!cancelled && sessionRes.ok) {
-             setUserSession(sessionRes.data);
-           } else {
-             // Token invalid, clear it using logout hook
-             logout();
-           }
-         } catch {
-           logout();
-         } finally {
-           if (!cancelled) setSessionLoading(false);
-         }
+      if (existingToken) {
+        try {
+          const sessionRes = await authApi.getSession();
+          if (!cancelled && sessionRes.ok) {
+            setUserSession(sessionRes.data);
+          }
+          // 401/403 errors are handled automatically by the auth:expired event
+        } catch {
+          // Network error — don't force logout
+        } finally {
+          if (!cancelled) setSessionLoading(false);
+        }
       } else {
         if (!cancelled) setSessionLoading(false);
       }
@@ -261,15 +259,14 @@ export default function SettingsPage() {
   const handleLogout = () => {
     // Use the logout hook to clear authentication state
     logout();
-    
+
     // Clear local settings state
     setUserSession(null);
     setConsentData({ data_access: false, external_services: false });
     setServerConfig(null);
     setProfiles({});
-    
-    // Redirect to login page
-    router.push('/auth/login');
+
+    // Redirect is handled by the dashboard layout when isAuthenticated becomes false
   };
 
   const handleProfileSwitch = async (profileName: string) => {

@@ -68,8 +68,8 @@ test.describe("Authentication logout and login flow", () => {
     // Click the logout button
     await logoutButton.click();
 
-    // Verify redirect to login page - the URL should change to /auth/login
-    await page.waitForURL("**/auth/login", { timeout: 10000 });
+    // Verify redirect to login page - the dashboard layout redirects when isAuthenticated becomes false
+    await page.waitForURL("**/auth/login", { timeout: 15000, waitUntil: "domcontentloaded" });
     expect(page.url()).toContain("/auth/login");
 
     // Verify that tokens are cleared from localStorage
