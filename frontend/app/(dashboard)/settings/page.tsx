@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -12,11 +13,13 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { loadSettings, saveSettings, AppSettings } from "@/lib/settings";
 import { loadTheme, saveTheme, applyTheme, type Theme } from "@/lib/theme";
 import { consent as consentApi, config as configApi } from "@/lib/api";
-import { auth as authApi, getStoredToken, setStoredToken, clearStoredToken } from "@/lib/auth";
+import { auth as authApi, getStoredToken, clearStoredToken } from "@/lib/auth";
 import type { AuthSessionInfo } from "@/lib/auth";
 import type { ConfigResponse, ProfilesResponse } from "@/lib/api.types";
 
 export default function SettingsPage() {
+  const router = useRouter();
+  
   // User session
   const [userSession, setUserSession] = useState<AuthSessionInfo | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
@@ -49,10 +52,6 @@ export default function SettingsPage() {
   });
   const [extensionsInput, setExtensionsInput] = useState("");
   const [excludeDirsInput, setExcludeDirsInput] = useState("");
-
-  // Login/Auth
-  const [showLoginDialog, setShowLoginDialog] = useState(false);
-  const [tokenInput, setTokenInput] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -223,57 +222,13 @@ export default function SettingsPage() {
     setShowRevokeDialog(false);
   };
 
-  const handleLogin = async () => {
-    if (!tokenInput.trim()) {
-      alert("Please enter an access token");
-      return;
-    }
-
-    setSessionLoading(true);
-    try {
-      // Store the token
-      setStoredToken(tokenInput.trim());
-      
-      // Verify it works by fetching session
-      const sessionRes = await authApi.getSession();
-      if (sessionRes.ok) {
-        setUserSession(sessionRes.data);
-        setShowLoginDialog(false);
-        setTokenInput("");
-        
-        // Load consent and config data
-        const [consentRes, configRes, profilesRes] = await Promise.all([
-          consentApi.get(),
-          configApi.get(),
-          configApi.listProfiles()
-        ]);
-        
-        if (consentRes.ok) {
-          setConsentData({
-            data_access: consentRes.data.data_access,
-            external_services: consentRes.data.external_services
-          });
-        }
-        if (configRes.ok) setServerConfig(configRes.data);
-        if (profilesRes.ok) setProfiles(profilesRes.data.profiles || {});
-      } else {
-        clearStoredToken();
-        alert("Invalid access token. Please check and try again.");
-      }
-    } catch (err) {
-      clearStoredToken();
-      alert("Failed to authenticate. Please check your token.");
-    } finally {
-      setSessionLoading(false);
-    }
-  };
-
   const handleLogout = () => {
     clearStoredToken();
     setUserSession(null);
     setConsentData({ data_access: false, external_services: false });
     setServerConfig(null);
     setProfiles({});
+    router.push('/auth/login');
   };
 
   const handleProfileSwitch = async (profileName: string) => {
@@ -445,20 +400,17 @@ export default function SettingsPage() {
                     Logout
                   </Button>
                 </div>
-              ) : (
-                <div>
-                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Status</p>
-                  <p className="text-sm text-gray-600 mt-1">Guest mode</p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowLoginDialog(true)}
-                    className="mt-2 border-gray-300 hover:bg-gray-50"
-                  >
-                    Login
-                  </Button>
-                </div>
-              )}
+               ) : (
+                 <div>
+                   <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Status</p>
+                   <p className="text-sm text-gray-600 mt-1">Guest mode</p>
+                   <p className="text-xs text-gray-500 mt-2">
+                     <Link href="/auth/login" className="text-blue-600 hover:text-blue-700 underline">
+                       Go to login page
+                     </Link>
+                   </p>
+                 </div>
+               )}
             </div>
           </div>
         </div>
@@ -754,44 +706,6 @@ export default function SettingsPage() {
             </Button>
             <Button onClick={revokeAllConsents} className="bg-red-600 text-white hover:bg-red-700">
               Revoke All
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={showLoginDialog} onOpenChange={setShowLoginDialog}>
-        <DialogContent className="bg-white">
-          <DialogHeader>
-            <DialogTitle className="text-gray-900">Login with Access Token</DialogTitle>
-            <DialogDescription className="text-gray-600">
-              Enter your Supabase access token to authenticate. You can get this by running the test script.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="token-input" className="text-sm font-medium text-gray-900">Access Token</Label>
-              <Input
-                id="token-input"
-                type="password"
-                className="border-gray-300 text-gray-900"
-                value={tokenInput}
-                onChange={(e) => setTokenInput(e.target.value)}
-                placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleLogin();
-                }}
-              />
-              <p className="text-xs text-gray-500">
-                Run: <code className="bg-gray-100 px-1 rounded">python scripts/get_test_token.py</code>
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowLoginDialog(false)} className="border-gray-300 text-gray-900">
-              Cancel
-            </Button>
-            <Button onClick={handleLogin} disabled={!tokenInput.trim()} className="bg-gray-900 text-white hover:bg-gray-800">
-              Login
             </Button>
           </DialogFooter>
         </DialogContent>
