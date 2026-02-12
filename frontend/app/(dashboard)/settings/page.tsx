@@ -13,12 +13,14 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { loadSettings, saveSettings, AppSettings } from "@/lib/settings";
 import { loadTheme, saveTheme, applyTheme, type Theme } from "@/lib/theme";
 import { consent as consentApi, config as configApi } from "@/lib/api";
-import { auth as authApi, getStoredToken, clearStoredToken } from "@/lib/auth";
+import { auth as authApi, getStoredToken } from "@/lib/auth";
+import { useAuth } from "@/hooks/use-auth";
 import type { AuthSessionInfo } from "@/lib/auth";
 import type { ConfigResponse, ProfilesResponse } from "@/lib/api.types";
 
 export default function SettingsPage() {
   const router = useRouter();
+  const { logout } = useAuth();
   
   // User session
   const [userSession, setUserSession] = useState<AuthSessionInfo | null>(null);
@@ -66,20 +68,20 @@ export default function SettingsPage() {
 
       // Try to load user session (check if token exists and is valid)
       const existingToken = getStoredToken();
-      if (existingToken) {
-        try {
-          const sessionRes = await authApi.getSession();
-          if (!cancelled && sessionRes.ok) {
-            setUserSession(sessionRes.data);
-          } else {
-            // Token invalid, clear it
-            clearStoredToken();
-          }
-        } catch {
-          clearStoredToken();
-        } finally {
-          if (!cancelled) setSessionLoading(false);
-        }
+       if (existingToken) {
+         try {
+           const sessionRes = await authApi.getSession();
+           if (!cancelled && sessionRes.ok) {
+             setUserSession(sessionRes.data);
+           } else {
+             // Token invalid, clear it using logout hook
+             logout();
+           }
+         } catch {
+           logout();
+         } finally {
+           if (!cancelled) setSessionLoading(false);
+         }
       } else {
         if (!cancelled) setSessionLoading(false);
       }
@@ -223,11 +225,16 @@ export default function SettingsPage() {
   };
 
   const handleLogout = () => {
-    clearStoredToken();
+    // Use the logout hook to clear authentication state
+    logout();
+    
+    // Clear local settings state
     setUserSession(null);
     setConsentData({ data_access: false, external_services: false });
     setServerConfig(null);
     setProfiles({});
+    
+    // Redirect to login page
     router.push('/auth/login');
   };
 
