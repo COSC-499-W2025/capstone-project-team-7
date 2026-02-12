@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { useAuth } from "@/hooks/use-auth";
@@ -8,14 +8,21 @@ import { useAuth } from "@/hooks/use-auth";
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { isAuthenticated, isLoading } = useAuth();
+  const [isRedirecting, setIsRedirecting] = useState(false);
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      router.replace("/auth/login");
+    if (!isLoading && !isAuthenticated && !isRedirecting) {
+      setIsRedirecting(true);
+      // Wait a moment for toast to display, then redirect
+      const timer = setTimeout(() => {
+        router.replace("/auth/login");
+      }, 1500);
+      
+      return () => clearTimeout(timer);
     }
-  }, [isAuthenticated, isLoading, router]);
+  }, [isAuthenticated, isLoading, router, isRedirecting]);
 
-  if (isLoading || !isAuthenticated) {
+  if (isLoading || !isAuthenticated || isRedirecting) {
     return (
       <main
         className="min-h-screen flex items-center justify-center"
@@ -23,7 +30,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         aria-busy="true"
         aria-live="polite"
       >
-        <p className="text-sm text-muted-foreground">Loading...</p>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-2 border-primary border-t-transparent mx-auto mb-4" />
+          <p className="text-sm text-muted-foreground">
+            {isRedirecting ? "Redirecting to login..." : "Loading..."}
+          </p>
+        </div>
       </main>
     );
   }

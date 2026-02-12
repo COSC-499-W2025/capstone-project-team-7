@@ -48,8 +48,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T
         // Show notification to user
         showLogoutNotification();
         
-        // Redirect to home page (dashboard layout will redirect to login)
-        window.location.href = "/";
+        // Redirect to login page directly (with delay to show toast)
+        setTimeout(() => {
+          window.location.href = "/auth/login";
+        }, 1500);
         
         return { 
           ok: false, 
