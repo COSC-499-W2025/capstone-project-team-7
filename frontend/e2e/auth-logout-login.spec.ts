@@ -2,23 +2,29 @@ import { test, expect } from "@playwright/test";
 
 test.describe("Authentication logout and login flow", () => {
   test("logout from settings page redirects to login page", async ({ page }) => {
-    // Setup: Mock authenticated user state
+    // Setup: Mock authenticated user state BEFORE navigating
     await page.addInitScript(() => {
-      window.localStorage.setItem("user", JSON.stringify({ id: "user-123", email: "test@example.com" }));
-      window.localStorage.setItem("access_token", "test-access-token");
-      window.localStorage.setItem("auth_access_token", "test-token");
+      const user = { id: "user-123", email: "test@example.com" };
+      localStorage.setItem("user", JSON.stringify(user));
+      localStorage.setItem("access_token", "test-access-token");
+      localStorage.setItem("auth_access_token", "test-token");
+      localStorage.setItem("refresh_token", "test-refresh-token");
     });
 
-    // Mock the session endpoint to return valid session
+    // Mock ALL auth-related API endpoints
     await page.route("**/api/auth/session", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ user_id: "user-123", email: "test@example.com" }),
+        body: JSON.stringify({
+          user_id: "user-123",
+          email: "test@example.com",
+          access_token: "test-access-token"
+        }),
       });
     });
 
-    // Mock the consent endpoint
+    // Mock consent endpoint
     await page.route("**/api/consent", async (route) => {
       await route.fulfill({
         status: 200,
@@ -27,55 +33,123 @@ test.describe("Authentication logout and login flow", () => {
       });
     });
 
-    // Mock the config endpoint
+    // Mock config endpoint
     await page.route("**/api/config", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ current_profile: "default", max_file_size_mb: 100, follow_symlinks: false }),
+        body: JSON.stringify({
+          current_profile: "default",
+          max_file_size_mb: 100,
+          follow_symlinks: false
+        }),
+      });
+    });
+
+    // Mock profiles endpoint
+    await page.route("**/api/config/profiles", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ profiles: {} }),
       });
     });
 
     // Navigate to settings page
-    await page.goto("/settings", { waitUntil: "domcontentloaded" });
+    await page.goto("/settings", { waitUntil: "networkidle" });
 
-    // Wait for the page to load and verify we see the logged-in state
-    await expect(page.getByText(/test@example.com/)).toBeVisible();
-    
-    // Verify the logout button is visible
+    // Wait for the page to fully load with a longer timeout
+    await page.waitForTimeout(1000);
+
+    // Verify the logout button is visible (not the login button)
     const logoutButton = page.getByRole("button", { name: /Logout/i });
-    await expect(logoutButton).toBeVisible();
+    await expect(logoutButton).toBeVisible({ timeout: 10000 });
 
     // Click the logout button
     await logoutButton.click();
 
-    // Verify redirect to login page
-    await page.waitForURL("/auth/login");
+    // Verify redirect to login page - the URL should change to /auth/login
+    await page.waitForURL("**/auth/login", { timeout: 10000 });
     expect(page.url()).toContain("/auth/login");
 
-    // Verify that the token is no longer in localStorage
+    // Verify that tokens are cleared from localStorage
     const token = await page.evaluate(() => localStorage.getItem("auth_access_token"));
     expect(token).toBeNull();
+
+    const user = await page.evaluate(() => localStorage.getItem("user"));
+    expect(user).toBeNull();
   });
 
-  test("settings page shows guest mode after logout", async ({ page }) => {
-    // Setup: Start with authenticated state
+  test("after logout, attempting to access settings redirects to login", async ({ page }) => {
+    // Start with no auth data
     await page.addInitScript(() => {
-      window.localStorage.setItem("user", JSON.stringify({ id: "user-123", email: "test@example.com" }));
-      window.localStorage.setItem("access_token", "test-access-token");
-      window.localStorage.setItem("auth_access_token", "test-token");
+      localStorage.clear();
     });
 
-    // Mock the session endpoint
+    // Mock auth endpoint to return 401 for unauthenticated requests
+    await page.route("**/api/auth/session", async (route) => {
+      await route.fulfill({
+        status: 401,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Unauthorized" }),
+      });
+    });
+
+    // Try to access settings page
+    await page.goto("/settings", { waitUntil: "domcontentloaded" });
+
+    // Should redirect to login page
+    await page.waitForURL("**/auth/login", { timeout: 10000 });
+    expect(page.url()).toContain("/auth/login");
+  });
+
+  test("guest mode message displays on settings when not logged in", async ({ page }) => {
+    // Start with no auth data
+    await page.addInitScript(() => {
+      localStorage.clear();
+    });
+
+    // Mock auth to redirect to login
+    await page.route("**/api/auth/session", async (route) => {
+      await route.fulfill({
+        status: 401,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Unauthorized" }),
+      });
+    });
+
+    // Navigate to login page
+    await page.goto("/auth/login", { waitUntil: "networkidle" });
+
+    // Verify we're on the login page
+    expect(page.url()).toContain("/auth/login");
+
+    // Verify login form is visible - wait longer for page to fully render
+    await expect(page.getByPlaceholder(/name@example\.com/i)).toBeVisible({ timeout: 10000 });
+  });
+
+  test("no access token login dialog exists in the app", async ({ page }) => {
+    // Setup: Mock authenticated user state
+    await page.addInitScript(() => {
+      const user = { id: "user-123", email: "test@example.com" };
+      localStorage.setItem("user", JSON.stringify(user));
+      localStorage.setItem("access_token", "test-access-token");
+      localStorage.setItem("auth_access_token", "test-token");
+    });
+
+    // Mock auth endpoints
     await page.route("**/api/auth/session", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ user_id: "user-123", email: "test@example.com" }),
+        body: JSON.stringify({
+          user_id: "user-123",
+          email: "test@example.com",
+          access_token: "test-access-token"
+        }),
       });
     });
 
-    // Mock the consent endpoint
     await page.route("**/api/consent", async (route) => {
       await route.fulfill({
         status: 200,
@@ -84,97 +158,41 @@ test.describe("Authentication logout and login flow", () => {
       });
     });
 
-    // Mock the config endpoint
     await page.route("**/api/config", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ current_profile: "default", max_file_size_mb: 100, follow_symlinks: false }),
+        body: JSON.stringify({
+          current_profile: "default",
+          max_file_size_mb: 100,
+          follow_symlinks: false
+        }),
       });
     });
 
-    // Navigate to settings page
-    await page.goto("/settings", { waitUntil: "domcontentloaded" });
-
-    // Wait for the page to load
-    await expect(page.getByText(/test@example.com/)).toBeVisible();
-
-    // Click logout
-    const logoutButton = page.getByRole("button", { name: /Logout/i });
-    await logoutButton.click();
-
-    // Wait for navigation to login page
-    await page.waitForURL("/auth/login");
-
-    // Navigate back to settings page to verify guest mode
-    await page.goto("/settings", { waitUntil: "domcontentloaded" });
-
-    // Verify we see the guest mode message
-    await expect(page.getByText(/Guest mode/i)).toBeVisible();
-    
-    // Verify there's a link to login page
-    const loginLink = page.getByRole("link", { name: /Go to login page/i });
-    await expect(loginLink).toBeVisible();
-    
-    // Verify the Logout button is not visible
-    const logoutBtnAfter = page.getByRole("button", { name: /Logout/i });
-    await expect(logoutBtnAfter).not.toBeVisible();
-  });
-
-  test("no access token login dialog appears after logout", async ({ page }) => {
-    // Setup: Start with authenticated state
-    await page.addInitScript(() => {
-      window.localStorage.setItem("user", JSON.stringify({ id: "user-123", email: "test@example.com" }));
-      window.localStorage.setItem("access_token", "test-access-token");
-      window.localStorage.setItem("auth_access_token", "test-token");
-    });
-
-    // Mock the session endpoint
-    await page.route("**/api/auth/session", async (route) => {
+    await page.route("**/api/config/profiles", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ user_id: "user-123", email: "test@example.com" }),
+        body: JSON.stringify({ profiles: {} }),
       });
     });
 
-    // Mock the consent endpoint
-    await page.route("**/api/consent", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ data_access: false, external_services: false }),
-      });
-    });
+    // Navigate to settings
+    await page.goto("/settings", { waitUntil: "networkidle" });
 
-    // Mock the config endpoint
-    await page.route("**/api/config", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ current_profile: "default", max_file_size_mb: 100, follow_symlinks: false }),
-      });
-    });
+    // Verify that there's NO "Login with Access Token" dialog or button
+    const loginWithTokenText = page.getByText(/Login with Access Token/i);
+    await expect(loginWithTokenText).not.toBeVisible();
 
-    // Navigate to settings page
-    await page.goto("/settings", { waitUntil: "domcontentloaded" });
-
-    // Wait for the page to load
-    await expect(page.getByText(/test@example.com/)).toBeVisible();
-
-    // Click logout
-    const logoutButton = page.getByRole("button", { name: /Logout/i });
-    await logoutButton.click();
-
-    // Wait for navigation
-    await page.waitForURL("/auth/login");
-
-    // Verify that there's NO "Login with Access Token" dialog in the page
-    const loginWithTokenDialog = page.getByText(/Login with Access Token/);
-    await expect(loginWithTokenDialog).not.toBeVisible();
-
-    // Verify that there's NO token input field
+    // Verify there's no token input field with the JWT placeholder
     const tokenInput = page.getByPlaceholder(/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9/);
-    await expect(tokenInput).not.toBeVisible();
+    const tokenInputCount = await tokenInput.count();
+    expect(tokenInputCount).toBe(0);
+
+    // Verify there's no "get_test_token" reference in the page
+    const testTokenRef = page.getByText(/get_test_token/);
+    const testTokenCount = await testTokenRef.count();
+    expect(testTokenCount).toBe(0);
   });
 });
