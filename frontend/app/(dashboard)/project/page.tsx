@@ -65,28 +65,6 @@ const tabs = [
   { value: "media-analysis", label: "Media Analysis", icon: Film },
 ] as const;
 
-const overviewLanguages = [
-  { name: "TypeScript", percentage: 42.3 },
-  { name: "Python", percentage: 28.1 },
-  { name: "JavaScript", percentage: 15.7 },
-  { name: "CSS", percentage: 8.4 },
-  { name: "HTML", percentage: 5.5 },
-];
-
-const fallbackProject = {
-  name: "My Capstone App",
-  path: "/home/user/projects/capstone-app",
-  scanTimestamp: "2025-01-15 14:32:07",
-  filesProcessed: 247,
-  totalSizeLabel: "4.8 MB",
-  issuesFound: 12,
-  totalLines: 18432,
-  gitRepos: 2,
-  mediaFiles: 15,
-  pdfDocs: 3,
-  otherDocs: 8,
-};
-
 function PlaceholderContent({ label }: { label: string }) {
   return (
     <Card className="bg-white border border-gray-200">
@@ -213,23 +191,31 @@ export default function ProjectPage() {
   const skillsByCategory = (skillsAnalysis.skills_by_category ?? {}) as any;
   const totalSkills = (skillsAnalysis.total_skills ?? 0) as number;
 
-  const projectName = project?.project_name ?? fallbackProject.name;
-  const projectPath = project?.project_path ?? fallbackProject.path;
-  const scanTimestamp = project?.scan_timestamp ?? fallbackProject.scanTimestamp;
+  const hasProject = Boolean(project);
 
-  const filesProcessed =
-    summary.total_files ??
-    project?.total_files ??
-    fallbackProject.filesProcessed;
+  const projectName = project?.project_name ?? "";
+  const projectPath = project?.project_path ?? "";
+  const scanTimestamp = project?.scan_timestamp ?? "Not available";
+
+  const scanDurationRaw = Number(
+    summary.scan_duration_seconds ?? scanData.scan_duration_seconds ?? scanData.scan_duration
+  );
+  const scanDurationLabel = Number.isFinite(scanDurationRaw)
+    ? formatDurationSeconds(scanDurationRaw)
+    : "Not available";
+
+  const filesProcessed = summary.total_files ?? project?.total_files ?? 0;
   const totalSizeBytes = summary.bytes_processed;
-  const issuesFound =
-    summary.issues_found ?? summary.issue_count ?? fallbackProject.issuesFound;
-  const totalLines =
-    summary.total_lines ?? project?.total_lines ?? fallbackProject.totalLines;
+  const issuesFound = summary.issues_found ?? summary.issue_count ?? 0;
+  const totalLines = summary.total_lines ?? project?.total_lines ?? 0;
 
   const filesProcessedLabel = formatCount(filesProcessed);
   const issuesFoundLabel = formatCount(issuesFound);
   const totalLinesLabel = formatCount(totalLines);
+  const totalSizeLabel =
+    typeof totalSizeBytes === "number" && Number.isFinite(totalSizeBytes)
+      ? formatBytes(totalSizeBytes)
+      : "Not available";
 
   const languageStats = useMemo(() => {
     const rawLanguages = scanData.languages;
@@ -274,10 +260,9 @@ export default function ProjectPage() {
       .slice(0, 5);
   }, [scanData.languages]);
 
-  const topLanguages = languageStats ?? overviewLanguages;
+  const topLanguages: Array<{ name: string; percentage: number }> = languageStats ?? [];
 
-  const gitRepos =
-    scanData.git_analysis?.repositories?.length ?? fallbackProject.gitRepos;
+  const gitRepos = scanData.git_analysis?.repositories?.length ?? 0;
 
   const documentAnalysis = scanData.document_analysis;
   const otherDocs = Array.isArray(documentAnalysis)
@@ -286,7 +271,7 @@ export default function ProjectPage() {
     ? documentAnalysis.documents.length
     : Array.isArray(documentAnalysis?.items)
     ? documentAnalysis.items.length
-    : fallbackProject.otherDocs;
+    : 0;
 
   // Media analysis (from feature/media-analysis)
   const mediaAnalysis = useMemo<MediaAnalysisPayload | null>(() => {
@@ -295,14 +280,13 @@ export default function ProjectPage() {
     return resolveMediaAnalysis(data);
   }, [project]);
 
-  const mediaFiles =
-    // prefer resolved payload counts if you want, otherwise scanData
-    (Array.isArray(scanData.media_analysis) ? scanData.media_analysis.length : 0) ||
-    fallbackProject.mediaFiles;
+  const mediaFiles = Array.isArray(scanData.media_analysis)
+    ? scanData.media_analysis.length
+    : 0;
 
-  const pdfDocs =
-    (Array.isArray(scanData.pdf_analysis) ? scanData.pdf_analysis.length : 0) ||
-    fallbackProject.pdfDocs;
+  const pdfDocs = Array.isArray(scanData.pdf_analysis)
+    ? scanData.pdf_analysis.length
+    : 0;
 
   const topSkills = useMemo(() => {
     const counts = new Map<string, number>();
@@ -349,7 +333,7 @@ export default function ProjectPage() {
         </Link>
 
         <h1 className="text-4xl font-bold text-gray-900 tracking-tight">
-          Project: {projectName}
+          {hasProject ? `Project: ${projectName}` : "Project"}
         </h1>
 
         <p className="text-gray-500 mt-1 text-sm">Scanned project analysis and reports</p>
@@ -360,6 +344,30 @@ export default function ProjectPage() {
         {projectError && <p className="text-xs text-red-600 mt-2">{projectError}</p>}
       </div>
 
+      {!projectLoading && !projectError && !hasProject && (
+        <Card className="bg-white border border-gray-200">
+          <CardContent className="p-8 text-center space-y-3">
+            <p className="text-lg font-semibold text-gray-900">No project selected</p>
+            <p className="text-sm text-gray-600">
+              Select a project from your scanned results to view its analysis.
+            </p>
+            <Link href="/projects" className="text-sm text-gray-900 underline">
+              Go to projects
+            </Link>
+          </CardContent>
+        </Card>
+      )}
+
+      {projectError && !hasProject && (
+        <Card className="bg-white border border-red-200">
+          <CardContent className="p-8 text-center space-y-2">
+            <p className="text-sm font-semibold text-red-700">Unable to load project data</p>
+            <p className="text-sm text-gray-600">Please return to Settings and verify your session.</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {hasProject && (
       <Tabs defaultValue="overview">
         <TabsList className="flex justify-start overflow-x-auto gap-1 h-auto bg-gray-100 rounded-lg p-1.5 scrollbar-thin">
           {tabs.map((tab) => {
@@ -414,7 +422,7 @@ export default function ProjectPage() {
                     <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Scan Duration
                     </p>
-                    <p className="text-sm text-gray-900 mt-1">3.2 seconds</p>
+                    <p className="text-sm text-gray-900 mt-1">{scanDurationLabel}</p>
                   </div>
                 </div>
               </CardContent>
@@ -436,9 +444,7 @@ export default function ProjectPage() {
                   </div>
                   <div className="bg-gray-50 rounded-lg p-4 text-center">
                     <p className="text-2xl font-bold text-gray-900">
-                      {totalSizeBytes
-                        ? formatBytes(Number(totalSizeBytes))
-                        : fallbackProject.totalSizeLabel}
+                      {totalSizeLabel}
                     </p>
                     <p className="text-xs text-gray-500 mt-1">Total Size</p>
                   </div>
@@ -465,24 +471,28 @@ export default function ProjectPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6">
-                <div className="space-y-3">
-                  {topLanguages.map((lang) => (
-                    <div key={lang.name} className="flex items-center gap-3">
-                      <span className="text-sm text-gray-900 w-28 font-medium">
-                        {lang.name}
-                      </span>
-                      <div className="flex-1 bg-gray-100 rounded-full h-2.5">
-                        <div
-                          className="bg-gray-900 h-2.5 rounded-full"
-                          style={{ width: `${lang.percentage}%` }}
-                        />
+                {topLanguages.length === 0 ? (
+                  <p className="text-sm text-gray-500">No language data available for this project.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {topLanguages.map((lang) => (
+                      <div key={lang.name} className="flex items-center gap-3">
+                        <span className="text-sm text-gray-900 w-28 font-medium">
+                          {lang.name}
+                        </span>
+                        <div className="flex-1 bg-gray-100 rounded-full h-2.5">
+                          <div
+                            className="bg-gray-900 h-2.5 rounded-full"
+                            style={{ width: `${lang.percentage}%` }}
+                          />
+                        </div>
+                        <span className="text-sm text-gray-500 w-14 text-right">
+                          {lang.percentage}%
+                        </span>
                       </div>
-                      <span className="text-sm text-gray-500 w-14 text-right">
-                        {lang.percentage}%
-                      </span>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -919,6 +929,7 @@ export default function ProjectPage() {
             </TabsContent>
           ))}
       </Tabs>
+      )}
     </div>
   );
 }
@@ -1079,6 +1090,12 @@ function formatPeriodLabel(value: string) {
   const date = new Date(Number(year), Number(month) - 1, 1);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString(undefined, { year: "numeric", month: "short" });
+}
+
+function formatDurationSeconds(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "Not available";
+  if (seconds >= 10) return `${seconds.toFixed(0)} seconds`;
+  return `${seconds.toFixed(1)} seconds`;
 }
 
 function formatBytes(bytes: number): string {
