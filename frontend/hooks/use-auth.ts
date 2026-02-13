@@ -92,7 +92,9 @@ export function useAuth(): UseAuthReturn {
   };
 
   const logout = (): void => {
+    // Clear all possible auth token keys
     localStorage.removeItem("access_token");
+    localStorage.removeItem("auth_access_token");
     localStorage.removeItem("refresh_token");
     localStorage.removeItem("user");
 
