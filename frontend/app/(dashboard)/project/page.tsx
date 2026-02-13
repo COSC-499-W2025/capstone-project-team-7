@@ -27,42 +27,51 @@ import {
 } from "@/components/project/media-analysis-tab";
 import {
   LayoutDashboard,
-  FileText,
+  Award,
+  BookOpen,
+  Wrench,
   BarChart3,
   Code2,
-  Award,
-  TrendingUp,
-  GitBranch,
   Users,
-  FileEdit,
+  FileText,
+  Film,
+  FileImage,
+  GitBranch,
   Copy,
   Search,
+  FileEdit,
   FileJson,
   FileCode2,
   Printer,
-  FileImage,
-  BookOpen,
-  Film,
 } from "lucide-react";
 
-const tabs = [
-  { value: "overview", label: "Show Overview", icon: LayoutDashboard },
-  { value: "file-list", label: "View File List", icon: FileText },
-  { value: "languages", label: "Language Breakdown", icon: BarChart3 },
+// Main section tabs (4 sections)
+const mainTabs = [
+  { value: "overview", label: "Overview & Analysis", icon: LayoutDashboard },
+  { value: "skills", label: "Skills & Progress", icon: Award },
+  { value: "content", label: "Content Analysis", icon: BookOpen },
+  { value: "tools", label: "Tools & Export", icon: Wrench },
+] as const;
+
+// Sub-tabs for Overview & Analysis section
+const overviewSubTabs = [
+  { value: "overview-main", label: "Overview", icon: LayoutDashboard },
+  { value: "languages", label: "Languages", icon: BarChart3 },
   { value: "code-analysis", label: "Code Analysis", icon: Code2 },
-  { value: "skills", label: "Skills Analysis", icon: Award },
-  { value: "skills-progress", label: "Skills Progression", icon: TrendingUp },
-  { value: "git-analysis", label: "Run Git Analysis", icon: GitBranch },
-  { value: "contributions", label: "Contribution Metrics", icon: Users },
-  { value: "resume-item", label: "Generate Resume Item", icon: FileEdit },
-  { value: "duplicates", label: "Find Duplicate Files", icon: Copy },
-  { value: "search-filter", label: "Search and Filter Files", icon: Search },
-  { value: "export-json", label: "Export JSON Report", icon: FileJson },
-  { value: "export-html", label: "Export HTML Report", icon: FileCode2 },
-  { value: "export-print", label: "Export Printable Report", icon: Printer },
-  { value: "analyze-pdf", label: "Analyze PDF Files", icon: FileImage },
-  { value: "doc-analysis", label: "Document Analysis", icon: BookOpen },
-  { value: "media-analysis", label: "Media Analysis", icon: Film },
+] as const;
+
+// Sub-tabs for Skills & Progress section
+const skillsSubTabs = [
+  { value: "skills-main", label: "Skills", icon: Award },
+  { value: "progress", label: "Progress", icon: LayoutDashboard },
+  { value: "contributions", label: "Contributions", icon: Users },
+] as const;
+
+// Sub-tabs for Content Analysis section
+const contentSubTabs = [
+  { value: "documents", label: "Documents", icon: FileText },
+  { value: "media", label: "Media", icon: Film },
+  { value: "pdfs", label: "PDFs", icon: FileImage },
 ] as const;
 
 function PlaceholderContent({ label }: { label: string }) {
@@ -368,567 +377,954 @@ export default function ProjectPage() {
       )}
 
       {hasProject && (
-      <Tabs defaultValue="overview">
-        <TabsList className="flex justify-start overflow-x-auto gap-1 h-auto bg-gray-100 rounded-lg p-1.5 scrollbar-thin">
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            return (
-              <TabsTrigger
-                key={tab.value}
-                value={tab.value}
-                className="gap-1.5 text-xs px-2.5 py-1.5 shrink-0"
-              >
-                <Icon size={14} />
-                {tab.label}
-              </TabsTrigger>
-            );
-          })}
-        </TabsList>
+        <Tabs defaultValue="overview">
+          {/* Main 4 tabs */}
+          <TabsList className="flex justify-start gap-2 h-auto bg-gray-100 rounded-lg p-2 mb-6">
+            {mainTabs.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <TabsTrigger
+                  key={tab.value}
+                  value={tab.value}
+                  className="text-sm px-5 py-2.5 font-medium"
+                >
+                  <Icon size={18} className="mr-2" />
+                  {tab.label}
+                </TabsTrigger>
+              );
+            })}
+          </TabsList>
 
-        {/* Overview */}
-        <TabsContent value="overview">
-          <div className="space-y-6">
-            <Card className="bg-white border border-gray-200">
-              <CardHeader className="border-b border-gray-200">
-                <CardTitle className="text-xl font-bold text-gray-900">
-                  Project Information
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Project Name
-                    </p>
-                    <p className="text-sm font-semibold text-gray-900 mt-1">
-                      {projectName}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Path
-                    </p>
-                    <p className="text-sm font-mono text-gray-900 mt-1">
-                      {projectPath}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Scan Timestamp
-                    </p>
-                    <p className="text-sm text-gray-900 mt-1">{scanTimestamp}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Scan Duration
-                    </p>
-                    <p className="text-sm text-gray-900 mt-1">{scanDurationLabel}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+          {/* ============================================
+              TAB 1: OVERVIEW & ANALYSIS
+          ============================================ */}
+          <TabsContent value="overview">
+            <Tabs defaultValue="overview-main" className="space-y-6">
+              <TabsList className="flex justify-start gap-1 h-auto bg-transparent p-0 border-b border-gray-200 rounded-none">
+                {overviewSubTabs.map((tab) => {
+                  const Icon = tab.icon;
+                  return (
+                    <TabsTrigger
+                      key={tab.value}
+                      value={tab.value}
+                      className="text-xs px-4 py-2 rounded-t-lg rounded-b-none border-b-2 border-transparent data-[state=active]:border-gray-900 data-[state=active]:bg-white"
+                    >
+                      <Icon size={14} className="mr-1.5" />
+                      {tab.label}
+                    </TabsTrigger>
+                  );
+                })}
+              </TabsList>
 
-            <Card className="bg-white border border-gray-200">
-              <CardHeader className="border-b border-gray-200">
-                <CardTitle className="text-xl font-bold text-gray-900">
-                  Summary Statistics
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                  <div className="bg-gray-50 rounded-lg p-4 text-center">
-                    <p className="text-2xl font-bold text-gray-900">
-                      {filesProcessedLabel}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">Files Processed</p>
-                  </div>
-                  <div className="bg-gray-50 rounded-lg p-4 text-center">
-                    <p className="text-2xl font-bold text-gray-900">
-                      {totalSizeLabel}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">Total Size</p>
-                  </div>
-                  <div className="bg-gray-50 rounded-lg p-4 text-center">
-                    <p className="text-2xl font-bold text-gray-900">
-                      {issuesFoundLabel}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">Issues Found</p>
-                  </div>
-                  <div className="bg-gray-50 rounded-lg p-4 text-center">
-                    <p className="text-2xl font-bold text-gray-900">
-                      {totalLinesLabel}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">Lines of Code</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-white border border-gray-200">
-              <CardHeader className="border-b border-gray-200">
-                <CardTitle className="text-xl font-bold text-gray-900">
-                  Top 5 Languages
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6">
-                {topLanguages.length === 0 ? (
-                  <p className="text-sm text-gray-500">No language data available for this project.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {topLanguages.map((lang) => (
-                      <div key={lang.name} className="flex items-center gap-3">
-                        <span className="text-sm text-gray-900 w-28 font-medium">
-                          {lang.name}
-                        </span>
-                        <div className="flex-1 bg-gray-100 rounded-full h-2.5">
-                          <div
-                            className="bg-gray-900 h-2.5 rounded-full"
-                            style={{ width: `${lang.percentage}%` }}
-                          />
-                        </div>
-                        <span className="text-sm text-gray-500 w-14 text-right">
-                          {lang.percentage}%
-                        </span>
+              {/* Overview Main - Project Info & Stats */}
+              <TabsContent value="overview-main" className="space-y-6">
+                <Card className="bg-white border border-gray-200">
+                  <CardHeader className="border-b border-gray-200">
+                    <CardTitle className="text-xl font-bold text-gray-900">
+                      Project Information
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Project Name
+                        </p>
+                        <p className="text-sm font-semibold text-gray-900 mt-1">
+                          {projectName}
+                        </p>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <Card className="bg-white border border-gray-200">
-                <CardHeader className="border-b border-gray-200">
-                  <CardTitle className="text-base font-bold text-gray-900">
-                    Git Repositories
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-6">
-                  <p className="text-3xl font-bold text-gray-900">{gitRepos}</p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Repositories detected
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-white border border-gray-200">
-                <CardHeader className="border-b border-gray-200">
-                  <CardTitle className="text-base font-bold text-gray-900">
-                    Media Files
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-6">
-                  <p className="text-3xl font-bold text-gray-900">{mediaFiles}</p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Images, videos, and audio
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-white border border-gray-200">
-                <CardHeader className="border-b border-gray-200">
-                  <CardTitle className="text-base font-bold text-gray-900">
-                    Documents
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-6">
-                  <div className="flex gap-6">
-                    <div>
-                      <p className="text-3xl font-bold text-gray-900">{pdfDocs}</p>
-                      <p className="text-xs text-gray-500 mt-1">PDF files</p>
+                      <div>
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Path
+                        </p>
+                        <p className="text-sm font-mono text-gray-900 mt-1">
+                          {projectPath}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Scan Timestamp
+                        </p>
+                        <p className="text-sm text-gray-900 mt-1">{scanTimestamp}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Scan Duration
+                        </p>
+                        <p className="text-sm text-gray-900 mt-1">{scanDurationLabel}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-3xl font-bold text-gray-900">{otherDocs}</p>
-                      <p className="text-xs text-gray-500 mt-1">Other docs</p>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-white border border-gray-200">
+                  <CardHeader className="border-b border-gray-200">
+                    <CardTitle className="text-xl font-bold text-gray-900">
+                      Summary Statistics
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                      <div className="bg-gray-50 rounded-lg p-4 text-center">
+                        <p className="text-2xl font-bold text-gray-900">
+                          {filesProcessedLabel}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">Files Processed</p>
+                      </div>
+                      <div className="bg-gray-50 rounded-lg p-4 text-center">
+                        <p className="text-2xl font-bold text-gray-900">
+                          {totalSizeLabel}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">Total Size</p>
+                      </div>
+                      <div className="bg-gray-50 rounded-lg p-4 text-center">
+                        <p className="text-2xl font-bold text-gray-900">
+                          {issuesFoundLabel}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">Issues Found</p>
+                      </div>
+                      <div className="bg-gray-50 rounded-lg p-4 text-center">
+                        <p className="text-2xl font-bold text-gray-900">
+                          {totalLinesLabel}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">Lines of Code</p>
+                      </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </TabsContent>
+                  </CardContent>
+                </Card>
 
-        {/* Document Analysis */}
-        <TabsContent value="doc-analysis">
-          <DocumentAnalysisTab
-            documentAnalysis={scanData.document_analysis}
-            isLoading={projectLoading}
-            errorMessage={projectError}
-          />
-        </TabsContent>
+                <Card className="bg-white border border-gray-200">
+                  <CardHeader className="border-b border-gray-200">
+                    <CardTitle className="text-xl font-bold text-gray-900">
+                      Top 5 Languages
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    {topLanguages.length === 0 ? (
+                      <p className="text-sm text-gray-500">No language data available for this project.</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {topLanguages.map((lang) => (
+                          <div key={lang.name} className="flex items-center gap-3">
+                            <span className="text-sm text-gray-900 w-28 font-medium">
+                              {lang.name}
+                            </span>
+                            <div className="flex-1 bg-gray-100 rounded-full h-2.5">
+                              <div
+                                className="bg-gray-900 h-2.5 rounded-full"
+                                style={{ width: `${lang.percentage}%` }}
+                              />
+                            </div>
+                            <span className="text-sm text-gray-500 w-14 text-right">
+                              {lang.percentage}%
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
 
-        {/* Media Analysis */}
-        <TabsContent value="media-analysis">
-          <MediaAnalysisTab
-            loading={projectLoading}
-            error={projectError}
-            mediaAnalysis={mediaAnalysis}
-            onRetry={loadProject}
-          />
-        </TabsContent>
-
-        {/* Skills Progress */}
-        <TabsContent value="skills-progress">
-          <div className="space-y-6">
-            <Card className="bg-white border border-gray-200">
-              <CardHeader className="border-b border-gray-200">
-                <CardTitle className="text-xl font-bold text-gray-900">
-                  Skill progression timeline
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6 space-y-4">
-                {skillsLoading && (
-                  <p className="text-sm text-gray-500">
-                    Loading skill progression…
-                  </p>
-                )}
-                {!skillsLoading && skillsTimeline.length === 0 && (
-                  <p className="text-sm text-gray-500">
-                    {skillsNote || "No skill progression timeline available yet."}
-                  </p>
-                )}
-
-                {skillsTimeline.length > 0 && (
-                  <div className="space-y-4">
-                    <div className="flex flex-wrap gap-2">
-                      {topSkills.length > 0 ? (
-                        topSkills.map(([skill, count]) => (
-                          <span
-                            key={skill}
-                            className="px-3 py-1 rounded-full bg-gray-900 text-white text-xs font-semibold"
-                          >
-                            {skill} · {count}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-xs text-gray-400">
-                          No top skills yet.
-                        </span>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <Card className="bg-white border border-gray-200">
+                    <CardHeader className="border-b border-gray-200">
+                      <CardTitle className="text-base font-bold text-gray-900 flex items-center gap-2">
+                        <GitBranch size={16} />
+                        Git Repositories
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-6">
+                      <p className="text-3xl font-bold text-gray-900">{gitRepos}</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {gitRepos === 1 ? "Repository" : "Repositories"} detected
+                      </p>
+                      {scanData.contribution_metrics?.total_commits != null && (
+                        <div className="mt-3 pt-3 border-t border-gray-100 text-sm text-gray-600">
+                          <span className="font-medium">{scanData.contribution_metrics.total_commits}</span> commits
+                          {scanData.contribution_metrics.total_contributors != null && (
+                            <span> · <span className="font-medium">{scanData.contribution_metrics.total_contributors}</span> {scanData.contribution_metrics.total_contributors === 1 ? "contributor" : "contributors"}</span>
+                          )}
+                        </div>
                       )}
-                    </div>
+                    </CardContent>
+                  </Card>
 
-                    <div className="grid gap-4">
-                      {skillsTimeline.map((period) => (
-                        <div
-                          key={period.period_label}
-                          className="rounded-xl border border-gray-200 p-4"
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-3">
-                            <div>
-                              <h4 className="text-base font-semibold text-gray-900">
-                                {formatPeriodLabel(period.period_label)}
-                              </h4>
-                              <p className="text-xs text-gray-500">
-                                {period.period_label}
-                              </p>
+                  <Card className="bg-white border border-gray-200">
+                    <CardHeader className="border-b border-gray-200">
+                      <CardTitle className="text-base font-bold text-gray-900">
+                        Media Files
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-6">
+                      <p className="text-3xl font-bold text-gray-900">{mediaFiles}</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Images, videos, and audio
+                      </p>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-white border border-gray-200">
+                    <CardHeader className="border-b border-gray-200">
+                      <CardTitle className="text-base font-bold text-gray-900">
+                        Documents
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-6">
+                      <div className="flex gap-6">
+                        <div>
+                          <p className="text-3xl font-bold text-gray-900">{pdfDocs}</p>
+                          <p className="text-xs text-gray-500 mt-1">PDF files</p>
+                        </div>
+                        <div>
+                          <p className="text-3xl font-bold text-gray-900">{otherDocs}</p>
+                          <p className="text-xs text-gray-500 mt-1">Other docs</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </TabsContent>
+
+              {/* Languages Breakdown */}
+              <TabsContent value="languages">
+                <Card className="bg-white border border-gray-200">
+                  <CardHeader className="border-b border-gray-200">
+                    <CardTitle className="text-xl font-bold text-gray-900">
+                      Language Breakdown
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    {topLanguages.length === 0 ? (
+                      <p className="text-sm text-gray-500">
+                        No language data available for this project.
+                      </p>
+                    ) : (
+                      <div className="space-y-4">
+                        {topLanguages.map((lang) => (
+                          <div key={lang.name} className="space-y-1">
+                            <div className="flex justify-between text-sm">
+                              <span className="font-medium text-gray-900">{lang.name}</span>
+                              <span className="text-gray-500">{lang.percentage}%</span>
                             </div>
-                            <div className="flex flex-wrap gap-2 text-xs font-semibold">
-                              <span className="px-2.5 py-1 rounded-full bg-gray-900 text-white">
-                                {period.commits} commits
-                              </span>
-                              <span className="px-2.5 py-1 rounded-full bg-gray-100 text-gray-700">
-                                {period.skill_count} skills
-                              </span>
-                              <span className="px-2.5 py-1 rounded-full bg-gray-100 text-gray-700">
-                                {period.tests_changed} tests
-                              </span>
-                              <span className="px-2.5 py-1 rounded-full bg-gray-100 text-gray-700">
-                                {period.contributors} contributors
-                              </span>
+                            <div className="w-full bg-gray-100 rounded-full h-2">
+                              <div
+                                className="bg-gray-900 h-2 rounded-full transition-all"
+                                style={{ width: `${lang.percentage}%` }}
+                              />
                             </div>
                           </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
 
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {period.activity_types.length > 0 ? (
-                              period.activity_types.map((type) => (
-                                <span
-                                  key={type}
-                                  className="px-2.5 py-1 rounded-full bg-gray-50 text-gray-600 text-xs font-semibold border border-gray-200"
-                                >
-                                  {type}
-                                </span>
-                              ))
-                            ) : (
-                              <span className="text-xs text-gray-400">
-                                No activity labels
-                              </span>
-                            )}
+              {/* Code Analysis */}
+              <TabsContent value="code-analysis">
+                <Card className="bg-white border border-gray-200">
+                  <CardHeader className="border-b border-gray-200">
+                    <CardTitle className="text-xl font-bold text-gray-900">
+                      Code Analysis
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    {!scanData.code_analysis || scanData.code_analysis.success === false ? (
+                      <p className="text-sm text-gray-500">
+                        No code analysis data available for this project.
+                      </p>
+                    ) : (
+                      <div className="space-y-6">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          <div className="bg-gray-50 rounded-lg p-4 text-center">
+                            <p className="text-2xl font-bold text-gray-900">
+                              {scanData.code_analysis.total_files ?? 0}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">Files Analyzed</p>
                           </div>
+                          <div className="bg-gray-50 rounded-lg p-4 text-center">
+                            <p className="text-2xl font-bold text-gray-900">
+                              {Object.keys(scanData.code_analysis.languages ?? {}).length}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">Languages</p>
+                          </div>
+                          <div className="bg-gray-50 rounded-lg p-4 text-center">
+                            <p className="text-2xl font-bold text-gray-900">
+                              {scanData.code_analysis.metrics?.total_lines?.toLocaleString() ?? "—"}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">Total Lines</p>
+                          </div>
+                          <div className="bg-gray-50 rounded-lg p-4 text-center">
+                            <p className="text-2xl font-bold text-gray-900">
+                              {scanData.code_analysis.quality?.avg_maintainability?.toFixed(0) ?? "—"}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">Maintainability</p>
+                          </div>
+                        </div>
 
-                          <div className="mt-4 grid gap-4 md:grid-cols-2">
-                            <div>
-                              <p className="text-xs font-semibold text-gray-500 uppercase">
-                                Top skills
-                              </p>
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                {period.top_skills.length > 0 ? (
-                                  period.top_skills.map((skill) => (
+                        {scanData.code_analysis.refactor_candidates && 
+                         scanData.code_analysis.refactor_candidates.length > 0 && (
+                          <div>
+                            <h4 className="text-sm font-semibold text-gray-900 mb-3">
+                              Refactor Candidates ({scanData.code_analysis.refactor_candidates.length})
+                            </h4>
+                            <div className="space-y-2">
+                              {scanData.code_analysis.refactor_candidates.slice(0, 5).map((candidate: { path: string; reason?: string }, idx: number) => (
+                                <div key={idx} className="flex items-start gap-2 text-sm">
+                                  <Code2 size={14} className="text-gray-400 mt-0.5 flex-shrink-0" />
+                                  <div>
+                                    <span className="font-mono text-gray-900">{candidate.path}</span>
+                                    {candidate.reason && (
+                                      <span className="text-gray-500 ml-2">— {candidate.reason}</span>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
+          </TabsContent>
+
+          {/* ============================================
+              TAB 2: SKILLS & PROGRESS
+          ============================================ */}
+          <TabsContent value="skills">
+            <Tabs defaultValue="skills-main" className="space-y-6">
+              <TabsList className="flex justify-start gap-1 h-auto bg-transparent p-0 border-b border-gray-200 rounded-none">
+                {skillsSubTabs.map((tab) => {
+                  const Icon = tab.icon;
+                  return (
+                    <TabsTrigger
+                      key={tab.value}
+                      value={tab.value}
+                      className="text-xs px-4 py-2 rounded-t-lg rounded-b-none border-b-2 border-transparent data-[state=active]:border-gray-900 data-[state=active]:bg-white"
+                    >
+                      <Icon size={14} className="mr-1.5" />
+                      {tab.label}
+                    </TabsTrigger>
+                  );
+                })}
+              </TabsList>
+
+              {/* Skills Main */}
+              <TabsContent value="skills-main" className="space-y-6">
+                <Card className="bg-white border border-gray-200">
+                  <CardHeader className="border-b border-gray-200">
+                    <CardTitle className="text-xl font-bold text-gray-900">
+                      Skills Analysis
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-6 space-y-4">
+                    {skillsAnalysis.success === false && (
+                      <p className="text-sm text-gray-500">
+                        Skills analysis did not complete for this scan.
+                      </p>
+                    )}
+
+                    {skillsAnalysis.success !== false &&
+                      Object.keys(skillsByCategory).length === 0 && (
+                        <p className="text-sm text-gray-500">
+                          No skills analysis available yet. Run a scan with skills extraction enabled.
+                        </p>
+                      )}
+
+                    {Object.keys(skillsByCategory).length > 0 && (
+                      <div className="space-y-6">
+                        <div className="flex flex-wrap gap-3">
+                          <span className="px-3 py-1 rounded-full bg-gray-900 text-white text-xs font-semibold">
+                            Total skills · {totalSkills}
+                          </span>
+                          <span className="px-3 py-1 rounded-full bg-gray-100 text-gray-700 text-xs font-semibold">
+                            Categories · {Object.keys(skillsByCategory).length}
+                          </span>
+                        </div>
+
+                        {Object.entries(skillsByCategory).map(([category, skills]) => (
+                          <div key={category} className="border border-gray-200 rounded-lg p-4">
+                            <p className="text-xs font-semibold text-gray-500 uppercase">
+                              {category.replace(/_/g, " ")}
+                            </p>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {(skills as Array<{ name: string; proficiency?: string }>).map(
+                                (skill) => (
+                                  <span
+                                    key={`${category}-${skill.name}`}
+                                    className="px-3 py-1 rounded-full bg-gray-900 text-white text-xs"
+                                  >
+                                    {skill.name}
+                                    {skill.proficiency ? ` · ${formatConfidence(skill.proficiency)}` : ""}
+                                  </span>
+                                )
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* Skills Progress */}
+              <TabsContent value="progress" className="space-y-6">
+                <Card className="bg-white border border-gray-200">
+                  <CardHeader className="border-b border-gray-200">
+                    <CardTitle className="text-xl font-bold text-gray-900">
+                      Skill Progression Timeline
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-6 space-y-4">
+                    {skillsLoading && (
+                      <p className="text-sm text-gray-500">
+                        Loading skill progression…
+                      </p>
+                    )}
+                    {!skillsLoading && skillsTimeline.length === 0 && (
+                      <p className="text-sm text-gray-500">
+                        {skillsNote || "No skill progression timeline available yet."}
+                      </p>
+                    )}
+
+                    {skillsTimeline.length > 0 && (
+                      <div className="space-y-4">
+                        <div className="flex flex-wrap gap-2">
+                          {topSkills.length > 0 ? (
+                            topSkills.map(([skill, count]) => (
+                              <span
+                                key={skill}
+                                className="px-3 py-1 rounded-full bg-gray-900 text-white text-xs font-semibold"
+                              >
+                                {skill} · {count}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-xs text-gray-400">
+                              No top skills yet.
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="grid gap-4">
+                          {skillsTimeline.map((period) => (
+                            <div
+                              key={period.period_label}
+                              className="rounded-xl border border-gray-200 p-4"
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                  <h4 className="text-base font-semibold text-gray-900">
+                                    {formatPeriodLabel(period.period_label)}
+                                  </h4>
+                                  <p className="text-xs text-gray-500">
+                                    {period.period_label}
+                                  </p>
+                                </div>
+                                <div className="flex flex-wrap gap-2 text-xs font-semibold">
+                                  <span className="px-2.5 py-1 rounded-full bg-gray-900 text-white">
+                                    {period.commits} commits
+                                  </span>
+                                  <span className="px-2.5 py-1 rounded-full bg-gray-100 text-gray-700">
+                                    {period.skill_count} skills
+                                  </span>
+                                  <span className="px-2.5 py-1 rounded-full bg-gray-100 text-gray-700">
+                                    {period.tests_changed} tests
+                                  </span>
+                                  <span className="px-2.5 py-1 rounded-full bg-gray-100 text-gray-700">
+                                    {period.contributors} contributors
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {period.activity_types.length > 0 ? (
+                                  period.activity_types.map((type) => (
                                     <span
-                                      key={skill}
-                                      className="px-2.5 py-1 rounded-full bg-gray-900 text-white text-xs"
+                                      key={type}
+                                      className="px-2.5 py-1 rounded-full bg-gray-50 text-gray-600 text-xs font-semibold border border-gray-200"
                                     >
-                                      {skill}
+                                      {type}
                                     </span>
                                   ))
                                 ) : (
                                   <span className="text-xs text-gray-400">
-                                    No skills recorded
+                                    No activity labels
                                   </span>
                                 )}
                               </div>
-                            </div>
 
-                            <div>
-                              <p className="text-xs font-semibold text-gray-500 uppercase">
-                                Languages
-                              </p>
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                {Object.keys(period.period_languages).length > 0 ? (
-                                  Object.entries(period.period_languages).map(
-                                    ([lang, count]) => (
-                                      <span
-                                        key={lang}
-                                        className="px-2.5 py-1 rounded-full bg-gray-100 text-gray-700 text-xs"
-                                      >
-                                        {lang} · {count}
+                              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                                <div>
+                                  <p className="text-xs font-semibold text-gray-500 uppercase">
+                                    Top skills
+                                  </p>
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    {period.top_skills.length > 0 ? (
+                                      period.top_skills.map((skill) => (
+                                        <span
+                                          key={skill}
+                                          className="px-2.5 py-1 rounded-full bg-gray-900 text-white text-xs"
+                                        >
+                                          {skill}
+                                        </span>
+                                      ))
+                                    ) : (
+                                      <span className="text-xs text-gray-400">
+                                        No skills recorded
                                       </span>
-                                    )
-                                  )
-                                ) : (
-                                  <span className="text-xs text-gray-400">
-                                    No language data
-                                  </span>
-                                )}
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div>
+                                  <p className="text-xs font-semibold text-gray-500 uppercase">
+                                    Languages
+                                  </p>
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    {Object.keys(period.period_languages).length > 0 ? (
+                                      Object.entries(period.period_languages).map(
+                                        ([lang, count]) => (
+                                          <span
+                                            key={lang}
+                                            className="px-2.5 py-1 rounded-full bg-gray-100 text-gray-700 text-xs"
+                                          >
+                                            {lang} · {count}
+                                          </span>
+                                        )
+                                      )
+                                    ) : (
+                                      <span className="text-xs text-gray-400">
+                                        No language data
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                                <div>
+                                  <p className="text-xs font-semibold text-gray-500 uppercase">
+                                    Recent commits
+                                  </p>
+                                  <ul className="mt-2 space-y-1 text-sm text-gray-700">
+                                    {period.commit_messages
+                                      .slice(0, 4)
+                                      .map((msg, index) => (
+                                        <li
+                                          key={`${period.period_label}-commit-${index}`}
+                                          className="truncate"
+                                        >
+                                          {msg}
+                                        </li>
+                                      ))}
+                                    {period.commit_messages.length === 0 && (
+                                      <li className="text-xs text-gray-400">
+                                        No commit messages recorded.
+                                      </li>
+                                    )}
+                                  </ul>
+                                </div>
+
+                                <div>
+                                  <p className="text-xs font-semibold text-gray-500 uppercase">
+                                    Files touched
+                                  </p>
+                                  <ul className="mt-2 space-y-1 text-sm text-gray-700">
+                                    {period.top_files.slice(0, 4).map((file, index) => (
+                                      <li
+                                        key={`${period.period_label}-file-${index}`}
+                                        className="truncate"
+                                      >
+                                        {file}
+                                      </li>
+                                    ))}
+                                    {period.top_files.length === 0 && (
+                                      <li className="text-xs text-gray-400">
+                                        No file highlights recorded.
+                                      </li>
+                                    )}
+                                  </ul>
+                                </div>
                               </div>
                             </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-white border border-gray-200">
+                  <CardHeader className="border-b border-gray-200 flex flex-row items-center justify-between">
+                    <div>
+                      <CardTitle className="text-xl font-bold text-gray-900">
+                        AI Summary
+                      </CardTitle>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Summarize skill growth from the timeline.
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleGenerateSummary}
+                      disabled={summaryLoading}
+                      className="px-3 py-2 text-xs font-semibold rounded-md bg-gray-900 text-white disabled:opacity-60"
+                    >
+                      {summaryLoading
+                        ? "Generating…"
+                        : skillsSummary
+                        ? "Regenerate"
+                        : "Generate"}
+                    </button>
+                  </CardHeader>
+                  <CardContent className="p-6 space-y-4">
+                    {skillsNote && <p className="text-sm text-gray-500">{skillsNote}</p>}
+                    {skillsSummary && (
+                      <div className="space-y-4">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-700">Overview</p>
+                          <p className="text-sm text-gray-700 mt-1">
+                            {skillsSummary.overview}
+                          </p>
+                          {skillsSummary.validation_warning && (
+                            <p className="text-xs text-amber-600 mt-2">
+                              {skillsSummary.validation_warning}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <div>
+                            <p className="text-sm font-semibold text-gray-700">
+                              Timeline highlights
+                            </p>
+                            <ul className="mt-2 space-y-1 text-sm text-gray-700 list-disc list-inside">
+                              {skillsSummary.timeline.map((item, index) => (
+                                <li key={`timeline-${index}`}>{item}</li>
+                              ))}
+                              {skillsSummary.timeline.length === 0 && (
+                                <li className="text-xs text-gray-400">
+                                  No timeline highlights.
+                                </li>
+                              )}
+                            </ul>
                           </div>
 
-                          <div className="mt-4 grid gap-4 md:grid-cols-2">
-                            <div>
-                              <p className="text-xs font-semibold text-gray-500 uppercase">
-                                Recent commits
-                              </p>
-                              <ul className="mt-2 space-y-1 text-sm text-gray-700">
-                                {period.commit_messages
-                                  .slice(0, 4)
-                                  .map((msg, index) => (
-                                    <li
-                                      key={`${period.period_label}-commit-${index}`}
-                                      className="truncate"
-                                    >
-                                      {msg}
-                                    </li>
-                                  ))}
-                                {period.commit_messages.length === 0 && (
-                                  <li className="text-xs text-gray-400">
-                                    No commit messages recorded.
-                                  </li>
-                                )}
-                              </ul>
-                            </div>
-
-                            <div>
-                              <p className="text-xs font-semibold text-gray-500 uppercase">
-                                Files touched
-                              </p>
-                              <ul className="mt-2 space-y-1 text-sm text-gray-700">
-                                {period.top_files.slice(0, 4).map((file, index) => (
-                                  <li
-                                    key={`${period.period_label}-file-${index}`}
-                                    className="truncate"
-                                  >
-                                    {file}
-                                  </li>
-                                ))}
-                                {period.top_files.length === 0 && (
-                                  <li className="text-xs text-gray-400">
-                                    No file highlights recorded.
-                                  </li>
-                                )}
-                              </ul>
-                            </div>
+                          <div>
+                            <p className="text-sm font-semibold text-gray-700">
+                              Skills focus
+                            </p>
+                            <ul className="mt-2 space-y-1 text-sm text-gray-700 list-disc list-inside">
+                              {skillsSummary.skills_focus.map((item, index) => (
+                                <li key={`skills-${index}`}>{item}</li>
+                              ))}
+                              {skillsSummary.skills_focus.length === 0 && (
+                                <li className="text-xs text-gray-400">
+                                  No skill focus notes.
+                                </li>
+                              )}
+                            </ul>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
 
-            <Card className="bg-white border border-gray-200">
-              <CardHeader className="border-b border-gray-200 flex flex-row items-center justify-between">
-                <div>
-                  <CardTitle className="text-xl font-bold text-gray-900">
-                    AI summary
-                  </CardTitle>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Summarize skill growth from the timeline.
-                  </p>
-                </div>
-                <button
-                  onClick={handleGenerateSummary}
-                  disabled={summaryLoading}
-                  className="px-3 py-2 text-xs font-semibold rounded-md bg-gray-900 text-white disabled:opacity-60"
-                >
-                  {summaryLoading
-                    ? "Generating…"
-                    : skillsSummary
-                    ? "Regenerate"
-                    : "Generate"}
-                </button>
-              </CardHeader>
-              <CardContent className="p-6 space-y-4">
-                {skillsNote && <p className="text-sm text-gray-500">{skillsNote}</p>}
-                {skillsSummary && (
-                  <div className="space-y-4">
-                    <div>
-                      <p className="text-sm font-semibold text-gray-700">Overview</p>
-                      <p className="text-sm text-gray-700 mt-1">
-                        {skillsSummary.overview}
-                      </p>
-                      {skillsSummary.validation_warning && (
-                        <p className="text-xs text-amber-600 mt-2">
-                          {skillsSummary.validation_warning}
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div>
-                        <p className="text-sm font-semibold text-gray-700">
-                          Timeline highlights
-                        </p>
-                        <ul className="mt-2 space-y-1 text-sm text-gray-700 list-disc list-inside">
-                          {skillsSummary.timeline.map((item, index) => (
-                            <li key={`timeline-${index}`}>{item}</li>
-                          ))}
-                          {skillsSummary.timeline.length === 0 && (
-                            <li className="text-xs text-gray-400">
-                              No timeline highlights.
-                            </li>
-                          )}
-                        </ul>
+                        <div>
+                          <p className="text-sm font-semibold text-gray-700">
+                            Suggested next steps
+                          </p>
+                          <ul className="mt-2 space-y-1 text-sm text-gray-700 list-disc list-inside">
+                            {skillsSummary.suggested_next_steps.map((item, index) => (
+                              <li key={`steps-${index}`}>{item}</li>
+                            ))}
+                            {skillsSummary.suggested_next_steps.length === 0 && (
+                              <li className="text-xs text-gray-400">
+                                No suggestions yet.
+                              </li>
+                            )}
+                          </ul>
+                        </div>
                       </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
 
-                      <div>
-                        <p className="text-sm font-semibold text-gray-700">
-                          Skills focus
-                        </p>
-                        <ul className="mt-2 space-y-1 text-sm text-gray-700 list-disc list-inside">
-                          {skillsSummary.skills_focus.map((item, index) => (
-                            <li key={`skills-${index}`}>{item}</li>
-                          ))}
-                          {skillsSummary.skills_focus.length === 0 && (
-                            <li className="text-xs text-gray-400">
-                              No skill focus notes.
-                            </li>
-                          )}
-                        </ul>
-                      </div>
-                    </div>
-
-                    <div>
-                      <p className="text-sm font-semibold text-gray-700">
-                        Suggested next steps
+              {/* Contributions */}
+              <TabsContent value="contributions">
+                <Card className="bg-white border border-gray-200">
+                  <CardHeader className="border-b border-gray-200">
+                    <CardTitle className="text-xl font-bold text-gray-900">
+                      Contribution Metrics
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    {!scanData.contribution_metrics ? (
+                      <p className="text-sm text-gray-500">
+                        No contribution data available for this project.
                       </p>
-                      <ul className="mt-2 space-y-1 text-sm text-gray-700 list-disc list-inside">
-                        {skillsSummary.suggested_next_steps.map((item, index) => (
-                          <li key={`steps-${index}`}>{item}</li>
-                        ))}
-                        {skillsSummary.suggested_next_steps.length === 0 && (
-                          <li className="text-xs text-gray-400">
-                            No suggestions yet.
-                          </li>
+                    ) : (
+                      <div className="space-y-6">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          <div className="bg-gray-50 rounded-lg p-4 text-center">
+                            <p className="text-2xl font-bold text-gray-900 capitalize">
+                              {scanData.contribution_metrics.project_type ?? "Unknown"}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">Project Type</p>
+                          </div>
+                          <div className="bg-gray-50 rounded-lg p-4 text-center">
+                            <p className="text-2xl font-bold text-gray-900">
+                              {scanData.contribution_metrics.total_commits ?? 0}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">Total Commits</p>
+                          </div>
+                          <div className="bg-gray-50 rounded-lg p-4 text-center">
+                            <p className="text-2xl font-bold text-gray-900">
+                              {scanData.contribution_metrics.total_contributors ?? 1}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">Contributors</p>
+                          </div>
+                          <div className="bg-gray-50 rounded-lg p-4 text-center">
+                            <p className="text-2xl font-bold text-gray-900">
+                              {scanData.contribution_metrics.user_commit_share != null
+                                ? `${(scanData.contribution_metrics.user_commit_share * 100).toFixed(0)}%`
+                                : "—"}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">Your Share</p>
+                          </div>
+                        </div>
+
+                        {scanData.contribution_metrics.contributors && 
+                         scanData.contribution_metrics.contributors.length > 0 && (
+                          <div>
+                            <h4 className="text-sm font-semibold text-gray-900 mb-3">
+                              Top Contributors
+                            </h4>
+                            <div className="space-y-3">
+                              {scanData.contribution_metrics.contributors.slice(0, 5).map((contributor: { name: string; commits: number; commit_percentage?: number }, idx: number) => (
+                                <div key={idx} className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <Users size={14} className="text-gray-400" />
+                                    <span className="text-sm font-medium text-gray-900">{contributor.name}</span>
+                                  </div>
+                                  <div className="text-sm text-gray-500">
+                                    {contributor.commits} commits
+                                    {contributor.commit_percentage != null && (
+                                      <span className="ml-2 text-gray-400">
+                                        ({contributor.commit_percentage.toFixed(0)}%)
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
                         )}
-                      </ul>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
 
-        {/* Skills */}
-        <TabsContent value="skills">
-          <div className="space-y-6">
-            <Card className="bg-white border border-gray-200">
-              <CardHeader className="border-b border-gray-200">
-                <CardTitle className="text-xl font-bold text-gray-900">
-                  Skills analysis
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6 space-y-4">
-                {skillsAnalysis.success === false && (
-                  <p className="text-sm text-gray-500">
-                    Skills analysis did not complete for this scan.
-                  </p>
-                )}
-
-                {skillsAnalysis.success !== false &&
-                  Object.keys(skillsByCategory).length === 0 && (
-                    <p className="text-sm text-gray-500">
-                      No skills analysis available yet. Run a scan with skills extraction enabled.
-                    </p>
-                  )}
-
-                {Object.keys(skillsByCategory).length > 0 && (
-                  <div className="space-y-6">
-                    <div className="flex flex-wrap gap-3">
-                      <span className="px-3 py-1 rounded-full bg-gray-900 text-white text-xs font-semibold">
-                        Total skills · {totalSkills}
-                      </span>
-                      <span className="px-3 py-1 rounded-full bg-gray-100 text-gray-700 text-xs font-semibold">
-                        Categories · {Object.keys(skillsByCategory).length}
-                      </span>
-                    </div>
-
-                    {Object.entries(skillsByCategory).map(([category, skills]) => (
-                      <div key={category} className="border border-gray-200 rounded-lg p-4">
-                        <p className="text-xs font-semibold text-gray-500 uppercase">
-                          {category.replace(/_/g, " ")}
-                        </p>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {(skills as Array<{ name: string; proficiency?: string }>).map(
-                            (skill) => (
-                              <span
-                                key={`${category}-${skill.name}`}
-                                className="px-3 py-1 rounded-full bg-gray-900 text-white text-xs"
-                              >
-                                {skill.name}
-                                {skill.proficiency ? ` · ${formatConfidence(skill.proficiency)}` : ""}
-                              </span>
-                            )
-                          )}
-                        </div>
+                        {scanData.contribution_metrics.project_start_date && (
+                          <div className="pt-4 border-t border-gray-200">
+                            <div className="flex gap-8 text-sm">
+                              <div>
+                                <span className="text-gray-500">Started:</span>{" "}
+                                <span className="text-gray-900">
+                                  {new Date(scanData.contribution_metrics.project_start_date).toLocaleDateString()}
+                                </span>
+                              </div>
+                              {scanData.contribution_metrics.project_end_date && (
+                                <div>
+                                  <span className="text-gray-500">Last activity:</span>{" "}
+                                  <span className="text-gray-900">
+                                    {new Date(scanData.contribution_metrics.project_end_date).toLocaleDateString()}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
+          </TabsContent>
 
-        {/* Remaining placeholders (exclude tabs we rendered above) */}
-        {tabs
-          .filter(
-            (tab) =>
-              ![
-                "overview",
-                "doc-analysis",
-                "media-analysis",
-                "skills-progress",
-                "skills",
-              ].includes(tab.value)
-          )
-          .map((tab) => (
-            <TabsContent key={tab.value} value={tab.value}>
-              <PlaceholderContent label={tab.label} />
-            </TabsContent>
-          ))}
-      </Tabs>
+          {/* ============================================
+              TAB 3: CONTENT ANALYSIS
+          ============================================ */}
+          <TabsContent value="content">
+            <Tabs defaultValue="documents" className="space-y-6">
+              <TabsList className="flex justify-start gap-1 h-auto bg-transparent p-0 border-b border-gray-200 rounded-none">
+                {contentSubTabs.map((tab) => {
+                  const Icon = tab.icon;
+                  return (
+                    <TabsTrigger
+                      key={tab.value}
+                      value={tab.value}
+                      className="text-xs px-4 py-2 rounded-t-lg rounded-b-none border-b-2 border-transparent data-[state=active]:border-gray-900 data-[state=active]:bg-white"
+                    >
+                      <Icon size={14} className="mr-1.5" />
+                      {tab.label}
+                    </TabsTrigger>
+                  );
+                })}
+              </TabsList>
+
+              {/* Documents */}
+              <TabsContent value="documents">
+                <DocumentAnalysisTab
+                  documentAnalysis={scanData.document_analysis}
+                  isLoading={projectLoading}
+                  errorMessage={projectError}
+                />
+              </TabsContent>
+
+              {/* Media */}
+              <TabsContent value="media">
+                <MediaAnalysisTab
+                  loading={projectLoading}
+                  error={projectError}
+                  mediaAnalysis={mediaAnalysis}
+                  onRetry={loadProject}
+                />
+              </TabsContent>
+
+              {/* PDFs Placeholder */}
+              <TabsContent value="pdfs">
+                <PlaceholderContent label="PDF Analysis" />
+              </TabsContent>
+            </Tabs>
+          </TabsContent>
+
+          {/* ============================================
+              TAB 4: TOOLS & EXPORT
+          ============================================ */}
+          <TabsContent value="tools">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {/* File Browser */}
+              <Card className="bg-white border border-gray-200">
+                <CardHeader className="border-b border-gray-200">
+                  <CardTitle className="text-base font-bold text-gray-900 flex items-center gap-2">
+                    <FileText size={18} />
+                    File Browser
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-6">
+                  <p className="text-sm text-gray-500 mb-4">
+                    Browse and view all files in the project.
+                  </p>
+                  <PlaceholderContent label="File Browser" />
+                </CardContent>
+              </Card>
+
+              {/* Git Analysis */}
+              <Card className="bg-white border border-gray-200">
+                <CardHeader className="border-b border-gray-200">
+                  <CardTitle className="text-base font-bold text-gray-900 flex items-center gap-2">
+                    <GitBranch size={18} />
+                    Git Analysis
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-6">
+                  <p className="text-sm text-gray-500 mb-4">
+                    Analyze git history, branches, and commits.
+                  </p>
+                  <PlaceholderContent label="Git Analysis" />
+                </CardContent>
+              </Card>
+
+              {/* Duplicate Finder */}
+              <Card className="bg-white border border-gray-200">
+                <CardHeader className="border-b border-gray-200">
+                  <CardTitle className="text-base font-bold text-gray-900 flex items-center gap-2">
+                    <Copy size={18} />
+                    Duplicate Finder
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-6">
+                  <p className="text-sm text-gray-500 mb-4">
+                    Find and manage duplicate files across the project.
+                  </p>
+                  <PlaceholderContent label="Duplicate Finder" />
+                </CardContent>
+              </Card>
+
+              {/* Search & Filter */}
+              <Card className="bg-white border border-gray-200">
+                <CardHeader className="border-b border-gray-200">
+                  <CardTitle className="text-base font-bold text-gray-900 flex items-center gap-2">
+                    <Search size={18} />
+                    Search & Filter
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-6">
+                  <p className="text-sm text-gray-500 mb-4">
+                    Advanced search and filtering across all project files.
+                  </p>
+                  <PlaceholderContent label="Search & Filter" />
+                </CardContent>
+              </Card>
+
+              {/* Resume Generator */}
+              <Card className="bg-white border border-gray-200">
+                <CardHeader className="border-b border-gray-200">
+                  <CardTitle className="text-base font-bold text-gray-900 flex items-center gap-2">
+                    <FileEdit size={18} />
+                    Resume Generator
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-6">
+                  <p className="text-sm text-gray-500 mb-4">
+                    Generate resume items from project analysis.
+                  </p>
+                  <PlaceholderContent label="Resume Generator" />
+                </CardContent>
+              </Card>
+
+              {/* Export Options */}
+              <Card className="bg-white border border-gray-200">
+                <CardHeader className="border-b border-gray-200">
+                  <CardTitle className="text-base font-bold text-gray-900 flex items-center gap-2">
+                    <FileJson size={18} />
+                    Export Options
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-6 space-y-3">
+                  <p className="text-sm text-gray-500">
+                    Export project analysis in various formats.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      disabled
+                      className="px-3 py-2 text-xs font-semibold rounded-md bg-gray-100 text-gray-400 cursor-not-allowed flex items-center gap-1"
+                    >
+                      <FileJson size={14} />
+                      Export JSON
+                    </button>
+                    <button
+                      disabled
+                      className="px-3 py-2 text-xs font-semibold rounded-md bg-gray-100 text-gray-400 cursor-not-allowed flex items-center gap-1"
+                    >
+                      <FileCode2 size={14} />
+                      Export HTML
+                    </button>
+                    <button
+                      disabled
+                      className="px-3 py-2 text-xs font-semibold rounded-md bg-gray-100 text-gray-400 cursor-not-allowed flex items-center gap-1"
+                    >
+                      <Printer size={14} />
+                      Print
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-2">Export features coming soon.</p>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+        </Tabs>
       )}
     </div>
   );
