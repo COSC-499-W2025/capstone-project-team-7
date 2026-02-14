@@ -180,7 +180,7 @@ describe("ProjectPage — tab switching", () => {
 
 describe("ProjectPage — placeholder tabs", () => {
   const placeholderTabs = TAB_LABELS.filter(
-    (label) => !["Show Overview", "Skills Progression", "Skills Analysis"].includes(label)
+    (label) => !["Show Overview", "Skills Progression", "Skills Analysis", "Run Git Analysis"].includes(label)
   );
 
   it.each(placeholderTabs)(
@@ -197,6 +197,20 @@ describe("ProjectPage — placeholder tabs", () => {
       ).toBeInTheDocument();
     }
   );
+});
+
+describe("ProjectPage — git analysis tab", () => {
+  it("shows empty state message when no git analysis data", async () => {
+    const user = userEvent.setup();
+    render(<ProjectPage />);
+
+    const gitBtn = screen.getByText("Run Git Analysis").closest("button")!;
+    await user.click(gitBtn);
+
+    expect(
+      screen.getByText("No git analysis available yet.")
+    ).toBeInTheDocument();
+  });
 });
 
 describe("ProjectPage — skills analysis tab", () => {

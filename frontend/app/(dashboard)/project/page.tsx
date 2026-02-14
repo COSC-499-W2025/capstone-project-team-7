@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { DocumentAnalysisTab } from "@/components/project/document-analysis-tab";
+import { GitAnalysisTab } from "@/components/project/git-analysis-tab";
 import { getStoredToken } from "@/lib/auth";
 import {
   getProjects,
@@ -276,8 +277,9 @@ export default function ProjectPage() {
 
   const topLanguages = languageStats ?? overviewLanguages;
 
-  const gitRepos =
-    scanData.git_analysis?.repositories?.length ?? fallbackProject.gitRepos;
+  const gitRepos = Array.isArray(scanData.git_analysis)
+    ? scanData.git_analysis.length
+    : scanData.git_analysis?.repositories?.length ?? fallbackProject.gitRepos;
 
   const documentAnalysis = scanData.document_analysis;
   const otherDocs = Array.isArray(documentAnalysis)
@@ -553,6 +555,16 @@ export default function ProjectPage() {
             loading={projectLoading}
             error={projectError}
             mediaAnalysis={mediaAnalysis}
+            onRetry={loadProject}
+          />
+        </TabsContent>
+
+        {/* Git Analysis */}
+        <TabsContent value="git-analysis">
+          <GitAnalysisTab
+            loading={projectLoading}
+            error={projectError}
+            gitAnalysis={scanData.git_analysis}
             onRetry={loadProject}
           />
         </TabsContent>
@@ -909,6 +921,7 @@ export default function ProjectPage() {
                 "overview",
                 "doc-analysis",
                 "media-analysis",
+                "git-analysis",
                 "skills-progress",
                 "skills",
               ].includes(tab.value)
