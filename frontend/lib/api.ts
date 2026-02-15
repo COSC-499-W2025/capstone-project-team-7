@@ -119,6 +119,16 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ refresh_token: refreshToken })
       }),
+    requestPasswordReset: (email: string) =>
+      request<{ ok: boolean; message?: string }>("/api/auth/request-reset", {
+        method: "POST",
+        body: JSON.stringify({ email })
+      }),
+    resetPassword: (token: string, newPassword: string) =>
+      request<{ ok: boolean; message?: string }>("/api/auth/reset-password", {
+        method: "POST",
+        body: JSON.stringify({ token, new_password: newPassword })
+      }),
     saveConsent: (userId: string, serviceName: string, consentGiven: boolean, accessToken: string) =>
       request<{ success: boolean }>("/api/auth/consent", {
         method: "POST",
