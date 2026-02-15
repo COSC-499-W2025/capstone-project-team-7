@@ -25,7 +25,7 @@ from api.dependencies import AuthContext, get_auth_context
 
 try:
     from cli.services.projects_service import ProjectsService, ProjectsServiceError
-except ModuleNotFoundError:  # pragma: no cover - test/import fallback
+except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
     from backend.src.cli.services.projects_service import ProjectsService, ProjectsServiceError
 
 # Add parent directory to path for absolute imports (needed for lazy imports in background tasks)

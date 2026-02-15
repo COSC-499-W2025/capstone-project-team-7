@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar } from "@/components/ui/avatar";
 import { Label } from "@/components/ui/label";
+import { clearStoredToken, getStoredToken } from "@/lib/auth";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -20,8 +21,7 @@ function isElectron(): boolean {
 
 /** Read the auth token stored by the login flow. */
 function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("access_token");
+  return getStoredToken();
 }
 
 // ---------------------------------------------------------------------------
@@ -224,7 +224,7 @@ export default function ProfilePage() {
 
   // ---- logout ----
   const handleLogout = () => {
-    localStorage.removeItem("access_token");
+    clearStoredToken();
     localStorage.removeItem("refresh_token");
     localStorage.removeItem("user_id");
     localStorage.removeItem("email");

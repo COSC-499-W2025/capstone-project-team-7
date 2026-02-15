@@ -6,7 +6,7 @@ import os
 
 import httpx
 
-from ...auth.consent_validator import ConsentRecord
+from auth.consent_validator import ConsentRecord
 
 
 class ConsentAPIServiceError(Exception):

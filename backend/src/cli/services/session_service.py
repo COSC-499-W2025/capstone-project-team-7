@@ -6,8 +6,8 @@ import time
 from pathlib import Path
 from typing import Callable, Optional, Tuple
 
-from ...auth.consent_validator import ConsentError, ConsentRecord, ConsentValidator, ExternalServiceError
-from ...auth.session import Session
+from auth.consent_validator import ConsentError, ConsentRecord, ConsentValidator, ExternalServiceError
+from auth.session import Session
 
 
 NotifyFn = Callable[[str, str], None]
