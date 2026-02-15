@@ -1,7 +1,5 @@
-import type { ApiResult, ConsentStatus, ConsentNotice, ConsentUpdateRequest, ConfigResponse, ProfilesResponse, ProfileUpsertRequest, ConfigUpdateRequest } from "./api.types";
+import type { ApiResult, ConsentStatus, ConsentNotice, ConsentUpdateRequest, ConfigResponse, ProfilesResponse, ProfileUpsertRequest, ConfigUpdateRequest, UserProfile, UpdateProfileRequest, AuthCredentials, AuthSessionResponse, ConsentRequest } from "./api.types";
 import { getStoredToken } from "./auth";
-import type { ApiResult, UserProfile, UpdateProfileRequest } from "./api.types";
-import type { ApiResult, AuthCredentials, AuthSessionResponse, ConsentRequest } from "./api.types";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
 
@@ -31,6 +29,24 @@ async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T
     });
 
     if (!res.ok) {
+      // Handle 401 Unauthorized and 403 Forbidden (auth errors)
+      if (res.status === 401 || res.status === 403) {
+        // Clear all auth data
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("auth_access_token");
+        localStorage.removeItem("refresh_token");
+        localStorage.removeItem("user");
+
+        // Notify all useAuth instances to update React state and show toast
+        window.dispatchEvent(new CustomEvent("auth:signout", { detail: { expired: true } }));
+
+        return {
+          ok: false,
+          status: res.status,
+          error: "Session expired"
+        };
+      }
+
       const text = await res.text().catch(() => "");
       return { ok: false, status: res.status, error: text || res.statusText };
     }

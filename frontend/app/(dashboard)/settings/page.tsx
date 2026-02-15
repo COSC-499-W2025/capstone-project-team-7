@@ -36,6 +36,8 @@ export default function SettingsPage() {
   // Consent management
   const [showRevokeDialog, setShowRevokeDialog] = useState(false);
   const [consentData, setConsentData] = useState<{ data_access: boolean; external_services: boolean }>({ data_access: false, external_services: false });
+  const [consentLoading, setConsentLoading] = useState(true);
+  const [consentError, setConsentError] = useState<string | null>(null);
 
   // Scan configuration
   const [serverConfig, setServerConfig] = useState<ConfigResponse | null>(null);
@@ -68,20 +70,18 @@ export default function SettingsPage() {
 
       // Try to load user session (check if token exists and is valid)
       const existingToken = getStoredToken();
-       if (existingToken) {
-         try {
-           const sessionRes = await authApi.getSession();
-           if (!cancelled && sessionRes.ok) {
-             setUserSession(sessionRes.data);
-           } else {
-             // Token invalid, clear it using logout hook
-             logout();
-           }
-         } catch {
-           logout();
-         } finally {
-           if (!cancelled) setSessionLoading(false);
-         }
+      if (existingToken) {
+        try {
+          const sessionRes = await authApi.getSession();
+          if (!cancelled && sessionRes.ok) {
+            setUserSession(sessionRes.data);
+          }
+          // 401/403 errors are handled automatically by the auth:expired event
+        } catch {
+          // Network error — don't force logout
+        } finally {
+          if (!cancelled) setSessionLoading(false);
+        }
       } else {
         if (!cancelled) setSessionLoading(false);
       }
@@ -99,23 +99,6 @@ export default function SettingsPage() {
         const local = loadSettings();
         if (!cancelled) setSettings(local);
       }
-
-      // Try to load consent status from backend (only if authenticated)
-      const storedToken = getStoredToken();
-      if (storedToken) {
-        try {
-          const res = await consentApi.get();
-          if (!cancelled && res.ok) {
-            setConsentData({
-              data_access: res.data.data_access,
-              external_services: res.data.external_services
-            });
-            setSettings((s) => ({ ...(s ?? {}), enableAnalytics: res.data.external_services }));
-          }
-        } catch {
-          // Backend not available, use local settings
-        }
-      }
     })();
 
     return () => {
@@ -123,23 +106,42 @@ export default function SettingsPage() {
     };
   }, []);
 
-  // Load config and profiles when user session changes
+  // Load config, profiles, and consent when user session changes
   useEffect(() => {
     if (!userSession) return;
 
     let cancelled = false;
     (async () => {
       try {
-        const [configRes, profilesRes] = await Promise.all([
+        setConsentLoading(true);
+        setConsentError(null);
+
+        const [configRes, profilesRes, consentRes] = await Promise.all([
           configApi.get(),
-          configApi.listProfiles()
+          configApi.listProfiles(),
+          consentApi.get() // ← Now called after session is validated
         ]);
+
         if (!cancelled) {
           if (configRes.ok) setServerConfig(configRes.data);
           if (profilesRes.ok) setProfiles(profilesRes.data.profiles || {});
+          if (consentRes.ok) {
+            setConsentData({
+              data_access: consentRes.data.data_access,
+              external_services: consentRes.data.external_services
+            });
+            setSettings((s) => ({ ...(s ?? {}), enableAnalytics: consentRes.data.external_services }));
+          } else {
+            setConsentError(consentRes.error || "Failed to load consent data");
+          }
+          setConsentLoading(false);
         }
-      } catch {
-        // Backend not available
+      } catch (err) {
+        if (!cancelled) {
+          setConsentLoading(false);
+          setConsentError(err instanceof Error ? err.message : "Unknown error");
+          console.error("Failed to load settings:", err);
+        }
       }
     })();
 
@@ -224,18 +226,47 @@ export default function SettingsPage() {
     setShowRevokeDialog(false);
   };
 
+  const handleRetryLoadSettings = async () => {
+    setConsentLoading(true);
+    setConsentError(null);
+
+    try {
+      const [configRes, profilesRes, consentRes] = await Promise.all([
+        configApi.get(),
+        configApi.listProfiles(),
+        consentApi.get()
+      ]);
+
+      if (configRes.ok) setServerConfig(configRes.data);
+      if (profilesRes.ok) setProfiles(profilesRes.data.profiles || {});
+      if (consentRes.ok) {
+        setConsentData({
+          data_access: consentRes.data.data_access,
+          external_services: consentRes.data.external_services
+        });
+        setSettings((s) => ({ ...(s ?? {}), enableAnalytics: consentRes.data.external_services }));
+      } else {
+        setConsentError(consentRes.error || "Failed to load consent data");
+      }
+    } catch (err) {
+      setConsentError(err instanceof Error ? err.message : "Unknown error");
+      console.error("Failed to retry loading settings:", err);
+    } finally {
+      setConsentLoading(false);
+    }
+  };
+
   const handleLogout = () => {
     // Use the logout hook to clear authentication state
     logout();
-    
+
     // Clear local settings state
     setUserSession(null);
     setConsentData({ data_access: false, external_services: false });
     setServerConfig(null);
     setProfiles({});
-    
-    // Redirect to login page
-    router.push('/auth/login');
+
+    // Redirect is handled by the dashboard layout when isAuthenticated becomes false
   };
 
   const handleProfileSwitch = async (profileName: string) => {
@@ -379,7 +410,38 @@ export default function SettingsPage() {
 
 
   return (
-    <div className="p-8">
+    <div className="p-8 relative">
+      {/* Error Banner */}
+      {consentError && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-red-900">Failed to load settings</p>
+              <p className="text-sm text-red-700 mt-1">{consentError}</p>
+            </div>
+            <Button 
+              onClick={handleRetryLoadSettings}
+              disabled={consentLoading}
+              variant="outline"
+              size="sm"
+              className="border-red-300 text-red-600 hover:bg-red-50"
+            >
+              {consentLoading ? "Retrying..." : "Retry"}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Loading Overlay */}
+      {consentLoading && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-2 border-primary border-t-transparent mx-auto mb-4" />
+            <p className="text-sm text-muted-foreground">Loading settings...</p>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
         {/* Header with user status */}
         <div className="p-8">
