@@ -6,10 +6,12 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 try:  # pragma: no cover
-    from dotenv import load_dotenv
+    from dotenv import load_dotenv as _load_dotenv
+    def load_dotenv() -> bool:
+        return bool(_load_dotenv())
 except ImportError:  # pragma: no cover
-    def load_dotenv():  # type: ignore
-        return None
+    def load_dotenv() -> bool:
+        return False
 
 try:  # pragma: no cover - handled in tests via FakeAuth
     import requests
@@ -20,6 +22,9 @@ except ImportError:  # pragma: no cover
 AUTH_SIGNUP_PATH = "/auth/v1/signup"
 AUTH_TOKEN_PATH = "/auth/v1/token?grant_type=password"
 AUTH_REFRESH_PATH = "/auth/v1/token?grant_type=refresh_token"
+AUTH_RECOVER_PATH = "/auth/v1/recover"
+AUTH_VERIFY_PATH = "/auth/v1/verify"
+AUTH_USER_PATH = "/auth/v1/user"
 
 load_dotenv()
 
@@ -89,6 +94,35 @@ class SupabaseAuth:
             refresh_token=new_refresh,
         )
 
+    def request_password_reset(self, email: str, redirect_to: Optional[str] = None) -> None:
+        """Trigger a password reset email."""
+        payload: Dict[str, Any] = {"email": email}
+        if redirect_to:
+            payload["redirect_to"] = redirect_to
+        self._post(AUTH_RECOVER_PATH, payload)
+
+    def reset_password(self, token: str, new_password: str) -> None:
+        """Verify a recovery token (or use an access token) and update the user password."""
+        if not token:
+            raise AuthError("Recovery token missing.")
+        if not new_password:
+            raise AuthError("New password missing.")
+
+        if token.count(".") == 2:
+            self._request_with_auth("PUT", AUTH_USER_PATH, {"password": new_password}, token)
+            return
+
+        payload = self._post(AUTH_VERIFY_PATH, {"token": token, "type": "recovery"})
+        access_token = payload.get("access_token")
+        if not access_token:
+            session = payload.get("session") or {}
+            access_token = session.get("access_token")
+
+        if not access_token:
+            raise AuthError("Unable to verify recovery token.")
+
+        self._request_with_auth("PUT", AUTH_USER_PATH, {"password": new_password}, access_token)
+
     def _post(self, path: str, data: Dict[str, Any]) -> Dict[str, Any]:
         if requests is None:
             raise AuthError("The 'requests' package is required for Supabase authentication.")
@@ -97,6 +131,31 @@ class SupabaseAuth:
             "Content-Type": "application/json",
         }
         response = requests.post(
+            f"{self.base_url}{path}",
+            headers=headers,
+            data=json.dumps(data),
+            timeout=20,
+        )
+        if response.status_code >= 400:
+            try:
+                details = response.json()
+            except ValueError:
+                details = response.text
+            raise AuthError(f"Supabase error {response.status_code}: {details}")
+        if not response.text:
+            return {}
+        return response.json()
+
+    def _request_with_auth(self, method: str, path: str, data: Dict[str, Any], access_token: str) -> Dict[str, Any]:
+        if requests is None:
+            raise AuthError("The 'requests' package is required for Supabase authentication.")
+        headers = {
+            "apikey": self.anon_key,
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        }
+        response = requests.request(
+            method,
             f"{self.base_url}{path}",
             headers=headers,
             data=json.dumps(data),
