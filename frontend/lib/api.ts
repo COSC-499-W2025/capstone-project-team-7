@@ -119,10 +119,10 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ refresh_token: refreshToken })
       }),
-    requestPasswordReset: (email: string) =>
+    requestPasswordReset: (email: string, redirectTo?: string) =>
       request<{ ok: boolean; message?: string }>("/api/auth/request-reset", {
         method: "POST",
-        body: JSON.stringify({ email })
+        body: JSON.stringify({ email, redirect_to: redirectTo })
       }),
     resetPassword: (token: string, newPassword: string) =>
       request<{ ok: boolean; message?: string }>("/api/auth/reset-password", {

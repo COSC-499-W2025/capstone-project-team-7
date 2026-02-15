@@ -37,6 +37,7 @@ class AuthSessionInfo(BaseModel):
 
 class PasswordResetRequest(BaseModel):
     email: str = Field(..., description="User email address")
+    redirect_to: Optional[str] = Field(None, description="Redirect URL after reset")
 
 
 class PasswordResetConfirm(BaseModel):
@@ -101,7 +102,7 @@ def refresh_session(payload: RefreshRequest) -> AuthSessionResponse:
 @router.post("/request-reset", status_code=status.HTTP_200_OK)
 def request_password_reset(payload: PasswordResetRequest) -> dict:
     try:
-        SupabaseAuth().request_password_reset(payload.email)
+        SupabaseAuth().request_password_reset(payload.email, payload.redirect_to)
         return {"ok": True, "message": "Password reset email sent."}
     except AuthError as exc:
         raise _raise_auth_error(exc)

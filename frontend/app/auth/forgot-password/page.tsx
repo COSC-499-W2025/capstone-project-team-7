@@ -35,7 +35,11 @@ export default function ForgotPasswordPage() {
       return;
     }
 
-    const result = await api.auth.requestPasswordReset(trimmedEmail);
+    const redirectTo = typeof window !== "undefined"
+      ? `${window.location.origin}/auth/reset-password`
+      : undefined;
+
+    const result = await api.auth.requestPasswordReset(trimmedEmail, redirectTo);
 
     if (result.ok) {
       setSuccess("If that email exists, a reset link has been sent.");

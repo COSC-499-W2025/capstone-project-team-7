@@ -94,16 +94,23 @@ class SupabaseAuth:
             refresh_token=new_refresh,
         )
 
-    def request_password_reset(self, email: str) -> None:
+    def request_password_reset(self, email: str, redirect_to: Optional[str] = None) -> None:
         """Trigger a password reset email."""
-        self._post(AUTH_RECOVER_PATH, {"email": email})
+        payload: Dict[str, Any] = {"email": email}
+        if redirect_to:
+            payload["redirect_to"] = redirect_to
+        self._post(AUTH_RECOVER_PATH, payload)
 
     def reset_password(self, token: str, new_password: str) -> None:
-        """Verify a recovery token and update the user password."""
+        """Verify a recovery token (or use an access token) and update the user password."""
         if not token:
             raise AuthError("Recovery token missing.")
         if not new_password:
             raise AuthError("New password missing.")
+
+        if token.count(".") == 2:
+            self._request_with_auth("PUT", AUTH_USER_PATH, {"password": new_password}, token)
+            return
 
         payload = self._post(AUTH_VERIFY_PATH, {"token": token, "type": "recovery"})
         access_token = payload.get("access_token")
@@ -114,7 +121,7 @@ class SupabaseAuth:
         if not access_token:
             raise AuthError("Unable to verify recovery token.")
 
-        self._post_with_auth(AUTH_USER_PATH, {"password": new_password}, access_token)
+        self._request_with_auth("PUT", AUTH_USER_PATH, {"password": new_password}, access_token)
 
     def _post(self, path: str, data: Dict[str, Any]) -> Dict[str, Any]:
         if requests is None:
@@ -139,7 +146,7 @@ class SupabaseAuth:
             return {}
         return response.json()
 
-    def _post_with_auth(self, path: str, data: Dict[str, Any], access_token: str) -> Dict[str, Any]:
+    def _request_with_auth(self, method: str, path: str, data: Dict[str, Any], access_token: str) -> Dict[str, Any]:
         if requests is None:
             raise AuthError("The 'requests' package is required for Supabase authentication.")
         headers = {
@@ -147,7 +154,8 @@ class SupabaseAuth:
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json",
         }
-        response = requests.post(
+        response = requests.request(
+            method,
             f"{self.base_url}{path}",
             headers=headers,
             data=json.dumps(data),
