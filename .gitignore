@@ -51,3 +51,4 @@ electron/dist/
 frontend/playwright-report/
 frontend/test-results/
 C
+AGENTS.md
