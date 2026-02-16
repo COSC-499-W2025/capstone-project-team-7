@@ -1,6 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { GitAnalysisTab } from "@/components/project/git-analysis-tab";
+import { GitAnalysisTab, normalizeGitAnalysis, normalizeRepo } from "@/components/project/git-analysis-tab";
 import { describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
@@ -229,5 +229,129 @@ describe("GitAnalysisTab — error repo filtering", () => {
     ];
     render(<GitAnalysisTab loading={false} error={null} gitAnalysis={allBad} />);
     expect(screen.getByText("No git analysis available yet.")).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// normalizeGitAnalysis unit tests
+// ---------------------------------------------------------------------------
+
+describe("normalizeGitAnalysis", () => {
+  it("returns empty array for null/undefined", () => {
+    expect(normalizeGitAnalysis(null)).toEqual([]);
+    expect(normalizeGitAnalysis(undefined)).toEqual([]);
+  });
+
+  it("returns empty array for empty array", () => {
+    expect(normalizeGitAnalysis([])).toEqual([]);
+  });
+
+  it("normalizes a single repo object (not wrapped in array)", () => {
+    const single = {
+      path: "/repo",
+      commit_count: 10,
+      contributors: [],
+      project_type: "individual",
+      date_range: null,
+      branches: ["main"],
+      timeline: [],
+    };
+    const result = normalizeGitAnalysis(single);
+    expect(result).toHaveLength(1);
+    expect(result[0].path).toBe("/repo");
+    expect(result[0].commit_count).toBe(10);
+  });
+
+  it("normalizes an array of repo objects", () => {
+    const repos = [
+      { path: "/a", commit_count: 5, contributors: [], project_type: "individual", date_range: null, branches: [], timeline: [] },
+      { path: "/b", commit_count: 8, contributors: [], project_type: "collaborative", date_range: null, branches: [], timeline: [] },
+    ];
+    const result = normalizeGitAnalysis(repos);
+    expect(result).toHaveLength(2);
+    expect(result[0].path).toBe("/a");
+    expect(result[1].path).toBe("/b");
+  });
+
+  it("filters out repos with errors from array", () => {
+    const repos = [
+      { path: "/good", commit_count: 5, contributors: [], project_type: "individual", date_range: null, branches: [], timeline: [] },
+      { path: "/bad", error: "not a git repository" },
+    ];
+    const result = normalizeGitAnalysis(repos);
+    expect(result).toHaveLength(1);
+    expect(result[0].path).toBe("/good");
+  });
+
+  it("returns empty array for non-object/non-array input", () => {
+    expect(normalizeGitAnalysis("string")).toEqual([]);
+    expect(normalizeGitAnalysis(42)).toEqual([]);
+    expect(normalizeGitAnalysis(true)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// normalizeRepo unit tests
+// ---------------------------------------------------------------------------
+
+describe("normalizeRepo", () => {
+  it("returns null for null/undefined", () => {
+    expect(normalizeRepo(null)).toBeNull();
+    expect(normalizeRepo(undefined)).toBeNull();
+  });
+
+  it("returns null for non-object values", () => {
+    expect(normalizeRepo("string")).toBeNull();
+    expect(normalizeRepo(42)).toBeNull();
+  });
+
+  it("returns null for repos with an error field", () => {
+    expect(normalizeRepo({ path: "/bad", error: "failed" })).toBeNull();
+  });
+
+  it("provides defaults for missing fields", () => {
+    const result = normalizeRepo({ path: "/repo" });
+    expect(result).not.toBeNull();
+    expect(result!.path).toBe("/repo");
+    expect(result!.commit_count).toBe(0);
+    expect(result!.contributors).toEqual([]);
+    expect(result!.project_type).toBe("unknown");
+    expect(result!.date_range).toBeNull();
+    expect(result!.branches).toEqual([]);
+    expect(result!.timeline).toEqual([]);
+  });
+
+  it("defaults path to 'unknown' when missing", () => {
+    const result = normalizeRepo({ commit_count: 5 });
+    expect(result!.path).toBe("unknown");
+  });
+
+  it("preserves valid fields", () => {
+    const repo = {
+      path: "/my/repo",
+      commit_count: 42,
+      contributors: [{ name: "Dev", email: "dev@test.com", commits: 42, percent: 100 }],
+      project_type: "collaborative",
+      date_range: { start: "2024-01-01", end: "2024-12-31" },
+      branches: ["main", "dev"],
+      timeline: [{ month: "2024-01", commits: 10, messages: [], top_files: [], languages: {}, contributors: 1 }],
+    };
+    const result = normalizeRepo(repo);
+    expect(result).toEqual(repo);
+  });
+
+  it("handles wrong types gracefully", () => {
+    const result = normalizeRepo({
+      path: 123,
+      commit_count: "not-a-number",
+      contributors: "not-an-array",
+      branches: null,
+      timeline: {},
+    });
+    expect(result!.path).toBe("unknown");
+    expect(result!.commit_count).toBe(0);
+    expect(result!.contributors).toEqual([]);
+    expect(result!.branches).toEqual([]);
+    expect(result!.timeline).toEqual([]);
   });
 });

@@ -7,9 +7,15 @@ import type { GitRepoAnalysis, GitContributor, GitTimelineEntry } from "@/types/
 
 /* ------------------------------------------------------------------ */
 /*  Normalisation — handle data shape variations                      */
+/*                                                                    */
+/*  Backend returns git_analysis as a flat array of repo objects:     */
+/*    git_analysis: [ { path, commit_count, ... }, ... ]              */
+/*  Legacy format wrapped repos in `.repositories`; the project page  */
+/*  handles both, but the normaliser here expects the flat array or   */
+/*  a single repo object.                                             */
 /* ------------------------------------------------------------------ */
 
-function normalizeGitAnalysis(raw: unknown): GitRepoAnalysis[] {
+export function normalizeGitAnalysis(raw: unknown): GitRepoAnalysis[] {
   if (!raw) return [];
 
   // Already an array of repo objects
@@ -28,7 +34,7 @@ function normalizeGitAnalysis(raw: unknown): GitRepoAnalysis[] {
   return [];
 }
 
-function normalizeRepo(value: unknown): GitRepoAnalysis | null {
+export function normalizeRepo(value: unknown): GitRepoAnalysis | null {
   if (!value || typeof value !== "object") return null;
   const r = value as Record<string, unknown>;
 
@@ -415,9 +421,10 @@ function EmptyState({ onRetry }: { onRetry?: () => void }) {
 /*  Formatting helpers                                                */
 /* ------------------------------------------------------------------ */
 
+/** Format an ISO 8601 date string (e.g. "2024-06-01T10:00:00+00:00") to YYYY-MM-DD.
+ *  The backend (git_repo.py) always emits ISO 8601 via git log --format=%aI. */
 function formatDate(value: string | null | undefined): string {
   if (!value) return "—";
-  // ISO dates can be long; show just YYYY-MM-DD
   return value.slice(0, 10);
 }
 
