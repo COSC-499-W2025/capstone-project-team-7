@@ -2,8 +2,6 @@
 # Jacob Damery
 
 ## Week 20 
-# Week 18
-
 This week, I focused on implementing a fully functional Language Breakdown feature within the Project Detail page and ensuring data accuracy across the project view. My primary contribution was delivering the Language Breakdown tab (PR #328), while also reviewing and validating related fixes from teammates to maintain UI consistency and data integrity across the application.
 
 ---
