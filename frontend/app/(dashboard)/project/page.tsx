@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { DocumentAnalysisTab } from "@/components/project/document-analysis-tab";
+import { CodeAnalysisTab } from "@/components/project/code-analysis-tab";
 import { getStoredToken } from "@/lib/auth";
 import {
   getProjects,
@@ -784,6 +785,15 @@ export default function ProjectPage() {
           </div>
         </TabsContent>
 
+        {/* Code Analysis */}
+        <TabsContent value="code-analysis">
+          <CodeAnalysisTab
+            codeAnalysis={scanData.code_analysis}
+            isLoading={projectLoading}
+            errorMessage={projectError}
+          />
+        </TabsContent>
+
         {/* Document Analysis */}
         <TabsContent value="doc-analysis">
           <DocumentAnalysisTab
@@ -1154,6 +1164,7 @@ export default function ProjectPage() {
               ![
                 "overview",
                 "languages",
+                "code-analysis",
                 "doc-analysis",
                 "media-analysis",
                 "skills-progress",
