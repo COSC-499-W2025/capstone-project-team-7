@@ -8,8 +8,8 @@ from pathlib import Path
 from datetime import datetime
 from typing import Callable, Optional, List, Dict, Any
 import difflib
-from ...scanner.models import ParseResult
-from ...scanner.media import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
+from scanner.models import ParseResult
+from scanner.media import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 
 class AIDependencyError(RuntimeError):
     """Raised when optional AI dependencies are missing."""
@@ -99,7 +99,7 @@ class AIService:
         max_tokens: Optional[int],
     ) -> tuple[Any, AIClientConfig]:
         try:
-            from ...analyzer.llm.client import LLMClient, InvalidAPIKeyError, LLMError
+            from analyzer.llm.client import LLMClient, InvalidAPIKeyError, LLMError
         except Exception as exc:  # pragma: no cover - optional dependency missing
             raise AIDependencyError(str(exc)) from exc
 
@@ -233,7 +233,7 @@ class AIService:
         try:
             from pathlib import Path
             import mimetypes
-            from ...scanner.media import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
+            from scanner.media import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
             base = Path(base_dir)
             if not base.exists():
                 return existing

@@ -1,5 +1,18 @@
-import type { ApiResult, ConsentStatus, ConsentNotice, ConsentUpdateRequest, ConfigResponse, ProfilesResponse, ProfileUpsertRequest, ConfigUpdateRequest, UserProfile, UpdateProfileRequest, AuthCredentials, AuthSessionResponse, ConsentRequest } from "./api.types";
-import { getStoredToken } from "./auth";
+import type {
+  ApiResult,
+  AuthCredentials,
+  AuthSessionResponse,
+  ConfigResponse,
+  ConfigUpdateRequest,
+  ConsentNotice,
+  ConsentStatus,
+  ConsentUpdateRequest,
+  ProfilesResponse,
+  ProfileUpsertRequest,
+  UpdateProfileRequest,
+  UserProfile,
+} from "./api.types";
+import { getStoredTokenCandidates, refreshAccessToken, setStoredToken } from "./auth";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
 
@@ -12,7 +25,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T
   const url = `${baseUrl}${path}`;
 
   // Automatically inject Authorization header if token exists
-  const token = getStoredToken();
+  const tokenCandidates = getStoredTokenCandidates();
+  const token = tokenCandidates[0] ?? null;
+  const hasExplicitAuthorization = Boolean(
+    (init?.headers as Record<string, string> | undefined)?.Authorization
+  );
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(init?.headers as Record<string, string> ?? {}),
@@ -22,10 +39,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T
     headers.Authorization = `Bearer ${token}`;
   }
 
-  try {
+  const run = async (requestHeaders: Record<string, string>) => {
     const res = await fetch(url, {
       ...init,
-      headers,
+      headers: requestHeaders,
     });
 
     if (!res.ok) {
@@ -41,21 +58,64 @@ async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T
         window.dispatchEvent(new CustomEvent("auth:signout", { detail: { expired: true } }));
 
         return {
-          ok: false,
+          ok: false as const,
           status: res.status,
           error: "Session expired"
         };
       }
 
       const text = await res.text().catch(() => "");
-      return { ok: false, status: res.status, error: text || res.statusText };
+      return { ok: false as const, status: res.status, error: text || res.statusText };
     }
 
     const data = (await res.json()) as T;
-    return { ok: true, data };
+    return { ok: true as const, data };
+  };
+
+  try {
+    let result = await run(headers);
+
+    const canRetryWithFallback =
+      !result.ok &&
+      result.status === 401 &&
+      !hasExplicitAuthorization &&
+      tokenCandidates.length > 1;
+
+    if (canRetryWithFallback) {
+      const fallbackToken = tokenCandidates[1];
+      const fallbackHeaders = {
+        ...headers,
+        Authorization: `Bearer ${fallbackToken}`,
+      };
+      const second = await run(fallbackHeaders);
+      if (second.ok) {
+        setStoredToken(fallbackToken);
+        return second;
+      }
+      result = second;
+    }
+
+    const canRetryWithRefresh =
+      !result.ok &&
+      result.status === 401 &&
+      !hasExplicitAuthorization &&
+      path !== "/api/auth/refresh";
+
+    if (canRetryWithRefresh) {
+      const refreshedToken = await refreshAccessToken();
+      if (refreshedToken) {
+        const refreshedHeaders = {
+          ...headers,
+          Authorization: `Bearer ${refreshedToken}`,
+        };
+        return run(refreshedHeaders);
+      }
+    }
+
+    return result;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Network error";
-    return { ok: false, error: message };
+    return { ok: false as const, error: message };
   }
 }
 

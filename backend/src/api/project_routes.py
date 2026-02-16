@@ -26,7 +26,7 @@ try:
     from cli.services.project_overrides_service import ProjectOverridesService, ProjectOverridesServiceError
     from auth.consent_validator import ConsentValidator
     from api.llm_routes import get_user_client
-except ModuleNotFoundError:  # pragma: no cover - test/import fallback
+except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
     from backend.src.cli.services.projects_service import ProjectsService, ProjectsServiceError
     from backend.src.cli.services.encryption import EncryptionService
     from backend.src.cli.services.project_overrides_service import ProjectOverridesService, ProjectOverridesServiceError
@@ -35,17 +35,17 @@ except ModuleNotFoundError:  # pragma: no cover - test/import fallback
 
 try:
     from scanner.parser import parse_zip
-except ModuleNotFoundError:  # pragma: no cover - test/import fallback
+except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
     from backend.src.scanner.parser import parse_zip
 
 try:
     from scanner.parser import parse_zip
-except ModuleNotFoundError:  # pragma: no cover - test/import fallback
+except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
     from backend.src.scanner.parser import parse_zip
 
 try:
     from scanner.models import ScanPreferences
-except ModuleNotFoundError:  # pragma: no cover - test/import fallback
+except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
     from backend.src.scanner.models import ScanPreferences
 
 try:
@@ -54,7 +54,7 @@ try:
     from cli.services.contribution_analysis_service import ContributionAnalysisService
     from local_analysis.git_repo import analyze_git_repo
     from api.upload_routes import uploads_store
-except ModuleNotFoundError:  # pragma: no cover - test/import fallback
+except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
     from backend.src.cli.language_stats import summarize_languages
     from backend.src.cli.services.skills_analysis_service import SkillsAnalysisService
     from backend.src.cli.services.contribution_analysis_service import ContributionAnalysisService

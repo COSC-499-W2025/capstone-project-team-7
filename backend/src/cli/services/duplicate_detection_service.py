@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ...scanner.models import FileMetadata, ParseResult
+from scanner.models import FileMetadata, ParseResult
 
 _DATACLASS_KWARGS = {"slots": True} if sys.version_info >= (3, 10) else {}
 

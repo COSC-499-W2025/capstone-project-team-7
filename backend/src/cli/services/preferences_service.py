@@ -3,8 +3,8 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Callable, Dict, Optional, Tuple
 
-from ...scanner.models import ScanPreferences
-from ...scanner.preferences import normalize_extensions
+from scanner.models import ScanPreferences
+from scanner.preferences import normalize_extensions
 from .config_api_service import ConfigAPIService, ConfigAPIServiceError
 
 

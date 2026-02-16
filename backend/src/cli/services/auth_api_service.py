@@ -5,7 +5,7 @@ import os
 
 import httpx
 
-from ...auth.session import AuthError, Session
+from auth.session import AuthError, Session
 
 
 class AuthAPIService:
