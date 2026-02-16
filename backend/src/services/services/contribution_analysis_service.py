@@ -1,7 +1,7 @@
 """
 Contribution Analysis Service
 
-Provides contribution metrics extraction for the Textual CLI application.
+Provides contribution metrics extraction for the backend API.
 Wraps the ContributionAnalyzer module, formats results for display, and
 derives lightweight ranking signals from contribution data.
 """

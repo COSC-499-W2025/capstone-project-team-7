@@ -1,5 +1,5 @@
 """
-Upload API Service for TUI
+Upload API Service
 Provides HTTP client to interact with upload and parse API endpoints
 """
 

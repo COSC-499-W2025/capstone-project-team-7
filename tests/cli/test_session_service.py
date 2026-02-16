@@ -7,7 +7,7 @@ from pathlib import Path
 
 from backend.src.auth.consent_validator import ConsentValidator
 from backend.src.auth.session import Session
-from backend.src.cli.services.session_service import SessionService
+from services.session_service import SessionService
 
 
 def test_load_session_round_trip(tmp_path: Path) -> None:

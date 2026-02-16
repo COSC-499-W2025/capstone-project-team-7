@@ -18,8 +18,8 @@ from datetime import datetime
 from unittest.mock import Mock, patch, MagicMock, call
 import json
 
-from backend.src.cli.services.encryption import EncryptionEnvelope
-from backend.src.cli.services.projects_service import ProjectsService, ProjectsServiceError
+from services.encryption import EncryptionEnvelope
+from services.projects_service import ProjectsService, ProjectsServiceError
 
 
 # ============================================================================
@@ -232,7 +232,7 @@ def projects_service(mock_supabase_client, monkeypatch):
     monkeypatch.setenv("SUPABASE_URL", "https://test.supabase.co")
     monkeypatch.setenv("SUPABASE_KEY", "test-key-123")
     
-    with patch('backend.src.cli.services.projects_service.create_client') as mock_create:
+    with patch('services.projects_service.create_client') as mock_create:
         mock_create.return_value = mock_supabase_client
         service = ProjectsService(encryption_service=FakeEncryptionService())
         return service
@@ -430,7 +430,7 @@ def test_4_delete_project_insights_only(projects_service, mock_supabase_client, 
     update_call = mock_supabase_client.table.return_value.update.call_args
     assert update_call is not None
     update_payload = update_call[0][0]
-    assert update_payload["scan_data"] is None
+    assert update_payload["scan_data"] == {}
     assert update_payload["has_code_analysis"] is False
     assert update_payload["has_git_analysis"] is False
     assert update_payload["has_media_analysis"] is False

@@ -195,7 +195,7 @@ def _run_git_analysis(target_path: Path) -> List[Dict[str, Any]]:
 
 def _extract_languages_from_parse(parse_result: ParseResult) -> List[Dict[str, Any]]:
     """Extract language statistics from parse result."""
-    from cli.language_stats import summarize_languages
+    from services.language_stats import summarize_languages
     try:
         return summarize_languages(parse_result.files) if parse_result.files else []
     except Exception as e:
@@ -206,9 +206,9 @@ def _extract_languages_from_parse(parse_result: ParseResult) -> List[Dict[str, A
 def _run_code_analysis(target_path: Path, preferences: Optional[ScanPreferences]) -> Optional[Dict[str, Any]]:
     """Run code analysis using tree-sitter."""
     try:
-        from cli.services.code_analysis_service import CodeAnalysisService, CodeAnalysisUnavailableError
+        from services.services.code_analysis_service import CodeAnalysisService, CodeAnalysisUnavailableError
     except ImportError:
-        logger.info("Code analysis unavailable (cli.services.code_analysis_service not installed)")
+        logger.info("Code analysis unavailable (services.services.code_analysis_service not installed)")
         return None
     
     try:
@@ -241,7 +241,7 @@ def _run_skills_extraction(
 ) -> List[Dict[str, Any]]:
     """Extract skills from the project."""
     try:
-        from cli.services.skills_analysis_service import SkillsAnalysisService
+        from services.services.skills_analysis_service import SkillsAnalysisService
         service = SkillsAnalysisService()
         
         git_data = git_analysis[0] if git_analysis else None
@@ -276,7 +276,7 @@ def _run_contribution_analysis(
         return None
     
     try:
-        from cli.services.contribution_analysis_service import ContributionAnalysisService
+        from services.services.contribution_analysis_service import ContributionAnalysisService
         service = ContributionAnalysisService()
         git_data = git_analysis[0] if git_analysis else {}
         
@@ -302,7 +302,7 @@ def _run_contribution_analysis(
 def _run_duplicate_detection(parse_result: ParseResult) -> List[Dict[str, Any]]:
     """Detect duplicate files."""
     try:
-        from cli.services.duplicate_detection_service import DuplicateDetectionService
+        from services.services.duplicate_detection_service import DuplicateDetectionService
         service = DuplicateDetectionService()
         result = service.analyze_duplicates(parse_result)
         
@@ -331,7 +331,7 @@ def _run_llm_analysis(
 ) -> Optional[Dict[str, Any]]:
     """Run LLM-based analysis."""
     try:
-        from cli.services.ai_service import AIService
+        from services.services.ai_service import AIService
         
         service = AIService()
         result = service.execute_analysis(

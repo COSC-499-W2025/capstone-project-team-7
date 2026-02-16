@@ -261,7 +261,7 @@ class PreferencesService:
     def _get_manager(self, user_id: str):
         if self._manager_factory:
             return self._manager_factory(user_id)
-        from ...config.config_manager import ConfigManager  # pragma: no cover - imported lazily
+        from config.config_manager import ConfigManager  # pragma: no cover - imported lazily
 
         return ConfigManager(user_id)
 

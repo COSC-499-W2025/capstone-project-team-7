@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from api.dependencies import AuthContext, get_auth_context
-from cli.services.resume_storage_service import ResumeStorageError, ResumeStorageService
+from services.services.resume_storage_service import ResumeStorageError, ResumeStorageService
 
 logger = logging.getLogger(__name__)
 

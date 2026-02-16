@@ -53,7 +53,7 @@ AnalyzerBuilder = Callable[..., Any]
 
 
 class CodeAnalysisService:
-    """Bridge between the Textual UI and the tree-sitter powered analyzer.
+    """Bridge between the backend API and the tree-sitter powered analyzer.
     
     Provides access to rich code analysis features:
     - Dead code detection

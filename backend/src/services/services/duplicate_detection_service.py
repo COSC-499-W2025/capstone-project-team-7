@@ -234,7 +234,7 @@ class DuplicateDetectionService:
         max_groups: int = 20,
         max_files_per_group: int = 10,
     ) -> str:
-        """Format an API dedup report for display in the TUI."""
+        """Format an API dedup report for display in the API."""
         summary = report.get("summary", {}) if isinstance(report, dict) else {}
         duplicate_groups = report.get("duplicate_groups", []) if isinstance(report, dict) else []
         if not isinstance(duplicate_groups, list):

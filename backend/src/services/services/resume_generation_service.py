@@ -3,7 +3,7 @@ Resume Generation Service
 
 Creates concise, resume-ready bullet points from existing project analysis data.
 Designed to work offline using scan results, code analysis metrics, and git
-signals already collected by the Textual CLI flow.
+signals already collected by the backend API flow.
 """
 
 from __future__ import annotations
@@ -593,7 +593,7 @@ Write the Markdown block only, no extra text.
         mappings = [
             ("dockerized tooling", {"dockerfile", "docker-compose.yml", "docker-compose.yaml"}),
             ("Supabase workflows", {"supabase"}),
-            ("Textual CLI dashboards", {"textual"}),
+            ("API dashboards", {"textual"}),
             ("command-line UX", {"/cli/", "\\cli\\"}),
             ("Next.js/Node tooling", {"next.config", "package.json"}),
             ("Tailwind styling", {"tailwind.config"}),

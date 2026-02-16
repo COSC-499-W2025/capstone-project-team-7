@@ -4,7 +4,7 @@ import pytest
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from backend.src.cli.services.search_service import (
+from services.search_service import (
     SearchService,
     SearchFilters,
     SearchResult,

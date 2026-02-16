@@ -158,7 +158,7 @@ class ScanService:
         )
 
     def format_scan_overview(self, state: ScanState) -> str:
-        """Render the overview block shown in the Textual detail panel."""
+        """Render the overview block shown in the API detail panel."""
         lines = ["[b]Run Portfolio Scan[/b]"]
         if state.target:
             lines.append(f"Target: {state.target}")
