@@ -116,7 +116,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T
     return result;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Network error";
-    return { ok: false, error: message };
+    return { ok: false as const, error: message };
   }
 }
 

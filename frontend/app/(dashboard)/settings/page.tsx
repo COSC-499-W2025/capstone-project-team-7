@@ -68,8 +68,8 @@ export default function SettingsPage() {
       }
 
       // Try to load user session (check if token exists and is valid)
-      const hasSessionCredential = Boolean(getStoredToken() || getStoredRefreshToken());
-      if (hasSessionCredential) {
+      const existingToken = getStoredToken();
+      if (existingToken) {
         try {
           const sessionRes = await authApi.getSession();
           if (!cancelled && sessionRes.ok) {
