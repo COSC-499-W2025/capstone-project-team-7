@@ -3,6 +3,8 @@ export type ConsentStatus = {
   data_access: boolean;
   external_services: boolean;
   updated_at: string;
+  data_access_updated_at?: string | null;
+  external_services_updated_at?: string | null;
 };
 
 export type ConsentNotice = {
