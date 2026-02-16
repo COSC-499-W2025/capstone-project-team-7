@@ -1,5 +1,53 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Code2, FileCode, MessageSquare, Braces, Box, TrendingUp, AlertCircle, AlertTriangle, Copy, GitBranch, Hash, XCircle, Type, Layers } from "lucide-react";
+import { Code2, FileCode, MessageSquare, Braces, Box, TrendingUp, AlertCircle, AlertTriangle, Copy, GitBranch, Hash, XCircle, Type, Layers, ChevronDown, ChevronUp } from "lucide-react";
+import { useState } from "react";
+
+// Example types
+interface MagicValueExample {
+  file: string;
+  type: string;
+  value: string;
+  line: number;
+  code_snippet: string;
+  suggested_name?: string;
+}
+
+interface DeadCodeExample {
+  file: string;
+  type: string;
+  name: string;
+  line: number;
+  code_snippet: string;
+  reason?: string;
+  confidence?: string;
+}
+
+interface DuplicateExample {
+  file1?: string;
+  file2?: string;
+  file?: string;
+  line1?: number;
+  line2?: number;
+  lines?: number;
+  similarity?: number;
+  code_snippet?: string;
+}
+
+interface NamingIssueExample {
+  file: string;
+  name: string;
+  line: number;
+  issue_type: string;
+  suggestion?: string;
+}
+
+interface ErrorHandlingExample {
+  file: string;
+  line: number;
+  issue_type: string;
+  severity: string;
+  code_snippet?: string;
+}
 
 export interface CodeAnalysisData {
   total_files?: number;
@@ -34,6 +82,15 @@ export interface CodeAnalysisData {
   call_graph_edges?: number;
   data_structures?: Record<string, number>;
   languages?: Record<string, number>;
+  
+  // Detailed examples
+  examples?: {
+    magic_values?: MagicValueExample[];
+    dead_code?: DeadCodeExample[];
+    duplicates?: DuplicateExample[];
+    naming_issues?: NamingIssueExample[];
+    error_handling?: ErrorHandlingExample[];
+  };
 }
 
 interface CodeAnalysisTabProps {
@@ -42,11 +99,24 @@ interface CodeAnalysisTabProps {
   errorMessage?: string | null;
 }
 
+// Helper to get short filename from path
+function getShortPath(fullPath: string): string {
+  const parts = fullPath.replace(/\\/g, '/').split('/');
+  return parts.slice(-2).join('/');
+}
+
 export function CodeAnalysisTab({
   codeAnalysis,
   isLoading,
   errorMessage,
 }: CodeAnalysisTabProps) {
+  // State for expanded sections
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
+  
+  const toggleSection = (section: string) => {
+    setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
   // Loading state
   if (isLoading) {
     return (
@@ -137,6 +207,7 @@ export function CodeAnalysisTab({
     call_graph_edges = 0,
     data_structures,
     languages,
+    examples,
   } = codeAnalysis;
 
   // Calculate percentages
@@ -299,7 +370,7 @@ export function CodeAnalysisTab({
               </h3>
               <div className="grid gap-4 md:grid-cols-2">
                 {/* Average Complexity */}
-                {avg_complexity !== undefined && (
+                {avg_complexity !== undefined && avg_complexity !== null && (
                   <div className="rounded-lg border border-gray-200 p-4">
                     <div className="flex items-center gap-2 mb-2">
                       <TrendingUp className="h-4 w-4 text-gray-600" />
@@ -322,7 +393,7 @@ export function CodeAnalysisTab({
                 )}
 
                 {/* Average Maintainability */}
-                {avg_maintainability !== undefined && (
+                {avg_maintainability !== undefined && avg_maintainability !== null && (
                   <div className="rounded-lg border border-gray-200 p-4">
                     <div className="flex items-center gap-2 mb-2">
                       <TrendingUp className="h-4 w-4 text-gray-600" />
@@ -384,6 +455,29 @@ export function CodeAnalysisTab({
                   <p className="text-xs text-gray-500 mt-3">
                     Remove unused code to improve maintainability
                   </p>
+                  {/* Examples */}
+                  {examples?.dead_code && examples.dead_code.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-orange-200">
+                      <button
+                        onClick={() => toggleSection('deadCode')}
+                        className="flex items-center gap-1 text-xs text-orange-700 hover:text-orange-900"
+                      >
+                        {expandedSections.deadCode ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                        {expandedSections.deadCode ? 'Hide' : 'Show'} examples
+                      </button>
+                      {expandedSections.deadCode && (
+                        <div className="mt-2 space-y-2 max-h-48 overflow-y-auto">
+                          {examples.dead_code.map((ex, i) => (
+                            <div key={i} className="bg-white rounded p-2 text-xs border border-orange-100">
+                              <div className="font-mono text-orange-800">{ex.name}</div>
+                              <div className="text-gray-500">{getShortPath(ex.file)}:{ex.line}</div>
+                              <code className="block mt-1 text-gray-700 bg-gray-50 p-1 rounded truncate">{ex.code_snippet}</code>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -412,6 +506,35 @@ export function CodeAnalysisTab({
                   <p className="text-xs text-gray-500 mt-3">
                     Extract duplicates into reusable functions
                   </p>
+                  {/* Examples */}
+                  {examples?.duplicates && examples.duplicates.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-purple-200">
+                      <button
+                        onClick={() => toggleSection('duplicates')}
+                        className="flex items-center gap-1 text-xs text-purple-700 hover:text-purple-900"
+                      >
+                        {expandedSections.duplicates ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                        {expandedSections.duplicates ? 'Hide' : 'Show'} examples
+                      </button>
+                      {expandedSections.duplicates && (
+                        <div className="mt-2 space-y-2 max-h-48 overflow-y-auto">
+                          {examples.duplicates.map((ex, i) => (
+                            <div key={i} className="bg-white rounded p-2 text-xs border border-purple-100">
+                              {ex.file1 && ex.file2 ? (
+                                <>
+                                  <div className="text-gray-500">{getShortPath(ex.file1)}:{ex.line1}</div>
+                                  <div className="text-gray-500">{getShortPath(ex.file2)}:{ex.line2}</div>
+                                </>
+                              ) : ex.file ? (
+                                <div className="text-gray-500">{getShortPath(ex.file)}:{ex.lines || ex.line1}</div>
+                              ) : null}
+                              {ex.similarity && <div className="text-purple-700">Similarity: {(ex.similarity * 100).toFixed(0)}%</div>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -435,6 +558,33 @@ export function CodeAnalysisTab({
                   <p className="text-xs text-gray-500 mt-3">
                     Replace magic numbers/strings with named constants
                   </p>
+                  {/* Examples */}
+                  {examples?.magic_values && examples.magic_values.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-yellow-200">
+                      <button
+                        onClick={() => toggleSection('magicValues')}
+                        className="flex items-center gap-1 text-xs text-yellow-700 hover:text-yellow-900"
+                      >
+                        {expandedSections.magicValues ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                        {expandedSections.magicValues ? 'Hide' : 'Show'} examples
+                      </button>
+                      {expandedSections.magicValues && (
+                        <div className="mt-2 space-y-2 max-h-48 overflow-y-auto">
+                          {examples.magic_values.map((ex, i) => (
+                            <div key={i} className="bg-white rounded p-2 text-xs border border-yellow-100">
+                              <div className="flex justify-between">
+                                <span className="font-mono text-yellow-800">{ex.value}</span>
+                                <span className="text-gray-400">{ex.type}</span>
+                              </div>
+                              <div className="text-gray-500">{getShortPath(ex.file)}:{ex.line}</div>
+                              <code className="block mt-1 text-gray-700 bg-gray-50 p-1 rounded truncate">{ex.code_snippet}</code>
+                              {ex.suggested_name && <div className="text-yellow-600 mt-1">Suggest: {ex.suggested_name}</div>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -462,6 +612,32 @@ export function CodeAnalysisTab({
                   <p className="text-xs text-gray-500 mt-3">
                     Fix empty catch blocks and broad exceptions
                   </p>
+                  {/* Examples */}
+                  {examples?.error_handling && examples.error_handling.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-red-200">
+                      <button
+                        onClick={() => toggleSection('errorHandling')}
+                        className="flex items-center gap-1 text-xs text-red-700 hover:text-red-900"
+                      >
+                        {expandedSections.errorHandling ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                        {expandedSections.errorHandling ? 'Hide' : 'Show'} examples
+                      </button>
+                      {expandedSections.errorHandling && (
+                        <div className="mt-2 space-y-2 max-h-48 overflow-y-auto">
+                          {examples.error_handling.map((ex, i) => (
+                            <div key={i} className="bg-white rounded p-2 text-xs border border-red-100">
+                              <div className="flex justify-between">
+                                <span className="font-medium text-red-800">{ex.issue_type}</span>
+                                <span className={ex.severity === 'critical' ? 'text-red-600' : 'text-yellow-600'}>{ex.severity}</span>
+                              </div>
+                              <div className="text-gray-500">{getShortPath(ex.file)}:{ex.line}</div>
+                              {ex.code_snippet && <code className="block mt-1 text-gray-700 bg-gray-50 p-1 rounded truncate">{ex.code_snippet}</code>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -485,9 +661,32 @@ export function CodeAnalysisTab({
                   <p className="text-xs text-gray-500 mt-3">
                     Follow language naming conventions
                   </p>
+                  {/* Examples */}
+                  {examples?.naming_issues && examples.naming_issues.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-blue-200">
+                      <button
+                        onClick={() => toggleSection('namingIssues')}
+                        className="flex items-center gap-1 text-xs text-blue-700 hover:text-blue-900"
+                      >
+                        {expandedSections.namingIssues ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                        {expandedSections.namingIssues ? 'Hide' : 'Show'} examples
+                      </button>
+                      {expandedSections.namingIssues && (
+                        <div className="mt-2 space-y-2 max-h-48 overflow-y-auto">
+                          {examples.naming_issues.map((ex, i) => (
+                            <div key={i} className="bg-white rounded p-2 text-xs border border-blue-100">
+                              <div className="font-mono text-blue-800">{ex.name}</div>
+                              <div className="text-gray-500">{getShortPath(ex.file)}:{ex.line}</div>
+                              <div className="text-blue-600">{ex.issue_type}</div>
+                              {ex.suggestion && <div className="text-green-600 mt-1">→ {ex.suggestion}</div>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
-
               {/* Nesting Depth */}
               {nesting_issues > 0 && (
                 <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4">
