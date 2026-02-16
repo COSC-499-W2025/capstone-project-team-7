@@ -10,6 +10,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { isAuthenticated, isLoading } = useAuth();
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      const hash = window.location.hash;
+      if (hash) {
+        const params = new URLSearchParams(hash.slice(1));
+        const accessToken = params.get("access_token");
+        const type = params.get("type");
+        if (accessToken && type === "recovery") {
+          router.replace(`/auth/reset-password?access_token=${encodeURIComponent(accessToken)}`);
+          return;
+        }
+      }
+    }
+
     if (!isLoading && !isAuthenticated) {
       router.replace("/auth/login");
     }
