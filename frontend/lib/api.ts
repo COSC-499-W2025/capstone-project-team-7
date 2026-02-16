@@ -43,6 +43,24 @@ async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T
     });
 
     if (!res.ok) {
+      // Handle 401 Unauthorized and 403 Forbidden (auth errors)
+      if (res.status === 401 || res.status === 403) {
+        // Clear all auth data
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("auth_access_token");
+        localStorage.removeItem("refresh_token");
+        localStorage.removeItem("user");
+
+        // Notify all useAuth instances to update React state and show toast
+        window.dispatchEvent(new CustomEvent("auth:signout", { detail: { expired: true } }));
+
+        return {
+          ok: false,
+          status: res.status,
+          error: "Session expired"
+        };
+      }
+
       const text = await res.text().catch(() => "");
       return { ok: false, status: res.status, error: text || res.statusText };
     }
@@ -130,6 +148,16 @@ export const api = {
       request<AuthSessionResponse>("/api/auth/refresh", {
         method: "POST",
         body: JSON.stringify({ refresh_token: refreshToken })
+      }),
+    requestPasswordReset: (email: string, redirectTo?: string) =>
+      request<{ ok: boolean; message?: string }>("/api/auth/request-reset", {
+        method: "POST",
+        body: JSON.stringify({ email, redirect_to: redirectTo })
+      }),
+    resetPassword: (token: string, newPassword: string) =>
+      request<{ ok: boolean; message?: string }>("/api/auth/reset-password", {
+        method: "POST",
+        body: JSON.stringify({ token, new_password: newPassword })
       }),
     saveConsent: (userId: string, serviceName: string, consentGiven: boolean, accessToken: string) =>
       request<{ success: boolean }>("/api/auth/consent", {

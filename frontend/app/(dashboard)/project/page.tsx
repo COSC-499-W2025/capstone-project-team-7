@@ -13,6 +13,12 @@ import {
   getProjectSkillTimeline,
   generateProjectSkillSummary,
 } from "@/lib/api/projects";
+import {
+  detectLanguageMetric,
+  normalizeLanguageStats,
+  type NormalizedLanguageStat,
+  type LanguageMetric,
+} from "@/lib/language-stats";
 import type {
   ProjectDetail,
   SkillProgressPeriod,
@@ -65,27 +71,18 @@ const tabs = [
   { value: "media-analysis", label: "Media Analysis", icon: Film },
 ] as const;
 
-const overviewLanguages = [
-  { name: "TypeScript", percentage: 42.3 },
-  { name: "Python", percentage: 28.1 },
-  { name: "JavaScript", percentage: 15.7 },
-  { name: "CSS", percentage: 8.4 },
-  { name: "HTML", percentage: 5.5 },
-];
-
-const fallbackProject = {
-  name: "My Capstone App",
-  path: "/home/user/projects/capstone-app",
-  scanTimestamp: "2025-01-15 14:32:07",
-  filesProcessed: 247,
-  totalSizeLabel: "4.8 MB",
-  issuesFound: 12,
-  totalLines: 18432,
-  gitRepos: 2,
-  mediaFiles: 15,
-  pdfDocs: 3,
-  otherDocs: 8,
-};
+const LANGUAGE_COLORS = [
+  "bg-gray-900",
+  "bg-blue-600",
+  "bg-emerald-600",
+  "bg-amber-500",
+  "bg-indigo-600",
+  "bg-rose-600",
+  "bg-teal-600",
+  "bg-slate-500",
+  "bg-orange-500",
+  "bg-purple-600",
+] as const;
 
 function PlaceholderContent({ label }: { label: string }) {
   return (
@@ -213,71 +210,134 @@ export default function ProjectPage() {
   const skillsByCategory = (skillsAnalysis.skills_by_category ?? {}) as any;
   const totalSkills = (skillsAnalysis.total_skills ?? 0) as number;
 
-  const projectName = project?.project_name ?? fallbackProject.name;
-  const projectPath = project?.project_path ?? fallbackProject.path;
-  const scanTimestamp = project?.scan_timestamp ?? fallbackProject.scanTimestamp;
+  const hasProject = Boolean(project);
 
-  const filesProcessed =
-    summary.total_files ??
-    project?.total_files ??
-    fallbackProject.filesProcessed;
+  const projectName = project?.project_name ?? "";
+  const projectPath = project?.project_path ?? "";
+  const scanTimestamp = project?.scan_timestamp ?? "Not available";
+
+  const scanDurationRaw = Number(
+    summary.scan_duration_seconds ?? scanData.scan_duration_seconds ?? scanData.scan_duration
+  );
+  const scanDurationLabel = Number.isFinite(scanDurationRaw)
+    ? formatDurationSeconds(scanDurationRaw)
+    : "Not available";
+
+  const filesProcessed = summary.total_files ?? project?.total_files ?? 0;
   const totalSizeBytes = summary.bytes_processed;
-  const issuesFound =
-    summary.issues_found ?? summary.issue_count ?? fallbackProject.issuesFound;
-  const totalLines =
-    summary.total_lines ?? project?.total_lines ?? fallbackProject.totalLines;
+  const issuesFound = summary.issues_found ?? summary.issue_count ?? 0;
+  const totalLines = summary.total_lines ?? project?.total_lines ?? 0;
 
   const filesProcessedLabel = formatCount(filesProcessed);
   const issuesFoundLabel = formatCount(issuesFound);
   const totalLinesLabel = formatCount(totalLines);
+  const totalSizeLabel =
+    typeof totalSizeBytes === "number" && Number.isFinite(totalSizeBytes)
+      ? formatBytes(totalSizeBytes)
+      : "Not available";
 
-  const languageStats = useMemo(() => {
-    const rawLanguages = scanData.languages;
-    if (!rawLanguages || typeof rawLanguages !== "object") return null;
+  const languageMetric = useMemo<LanguageMetric>(
+    () => detectLanguageMetric(scanData),
+    [scanData]
+  );
 
-    const entries: Array<{ name: string; value: number }> = [];
+  const languageBreakdown = useMemo(() => {
+    const totalOverride = Number(
+      summary.bytes_processed ??
+        scanData.total_size_bytes ??
+        scanData.total_bytes ??
+        scanData.bytes_processed
+    );
+    return normalizeLanguageStats(
+      scanData,
+      languageMetric === "bytes" && Number.isFinite(totalOverride)
+        ? totalOverride
+        : undefined
+    );
+  }, [
+    scanData,
+    summary.bytes_processed,
+    scanData.total_size_bytes,
+    scanData.total_bytes,
+    scanData.bytes_processed,
+    languageMetric,
+  ]);
 
-    if (Array.isArray(rawLanguages)) {
-      if (rawLanguages.length > 0 && typeof rawLanguages[0] === "object") {
-        rawLanguages.forEach((lang: any) => {
-          const name = lang.language || lang.name;
-          const value = Number(lang.percentage ?? lang.lines ?? lang.files ?? 0);
-          if (name) entries.push({ name, value });
-        });
-      } else {
-        rawLanguages.forEach((lang: any) => {
-          if (typeof lang === "string") entries.push({ name: lang, value: 1 });
-        });
-      }
-    } else {
-      Object.entries(rawLanguages).forEach(([name, data]) => {
-        if (!name) return;
-        if (typeof data === "number") {
-          entries.push({ name, value: data });
-          return;
-        }
-        const metric = data as Record<string, number>;
-        const value = Number(metric.lines ?? metric.files ?? metric.bytes ?? 0);
-        entries.push({ name, value });
-      });
+  const topLanguages: Array<{ name: string; percentage: number }> = languageBreakdown
+    .slice(0, 5)
+    .map((lang) => ({ name: lang.name, percentage: lang.percent }));
+
+  const languageTotalValue = useMemo(() => {
+    const computed = languageBreakdown.reduce((sum, item) => sum + item.bytes, 0);
+    if (languageMetric !== "bytes") return computed;
+    const totalOverride = Number(
+      summary.bytes_processed ??
+        scanData.total_size_bytes ??
+        scanData.total_bytes ??
+        scanData.bytes_processed
+    );
+    if (Number.isFinite(totalOverride) && totalOverride > 0) {
+      return Math.max(totalOverride, computed);
     }
+    return computed;
+  }, [
+    languageBreakdown,
+    summary.bytes_processed,
+    scanData.total_size_bytes,
+    scanData.total_bytes,
+    scanData.bytes_processed,
+    languageMetric,
+  ]);
 
-    const total = entries.reduce((sum, e) => sum + e.value, 0);
-    if (total <= 0) return null;
+  const languageValuesTotal = useMemo(
+    () => languageBreakdown.reduce((sum, item) => sum + item.bytes, 0),
+    [languageBreakdown]
+  );
 
-    return entries
-      .map((e) => ({
-        name: e.name,
-        percentage: Number(((e.value / total) * 100).toFixed(1)),
-      }))
-      .sort((a, b) => b.percentage - a.percentage)
-      .slice(0, 5);
-  }, [scanData.languages]);
+  const languageTotalPercent =
+    languageTotalValue > 0
+      ? Number(((languageValuesTotal / languageTotalValue) * 100).toFixed(1))
+      : 0;
 
-  const topLanguages = languageStats ?? overviewLanguages;
+  const languageMetricLabel =
+    languageMetric === "lines"
+      ? "Lines"
+      : languageMetric === "files"
+      ? "Files"
+      : "Size";
 
-  const gitRepos =
-    scanData.git_analysis?.repositories?.length ?? fallbackProject.gitRepos;
+  const languageTotalLabel =
+    languageMetric === "lines"
+      ? "Total lines"
+      : languageMetric === "files"
+      ? "Total files"
+      : "Total size";
+
+  const formatLanguageValue = (value: number) =>
+    languageMetric === "bytes" ? formatBytes(value) : formatCount(value);
+
+  const languageChartData: NormalizedLanguageStat[] = useMemo(() => {
+    if (languageBreakdown.length === 0) return [];
+    const maxSegments = 8;
+    const primary = languageBreakdown.slice(0, maxSegments);
+    const remainder = languageBreakdown.slice(maxSegments);
+    if (remainder.length === 0) return primary;
+
+    const otherBytes = remainder.reduce((sum, item) => sum + item.bytes, 0);
+    const percent =
+      languageTotalValue > 0
+        ? Number(((otherBytes / languageTotalValue) * 100).toFixed(1))
+        : 0;
+    return [...primary, { name: "Other", bytes: otherBytes, percent }];
+  }, [languageBreakdown, languageTotalValue]);
+
+  useEffect(() => {
+    if (projectError) {
+      console.error("Language breakdown failed to load.", projectError);
+    }
+  }, [projectError]);
+
+  const gitRepos = scanData.git_analysis?.repositories?.length ?? 0;
 
   const documentAnalysis = scanData.document_analysis;
   const otherDocs = Array.isArray(documentAnalysis)
@@ -286,7 +346,7 @@ export default function ProjectPage() {
     ? documentAnalysis.documents.length
     : Array.isArray(documentAnalysis?.items)
     ? documentAnalysis.items.length
-    : fallbackProject.otherDocs;
+    : 0;
 
   // Media analysis (from feature/media-analysis)
   const mediaAnalysis = useMemo<MediaAnalysisPayload | null>(() => {
@@ -295,14 +355,13 @@ export default function ProjectPage() {
     return resolveMediaAnalysis(data);
   }, [project]);
 
-  const mediaFiles =
-    // prefer resolved payload counts if you want, otherwise scanData
-    (Array.isArray(scanData.media_analysis) ? scanData.media_analysis.length : 0) ||
-    fallbackProject.mediaFiles;
+  const mediaFiles = Array.isArray(scanData.media_analysis)
+    ? scanData.media_analysis.length
+    : 0;
 
-  const pdfDocs =
-    (Array.isArray(scanData.pdf_analysis) ? scanData.pdf_analysis.length : 0) ||
-    fallbackProject.pdfDocs;
+  const pdfDocs = Array.isArray(scanData.pdf_analysis)
+    ? scanData.pdf_analysis.length
+    : 0;
 
   const topSkills = useMemo(() => {
     const counts = new Map<string, number>();
@@ -349,7 +408,7 @@ export default function ProjectPage() {
         </Link>
 
         <h1 className="text-4xl font-bold text-gray-900 tracking-tight">
-          Project: {projectName}
+          {hasProject ? `Project: ${projectName}` : "Project"}
         </h1>
 
         <p className="text-gray-500 mt-1 text-sm">Scanned project analysis and reports</p>
@@ -360,6 +419,30 @@ export default function ProjectPage() {
         {projectError && <p className="text-xs text-red-600 mt-2">{projectError}</p>}
       </div>
 
+      {!projectLoading && !projectError && !hasProject && (
+        <Card className="bg-white border border-gray-200">
+          <CardContent className="p-8 text-center space-y-3">
+            <p className="text-lg font-semibold text-gray-900">No project selected</p>
+            <p className="text-sm text-gray-600">
+              Select a project from your scanned results to view its analysis.
+            </p>
+            <Link href="/projects" className="text-sm text-gray-900 underline">
+              Go to projects
+            </Link>
+          </CardContent>
+        </Card>
+      )}
+
+      {projectError && !hasProject && (
+        <Card className="bg-white border border-red-200">
+          <CardContent className="p-8 text-center space-y-2">
+            <p className="text-sm font-semibold text-red-700">Unable to load project data</p>
+            <p className="text-sm text-gray-600">Please return to Settings and verify your session.</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {hasProject && (
       <Tabs defaultValue="overview">
         <TabsList className="flex justify-start overflow-x-auto gap-1 h-auto bg-gray-100 rounded-lg p-1.5 scrollbar-thin">
           {tabs.map((tab) => {
@@ -414,7 +497,7 @@ export default function ProjectPage() {
                     <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Scan Duration
                     </p>
-                    <p className="text-sm text-gray-900 mt-1">3.2 seconds</p>
+                    <p className="text-sm text-gray-900 mt-1">{scanDurationLabel}</p>
                   </div>
                 </div>
               </CardContent>
@@ -436,9 +519,7 @@ export default function ProjectPage() {
                   </div>
                   <div className="bg-gray-50 rounded-lg p-4 text-center">
                     <p className="text-2xl font-bold text-gray-900">
-                      {totalSizeBytes
-                        ? formatBytes(Number(totalSizeBytes))
-                        : fallbackProject.totalSizeLabel}
+                      {totalSizeLabel}
                     </p>
                     <p className="text-xs text-gray-500 mt-1">Total Size</p>
                   </div>
@@ -465,24 +546,28 @@ export default function ProjectPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6">
-                <div className="space-y-3">
-                  {topLanguages.map((lang) => (
-                    <div key={lang.name} className="flex items-center gap-3">
-                      <span className="text-sm text-gray-900 w-28 font-medium">
-                        {lang.name}
-                      </span>
-                      <div className="flex-1 bg-gray-100 rounded-full h-2.5">
-                        <div
-                          className="bg-gray-900 h-2.5 rounded-full"
-                          style={{ width: `${lang.percentage}%` }}
-                        />
+                {topLanguages.length === 0 ? (
+                  <p className="text-sm text-gray-500">No language data available for this project.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {topLanguages.map((lang) => (
+                      <div key={lang.name} className="flex items-center gap-3">
+                        <span className="text-sm text-gray-900 w-28 font-medium">
+                          {lang.name}
+                        </span>
+                        <div className="flex-1 bg-gray-100 rounded-full h-2.5">
+                          <div
+                            className="bg-gray-900 h-2.5 rounded-full"
+                            style={{ width: `${lang.percentage}%` }}
+                          />
+                        </div>
+                        <span className="text-sm text-gray-500 w-14 text-right">
+                          {lang.percentage}%
+                        </span>
                       </div>
-                      <span className="text-sm text-gray-500 w-14 text-right">
-                        {lang.percentage}%
-                      </span>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -535,6 +620,167 @@ export default function ProjectPage() {
                 </CardContent>
               </Card>
             </div>
+          </div>
+        </TabsContent>
+
+        {/* Language Breakdown */}
+        <TabsContent value="languages">
+          <div className="space-y-6">
+            <Card className="bg-white border border-gray-200">
+              <CardHeader className="border-b border-gray-200">
+                <CardTitle className="text-xl font-bold text-gray-900">
+                  Language Breakdown
+                </CardTitle>
+                <p className="text-xs text-gray-500 mt-1">
+                  Distribution across detected languages.
+                </p>
+              </CardHeader>
+              <CardContent className="p-6 space-y-6">
+                {projectLoading && (
+                  <div className="space-y-4 animate-pulse">
+                    <div className="h-3 w-full rounded-full bg-gray-100" />
+                    <div className="h-3 w-5/6 rounded-full bg-gray-100" />
+                    <div className="h-3 w-2/3 rounded-full bg-gray-100" />
+                  </div>
+                )}
+
+                {!projectLoading && projectError && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+                    <p className="text-sm font-semibold text-red-700">
+                      Couldn’t load language breakdown.
+                    </p>
+                    <p className="text-xs text-red-600 mt-1">
+                      {projectError}
+                    </p>
+                  </div>
+                )}
+
+                {!projectLoading &&
+                  !projectError &&
+                  languageBreakdown.length === 0 && (
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-6 text-center">
+                      <p className="text-sm font-semibold text-gray-900">
+                        No language breakdown available for this project yet.
+                      </p>
+                      <p className="text-xs text-gray-500 mt-2">
+                        Run a scan with language detection enabled to see distribution details.
+                      </p>
+                    </div>
+                  )}
+
+                {!projectLoading &&
+                  !projectError &&
+                  languageBreakdown.length > 0 && (
+                    <>
+                      <div className="space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-gray-700">
+                            Distribution
+                          </p>
+                          {languageTotalValue > 0 && (
+                            <p className="text-xs text-gray-500">
+                              {languageTotalLabel}:{" "}
+                              <span className="font-semibold text-gray-900">
+                                {formatLanguageValue(languageTotalValue)}
+                              </span>
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="h-3 w-full rounded-full overflow-hidden bg-gray-100 flex">
+                          {languageChartData.map((lang, index) => {
+                            const color =
+                              LANGUAGE_COLORS[index % LANGUAGE_COLORS.length];
+                            return (
+                              <div
+                                key={`${lang.name}-${index}`}
+                                className={`h-full ${color}`}
+                                style={{ width: `${lang.percent}%` }}
+                                title={`${lang.name} • ${lang.percent}%`}
+                              />
+                            );
+                          })}
+                        </div>
+
+                        <div className="flex flex-wrap gap-3 text-xs text-gray-600">
+                          {languageChartData.map((lang, index) => {
+                            const color =
+                              LANGUAGE_COLORS[index % LANGUAGE_COLORS.length];
+                            return (
+                              <div
+                                key={`${lang.name}-legend-${index}`}
+                                className="flex items-center gap-2"
+                              >
+                                <span className={`h-2.5 w-2.5 rounded-full ${color}`} />
+                                <span className="font-medium text-gray-800">
+                                  {lang.name}
+                                </span>
+                                <span>{lang.percent}%</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm border border-gray-200 rounded-lg">
+                          <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
+                            <tr>
+                              <th className="text-left px-4 py-3">Language</th>
+                              <th className="text-right px-4 py-3">%</th>
+                              <th className="text-right px-4 py-3">
+                                {languageMetricLabel}
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {languageBreakdown.map((lang, index) => {
+                              const color =
+                                LANGUAGE_COLORS[index % LANGUAGE_COLORS.length];
+                              return (
+                                <tr
+                                  key={lang.name}
+                                  className="border-t border-gray-200"
+                                >
+                                  <td className="px-4 py-3">
+                                    <div className="flex items-center gap-2">
+                                      <span
+                                        className={`h-2.5 w-2.5 rounded-full ${color}`}
+                                      />
+                                      <span className="font-medium text-gray-900">
+                                        {lang.name}
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-3 text-right text-gray-700">
+                                    {lang.percent.toFixed(1)}%
+                                  </td>
+                                  <td className="px-4 py-3 text-right text-gray-700">
+                                    {formatLanguageValue(lang.bytes)}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                            {languageValuesTotal > 0 && (
+                              <tr className="border-t border-gray-200 bg-gray-50">
+                                <td className="px-4 py-3 font-semibold text-gray-900">
+                                  Total
+                                </td>
+                                <td className="px-4 py-3 text-right text-gray-700">
+                                  {languageTotalPercent.toFixed(1)}%
+                                </td>
+                                <td className="px-4 py-3 text-right font-semibold text-gray-900">
+                                  {formatLanguageValue(languageValuesTotal)}
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  )}
+              </CardContent>
+            </Card>
           </div>
         </TabsContent>
 
@@ -907,6 +1153,7 @@ export default function ProjectPage() {
             (tab) =>
               ![
                 "overview",
+                "languages",
                 "doc-analysis",
                 "media-analysis",
                 "skills-progress",
@@ -919,6 +1166,7 @@ export default function ProjectPage() {
             </TabsContent>
           ))}
       </Tabs>
+      )}
     </div>
   );
 }
@@ -1079,6 +1327,12 @@ function formatPeriodLabel(value: string) {
   const date = new Date(Number(year), Number(month) - 1, 1);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString(undefined, { year: "numeric", month: "short" });
+}
+
+function formatDurationSeconds(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "Not available";
+  if (seconds >= 10) return `${seconds.toFixed(0)} seconds`;
+  return `${seconds.toFixed(1)} seconds`;
 }
 
 function formatBytes(bytes: number): string {

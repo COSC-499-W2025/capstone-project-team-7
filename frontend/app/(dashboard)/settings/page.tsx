@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -12,11 +13,15 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { loadSettings, saveSettings, AppSettings } from "@/lib/settings";
 import { loadTheme, saveTheme, applyTheme, type Theme } from "@/lib/theme";
 import { consent as consentApi, config as configApi } from "@/lib/api";
-import { auth as authApi, getStoredToken, setStoredToken, clearStoredToken } from "@/lib/auth";
+import { auth as authApi, getStoredToken } from "@/lib/auth";
+import { useAuth } from "@/hooks/use-auth";
 import type { AuthSessionInfo } from "@/lib/auth";
 import type { ConfigResponse, ProfilesResponse } from "@/lib/api.types";
 
 export default function SettingsPage() {
+  const router = useRouter();
+  const { logout } = useAuth();
+  
   // User session
   const [userSession, setUserSession] = useState<AuthSessionInfo | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
@@ -31,6 +36,8 @@ export default function SettingsPage() {
   // Consent management
   const [showRevokeDialog, setShowRevokeDialog] = useState(false);
   const [consentData, setConsentData] = useState<{ data_access: boolean; external_services: boolean }>({ data_access: false, external_services: false });
+  const [consentLoading, setConsentLoading] = useState(true);
+  const [consentError, setConsentError] = useState<string | null>(null);
 
   // Scan configuration
   const [serverConfig, setServerConfig] = useState<ConfigResponse | null>(null);
@@ -50,10 +57,6 @@ export default function SettingsPage() {
   const [extensionsInput, setExtensionsInput] = useState("");
   const [excludeDirsInput, setExcludeDirsInput] = useState("");
 
-  // Login/Auth
-  const [showLoginDialog, setShowLoginDialog] = useState(false);
-  const [tokenInput, setTokenInput] = useState("");
-
   useEffect(() => {
     let cancelled = false;
 
@@ -72,12 +75,10 @@ export default function SettingsPage() {
           const sessionRes = await authApi.getSession();
           if (!cancelled && sessionRes.ok) {
             setUserSession(sessionRes.data);
-          } else {
-            // Token invalid, clear it
-            clearStoredToken();
           }
+          // 401/403 errors are handled automatically by the auth:expired event
         } catch {
-          clearStoredToken();
+          // Network error — don't force logout
         } finally {
           if (!cancelled) setSessionLoading(false);
         }
@@ -98,23 +99,6 @@ export default function SettingsPage() {
         const local = loadSettings();
         if (!cancelled) setSettings(local);
       }
-
-      // Try to load consent status from backend (only if authenticated)
-      const storedToken = getStoredToken();
-      if (storedToken) {
-        try {
-          const res = await consentApi.get();
-          if (!cancelled && res.ok) {
-            setConsentData({
-              data_access: res.data.data_access,
-              external_services: res.data.external_services
-            });
-            setSettings((s) => ({ ...(s ?? {}), enableAnalytics: res.data.external_services }));
-          }
-        } catch {
-          // Backend not available, use local settings
-        }
-      }
     })();
 
     return () => {
@@ -122,23 +106,42 @@ export default function SettingsPage() {
     };
   }, []);
 
-  // Load config and profiles when user session changes
+  // Load config, profiles, and consent when user session changes
   useEffect(() => {
     if (!userSession) return;
 
     let cancelled = false;
     (async () => {
       try {
-        const [configRes, profilesRes] = await Promise.all([
+        setConsentLoading(true);
+        setConsentError(null);
+
+        const [configRes, profilesRes, consentRes] = await Promise.all([
           configApi.get(),
-          configApi.listProfiles()
+          configApi.listProfiles(),
+          consentApi.get() // ← Now called after session is validated
         ]);
+
         if (!cancelled) {
           if (configRes.ok) setServerConfig(configRes.data);
           if (profilesRes.ok) setProfiles(profilesRes.data.profiles || {});
+          if (consentRes.ok) {
+            setConsentData({
+              data_access: consentRes.data.data_access,
+              external_services: consentRes.data.external_services
+            });
+            setSettings((s) => ({ ...(s ?? {}), enableAnalytics: consentRes.data.external_services }));
+          } else {
+            setConsentError(consentRes.error || "Failed to load consent data");
+          }
+          setConsentLoading(false);
         }
-      } catch {
-        // Backend not available
+      } catch (err) {
+        if (!cancelled) {
+          setConsentLoading(false);
+          setConsentError(err instanceof Error ? err.message : "Unknown error");
+          console.error("Failed to load settings:", err);
+        }
       }
     })();
 
@@ -223,57 +226,47 @@ export default function SettingsPage() {
     setShowRevokeDialog(false);
   };
 
-  const handleLogin = async () => {
-    if (!tokenInput.trim()) {
-      alert("Please enter an access token");
-      return;
-    }
+  const handleRetryLoadSettings = async () => {
+    setConsentLoading(true);
+    setConsentError(null);
 
-    setSessionLoading(true);
     try {
-      // Store the token
-      setStoredToken(tokenInput.trim());
-      
-      // Verify it works by fetching session
-      const sessionRes = await authApi.getSession();
-      if (sessionRes.ok) {
-        setUserSession(sessionRes.data);
-        setShowLoginDialog(false);
-        setTokenInput("");
-        
-        // Load consent and config data
-        const [consentRes, configRes, profilesRes] = await Promise.all([
-          consentApi.get(),
-          configApi.get(),
-          configApi.listProfiles()
-        ]);
-        
-        if (consentRes.ok) {
-          setConsentData({
-            data_access: consentRes.data.data_access,
-            external_services: consentRes.data.external_services
-          });
-        }
-        if (configRes.ok) setServerConfig(configRes.data);
-        if (profilesRes.ok) setProfiles(profilesRes.data.profiles || {});
+      const [configRes, profilesRes, consentRes] = await Promise.all([
+        configApi.get(),
+        configApi.listProfiles(),
+        consentApi.get()
+      ]);
+
+      if (configRes.ok) setServerConfig(configRes.data);
+      if (profilesRes.ok) setProfiles(profilesRes.data.profiles || {});
+      if (consentRes.ok) {
+        setConsentData({
+          data_access: consentRes.data.data_access,
+          external_services: consentRes.data.external_services
+        });
+        setSettings((s) => ({ ...(s ?? {}), enableAnalytics: consentRes.data.external_services }));
       } else {
-        clearStoredToken();
-        alert("Invalid access token. Please check and try again.");
+        setConsentError(consentRes.error || "Failed to load consent data");
       }
     } catch (err) {
-      clearStoredToken();
-      alert("Failed to authenticate. Please check your token.");
+      setConsentError(err instanceof Error ? err.message : "Unknown error");
+      console.error("Failed to retry loading settings:", err);
     } finally {
-      setSessionLoading(false);
+      setConsentLoading(false);
     }
   };
 
   const handleLogout = () => {
-    clearStoredToken();
+    // Use the logout hook to clear authentication state
+    logout();
+
+    // Clear local settings state
     setUserSession(null);
     setConsentData({ data_access: false, external_services: false });
     setServerConfig(null);
     setProfiles({});
+
+    // Redirect is handled by the dashboard layout when isAuthenticated becomes false
   };
 
   const handleProfileSwitch = async (profileName: string) => {
@@ -417,7 +410,38 @@ export default function SettingsPage() {
 
 
   return (
-    <div className="p-8">
+    <div className="p-8 relative">
+      {/* Error Banner */}
+      {consentError && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-red-900">Failed to load settings</p>
+              <p className="text-sm text-red-700 mt-1">{consentError}</p>
+            </div>
+            <Button 
+              onClick={handleRetryLoadSettings}
+              disabled={consentLoading}
+              variant="outline"
+              size="sm"
+              className="border-red-300 text-red-600 hover:bg-red-50"
+            >
+              {consentLoading ? "Retrying..." : "Retry"}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Loading Overlay */}
+      {consentLoading && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-2 border-primary border-t-transparent mx-auto mb-4" />
+            <p className="text-sm text-muted-foreground">Loading settings...</p>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
         {/* Header with user status */}
         <div className="p-8">
@@ -445,20 +469,17 @@ export default function SettingsPage() {
                     Logout
                   </Button>
                 </div>
-              ) : (
-                <div>
-                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Status</p>
-                  <p className="text-sm text-gray-600 mt-1">Guest mode</p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowLoginDialog(true)}
-                    className="mt-2 border-gray-300 hover:bg-gray-50"
-                  >
-                    Login
-                  </Button>
-                </div>
-              )}
+               ) : (
+                 <div>
+                   <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Status</p>
+                   <p className="text-sm text-gray-600 mt-1">Guest mode</p>
+                   <p className="text-xs text-gray-500 mt-2">
+                     <Link href="/auth/login" className="text-blue-600 hover:text-blue-700 underline">
+                       Go to login page
+                     </Link>
+                   </p>
+                 </div>
+               )}
             </div>
           </div>
         </div>
@@ -754,44 +775,6 @@ export default function SettingsPage() {
             </Button>
             <Button onClick={revokeAllConsents} className="bg-red-600 text-white hover:bg-red-700">
               Revoke All
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={showLoginDialog} onOpenChange={setShowLoginDialog}>
-        <DialogContent className="bg-white">
-          <DialogHeader>
-            <DialogTitle className="text-gray-900">Login with Access Token</DialogTitle>
-            <DialogDescription className="text-gray-600">
-              Enter your Supabase access token to authenticate. You can get this by running the test script.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="token-input" className="text-sm font-medium text-gray-900">Access Token</Label>
-              <Input
-                id="token-input"
-                type="password"
-                className="border-gray-300 text-gray-900"
-                value={tokenInput}
-                onChange={(e) => setTokenInput(e.target.value)}
-                placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleLogin();
-                }}
-              />
-              <p className="text-xs text-gray-500">
-                Run: <code className="bg-gray-100 px-1 rounded">python scripts/get_test_token.py</code>
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowLoginDialog(false)} className="border-gray-300 text-gray-900">
-              Cancel
-            </Button>
-            <Button onClick={handleLogin} disabled={!tokenInput.trim()} className="bg-gray-900 text-white hover:bg-gray-800">
-              Login
             </Button>
           </DialogFooter>
         </DialogContent>
