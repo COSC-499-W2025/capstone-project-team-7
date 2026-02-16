@@ -1,6 +1,92 @@
 
 # Jacob Damery
 
+## Week 20 
+# Week 18
+
+This week, I focused on implementing a fully functional Language Breakdown feature within the Project Detail page and ensuring data accuracy across the project view. My primary contribution was delivering the Language Breakdown tab (PR #328), while also reviewing and validating related fixes from teammates to maintain UI consistency and data integrity across the application.
+
+---
+
+## Key Accomplishments
+
+### Language Breakdown Tab Implementation [PR #328](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/328)
+
+I implemented a new **Language Breakdown** tab on the Project Detail page powered directly by scan payload language statistics.
+
+**Core Work:**
+- Built a normalization helper to handle multiple possible payload shapes for language stats.
+- Rendered a lightweight stacked bar visualization to communicate distribution clearly.
+- Added a corresponding table view for precise numeric representation.
+- Implemented loading, empty, and error states consistent with the rest of the application.
+- Wrote unit tests for the `normalizeLanguageStats` helper to ensure resilience and maintainability.
+- Maintained zero new dependencies to avoid increasing project complexity.
+
+This feature improves transparency into scanned project composition and strengthens the analytical depth of the application.
+
+---
+
+### Code Reviews & Integration Support
+
+In addition to feature development, I reviewed the following merged pull requests to ensure architectural and UI consistency:
+
+#### [PR #324](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/323) – Login Bug in Settings Page
+
+Reviewed authentication logout flow fixes to confirm:
+- All authentication tokens are properly cleared from `localStorage`.
+- Logout behavior is consistent across hooks and the settings page.
+- Redirect logic is immediate and secure.
+- E2E and backend tests prevent regression.
+
+This was a critical stability fix affecting security and session integrity.
+
+---
+
+#### [PR #323](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/323) – Project Page Data Accuracy & Empty-State Handling
+
+Reviewed updates that:
+- Removed misleading hardcoded/fallback project metadata.
+- Ensured scan duration and metadata are API-backed.
+- Improved empty-state clarity when no project is loaded.
+- Preserved existing loading and error state behavior.
+
+I specifically validated that these changes aligned with the new Language Breakdown tab and did not introduce inconsistent state behavior across tabs.
+
+---
+
+## Challenges & Learning
+
+A key challenge was designing normalization logic that safely supports evolving scan payload formats. Since scan data can differ depending on AI or local processing pipelines, the transformation layer needed to defensively handle:
+
+- Undefined or missing values  
+- Unexpected payload shapes  
+- Incomplete language statistics  
+
+This reinforced the importance of:
+
+- Separating transformation logic from presentation logic  
+- Writing focused unit tests for data utilities  
+- Designing loading/empty/error states as first-class UI states  
+
+Reviewing authentication-related changes also strengthened my understanding of token lifecycle management and the risks of inconsistent storage keys across hooks.
+
+---
+
+## Next Week Priorities
+
+- Expand analytical views with additional scan-backed breakdown metrics.
+- Continue aligning UI state handling patterns across all tabs.
+- Improve visualization polish (percentage formatting, spacing, responsiveness).
+- Assist with resolving existing frontend type issues blocking full build success.
+
+---
+
+## Impact
+
+This week’s work strengthens the analytical credibility of the Portfolio Manager by surfacing real scan-backed language metrics in a structured, tested format. The addition of normalization logic and unit tests improves long-term maintainability and reduces risk as backend payloads evolve.
+
+By contributing a new feature and reviewing critical stability fixes, I supported both feature depth and system reliability within the Electron application.
+
 ## Week 18 - 19
 
 This week, I focused on laying the groundwork for a more complete and cohesive user interface in the Electron application. My work centered on establishing global styling conventions and implementing a modern sidebar-based navigation layout. This marked an important step toward transitioning the project from isolated components into a unified, full-featured UI.
