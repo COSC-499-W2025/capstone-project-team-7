@@ -23,7 +23,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         aria-busy="true"
         aria-live="polite"
       >
-        <p className="text-sm text-muted-foreground">Loading...</p>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-2 border-primary border-t-transparent mx-auto mb-4" />
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        </div>
       </main>
     );
   }
