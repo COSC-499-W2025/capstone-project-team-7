@@ -58,7 +58,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T
         window.dispatchEvent(new CustomEvent("auth:signout", { detail: { expired: true } }));
 
         return {
-          ok: false,
+          ok: false as const,
           status: res.status,
           error: "Session expired"
         };
@@ -115,7 +115,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T
     return result;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Network error";
-    return { ok: false, error: message };
+    return { ok: false as const, error: message };
   }
 }
 
