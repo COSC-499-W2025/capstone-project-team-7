@@ -10,13 +10,13 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 from collections import defaultdict
 
-from ...analyzer.skills_extractor import SkillsExtractor, Skill, SkillEvidence
-from ...analyzer.project_detector import ProjectDetector, ProjectInfo
-from ...analyzer.llm.skill_progress_summary import (
+from analyzer.skills_extractor import SkillsExtractor, Skill, SkillEvidence
+from analyzer.project_detector import ProjectDetector, ProjectInfo
+from analyzer.llm.skill_progress_summary import (
     SkillProgressSummary,
     summarize_skill_progress,
 )
-from ...local_analysis.skill_progress_timeline import build_skill_progression
+from local_analysis.skill_progress_timeline import build_skill_progression
 
 logger = logging.getLogger(__name__)
 
