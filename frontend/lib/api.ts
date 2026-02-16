@@ -7,6 +7,7 @@ import type {
   ConsentNotice,
   ConsentStatus,
   ConsentUpdateRequest,
+  ConsentRequest,
   ProfilesResponse,
   ProfileUpsertRequest,
   UpdateProfileRequest,
