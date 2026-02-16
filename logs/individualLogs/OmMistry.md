@@ -1,5 +1,61 @@
 # Om Mistry (@OM200401)
 
+## Week 20: February 9 - February 15
+
+This week I focused on fixing authentication and session management issues across the frontend, removing insecure auth patterns, and starting the forgot password feature.
+
+**Core Implementation:**
+
+1. **Session Logout Race Condition Fix (PR #326):**
+   - Added a global 401/403 error handler in both API clients (`lib/api.ts` and `lib/auth.ts`) that clears all auth tokens and dispatches an `auth:signout` custom event
+   - Updated `useAuth` hook to listen for `auth:signout` events and sync logout state across all component instances
+   - Added sonner toast notifications to inform users when their session has expired
+   - Refactored the settings page to load consent data only after session validation, preventing unauthenticated API calls from firing prematurely
+   - Enhanced the dashboard layout with a loading spinner during auth checks and automatic redirect to `/auth/login` on auth loss
+
+2. **Login Bug Fix on Settings Page (PR #324):**
+   - Removed the insecure "Login with Access Token" dialog and the `scripts/get_test_token.py` helper script
+   - Authentication now flows exclusively through the Supabase `/auth/login` page
+   - Replaced guest mode "Login" button with a link to the login page
+   - Added loading overlay and error banner with retry for the settings page initial data load
+
+3. **Forgot Password Flow (PR #331):**
+   - Built `/auth/forgot-password` and `/auth/reset-password` pages
+   - Added backend endpoint for password reset via Supabase auth
+   - Updated API docs and added backend tests for the new flow
+
+4. **Backend Import Fix (PR #296):**
+   - Fixed relative import error in `skills_analysis_service.py` that was breaking dev startup
+
+5. **E2E and Backend Tests:**
+   - Added Playwright E2E tests (`auth-logout-login.spec.ts`) covering logout redirect, guest mode detection, absence of token dialog, and 401/403 auto-logout scenarios
+   - Added backend test for expired token rejection (`test_expired_token_returns_unauthorized`)
+
+6. **PR Reviews:**
+   - Reviewed PR #321 (CLI/TUI deletion and service-path cleanup)
+   - Reviewed PR #322 (Consent management page) and identified overlap with existing implementation
+   - Reviewed PR #323 (Project page data accuracy fix)
+
+**What Went Well:**
+- The `auth:signout` event pattern cleanly decouples logout logic from individual components
+- Removing the access token login dialog eliminated a security concern flagged in peer testing
+- PR reviews helped identify potential merge conflicts early before branches diverged further
+
+**What Didn't Go Well:**
+- 4 of the 8 E2E tests for 401/403 auto-logout are still failing due to Next.js client-side router redirect timing in the Playwright test environment
+- PR #326 has merge conflict potential with PR #322 since both modify the same auth files with different approaches
+
+**Next Steps:**
+- Fix remaining E2E test failures for 401/403 redirect scenarios
+- Get PR #326 merged and resolve any conflicts with other open PRs
+- Focus on remaining frontend pages and connect them to their backend endpoints
+
+Issues resolved: [#295 - Import error in Skills](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/295), [#287 - Login Bug in Settings Page](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/287)
+
+Issues in progress: [#325 - Unexpected Session Logouts](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/325), [#330 - Forgot Password functionality](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/330)
+
+PRs: [#296 - Fixed relative import error](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/296) (Merged), [#324 - Login bug in settings page](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/324) (Merged), [#326 - Session Logout Issues](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/326) (Open), [#331 - Forgot Password Page and Functionality](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/331) (Open)
+
 ## Week 19: February 2 - February 8
 
 This week I delivered the Document Analysis UI end-to-end and wired it to the backend payload, with tests and documentation updates to validate the new flow.
