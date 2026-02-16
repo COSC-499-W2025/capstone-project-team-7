@@ -25,7 +25,7 @@ try:
     from cli.services.encryption import EncryptionService
     from cli.services.project_overrides_service import ProjectOverridesService, ProjectOverridesServiceError
     from auth.consent_validator import ConsentValidator
-    from api.llm_routes import get_user_client
+    from .llm_routes import get_user_client
 except ModuleNotFoundError:  # pragma: no cover - test/import fallback
     from backend.src.cli.services.projects_service import ProjectsService, ProjectsServiceError
     from backend.src.cli.services.encryption import EncryptionService
@@ -53,7 +53,7 @@ try:
     from cli.services.skills_analysis_service import SkillsAnalysisService
     from cli.services.contribution_analysis_service import ContributionAnalysisService
     from local_analysis.git_repo import analyze_git_repo
-    from api.upload_routes import uploads_store
+    from .upload_routes import uploads_store
 except ModuleNotFoundError:  # pragma: no cover - test/import fallback
     from backend.src.cli.language_stats import summarize_languages
     from backend.src.cli.services.skills_analysis_service import SkillsAnalysisService
@@ -446,7 +446,21 @@ def _run_code_analysis_for_path(
         result = service.run_analysis(target_path, preferences)
 
         summary = getattr(result, "summary", {}) or {}
+        
+        # Extract dead code details
+        dead_code = summary.get("dead_code", {})
+        
+        # Extract duplicate code details
+        duplicates = summary.get("duplicates", {})
+        
+        # Extract error handling issues
+        error_handling = summary.get("error_handling_issues", {})
+        
+        # Extract data structures
+        data_structures = summary.get("data_structures", {})
+        
         return {
+            # Basic metrics
             "total_files": summary.get("total_files", 0),
             "total_lines": summary.get("total_lines", 0),
             "code_lines": summary.get("total_code", 0),
@@ -455,6 +469,30 @@ def _run_code_analysis_for_path(
             "classes": summary.get("total_classes", 0),
             "avg_complexity": summary.get("avg_complexity"),
             "avg_maintainability": summary.get("avg_maintainability"),
+            
+            # Code quality metrics
+            "magic_values": summary.get("magic_values", 0),
+            "dead_code": {
+                "total": dead_code.get("total", 0),
+                "unused_functions": dead_code.get("unused_functions", 0),
+                "unused_imports": dead_code.get("unused_imports", 0),
+                "unused_variables": dead_code.get("unused_variables", 0)
+            },
+            "duplicates": {
+                "within_file": duplicates.get("within_file", 0),
+                "cross_file": duplicates.get("cross_file", 0),
+                "total_duplicate_lines": duplicates.get("total_duplicate_lines", 0)
+            },
+            "error_handling_issues": {
+                "total": error_handling.get("total", 0),
+                "critical": error_handling.get("critical", 0),
+                "warning": error_handling.get("warning", 0)
+            },
+            "naming_issues": summary.get("naming_issues", 0),
+            "nesting_issues": summary.get("nesting_issues", 0),
+            "call_graph_edges": summary.get("call_graph_edges", 0),
+            "data_structures": data_structures,
+            "languages": summary.get("languages", {})
         }
     except Exception as exc:
         if "CodeAnalysisUnavailableError" in type(exc).__name__ or "tree-sitter" in str(exc).lower():
@@ -2489,7 +2527,7 @@ async def append_upload_to_project(
         Detailed status for each file in the upload
     """
     # Import uploads_store lazily to avoid circular imports
-    from api.upload_routes import uploads_store
+    from .upload_routes import uploads_store
 
     # Verify upload exists and user owns it
     if upload_id not in uploads_store:
