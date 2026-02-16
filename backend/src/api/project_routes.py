@@ -436,7 +436,10 @@ def _run_code_analysis_for_path(
     preferences: Optional[ScanPreferences],
 ) -> Optional[Dict[str, Any]]:
     try:
-        from cli.services.code_analysis_service import CodeAnalysisService, CodeAnalysisUnavailableError
+        try:
+            from cli.services.code_analysis_service import CodeAnalysisService, CodeAnalysisUnavailableError
+        except ImportError:
+            from src.cli.services.code_analysis_service import CodeAnalysisService, CodeAnalysisUnavailableError
     except ImportError:
         logger.info("Code analysis unavailable (cli.services.code_analysis_service not installed)")
         return None
@@ -458,6 +461,44 @@ def _run_code_analysis_for_path(
         
         # Extract data structures
         data_structures = summary.get("data_structures", {})
+        
+        # Get detailed examples (limit to avoid huge payloads)
+        MAX_EXAMPLES = 10
+        
+        magic_value_examples = []
+        try:
+            all_magic = result.get_all_magic_values()
+            magic_value_examples = all_magic[:MAX_EXAMPLES] if all_magic else []
+        except Exception:
+            pass
+        
+        dead_code_examples = []
+        try:
+            all_dead = result.get_all_dead_code()
+            dead_code_examples = all_dead[:MAX_EXAMPLES] if all_dead else []
+        except Exception:
+            pass
+        
+        duplicate_examples = []
+        try:
+            all_dupes = result.get_all_duplicates()
+            duplicate_examples = all_dupes[:MAX_EXAMPLES] if all_dupes else []
+        except Exception:
+            pass
+        
+        naming_issue_examples = []
+        try:
+            all_naming = result.get_naming_issues()
+            naming_issue_examples = all_naming[:MAX_EXAMPLES] if all_naming else []
+        except Exception:
+            pass
+        
+        error_handling_examples = []
+        try:
+            all_errors = result.get_error_handling_issues()
+            error_handling_examples = all_errors[:MAX_EXAMPLES] if all_errors else []
+        except Exception:
+            pass
         
         return {
             # Basic metrics
@@ -492,7 +533,16 @@ def _run_code_analysis_for_path(
             "nesting_issues": summary.get("nesting_issues", 0),
             "call_graph_edges": summary.get("call_graph_edges", 0),
             "data_structures": data_structures,
-            "languages": summary.get("languages", {})
+            "languages": summary.get("languages", {}),
+            
+            # Detailed examples
+            "examples": {
+                "magic_values": magic_value_examples,
+                "dead_code": dead_code_examples,
+                "duplicates": duplicate_examples,
+                "naming_issues": naming_issue_examples,
+                "error_handling": error_handling_examples,
+            }
         }
     except Exception as exc:
         if "CodeAnalysisUnavailableError" in type(exc).__name__ or "tree-sitter" in str(exc).lower():
@@ -573,13 +623,22 @@ class ProjectScanData(BaseModel):
     skills_progress: Optional[Dict[str, Any]] = None
     languages: Optional[List[str]] = None
     files: Optional[List[Dict[str, Any]]] = None
+    # Additional fields from scan results
+    has_media_files: Optional[bool] = None
+    pdf_count: Optional[int] = None
+    document_count: Optional[int] = None
+    git_repos_count: Optional[int] = None
+    timings: Optional[Dict[str, Any]] = None
+    
+    class Config:
+        extra = "allow"  # Allow additional fields not explicitly defined
 
 
 class CreateProjectRequest(BaseModel):
     """Request model for creating a new project scan."""
     project_name: str = Field(..., description="Name/identifier for the project")
     project_path: str = Field(..., description="Filesystem path that was scanned")
-    scan_data: ProjectScanData = Field(..., description="Complete scan results")
+    scan_data: Dict[str, Any] = Field(..., description="Complete scan results")
     role: Optional[str] = Field(None, description="User's role in the project (author, contributor, lead, maintainer, reviewer)")
 
 
@@ -891,8 +950,16 @@ async def create_project(
                 detail="project_path cannot be empty",
             )
         
-        # Convert request to dictionary for service
-        scan_data_dict = request.scan_data.dict(exclude_none=True)
+        # Convert request to dictionary for service (scan_data is already a dict)
+        scan_data_dict = request.scan_data
+        
+        # Ensure languages is at root level (normalize from scan result)
+        if "languages" not in scan_data_dict and "summary" in scan_data_dict:
+            summary = scan_data_dict.get("summary", {})
+            if summary and "languages" in summary:
+                scan_data_dict["languages"] = summary["languages"]
+        
+        logger.info(f"Creating project: {request.project_name} for user {user_id}")
         
         # Validate role if provided
         if request.role is not None and request.role not in ALLOWED_ROLES:
@@ -910,6 +977,12 @@ async def create_project(
             scan_data=scan_data_dict,
             role=request.role,
         )
+        
+        if result is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to save project: service returned None",
+            )
         
         return CreateProjectResponse(
             id=result.get("id", ""),
