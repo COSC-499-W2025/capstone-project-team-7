@@ -1,6 +1,7 @@
 # Joaquin Almora / @joaquinalmora
 
 ### Weekly Navigation
+- [Week 20](#week-20)
 - [Week 19](#week-19)
 - [Week 18](#week-18)
 - [Week 17](#week-17)
@@ -19,6 +20,34 @@
 - [Week 5](#week-5-september-29th---october-5th)
 - [Week 4](#week-4-september-22nd---28th)
 - [Week 3](#week-3-september-15th---21st)
+
+## Week 20 (February 9th – 15th)
+
+This week focused on removing the legacy CLI/TUI, implementing Supabase-backed consent management with proper persistence and auth recovery, and fixing project page accuracy. The work was delivered in [PR #321 – “CLI/TUI deletion and service-path cleanup”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/321), [PR #322 – “Consent Management”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/322), and [PR #323 – “Project Page Accuracy”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/323).
+
+On the backend, I migrated CLI code to `services`, removed the legacy workflow, and added compatibility shims (`backend/src/services/__init__.py`, `backend/src/state.py`, `backend/src/display.py`) to maintain import stability. I verified the migration with the full test suite (`218 passed, 2 skipped`) and a successful frontend build. I also implemented consent timestamp tracking and integrated it into signup and backend consent endpoints.
+
+On the frontend, I built the `/settings/consent` page, integrated Supabase-backed consent state, and hardened refresh-token recovery for legacy and current storage formats. I fixed a race condition that cleared tokens when navigating between settings pages. I also removed hardcoded project metrics, replaced them with real API values (`summary.scan_duration_seconds`), and added explicit empty states and updated tests. The full flow now works: consent grant → persist → recover session → enforce auth → display accurate data.
+
+I also created and organized issues #297–#319 with labels, story points, and hierarchy, and cleaned up the project board by moving inactive work out of the backlog.
+
+During migration, I resolved modify/delete merge conflicts and updated tests that depended on old CLI paths. Auth recovery initially failed due to legacy token key differences (`refresh token` vs `refresh_token`) and required expanded recovery logic. I also fixed a settings navigation race condition caused by an async session cancellation bug and resolved unrelated frontend type errors that were blocking CI.
+
+### Reflection
+
+**What went well:**  
+The CLI/TUI removal and service migration completed cleanly without breaking the test suite due to compatibility shims and staged cleanup. Consent management is now properly persisted, auditable, and integrated into both backend and frontend flows. The project page now reflects real backend data instead of placeholders, improving accuracy and reliability. Issue tracking and project board organization are also significantly clearer and easier to navigate.
+
+**What didn’t go well:**  
+Branch switching with stashed changes created complex merge conflicts that slowed migration. Legacy token format inconsistencies caused unexpected auth recovery failures. Pre-existing frontend type issues outside the scope of the project page and consent work added friction and delayed PR readiness. The settings navigation race condition was non-obvious and required deeper debugging of async session handling.
+
+### Next Steps
+- Monitor refresh-token auth recovery to ensure no additional edge cases remain  
+- Continue implementing remaining backlog issues from the project board  
+- Prepare and stabilize features for Milestone 2 presentation  
+
+![Peer Eval](./images/w20peer.png)
+
 
 ## Week 19 (February 2nd - 8th)
 This week focused on getting the skills analysis flow working end-to-end, keeping PRs small and reviewable, and improving the login experience. The work was delivered in [PR #289 – “Backend: Skills analysis project endpoints”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/289) and [PR #290 – “Frontend: Skills analysis UI"](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/290).
