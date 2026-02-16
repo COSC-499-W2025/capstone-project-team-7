@@ -13,6 +13,11 @@ This directory contains the Next.js renderer for the desktop app (app router + T
 
 - Default is `http://localhost:8000`. Override with `NEXT_PUBLIC_API_BASE_URL` if FastAPI runs elsewhere. The landing page pings `/health`.
 
+## Password reset flow
+
+- The reset email link uses Supabase Auth and redirects back to `http://localhost:3000/auth/reset-password`.
+- Ensure Supabase Auth allows this URL under **Authentication → URL Configuration → Redirect URLs**.
+
 ## Testing
 
 Frontend tests use [Vitest](https://vitest.dev/) + [Testing Library](https://testing-library.com/):

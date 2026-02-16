@@ -35,6 +35,16 @@ class AuthSessionInfo(BaseModel):
     email: Optional[str] = None
 
 
+class PasswordResetRequest(BaseModel):
+    email: str = Field(..., description="User email address")
+    redirect_to: Optional[str] = Field(None, description="Redirect URL after reset")
+
+
+class PasswordResetConfirm(BaseModel):
+    token: str = Field(..., description="Supabase recovery token")
+    new_password: str = Field(..., description="New user password")
+
+
 def _to_session_response(session: Session) -> AuthSessionResponse:
     return AuthSessionResponse(
         user_id=session.user_id,
@@ -85,6 +95,24 @@ def refresh_session(payload: RefreshRequest) -> AuthSessionResponse:
     try:
         session = SupabaseAuth().refresh_session(payload.refresh_token)
         return _to_session_response(session)
+    except AuthError as exc:
+        raise _raise_auth_error(exc)
+
+
+@router.post("/request-reset", status_code=status.HTTP_200_OK)
+def request_password_reset(payload: PasswordResetRequest) -> dict:
+    try:
+        SupabaseAuth().request_password_reset(payload.email, payload.redirect_to)
+        return {"ok": True, "message": "Password reset email sent."}
+    except AuthError as exc:
+        raise _raise_auth_error(exc)
+
+
+@router.post("/reset-password", status_code=status.HTTP_200_OK)
+def reset_password(payload: PasswordResetConfirm) -> dict:
+    try:
+        SupabaseAuth().reset_password(payload.token, payload.new_password)
+        return {"ok": True, "message": "Password has been reset."}
     except AuthError as exc:
         raise _raise_auth_error(exc)
 

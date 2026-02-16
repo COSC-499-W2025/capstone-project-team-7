@@ -113,6 +113,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T
     });
 
     if (!res.ok) {
+      // Handle 401/403 consistently with lib/api.ts
+      if (res.status === 401 || res.status === 403) {
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("auth_access_token");
+        localStorage.removeItem("refresh_token");
+        localStorage.removeItem("user");
+
+        window.dispatchEvent(new CustomEvent("auth:signout", { detail: { expired: true } }));
+
+        return { ok: false as const, status: res.status, error: "Session expired" };
+      }
+
       const text = await res.text().catch(() => "");
       return { ok: false as const, status: res.status, error: text || res.statusText };
     }
@@ -164,7 +176,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T
     return result;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Network error";
-    return { ok: false, error: message };
+    return { ok: false as const, error: message };
   }
 }
 

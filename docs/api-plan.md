@@ -22,6 +22,8 @@
 - `POST /api/auth/login`: Issue an access/refresh token pair.
 - `POST /api/auth/refresh`: Exchange a refresh token for a new session.
 - `GET /api/auth/session`: Validate the bearer token and return user identity.
+- `POST /api/auth/request-reset`: Trigger a password reset email (supports `redirect_to`).
+- `POST /api/auth/reset-password`: Reset password using recovery token or access token.
 
 ### Consent and Session
 - `POST /api/consent`: Record/update user consent for data access and external services (include privacy notice text).
@@ -32,6 +34,7 @@
 
 #### Completed
 - Auth endpoints: `POST /api/auth/signup`, `POST /api/auth/login`, `POST /api/auth/refresh`, `GET /api/auth/session`
+- Password reset endpoints: `POST /api/auth/request-reset`, `POST /api/auth/reset-password`
 - Consent endpoints: `GET /api/consent`, `POST /api/consent`, `GET /api/consent/notice`
 - Supabase auth resolution: `backend/src/api/dependencies.py`
 - Implementation: `backend/src/api/consent_routes.py`

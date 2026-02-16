@@ -13,6 +13,12 @@ import {
   getProjectSkillTimeline,
   generateProjectSkillSummary,
 } from "@/lib/api/projects";
+import {
+  detectLanguageMetric,
+  normalizeLanguageStats,
+  type NormalizedLanguageStat,
+  type LanguageMetric,
+} from "@/lib/language-stats";
 import type {
   ProjectDetail,
   SkillProgressPeriod,
@@ -72,6 +78,19 @@ const contentSubTabs = [
   { value: "documents", label: "Documents", icon: FileText },
   { value: "media", label: "Media", icon: Film },
   { value: "pdfs", label: "PDFs", icon: FileImage },
+] as const;
+
+const LANGUAGE_COLORS = [
+  "bg-gray-900",
+  "bg-blue-600",
+  "bg-emerald-600",
+  "bg-amber-500",
+  "bg-indigo-600",
+  "bg-rose-600",
+  "bg-teal-600",
+  "bg-slate-500",
+  "bg-orange-500",
+  "bg-purple-600",
 ] as const;
 
 function PlaceholderContent({ label }: { label: string }) {
@@ -226,50 +245,106 @@ export default function ProjectPage() {
       ? formatBytes(totalSizeBytes)
       : "Not available";
 
-  const languageStats = useMemo(() => {
-    const rawLanguages = scanData.languages;
-    if (!rawLanguages || typeof rawLanguages !== "object") return null;
+  const languageMetric = useMemo<LanguageMetric>(
+    () => detectLanguageMetric(scanData),
+    [scanData]
+  );
 
-    const entries: Array<{ name: string; value: number }> = [];
+  const languageBreakdown = useMemo(() => {
+    const totalOverride = Number(
+      summary.bytes_processed ??
+        scanData.total_size_bytes ??
+        scanData.total_bytes ??
+        scanData.bytes_processed
+    );
+    return normalizeLanguageStats(
+      scanData,
+      languageMetric === "bytes" && Number.isFinite(totalOverride)
+        ? totalOverride
+        : undefined
+    );
+  }, [
+    scanData,
+    summary.bytes_processed,
+    scanData.total_size_bytes,
+    scanData.total_bytes,
+    scanData.bytes_processed,
+    languageMetric,
+  ]);
 
-    if (Array.isArray(rawLanguages)) {
-      if (rawLanguages.length > 0 && typeof rawLanguages[0] === "object") {
-        rawLanguages.forEach((lang: any) => {
-          const name = lang.language || lang.name;
-          const value = Number(lang.percentage ?? lang.lines ?? lang.files ?? 0);
-          if (name) entries.push({ name, value });
-        });
-      } else {
-        rawLanguages.forEach((lang: any) => {
-          if (typeof lang === "string") entries.push({ name: lang, value: 1 });
-        });
-      }
-    } else {
-      Object.entries(rawLanguages).forEach(([name, data]) => {
-        if (!name) return;
-        if (typeof data === "number") {
-          entries.push({ name, value: data });
-          return;
-        }
-        const metric = data as Record<string, number>;
-        const value = Number(metric.lines ?? metric.files ?? metric.bytes ?? 0);
-        entries.push({ name, value });
-      });
+  const topLanguages: Array<{ name: string; percentage: number }> = languageBreakdown
+    .slice(0, 5)
+    .map((lang) => ({ name: lang.name, percentage: lang.percent }));
+
+  const languageTotalValue = useMemo(() => {
+    const computed = languageBreakdown.reduce((sum, item) => sum + item.bytes, 0);
+    if (languageMetric !== "bytes") return computed;
+    const totalOverride = Number(
+      summary.bytes_processed ??
+        scanData.total_size_bytes ??
+        scanData.total_bytes ??
+        scanData.bytes_processed
+    );
+    if (Number.isFinite(totalOverride) && totalOverride > 0) {
+      return Math.max(totalOverride, computed);
     }
+    return computed;
+  }, [
+    languageBreakdown,
+    summary.bytes_processed,
+    scanData.total_size_bytes,
+    scanData.total_bytes,
+    scanData.bytes_processed,
+    languageMetric,
+  ]);
 
-    const total = entries.reduce((sum, e) => sum + e.value, 0);
-    if (total <= 0) return null;
+  const languageValuesTotal = useMemo(
+    () => languageBreakdown.reduce((sum, item) => sum + item.bytes, 0),
+    [languageBreakdown]
+  );
 
-    return entries
-      .map((e) => ({
-        name: e.name,
-        percentage: Number(((e.value / total) * 100).toFixed(1)),
-      }))
-      .sort((a, b) => b.percentage - a.percentage)
-      .slice(0, 5);
-  }, [scanData.languages]);
+  const languageTotalPercent =
+    languageTotalValue > 0
+      ? Number(((languageValuesTotal / languageTotalValue) * 100).toFixed(1))
+      : 0;
 
-  const topLanguages: Array<{ name: string; percentage: number }> = languageStats ?? [];
+  const languageMetricLabel =
+    languageMetric === "lines"
+      ? "Lines"
+      : languageMetric === "files"
+      ? "Files"
+      : "Size";
+
+  const languageTotalLabel =
+    languageMetric === "lines"
+      ? "Total lines"
+      : languageMetric === "files"
+      ? "Total files"
+      : "Total size";
+
+  const formatLanguageValue = (value: number) =>
+    languageMetric === "bytes" ? formatBytes(value) : formatCount(value);
+
+  const languageChartData: NormalizedLanguageStat[] = useMemo(() => {
+    if (languageBreakdown.length === 0) return [];
+    const maxSegments = 8;
+    const primary = languageBreakdown.slice(0, maxSegments);
+    const remainder = languageBreakdown.slice(maxSegments);
+    if (remainder.length === 0) return primary;
+
+    const otherBytes = remainder.reduce((sum, item) => sum + item.bytes, 0);
+    const percent =
+      languageTotalValue > 0
+        ? Number(((otherBytes / languageTotalValue) * 100).toFixed(1))
+        : 0;
+    return [...primary, { name: "Other", bytes: otherBytes, percent }];
+  }, [languageBreakdown, languageTotalValue]);
+
+  useEffect(() => {
+    if (projectError) {
+      console.error("Language breakdown failed to load.", projectError);
+    }
+  }, [projectError]);
 
   const gitRepos = scanData.git_analysis?.repositories?.length ?? 0;
 
@@ -491,38 +566,6 @@ export default function ProjectPage() {
                         <p className="text-xs text-gray-500 mt-1">Lines of Code</p>
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="bg-white border border-gray-200">
-                  <CardHeader className="border-b border-gray-200">
-                    <CardTitle className="text-xl font-bold text-gray-900">
-                      Top 5 Languages
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-6">
-                    {topLanguages.length === 0 ? (
-                      <p className="text-sm text-gray-500">No language data available for this project.</p>
-                    ) : (
-                      <div className="space-y-3">
-                        {topLanguages.map((lang) => (
-                          <div key={lang.name} className="flex items-center gap-3">
-                            <span className="text-sm text-gray-900 w-28 font-medium">
-                              {lang.name}
-                            </span>
-                            <div className="flex-1 bg-gray-100 rounded-full h-2.5">
-                              <div
-                                className="bg-gray-900 h-2.5 rounded-full"
-                                style={{ width: `${lang.percentage}%` }}
-                              />
-                            </div>
-                            <span className="text-sm text-gray-500 w-14 text-right">
-                              {lang.percentage}%
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </CardContent>
                 </Card>
 
