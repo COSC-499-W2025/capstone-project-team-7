@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set
 
-from ...scanner.models import FileMetadata, ParseResult
+from scanner.models import FileMetadata, ParseResult
 
 _DATACLASS_KWARGS = {"slots": True} if sys.version_info >= (3, 10) else {}
 

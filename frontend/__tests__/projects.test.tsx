@@ -3,6 +3,10 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ProjectsPage from "../app/(dashboard)/projects/page";
 
+const { mockRouterPush } = vi.hoisted(() => ({
+  mockRouterPush: vi.fn(),
+}));
+
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
@@ -71,6 +75,10 @@ vi.mock("@/lib/api/projects", () => ({
   getProjects: vi.fn(),
   getProjectById: vi.fn(),
   deleteProject: vi.fn(),
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: mockRouterPush }),
 }));
 
 // Mock the auth module

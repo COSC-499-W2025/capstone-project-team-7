@@ -2,7 +2,7 @@
 Unit tests for project role inference functionality.
 """
 import pytest
-from backend.src.cli.services.projects_service import ProjectsService
+from services.projects_service import ProjectsService
 
 
 class TestRoleInference:

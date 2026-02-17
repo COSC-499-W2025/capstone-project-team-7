@@ -72,7 +72,6 @@ export default function SignupPage() {
     passwordValidation.isValid &&
     passwordsMatch &&
     privacyConsent &&
-    externalConsent &&
     !isSubmitting;
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
@@ -93,7 +92,7 @@ export default function SignupPage() {
     });
 
     if (result.ok) {
-      router.push("/");
+      router.push("/settings/consent");
     } else {
       setError(result.error || "Failed to create account. Please try again.");
     }

@@ -73,4 +73,10 @@ app.include_router(profile_router)
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("src.main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        app_dir=str(Path(__file__).parent),
+    )

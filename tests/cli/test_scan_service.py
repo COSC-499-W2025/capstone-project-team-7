@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from backend.src.cli.services.scan_service import ScanService
-from backend.src.cli.state import ScanState
+from services.scan_service import ScanService
+from state import ScanState
 from backend.src.scanner.models import FileMetadata, ParseResult
 
 

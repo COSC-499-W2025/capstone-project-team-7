@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import ProfilePage from "../app/profile/page";
+import ProfilePage from "../app/(dashboard)/profile/page";
 
 // ---------------------------------------------------------------------------
 // Mocks

@@ -5,7 +5,7 @@ import pytest
 from pathlib import Path
 from datetime import datetime
 
-from backend.src.cli.services.export_service import (
+from services.export_service import (
     ExportService,
     ExportConfig,
     ExportResult,

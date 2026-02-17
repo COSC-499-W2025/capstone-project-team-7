@@ -1,8 +1,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { toast } from "sonner";
-import { api } from "@/lib/api";
+import { toast } from "@/lib/notifications";
+import { api, consent as consentApi } from "@/lib/api";
+import {
+  clearStoredRefreshToken,
+  clearStoredToken,
+  getStoredToken,
+  setStoredRefreshToken,
+  setStoredToken,
+} from "@/lib/auth";
 import type { User, AuthSessionResponse, ApiResult } from "@/lib/api.types";
 
 interface UseAuthReturn {
@@ -41,7 +48,7 @@ export function useAuth(): UseAuthReturn {
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
-    const accessToken = localStorage.getItem("access_token");
+    const accessToken = getStoredToken();
 
     if (storedUser && accessToken) {
       try {
@@ -49,8 +56,8 @@ export function useAuth(): UseAuthReturn {
         setUser(parsedUser);
       } catch (error) {
         localStorage.removeItem("user");
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("refresh_token");
+        clearStoredToken();
+        clearStoredRefreshToken();
       }
     }
 
@@ -67,9 +74,9 @@ export function useAuth(): UseAuthReturn {
     if (result.ok) {
       const { user_id, email: userEmail, access_token, refresh_token } = result.data;
 
-      localStorage.setItem("access_token", access_token);
+      setStoredToken(access_token);
       if (refresh_token) {
-        localStorage.setItem("refresh_token", refresh_token);
+        setStoredRefreshToken(refresh_token);
       }
 
       const userData: User = { id: user_id, email: userEmail };
@@ -92,13 +99,16 @@ export function useAuth(): UseAuthReturn {
     if (result.ok) {
       const { user_id, email: userEmail, access_token, refresh_token } = result.data;
 
-      localStorage.setItem("access_token", access_token);
+      setStoredToken(access_token);
       if (refresh_token) {
-        localStorage.setItem("refresh_token", refresh_token);
+        setStoredRefreshToken(refresh_token);
       }
 
-      await api.auth.saveConsent(user_id, "privacy_policy", consents.privacy, access_token);
-      await api.auth.saveConsent(user_id, "external_services", consents.external, access_token);
+      await consentApi.set({
+        data_access: consents.privacy,
+        external_services: consents.external,
+        notice_acknowledged_at: new Date().toISOString(),
+      });
 
       const userData: User = { id: user_id, email: userEmail };
       localStorage.setItem("user", JSON.stringify(userData));
@@ -110,10 +120,11 @@ export function useAuth(): UseAuthReturn {
   };
 
   const logout = (): void => {
-    // Clear all possible auth token keys
+    // Clear all possible auth token keys (comprehensive cleanup from main)
     localStorage.removeItem("access_token");
     localStorage.removeItem("auth_access_token");
-    localStorage.removeItem("refresh_token");
+    clearStoredToken();
+    clearStoredRefreshToken();
     localStorage.removeItem("user");
 
     setUser(null);

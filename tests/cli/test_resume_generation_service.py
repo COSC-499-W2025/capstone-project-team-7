@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from backend.src.cli.services.resume_generation_service import (
+from services.resume_generation_service import (
     ResumeGenerationError,
     ResumeGenerationService,
 )

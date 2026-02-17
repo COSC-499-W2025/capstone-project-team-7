@@ -1,7 +1,7 @@
 """
 Skills Analysis Service
 
-Provides skills extraction for the Textual CLI application.
+Provides skills extraction for the backend API.
 Wraps the SkillsExtractor module and formats results for display.
 """
 
@@ -30,7 +30,7 @@ class SkillsAnalysisService:
     """
     Service for extracting skills from project scans.
     
-    This service bridges the Textual CLI and the SkillsExtractor module,
+    This service bridges the backend API and the SkillsExtractor module,
     providing methods to extract skills from various sources and format
     them for display.
     """
