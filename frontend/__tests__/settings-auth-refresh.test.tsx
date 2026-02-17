@@ -2,6 +2,14 @@ import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import SettingsPage from "../app/(dashboard)/settings/page";
 
+const { mockRouterPush } = vi.hoisted(() => ({
+  mockRouterPush: vi.fn(),
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: mockRouterPush }),
+}));
+
 vi.mock("@/lib/theme", () => ({
   loadTheme: vi.fn(() => "dark"),
   saveTheme: vi.fn(),

@@ -346,7 +346,11 @@ export default function ProjectPage() {
     }
   }, [projectError]);
 
-  const gitRepos = scanData.git_analysis?.repositories?.length ?? 0;
+  // Backend now returns git_analysis as a flat array: [ { path, commit_count, ... }, ... ]
+  // Legacy format used git_analysis.repositories; support both for backwards compat.
+  const gitRepos = Array.isArray(scanData.git_analysis)
+    ? scanData.git_analysis.length
+    : scanData.git_analysis?.repositories?.length ?? 0;
 
   const documentAnalysis = scanData.document_analysis;
   const otherDocs = Array.isArray(documentAnalysis)

@@ -13,7 +13,13 @@ import type {
   UpdateProfileRequest,
   UserProfile,
 } from "./api.types";
-import { getStoredTokenCandidates, refreshAccessToken, setStoredToken } from "./auth";
+import {
+  clearStoredRefreshToken,
+  clearStoredToken,
+  getStoredTokenCandidates,
+  refreshAccessToken,
+  setStoredToken,
+} from "./auth";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
 
@@ -47,24 +53,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T
     });
 
     if (!res.ok) {
-      // Handle 401 Unauthorized and 403 Forbidden (auth errors)
-      if (res.status === 401 || res.status === 403) {
-        // Clear all auth data
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("auth_access_token");
-        localStorage.removeItem("refresh_token");
-        localStorage.removeItem("user");
-
-        // Notify all useAuth instances to update React state and show toast
-        window.dispatchEvent(new CustomEvent("auth:signout", { detail: { expired: true } }));
-
-        return {
-          ok: false as const,
-          status: res.status,
-          error: "Session expired"
-        };
-      }
-
       const text = await res.text().catch(() => "");
       return { ok: false as const, status: res.status, error: text || res.statusText };
     }
@@ -109,8 +97,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T
           ...headers,
           Authorization: `Bearer ${refreshedToken}`,
         };
-        return run(refreshedHeaders);
+        result = await run(refreshedHeaders);
       }
+    }
+
+    if (!result.ok && (result.status === 401 || result.status === 403)) {
+      clearStoredToken();
+      clearStoredRefreshToken();
+      localStorage.removeItem("user");
+      window.dispatchEvent(new CustomEvent("auth:signout", { detail: { expired: true } }));
+      return { ok: false as const, status: result.status, error: "Session expired" };
     }
 
     return result;

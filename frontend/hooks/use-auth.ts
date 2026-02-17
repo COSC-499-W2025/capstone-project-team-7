@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/notifications";
 import { api, consent as consentApi } from "@/lib/api";
 import {
   clearStoredRefreshToken,
