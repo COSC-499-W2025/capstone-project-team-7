@@ -18,7 +18,7 @@ if "pypdf" not in sys.modules:  # pragma: no cover - test harness shim
 
 from backend.src.local_analysis.skill_progress_timeline import SkillProgression, build_skill_progression
 from backend.src.local_analysis.contribution_analyzer import ActivityBreakdown, ProjectContributionMetrics
-from backend.src.cli.services.skills_analysis_service import SkillsAnalysisService
+from services.skills_analysis_service import SkillsAnalysisService
 
 
 def _make_metrics() -> ProjectContributionMetrics:

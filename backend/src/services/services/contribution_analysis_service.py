@@ -1,7 +1,7 @@
 """
 Contribution Analysis Service
 
-Provides contribution metrics extraction for the Textual CLI application.
+Provides contribution metrics extraction for the backend API.
 Wraps the ContributionAnalyzer module, formats results for display, and
 derives lightweight ranking signals from contribution data.
 """
@@ -23,7 +23,7 @@ try:
     )
 except ImportError:
     # Fall back to relative import (for CLI context)
-    from ...local_analysis.contribution_analyzer import (
+    from local_analysis.contribution_analyzer import (
         ContributionAnalyzer,
         ProjectContributionMetrics,
         ContributorMetrics,

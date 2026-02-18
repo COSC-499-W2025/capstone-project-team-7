@@ -92,7 +92,7 @@ export default function HomePage() {
               </div>
               <p className="text-gray-600 mb-2">No scans yet</p>
               <p className="text-sm text-gray-500">
-                Click "New Scan" to analyze your first project
+                Click &quot;New Scan&quot; to analyze your first project
               </p>
             </div>
           </div>

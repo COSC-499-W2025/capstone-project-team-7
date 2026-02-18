@@ -25,7 +25,7 @@ sys.modules["cli"] = types.ModuleType("cli")
 sys.modules["cli"].__path__ = [str(backend_src / "cli")]
 
 from main import app  # type: ignore  # noqa: E402
-from cli.services.projects_service import ProjectsService  # type: ignore  # noqa: E402
+from services.projects_service import ProjectsService  # type: ignore  # noqa: E402
 from supabase import create_client  # type: ignore  # noqa: E402
 
 

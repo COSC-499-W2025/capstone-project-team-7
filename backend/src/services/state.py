@@ -5,9 +5,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ..auth.consent_validator import ConsentRecord, ConsentValidator
-from ..auth.session import Session
-from ..scanner.models import FileMetadata, ParseResult
+from auth.consent_validator import ConsentRecord, ConsentValidator
+from auth.session import Session
+from scanner.models import FileMetadata, ParseResult
 
 
 @dataclass

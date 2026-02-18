@@ -6,7 +6,7 @@ import os
 
 import httpx
 
-from ...auth.consent_validator import ConsentRecord
+from auth.consent_validator import ConsentRecord
 
 
 class ConsentAPIServiceError(Exception):
@@ -23,7 +23,7 @@ def _parse_timestamp(value: Optional[str]) -> datetime:
 
 
 class ConsentAPIService:
-    """HTTP client for consent endpoints used by the TUI."""
+    """HTTP client for consent endpoints used by the API."""
 
     def __init__(self, base_url: Optional[str] = None, timeout: float = 10.0) -> None:
         self._base_url = base_url or os.getenv("PORTFOLIO_API_URL", "http://127.0.0.1:8000")

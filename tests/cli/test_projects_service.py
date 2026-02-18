@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from backend.src.cli.services.projects_service import (
+from services.projects_service import (
     ProjectsService,
     ProjectsServiceError,
 )

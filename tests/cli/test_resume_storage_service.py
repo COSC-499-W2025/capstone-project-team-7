@@ -7,12 +7,12 @@ import pytest
 import json
 import base64
 
-from backend.src.cli.services.resume_generation_service import ResumeItem
-from backend.src.cli.services.resume_storage_service import (
+from services.resume_generation_service import ResumeItem
+from services.resume_storage_service import (
     ResumeStorageError,
     ResumeStorageService,
 )
-from backend.src.cli.services.encryption import EncryptionEnvelope
+from services.encryption import EncryptionEnvelope
 
 
 @pytest.fixture
@@ -58,7 +58,7 @@ class FakeEncryptionService:
 def _make_service(mock_supabase_client, monkeypatch) -> ResumeStorageService:
     monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
     monkeypatch.setenv("SUPABASE_KEY", "test-key")
-    with patch("backend.src.cli.services.resume_storage_service.create_client") as mock_create:
+    with patch("services.resume_storage_service.create_client") as mock_create:
         mock_create.return_value = mock_supabase_client
         return ResumeStorageService(encryption_service=FakeEncryptionService())
 

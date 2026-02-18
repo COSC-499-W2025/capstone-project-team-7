@@ -50,4 +50,6 @@ electron/dist/
 # Playwright artifacts
 frontend/playwright-report/
 frontend/test-results/
+IMPROVEMENTS.md
 C
+AGENTS.md

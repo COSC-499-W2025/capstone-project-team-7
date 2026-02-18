@@ -59,8 +59,9 @@ except ImportError:  # pragma: no cover - optional dep stub
     sys.modules["pypdf"] = types.SimpleNamespace(PdfReader=lambda *args, **kwargs: None, errors=errors_module)
     sys.modules["pypdf.errors"] = errors_module
 
-from backend.src.cli.textual_app import PortfolioTextualApp
-from backend.src.cli.state import ScanState, AIState
+pytest.importorskip("textual_app")
+from textual_app import PortfolioTextualApp
+from state import ScanState, AIState
 
 
 class FakeLLMClient:

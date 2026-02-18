@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { loadSettings, saveSettings, AppSettings } from "@/lib/settings";
 import { loadTheme, saveTheme, applyTheme, type Theme } from "@/lib/theme";
 import { consent as consentApi, config as configApi } from "@/lib/api";
-import { auth as authApi, getStoredToken } from "@/lib/auth";
+import { auth as authApi, getStoredToken, getStoredRefreshToken } from "@/lib/auth";
 import { useAuth } from "@/hooks/use-auth";
 import type { AuthSessionInfo } from "@/lib/auth";
 import type { ConfigResponse, ProfilesResponse } from "@/lib/api.types";
@@ -34,8 +34,9 @@ export default function SettingsPage() {
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
 
   // Consent management
-  const [showRevokeDialog, setShowRevokeDialog] = useState(false);
   const [consentData, setConsentData] = useState<{ data_access: boolean; external_services: boolean }>({ data_access: false, external_services: false });
+  const [consentLoading, setConsentLoading] = useState(true);
+  const [consentError, setConsentError] = useState<string | null>(null);
 
   // Scan configuration
   const [serverConfig, setServerConfig] = useState<ConfigResponse | null>(null);
@@ -68,20 +69,19 @@ export default function SettingsPage() {
 
       // Try to load user session (check if token exists and is valid)
       const existingToken = getStoredToken();
-       if (existingToken) {
-         try {
-           const sessionRes = await authApi.getSession();
-           if (!cancelled && sessionRes.ok) {
-             setUserSession(sessionRes.data);
-           } else {
-             // Token invalid, clear it using logout hook
-             logout();
-           }
-         } catch {
-           logout();
-         } finally {
-           if (!cancelled) setSessionLoading(false);
-         }
+      const existingRefreshToken = getStoredRefreshToken();
+      if (existingToken || existingRefreshToken) {
+        try {
+          const sessionRes = await authApi.getSession();
+          if (!cancelled && sessionRes.ok) {
+            setUserSession(sessionRes.data);
+          }
+          // 401/403 errors are handled automatically by the auth:expired event
+        } catch {
+          // Network error — don't force logout
+        } finally {
+          if (!cancelled) setSessionLoading(false);
+        }
       } else {
         if (!cancelled) setSessionLoading(false);
       }
@@ -99,23 +99,6 @@ export default function SettingsPage() {
         const local = loadSettings();
         if (!cancelled) setSettings(local);
       }
-
-      // Try to load consent status from backend (only if authenticated)
-      const storedToken = getStoredToken();
-      if (storedToken) {
-        try {
-          const res = await consentApi.get();
-          if (!cancelled && res.ok) {
-            setConsentData({
-              data_access: res.data.data_access,
-              external_services: res.data.external_services
-            });
-            setSettings((s) => ({ ...(s ?? {}), enableAnalytics: res.data.external_services }));
-          }
-        } catch {
-          // Backend not available, use local settings
-        }
-      }
     })();
 
     return () => {
@@ -123,23 +106,42 @@ export default function SettingsPage() {
     };
   }, []);
 
-  // Load config and profiles when user session changes
+  // Load config, profiles, and consent when user session changes
   useEffect(() => {
     if (!userSession) return;
 
     let cancelled = false;
     (async () => {
       try {
-        const [configRes, profilesRes] = await Promise.all([
+        setConsentLoading(true);
+        setConsentError(null);
+
+        const [configRes, profilesRes, consentRes] = await Promise.all([
           configApi.get(),
-          configApi.listProfiles()
+          configApi.listProfiles(),
+          consentApi.get() // ← Now called after session is validated
         ]);
+
         if (!cancelled) {
           if (configRes.ok) setServerConfig(configRes.data);
           if (profilesRes.ok) setProfiles(profilesRes.data.profiles || {});
+          if (consentRes.ok) {
+            setConsentData({
+              data_access: consentRes.data.data_access,
+              external_services: consentRes.data.external_services
+            });
+            setSettings((s) => ({ ...(s ?? {}), enableAnalytics: consentRes.data.external_services }));
+          } else {
+            setConsentError(consentRes.error || "Failed to load consent data");
+          }
+          setConsentLoading(false);
         }
-      } catch {
-        // Backend not available
+      } catch (err) {
+        if (!cancelled) {
+          setConsentLoading(false);
+          setConsentError(err instanceof Error ? err.message : "Unknown error");
+          console.error("Failed to load settings:", err);
+        }
       }
     })();
 
@@ -175,67 +177,49 @@ export default function SettingsPage() {
         (window as any).desktop.saveSettings(settings);
       }
     } catch {}
-
-    (async () => {
-      try {
-        await consentApi.set({ data_access: !!settings.enableAnalytics, external_services: !!settings.enableAnalytics });
-      } catch {}
-    })();
   };
 
-  const handleDataAccessChange = async (granted: boolean) => {
-    setConsentData((prev) => ({ ...prev, data_access: granted }));
-    try {
-      await consentApi.set({ data_access: granted, external_services: consentData.external_services });
-    } catch (err) {
-      console.error("Failed to update consent:", err);
-    }
-  };
+  const handleRetryLoadSettings = async () => {
+    setConsentLoading(true);
+    setConsentError(null);
 
-  const handleExternalServicesChange = async (granted: boolean) => {
-    // External services requires data_access
-    if (granted && !consentData.data_access) {
-      alert("You must grant data access consent before enabling external services.");
-      return;
-    }
-    
-    setConsentData((prev) => ({ ...prev, external_services: granted }));
-    update({ enableAnalytics: granted });
-    saveSettings({ ...(settings ?? {}), enableAnalytics: granted });
-    
     try {
-      await consentApi.set({ data_access: consentData.data_access, external_services: granted });
-    } catch (err) {
-      console.error("Failed to update consent:", err);
-    }
-  };
+      const [configRes, profilesRes, consentRes] = await Promise.all([
+        configApi.get(),
+        configApi.listProfiles(),
+        consentApi.get()
+      ]);
 
-  const revokeAllConsents = async () => {
-    setConsentData({ data_access: false, external_services: false });
-    update({ enableAnalytics: false });
-    saveSettings({ ...(settings ?? {}), enableAnalytics: false });
-    
-    try {
-      await consentApi.set({ data_access: false, external_services: false });
+      if (configRes.ok) setServerConfig(configRes.data);
+      if (profilesRes.ok) setProfiles(profilesRes.data.profiles || {});
+      if (consentRes.ok) {
+        setConsentData({
+          data_access: consentRes.data.data_access,
+          external_services: consentRes.data.external_services
+        });
+        setSettings((s) => ({ ...(s ?? {}), enableAnalytics: consentRes.data.external_services }));
+      } else {
+        setConsentError(consentRes.error || "Failed to load consent data");
+      }
     } catch (err) {
-      console.error("Failed to revoke consent:", err);
+      setConsentError(err instanceof Error ? err.message : "Unknown error");
+      console.error("Failed to retry loading settings:", err);
+    } finally {
+      setConsentLoading(false);
     }
-    
-    setShowRevokeDialog(false);
   };
 
   const handleLogout = () => {
     // Use the logout hook to clear authentication state
     logout();
-    
+
     // Clear local settings state
     setUserSession(null);
     setConsentData({ data_access: false, external_services: false });
     setServerConfig(null);
     setProfiles({});
-    
-    // Redirect to login page
-    router.push('/auth/login');
+
+    // Redirect is handled by the dashboard layout when isAuthenticated becomes false
   };
 
   const handleProfileSwitch = async (profileName: string) => {
@@ -379,7 +363,38 @@ export default function SettingsPage() {
 
 
   return (
-    <div className="p-8">
+    <div className="p-8 relative">
+      {/* Error Banner */}
+      {consentError && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-red-900">Failed to load settings</p>
+              <p className="text-sm text-red-700 mt-1">{consentError}</p>
+            </div>
+            <Button 
+              onClick={handleRetryLoadSettings}
+              disabled={consentLoading}
+              variant="outline"
+              size="sm"
+              className="border-red-300 text-red-600 hover:bg-red-50"
+            >
+              {consentLoading ? "Retrying..." : "Retry"}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Loading Overlay */}
+      {consentLoading && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-2 border-primary border-t-transparent mx-auto mb-4" />
+            <p className="text-sm text-muted-foreground">Loading settings...</p>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
         {/* Header with user status */}
         <div className="p-8">
@@ -633,91 +648,41 @@ export default function SettingsPage() {
         {/* Privacy & Consent */}
         <Card className="bg-white rounded-xl shadow-sm border border-gray-200">
           <CardHeader className="border-b border-gray-200">
-            <CardTitle className="text-xl font-bold text-gray-900">Privacy & Consent</CardTitle>
-            <CardDescription className="text-gray-600">Manage your data sharing preferences and consent history</CardDescription>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <CardTitle className="text-xl font-bold text-gray-900">Privacy & Consent</CardTitle>
+                <CardDescription className="text-gray-600">Manage your data sharing preferences and consent history</CardDescription>
+              </div>
+              <Link href="/settings/consent">
+                <Button variant="outline" className="border-gray-300 hover:bg-gray-50 text-gray-900">
+                  Open consent page
+                </Button>
+              </Link>
+            </div>
           </CardHeader>
-          <CardContent className="p-6 space-y-6">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between py-3 border-b border-gray-200">
-                <div className="space-y-0.5">
-                  <Label className="text-sm font-medium text-gray-900">Data Access & File Analysis</Label>
-                  <p className="text-xs text-gray-500">Allow file analysis and metadata storage in the database</p>
-                </div>
-                <Switch
-                  checked={consentData.data_access}
-                  onCheckedChange={handleDataAccessChange}
-                />
+          <CardContent className="p-6 space-y-4">
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-700">Data Access:</span>
+                <span className={`text-sm font-medium ${consentData.data_access ? "text-green-600" : "text-gray-400"}`}>
+                  {consentData.data_access ? "Granted" : "Not granted"}
+                </span>
               </div>
-
-              <div className="flex items-center justify-between py-3">
-                <div className="space-y-0.5">
-                  <Label className="text-sm font-medium text-gray-900">External Services (AI/LLM)</Label>
-                  <p className="text-xs text-gray-500">Enable AI-powered analysis using external LLM providers</p>
-                  {!consentData.data_access && (
-                    <p className="text-xs text-amber-600 mt-1">⚠️ Requires data access consent first</p>
-                  )}
-                </div>
-                <Switch
-                  checked={consentData.external_services}
-                  onCheckedChange={handleExternalServicesChange}
-                  disabled={!consentData.data_access}
-                />
-              </div>
-
-              <div className="border-t border-gray-200 pt-4">
-                <div className="flex items-center justify-between mb-3">
-                  <Label className="text-sm font-medium text-gray-900">Current Status</Label>
-                  {(consentData.data_access || consentData.external_services) && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowRevokeDialog(true)}
-                      className="border-red-300 text-red-600 hover:bg-red-50"
-                    >
-                      Revoke All
-                    </Button>
-                  )}
-                </div>
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-700">Data Access:</span>
-                    <span className={`text-sm font-medium ${consentData.data_access ? "text-green-600" : "text-gray-400"}`}>
-                      {consentData.data_access ? "✓ Granted" : "Not granted"}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-700">External Services:</span>
-                    <span className={`text-sm font-medium ${consentData.external_services ? "text-green-600" : "text-gray-400"}`}>
-                      {consentData.external_services ? "✓ Granted" : "Not granted"}
-                    </span>
-                  </div>
-                </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-700">External AI Services:</span>
+                <span className={`text-sm font-medium ${consentData.external_services ? "text-green-600" : "text-gray-400"}`}>
+                  {consentData.external_services ? "Granted" : "Not granted"}
+                </span>
               </div>
             </div>
+            <p className="text-xs text-gray-500">
+              Use the dedicated consent page to update, withdraw, or review consent notices.
+            </p>
           </CardContent>
         </Card>
       </div>
 
       {/* Dialogs */}
-      <Dialog open={showRevokeDialog} onOpenChange={setShowRevokeDialog}>
-        <DialogContent className="bg-white">
-          <DialogHeader>
-            <DialogTitle className="text-gray-900">Revoke All Consents?</DialogTitle>
-            <DialogDescription className="text-gray-600">
-              This will revoke both data access and external services consent. This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowRevokeDialog(false)} className="border-gray-300 text-gray-900">
-              Cancel
-            </Button>
-            <Button onClick={revokeAllConsents} className="bg-red-600 text-white hover:bg-red-700">
-              Revoke All
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <Dialog open={showProfileDialog} onOpenChange={setShowProfileDialog}>
         <DialogContent className="bg-white max-w-2xl">
           <DialogHeader>

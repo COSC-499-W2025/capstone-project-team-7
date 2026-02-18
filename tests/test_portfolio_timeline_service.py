@@ -1,4 +1,4 @@
-from backend.src.cli.services.portfolio_timeline_service import PortfolioTimelineService
+from services.portfolio_timeline_service import PortfolioTimelineService
 
 
 class FakeProjectsService:
@@ -11,6 +11,9 @@ class FakeProjectsService:
 
     def get_user_projects_with_scan_data(self, user_id):
         return list(self._projects_with_scan)
+
+    def get_user_projects_with_roles(self, user_id):
+        return list(self._projects)
 
 
 def test_projects_timeline_ordering_is_deterministic():

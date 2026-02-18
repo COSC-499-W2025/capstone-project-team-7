@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "backend" / "src"))
 
 from main import app
 from api.dependencies import AuthContext, get_auth_context
-from cli.services.selection_service import SelectionService, SelectionServiceError
+from services.selection_service import SelectionService, SelectionServiceError
 
 
 client = TestClient(app)

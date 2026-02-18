@@ -14,15 +14,15 @@ from pydantic import BaseModel, Field
 
 from api.dependencies import AuthContext, get_auth_context
 from api.models.portfolio_item_models import PortfolioItem, PortfolioItemCreate, PortfolioItemUpdate
-from cli.services.portfolio_item_service import (
+from services.services.portfolio_item_service import (
     PortfolioItemService,
     PortfolioItemServiceError,
 )
-from cli.services.portfolio_timeline_service import (
+from services.services.portfolio_timeline_service import (
     PortfolioTimelineService,
     PortfolioTimelineServiceError,
 )
-from cli.services.projects_service import ProjectsService, ProjectsServiceError
+from services.services.projects_service import ProjectsService, ProjectsServiceError
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ def get_projects_service() -> ProjectsService:
     global _projects_service
     if _projects_service is None:
         try:
-            from cli.services.encryption import EncryptionService
+            from services.services.encryption import EncryptionService
             encryption_service = EncryptionService()
         except Exception:
             encryption_service = None

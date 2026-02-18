@@ -97,6 +97,49 @@ def test_get_session():
     assert payload["email"] == "user@example.com"
 
 
+def test_request_password_reset(monkeypatch):
+    captured = {}
+
+    class DummyAuth:
+        def request_password_reset(self, email: str, redirect_to: str | None = None) -> None:
+            captured["email"] = email
+            captured["redirect_to"] = redirect_to
+
+    monkeypatch.setattr(auth_routes, "SupabaseAuth", lambda: DummyAuth())
+    response = client.post(
+        "/api/auth/request-reset",
+        json={"email": "user@example.com", "redirect_to": "http://localhost:3000/auth/reset-password"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert captured == {
+        "email": "user@example.com",
+        "redirect_to": "http://localhost:3000/auth/reset-password",
+    }
+
+
+def test_reset_password(monkeypatch):
+    captured = {}
+
+    class DummyAuth:
+        def reset_password(self, token: str, new_password: str) -> None:
+            captured["token"] = token
+            captured["new_password"] = new_password
+
+    monkeypatch.setattr(auth_routes, "SupabaseAuth", lambda: DummyAuth())
+    response = client.post(
+        "/api/auth/reset-password",
+        json={"token": "recovery-token", "new_password": "NewPassw0rd!"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert captured == {"token": "recovery-token", "new_password": "NewPassw0rd!"}
+
+
 def test_expired_token_returns_unauthorized(monkeypatch):
     """Test that expired or invalid tokens are rejected with 401 Unauthorized"""
     

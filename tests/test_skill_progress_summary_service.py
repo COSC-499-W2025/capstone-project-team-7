@@ -17,7 +17,7 @@ if "pypdf" not in sys.modules:  # pragma: no cover - test harness shim
     sys.modules["pypdf"] = types.SimpleNamespace(PdfReader=lambda *args, **kwargs: None, errors=errors_module)
     sys.modules["pypdf.errors"] = errors_module
 
-from backend.src.cli.services.skills_analysis_service import SkillsAnalysisService
+from services.skills_analysis_service import SkillsAnalysisService
 
 
 def test_service_summarizes_progression():
