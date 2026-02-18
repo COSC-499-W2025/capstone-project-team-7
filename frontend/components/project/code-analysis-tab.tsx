@@ -110,6 +110,16 @@ export function CodeAnalysisTab({
   isLoading,
   errorMessage,
 }: CodeAnalysisTabProps) {
+  // Debug logging
+  console.log('CodeAnalysisTab received:', {
+    codeAnalysis,
+    hasData: !!codeAnalysis,
+    dataKeys: codeAnalysis ? Object.keys(codeAnalysis) : [],
+    keyCount: codeAnalysis ? Object.keys(codeAnalysis).length : 0,
+    isLoading,
+    errorMessage
+  });
+
   // State for expanded sections
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   
@@ -164,8 +174,17 @@ export function CodeAnalysisTab({
     );
   }
 
-  // No data state
-  if (!codeAnalysis || Object.keys(codeAnalysis).length === 0) {
+  // No data state - check for meaningful data
+  if (!codeAnalysis || 
+      (typeof codeAnalysis === 'object' && Object.keys(codeAnalysis).length === 0) ||
+      (typeof codeAnalysis === 'object' && !codeAnalysis.total_files && !codeAnalysis.total_lines)) {
+    console.log('CodeAnalysisTab: No data condition triggered', {
+      codeAnalysisFalsy: !codeAnalysis,
+      codeAnalysisValue: codeAnalysis,
+      hasKeys: codeAnalysis ? Object.keys(codeAnalysis).length > 0 : false,
+      keyCount: codeAnalysis ? Object.keys(codeAnalysis).length : 0
+    });
+    
     return (
       <Card className="bg-white border border-gray-200">
         <CardHeader className="border-b border-gray-200">
