@@ -7,6 +7,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { DocumentAnalysisTab } from "@/components/project/document-analysis-tab";
 import { getStoredToken } from "@/lib/auth";
+import {CodeAnalysisTab} from "@/components/project/code-analysis-tab";
 import {
   getProjects,
   getProjectById,
@@ -63,7 +64,6 @@ const mainTabs = [
 const overviewSubTabs = [
   { value: "overview-main", label: "Overview", icon: LayoutDashboard },
   { value: "languages", label: "Languages", icon: BarChart3 },
-  { value: "code-analysis", label: "Code Analysis", icon: Code2 },
 ] as const;
 
 // Sub-tabs for Skills & Progress section
@@ -78,6 +78,7 @@ const contentSubTabs = [
   { value: "documents", label: "Documents", icon: FileText },
   { value: "media", label: "Media", icon: Film },
   { value: "pdfs", label: "PDFs", icon: FileImage },
+  {value:"code-analysis", label: "Code Analysis", icon: FileCode2}
 ] as const;
 
 const LANGUAGE_COLORS = [
@@ -668,74 +669,7 @@ export default function ProjectPage() {
                 </Card>
               </TabsContent>
 
-              {/* Code Analysis */}
-              <TabsContent value="code-analysis">
-                <Card className="bg-white border border-gray-200">
-                  <CardHeader className="border-b border-gray-200">
-                    <CardTitle className="text-xl font-bold text-gray-900">
-                      Code Analysis
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-6">
-                    {!scanData.code_analysis || scanData.code_analysis.success === false ? (
-                      <p className="text-sm text-gray-500">
-                        No code analysis data available for this project.
-                      </p>
-                    ) : (
-                      <div className="space-y-6">
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                          <div className="bg-gray-50 rounded-lg p-4 text-center">
-                            <p className="text-2xl font-bold text-gray-900">
-                              {scanData.code_analysis.total_files ?? 0}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-1">Files Analyzed</p>
-                          </div>
-                          <div className="bg-gray-50 rounded-lg p-4 text-center">
-                            <p className="text-2xl font-bold text-gray-900">
-                              {Object.keys(scanData.code_analysis.languages ?? {}).length}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-1">Languages</p>
-                          </div>
-                          <div className="bg-gray-50 rounded-lg p-4 text-center">
-                            <p className="text-2xl font-bold text-gray-900">
-                              {scanData.code_analysis.metrics?.total_lines?.toLocaleString() ?? "—"}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-1">Total Lines</p>
-                          </div>
-                          <div className="bg-gray-50 rounded-lg p-4 text-center">
-                            <p className="text-2xl font-bold text-gray-900">
-                              {scanData.code_analysis.quality?.avg_maintainability?.toFixed(0) ?? "—"}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-1">Maintainability</p>
-                          </div>
-                        </div>
 
-                        {scanData.code_analysis.refactor_candidates && 
-                         scanData.code_analysis.refactor_candidates.length > 0 && (
-                          <div>
-                            <h4 className="text-sm font-semibold text-gray-900 mb-3">
-                              Refactor Candidates ({scanData.code_analysis.refactor_candidates.length})
-                            </h4>
-                            <div className="space-y-2">
-                              {scanData.code_analysis.refactor_candidates.slice(0, 5).map((candidate: { path: string; reason?: string }, idx: number) => (
-                                <div key={idx} className="flex items-start gap-2 text-sm">
-                                  <Code2 size={14} className="text-gray-400 mt-0.5 flex-shrink-0" />
-                                  <div>
-                                    <span className="font-mono text-gray-900">{candidate.path}</span>
-                                    {candidate.reason && (
-                                      <span className="text-gray-500 ml-2">— {candidate.reason}</span>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </TabsContent>
             </Tabs>
           </TabsContent>
 
@@ -1228,6 +1162,15 @@ export default function ProjectPage() {
                   errorMessage={projectError}
                 />
               </TabsContent>
+
+                 {/* Code Analysis */}
+            <TabsContent value="code-analysis">
+              <CodeAnalysisTab
+                codeAnalysis={scanData.code_analysis}
+                isLoading={projectLoading}
+                errorMessage={projectError}
+              />
+            </TabsContent>
 
               {/* Media */}
               <TabsContent value="media">

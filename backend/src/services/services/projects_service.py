@@ -138,11 +138,12 @@ class ProjectsService:
         """
         try:
             # Extract metadata from scan_data
-            summary = scan_data.get("summary", {})
+            summary = scan_data.get("summary", {}) or {}
             
+            # Languages can be at root level or in summary
             languages = []
-            if "languages" in summary:
-                lang_data = summary["languages"]
+            lang_data = scan_data.get("languages") or summary.get("languages")
+            if lang_data:
                 if isinstance(lang_data, list):
                     for lang in lang_data:
                         if isinstance(lang, dict):
@@ -154,31 +155,38 @@ class ProjectsService:
                 elif isinstance(lang_data, dict):
                     languages = list(lang_data.keys())
                 
+            # Get code_analysis safely (could be dict or None)
+            code_analysis = scan_data.get("code_analysis")
+            if isinstance(code_analysis, dict):
+                total_lines = code_analysis.get("metrics", {}).get("total_lines", 0) if code_analysis.get("metrics") else code_analysis.get("total_lines", 0)
+            else:
+                total_lines = 0
+                
             record = {
                 "user_id": user_id,
                 "project_name": project_name,
                 "project_path": project_path,
                 "scan_data": self._encrypt_scan_data(scan_data),
                 "scan_timestamp": datetime.now().isoformat(),
-                "total_files": summary.get("files_processed", 0),
-                "total_lines": scan_data.get("code_analysis", {}).get("metrics", {}).get("total_lines", 0),
+                "total_files": summary.get("total_files", 0) or summary.get("files_processed", 0),
+                "total_lines": total_lines,
                 "languages": languages,
                 "has_media_analysis": "media_analysis" in scan_data,
                 "has_pdf_analysis": "pdf_analysis" in scan_data,
-                "has_code_analysis": "code_analysis" in scan_data,
-                "has_skills_analysis": "skills_analysis" in scan_data and scan_data.get("skills_analysis", {}).get("success"),
+                "has_code_analysis": code_analysis is not None,
+                "has_skills_analysis": "skills_analysis" in scan_data and bool((scan_data.get("skills_analysis") or {}).get("success")),
                 "has_document_analysis": "document_analysis" in scan_data,
                 "has_git_analysis": "git_analysis" in scan_data,
                 "has_contribution_metrics": "contribution_metrics" in scan_data,
-                "contribution_score": scan_data.get("contribution_ranking", {}).get("score"),
-                "user_commit_share": scan_data.get("contribution_ranking", {}).get("user_commit_share"),
-                "total_commits": scan_data.get("contribution_metrics", {}).get("total_commits"),
+                "contribution_score": (scan_data.get("contribution_ranking") or {}).get("score"),
+                "user_commit_share": (scan_data.get("contribution_ranking") or {}).get("user_commit_share"),
+                "total_commits": (scan_data.get("contribution_metrics") or {}).get("total_commits"),
                 "primary_contributor": (
-                    (scan_data.get("contribution_metrics", {}).get("primary_contributor") or {}).get("name")
-                    if isinstance(scan_data.get("contribution_metrics", {}).get("primary_contributor"), dict)
+                    ((scan_data.get("contribution_metrics") or {}).get("primary_contributor") or {}).get("name")
+                    if isinstance((scan_data.get("contribution_metrics") or {}).get("primary_contributor"), dict)
                     else None
                 ),
-                "project_end_date": scan_data.get("contribution_metrics", {}).get("project_end_date"),
+                "project_end_date": (scan_data.get("contribution_metrics") or {}).get("project_end_date"),
                 "has_skills_progress": bool(scan_data.get("skills_progress")),
             }
             
