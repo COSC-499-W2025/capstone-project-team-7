@@ -159,6 +159,22 @@ Content-Type: multipart/form-data
     - UUID primary keys with created_at/updated_at timestamps
     - Partial updates via PATCH (only provided fields are modified)
 
+#### Portfolio Generation ✅ Completed
+- **Portfolio Generate API** (Milestone 2 Requirement 32)
+  - `POST /api/portfolio/generate`: Generate a portfolio item from a scanned project.
+    - Request: `{"project_id": "uuid", "upload_id": "string?", "persist": true}`
+    - Response: HTTP 201 with `{"id": "uuid?", "title": "string", "summary": "string?", "role": "string?", "evidence": "string?", "persisted": bool}`
+    - Behavior: When `persist=true` (default), creates a new `/api/portfolio/items` record and returns the item ID. When `persist=false`, returns draft payload only.
+    - Error codes: 400 (missing project_id/upload_id), 401 (unauthorized), 404 (project not found), 501 (upload_id not implemented), 500 (server error)
+  - Implementation: `backend/src/api/portfolio_routes.py` (generate_portfolio_item endpoint)
+  - Client service: `backend/src/cli/services/projects_api_service.py` (PortfolioGenerateAPIService)
+  - TUI integration: Auto-called after scan saves to database (in `_save_scan_to_database`)
+  - Generated fields:
+    - `title`: From project name
+    - `summary`: From languages, skills, contribution metrics (e.g., "Technologies: Python, JavaScript. Skills: FastAPI, React")
+    - `role`: From project overrides (author/contributor/etc)
+    - `evidence`: From file counts, code metrics, git history (e.g., "Files: 42; Lines: 3500; Functions: 120; Commits: 87")
+
 - `POST /api/resume/items`: Generate or save resume items from projects/analysis; allow custom wording and role description; optional thumbnail URL.
 - `GET /api/resume/items`, `GET /api/resume/items/{id}`, `PATCH /api/resume/items/{id}`, `DELETE /api/resume/items/{id}`: CRUD + edits.
 - `GET /api/portfolio/chronology`: Chronological list of projects and exercised skills.
