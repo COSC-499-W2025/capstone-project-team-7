@@ -319,7 +319,7 @@ class PortfolioTextualApp(App):
         self._auth_api_service = AuthAPIService() if self._use_api_mode else None
         self._consent_api_service = ConsentAPIService() if self._use_api_mode else None
         self._analysis_api_service: Optional[AnalysisAPIService] = None
-        self._scan_service = ScanService(use_api=self._use_api_mode)
+        self._scan_service = ScanService(use_api=False)  # Always scan locally
         self._config_api_service = (
             ConfigAPIService(base_url=self._get_api_base_url()) if self._use_config_api else None
         )
@@ -327,7 +327,6 @@ class PortfolioTextualApp(App):
             media_extensions=MEDIA_EXTENSIONS,
             api_service=self._config_api_service,
         )
-        self._scan_service = ScanService()
         self._ai_service = AIService()
         self._code_service = CodeAnalysisService()
         self._skills_service = SkillsAnalysisService()
@@ -808,10 +807,9 @@ class PortfolioTextualApp(App):
                 self._show_status(f"Failed to delete portfolio: {info}", "error")
             return
 
-        # Default: just show selected portfolio details
-        name = portfolio.get("name") or portfolio.get("title") or portfolio.get("id")
-        desc = portfolio.get("description") or ""
-        self._show_status(f"Selected portfolio: {name} - {desc}", "info")
+        # Default: show portfolio detail screen
+        from .screens import ViewPortfolioDetailScreen
+        self.push_screen(ViewPortfolioDetailScreen(portfolio))
 
     def _handle_ai_analysis_selection(self) -> None:
         detail_panel = self.query_one("#detail", Static)
@@ -6939,6 +6937,35 @@ class PortfolioTextualApp(App):
                 self._debug_log("Ranking skipped: no contribution_metrics")
             elif not session.access_token:
                 self._debug_log("Ranking skipped: no access_token")
+
+        # Generate portfolio item via API (always try if signed in and project saved)
+        if project_id and session.access_token:
+            try:
+                self._debug_log(f"Attempting portfolio generation for project_id: {project_id}")
+                self._show_status("Generating portfolio item via API...", "info")
+                from .services.projects_api_service import PortfolioGenerateAPIService, PortfolioGenerateAPIServiceError
+                portfolio_api = PortfolioGenerateAPIService(auth_token=session.access_token)
+                
+                portfolio_result = await asyncio.to_thread(
+                    portfolio_api.generate_portfolio_item,
+                    project_id,
+                    persist=True,
+                )
+                
+                portfolio_title = portfolio_result.get('title', 'Unknown')
+                portfolio_id = portfolio_result.get('id')
+                self._debug_log(f"Portfolio item generated: id={portfolio_id}, title={portfolio_title}")
+                self._show_status(f"Portfolio item created: {portfolio_title}", "success")
+            except PortfolioGenerateAPIServiceError as portfolio_exc:
+                self._debug_log(f"Failed to generate portfolio item via API: {portfolio_exc}")
+                self._show_status(f"Portfolio generation skipped: {str(portfolio_exc)[:50]}", "warning")
+            except Exception as portfolio_exc:
+                self._debug_log(f"Unexpected error generating portfolio item: {portfolio_exc}")
+        else:
+            if not project_id:
+                self._debug_log("Portfolio generation skipped: no project_id")
+            elif not session.access_token:
+                self._debug_log("Portfolio generation skipped: no access_token")
 
         try:
             await self._save_project_scan(
