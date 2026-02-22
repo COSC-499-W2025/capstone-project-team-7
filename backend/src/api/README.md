@@ -519,4 +519,98 @@ Merge files from a new upload into an existing project with deduplication.
 Run tests for incremental refresh endpoints:
 ```bash
 pytest tests/test_incremental_refresh_api.py -v
-``` 
+```
+
+---
+
+### Resume Items (`resume_routes.py`)
+
+Full CRUD for resume items with JWT authentication, user-scoped access, and encrypted content storage.
+
+#### GET /api/resume/items
+List resume items for the authenticated user.
+
+**Query Parameters:**
+- `limit`: Maximum items to return (default: 50)
+- `offset`: Items to skip (default: 0)
+
+**Response:** `200 OK`
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "project_name": "Capstone Project",
+      "start_date": "Sep 2024",
+      "end_date": "Apr 2025",
+      "created_at": "2025-04-01T10:00:00Z",
+      "metadata": {}
+    }
+  ],
+  "page": { "limit": 50, "offset": 0, "total": 1 }
+}
+```
+
+---
+
+#### POST /api/resume/items
+Create a new resume item. `content` is auto-generated from `bullets` and `overview` if omitted.
+
+**Request:**
+```json
+{
+  "project_name": "Capstone Project",
+  "start_date": "Sep 2024",
+  "end_date": "Apr 2025",
+  "bullets": ["Built REST API with FastAPI", "Reduced scan time by 40%"]
+}
+```
+
+**Response:** `201 Created` — full `ResumeItemRecord` with `bullets`, `content`, and `source_path`.
+
+---
+
+#### GET /api/resume/items/{item_id}
+Retrieve a single resume item with decrypted `content` and `bullets`.
+
+**Response:** `200 OK` — `ResumeItemRecord`
+
+**Errors:** `404` if item not found or belongs to a different user.
+
+---
+
+#### PATCH /api/resume/items/{item_id}
+Partially update a resume item.
+
+**Request:** Any subset of `project_name`, `start_date`, `end_date`, `content`, `bullets`, `metadata`.
+
+**Response:** `200 OK` — updated `ResumeItemRecord`
+
+---
+
+#### DELETE /api/resume/items/{item_id}
+Delete a resume item.
+
+**Response:** `204 No Content`
+
+**Errors:** `404` if item not found or belongs to a different user.
+
+---
+
+## Testing
+
+Run tests for resume item endpoints:
+```bash
+pytest tests/test_resume_api.py -v
+```
+
+**Test Results:** ✅ All tests passing
+
+Test coverage includes:
+- List items (empty and populated)
+- Create with auto-generated content
+- Retrieve single item
+- Partial update
+- Delete
+- Authentication validation (401 on missing/invalid token)
+- User-scoped access control (404 when accessing another user's item)
