@@ -738,3 +738,79 @@ class PortfolioRefreshAPIService:
             raise PortfolioRefreshAPIServiceError(
                 f"Unexpected error appending upload: {exc}"
             ) from exc
+
+
+# ============================================================================
+# Portfolio Generate API Service
+# ============================================================================
+
+
+class PortfolioGenerateAPIServiceError(Exception):
+    """Base error for portfolio generate API service."""
+
+
+class PortfolioGenerateAPIService:
+    """Client for POST /api/portfolio/generate endpoint."""
+
+    def __init__(
+        self,
+        base_url: Optional[str] = None,
+        auth_token: Optional[str] = None,
+    ):
+        """
+        Initialize the API service client.
+
+        Args:
+            base_url: Base URL for the API (e.g., "http://localhost:8000")
+            auth_token: JWT Bearer token for authentication
+        """
+        self.base_url = base_url or os.getenv("API_BASE_URL", "http://localhost:8000")
+        self.auth_token = auth_token
+
+        if not self.auth_token:
+            raise PortfolioGenerateAPIServiceError("Authentication token is required")
+
+        self.headers = {
+            "Authorization": f"Bearer {self.auth_token}",
+            "Content-Type": "application/json",
+        }
+
+    def generate_portfolio_item(
+        self,
+        project_id: str,
+        persist: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Generate a portfolio item from a saved project scan.
+
+        Args:
+            project_id: UUID of the project to generate portfolio from
+            persist: If True, persist the portfolio item; if False, return draft only
+
+        Returns:
+            Dict with id (if persisted), title, summary, role, evidence, persisted
+
+        Raises:
+            PortfolioGenerateAPIServiceError: If API call fails
+        """
+        url = f"{self.base_url}/api/portfolio/generate"
+        payload = {"project_id": project_id, "persist": persist}
+
+        try:
+            with httpx.Client(timeout=60.0) as client:
+                response = client.post(url, json=payload, headers=self.headers)
+                response.raise_for_status()
+                return response.json()
+        except httpx.HTTPStatusError as exc:
+            error_detail = exc.response.text
+            raise PortfolioGenerateAPIServiceError(
+                f"Failed to generate portfolio item: {exc.response.status_code} - {error_detail}"
+            ) from exc
+        except httpx.RequestError as exc:
+            raise PortfolioGenerateAPIServiceError(
+                f"Network error generating portfolio item: {exc}"
+            ) from exc
+        except Exception as exc:
+            raise PortfolioGenerateAPIServiceError(
+                f"Unexpected error generating portfolio item: {exc}"
+            ) from exc
