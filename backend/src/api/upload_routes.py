@@ -392,8 +392,8 @@ async def parse_upload(
                 "path": file_meta.path,
                 "size_bytes": file_meta.size_bytes,
                 "mime_type": file_meta.mime_type,
-                "created_at": file_meta.created_at.isoformat() + "Z",
-                "modified_at": file_meta.modified_at.isoformat() + "Z",
+                "created_at": file_meta.created_at.replace(tzinfo=None).isoformat() + "Z",
+                "modified_at": file_meta.modified_at.replace(tzinfo=None).isoformat() + "Z",
                 "file_hash": file_meta.file_hash
             }
             
