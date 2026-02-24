@@ -638,7 +638,7 @@ class CreateProjectRequest(BaseModel):
     """Request model for creating a new project scan."""
     project_name: str = Field(..., description="Name/identifier for the project")
     project_path: str = Field(..., description="Filesystem path that was scanned")
-    scan_data: Dict[str, Any] = Field(..., description="Complete scan results")
+    scan_data: Dict[str, Any] = Field(..., description="Complete scan results (stored as-is)")
     role: Optional[str] = Field(None, description="User's role in the project (author, contributor, lead, maintainer, reviewer)")
 
 
@@ -950,16 +950,8 @@ async def create_project(
                 detail="project_path cannot be empty",
             )
         
-        # Convert request to dictionary for service (scan_data is already a dict)
+        # scan_data is already a plain dict (no conversion needed)
         scan_data_dict = request.scan_data
-        
-        # Ensure languages is at root level (normalize from scan result)
-        if "languages" not in scan_data_dict and "summary" in scan_data_dict:
-            summary = scan_data_dict.get("summary", {})
-            if summary and "languages" in summary:
-                scan_data_dict["languages"] = summary["languages"]
-        
-        logger.info(f"Creating project: {request.project_name} for user {user_id}")
         
         # Validate role if provided
         if request.role is not None and request.role not in ALLOWED_ROLES:
