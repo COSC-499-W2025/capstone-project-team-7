@@ -1,496 +1,214 @@
-# API Routes
+# Backend API Reference (Milestone 2)
 
-FastAPI routes implementing the backend API per `docs/api-plan.md`.
+This document describes the backend API routes currently exposed by `backend/src/main.py` and maps them to Milestone 2 requirements.
 
-## Implemented Routes
+## Auth and Error Conventions
 
-### Projects (`project_routes.py`)
+- Authentication: protected routes require `Authorization: Bearer <access_token>`.
+- Common auth failures: `401 Unauthorized`; some ownership checks return `403 Forbidden`.
+- Error payloads are endpoint-specific, but most return JSON with a code/message style envelope.
 
-Full CRUD for project management with JWT authentication, user-scoped access, and encrypted storage.
+## Milestone 2 Requirement 32 Traceability
 
-#### POST /api/projects
-Create a new project with optional scan data.
+Exact wording in the milestone allows path variations. The table below maps required endpoint intent to current routes.
 
-**Request:**
+| Milestone intent | Current route(s) on `main` | Status |
+| --- | --- | --- |
+| `POST /projects/upload` | `POST /api/uploads`, `POST /api/projects/from-upload` | Covered |
+| `POST /privacy-consent` | `POST /api/consent` | Covered |
+| `GET /projects` | `GET /api/projects` | Covered |
+| `GET /projects/{id}` | `GET /api/projects/{project_id}` | Covered |
+| `GET /skills` | `GET /api/skills/timeline`, `GET /api/projects/{project_id}/skills/timeline` | Covered (path variation) |
+| `GET /resume/{id}` | `GET /api/resume/items/{resume_id}` | Covered (path variation) |
+| `POST /resume/generate` | Not currently exposed as a dedicated endpoint | Missing |
+| `POST /resume/{id}/edit` | `PATCH /api/resume/items/{resume_id}` | Covered (method/path variation) |
+| `GET /portfolio/{id}` | `GET /api/portfolio/items/{item_id}` | Covered (path variation) |
+| `POST /portfolio/generate` | Not currently exposed as a dedicated endpoint | Missing |
+| `POST /portfolio/{id}/edit` | `PATCH /api/portfolio/items/{item_id}` | Covered (method/path variation) |
+
+## Milestone-Relevant Endpoint Reference
+
+### Upload and Incremental Data
+
+#### POST `/api/uploads`
+- Purpose: upload a zip archive for later parsing/analysis.
+- Request: multipart form with `file`.
+- Success: `201` with `upload_id`, `status`, filename and size.
+- Errors: `400` (invalid format), `401` (auth), `413` (size), `500` (processing).
+
+Example response:
+
 ```json
 {
-  "project_name": "My Portfolio Project",
-  "project_path": "/path/to/project",
-  "scan_data": {
-    "summary": { "total_files": 42, "total_lines": 5000 },
-    "code_analysis": { "languages": ["Python", "JavaScript"] },
-    "skills_analysis": { "skills": ["FastAPI", "React"] },
-    "git_analysis": [{ "commit": "abc123" }],
-    "contribution_metrics": { "commits": 10 },
-    "languages": ["Python", "JavaScript"],
-    "files": [{ "name": "test.py", "size": 1024 }]
-  }
-}
-```
-### Upload and Parse (`upload_routes.py`)
-
-#### POST /api/uploads
-Upload a ZIP archive for processing.
-
-**Request:**
-- Content-Type: `multipart/form-data`
-- Body: ZIP file (max 200MB)
-
-**Response:** `201 Created`
-```json
-{
-  "id": "ab5743df-c763-472b-98a0-d45548c4c5ce",
-  "project_name": "My Portfolio Project",
-  "project_path": "/path/to/project",
-  "scan_timestamp": "2026-01-08T12:00:00Z",
-  "message": "Project created successfully"
-}
-```
-
-**Authentication:** Required (`Authorization: Bearer <JWT>`)
-- User scoped: only user's own projects accessible
-- JWT `sub` claim contains `user_id` for data filtering
-
-**Validation:**
-- `project_name`: required, string
-- `project_path`: required, string
-- `scan_data`: optional, JSON object (encrypted at rest using AES-256-GCM)
-
-**Errors:**
-- `400 Bad Request`: Validation error (missing required fields)
-- `401 Unauthorized`: Missing or invalid JWT token
-- `422 Unprocessable Entity`: Invalid request format
-
----
-
-#### GET /api/projects
-List all projects for authenticated user.
-
-**Query Parameters:**
-- `limit`: Maximum number of projects to return (default: 20, max: 100)
-- `offset`: Number of projects to skip (default: 0)
-  "upload_id": "upl_abc123def456",
+  "upload_id": "upl_2f9167c6f991",
   "status": "stored",
-  "filename": "project.zip",
-  "size_bytes": 1234567
+  "filename": "portfolio.zip",
+  "size_bytes": 124921
 }
 ```
 
-**Validation:**
-- File must have `.zip` extension
-- Magic bytes must match ZIP format
-- MIME type must be `application/zip` or `application/x-zip-compressed`
-- Size limit: 200MB
+#### GET `/api/uploads/{upload_id}`
+- Purpose: poll upload metadata/status.
+- Success: `200` with metadata.
+- Errors: `401`, `403` (wrong owner), `404` (missing upload).
 
-**Errors:**
-- `400 invalid_format`: Not a valid ZIP file
-- `413 file_too_large`: Exceeds 200MB limit
+#### POST `/api/uploads/{upload_id}/parse`
+- Purpose: parse uploaded zip; returns files/issues/summary.
+- Request body:
 
----
-
-#### GET /api/uploads/{upload_id}
-Get upload status and metadata.
-
-**Response:** `200 OK`
 ```json
 {
-  "projects": [
-    {
-      "id": "ab5743df-c763-472b-98a0-d45548c4c5ce",
-      "project_name": "My Portfolio Project",
-      "project_path": "/path/to/project",
-      "scan_timestamp": "2026-01-08T12:00:00Z",
-      "has_skills_analysis": true
-    }
-  ],
-  "count": 1,
-  "total": 1
-}
-```
-
-**Authentication:** Required (`Authorization: Bearer <JWT>`)
-- Returns only projects belonging to authenticated user
-- User scoped via JWT `sub` claim
-
-**Errors:**
-- `401 Unauthorized`: Missing or invalid JWT token
-
----
-
-#### GET /api/projects/{project_id}
-Retrieve full project details including decrypted scan data.
-
-**Response:** `200 OK`
-```json
-{
-  "id": "ab5743df-c763-472b-98a0-d45548c4c5ce",
-  "project_name": "My Portfolio Project",
-  "project_path": "/path/to/project",
-  "scan_timestamp": "2026-01-08T12:00:00Z",
-  "scan_data": {
-    "summary": { "total_files": 42, "total_lines": 5000 },
-    "code_analysis": { "languages": ["Python", "JavaScript"] },
-    "skills_analysis": { "skills": ["FastAPI", "React"] },
-    "git_analysis": [{ "commit": "abc123" }],
-    "contribution_metrics": { "commits": 10 },
-    "languages": ["Python", "JavaScript"],
-    "files": [{ "name": "test.py", "size": 1024 }]
-  }
-}
-```
-
-**Authentication:** Required (`Authorization: Bearer <JWT>`)
-- User scoped: returns 404 if project belongs to different user
-- Decrypts scan_data for authenticated user only
-
-**Errors:**
-- `401 Unauthorized`: Missing or invalid JWT token
-- `404 Not Found`: Project does not exist or belongs to different user
-
----
-
-#### DELETE /api/projects/{project_id}
-Delete a project and all associated data.
-
-**Response:** `204 No Content`
-
-**Authentication:** Required (`Authorization: Bearer <JWT>`)
-- User scoped: returns 404 if project belongs to different user
-- Only project owner can delete
-
-**Errors:**
-- `401 Unauthorized`: Missing or invalid JWT token
-- `404 Not Found`: Project does not exist or belongs to different user
-
----
-
-## Data Security
-
-**Encryption:**
-- `scan_data` encrypted at rest using AES-256-GCM
-- Encryption key managed by `EncryptionService`
-- Decryption happens automatically on retrieval for authenticated user only
-
-**User Scoping:**
-- All endpoints extract `user_id` from JWT `sub` claim via `verify_auth_token()` dependency
-- Database queries filtered by user: `WHERE user_id = '{authenticated_user_id}'`
-- Data isolation enforced: users cannot access other users' projects
-- Access token must be valid Supabase JWT from authenticated session
-
-**NULL Field Handling:**
-- Database NULL values normalized automatically:
-  - Boolean fields: `None` → `False`
-  - Array fields: `None` → `[]`
-
-## Testing
-
-Run tests with:
-```bash
-cd backend
-pytest ../tests/test_project_api.py -v
-```
-
-**Test Results:** ✅ All 23 tests passing (10.26s execution time)
-
-Test coverage includes:
-- Project creation with scan data
-- Project listing and filtering
-- Project detail retrieval
-- Project deletion
-- Authentication validation
-- User-scoped access control
-- Error handling (404, 401, 422)
-  "upload_id": "upl_abc123def456",
-  "status": "stored",
-  "filename": "project.zip",
-  "size_bytes": 1234567,
-  "created_at": "2026-01-07T12:00:00Z",
-  "metadata": {
-    "original_filename": "project.zip",
-    "content_type": "application/zip"
-  }
-}
-```
-
-**Errors:**
-- `404 not_found`: Upload ID does not exist
-
----
-
-#### POST /api/uploads/{upload_id}/parse
-Parse uploaded ZIP archive to extract file metadata.
-
-**Request:**
-```json
-{
-  "profile_id": "optional_profile_id",
   "relevance_only": false,
   "preferences": {
-    "allowed_extensions": [".py", ".js"],
-    "excluded_dirs": ["node_modules", ".git"],
-    "max_file_size_bytes": 10485760
-  }
-}
-```
-
-**Response:** `200 OK`
-```json
-{
-  "upload_id": "upl_abc123def456",
-  "status": "parsed",
-  "files": [
-    {
-      "path": "src/main.py",
-      "size_bytes": 1234,
-      "mime_type": "text/x-python",
-      "created_at": "2026-01-01T00:00:00Z",
-      "modified_at": "2026-01-07T00:00:00Z",
-      "file_hash": "d6d8bed2534db28d4f15dc0f2dfea699"
-    }
-  ],
-  "issues": [
-    {
-      "path": "data/large.bin",
-      "code": "FILE_TOO_LARGE",
-      "message": "File exceeds size limit"
-    }
-  ],
-  "summary": {
-    "total_files": 42,
-    "total_bytes": 567890,
-    "skipped_files": 3
-  },
-  "parse_started_at": "2026-01-07T12:00:00Z",
-  "parse_completed_at": "2026-01-07T12:00:05Z",
-  "duplicate_count": 2
-}
-```
-
-**Features:**
-- Extracts file metadata (path, size, MIME type, timestamps)
-- Computes MD5 hash for each file
-- Detects duplicate files by hash
-- Supports custom scan preferences
-- Filters by relevance when `relevance_only: true`
-- Extracts media metadata for images, audio, video
-
-**Errors:**
-- `404 not_found`: Upload ID does not exist
-- `500 parse_failed`: Error during parsing
-
-
----
-
-### Portfolio Analysis (`analysis_routes.py`)
-
-#### POST /api/analysis/portfolio
-Run portfolio analysis on an uploaded archive with optional LLM enhancement.
-
-**Request:**
-```json
-{
-  "upload_id": "upl_abc123def456",
-  "use_llm": false,
-  "llm_media": false,
-  "preferences": {
-    "allowed_extensions": [".py", ".js"],
+    "allowed_extensions": [".py", ".ts"],
     "excluded_dirs": ["node_modules", ".git"]
   }
 }
 ```
 
-**Response:** `200 OK`
-```json
-{
-  "upload_id": "upl_abc123def456",
-  "status": "completed",
-  "analysis_started_at": "2026-01-09T12:00:00Z",
-  "analysis_completed_at": "2026-01-09T12:00:10Z",
-  "llm_status": "skipped:not_requested",
-  "project_type": "collaborative",
-  "languages": [
-    {"name": "Python", "files": 15, "lines": 2500, "percentage": 65.0},
-    {"name": "JavaScript", "files": 8, "lines": 1200, "percentage": 35.0}
-  ],
-  "git_analysis": [
-    {
-      "path": "/project",
-      "commit_count": 150,
-      "contributors": [
-        {"name": "Alice", "commits": 80, "percentage": 53.3},
-        {"name": "Bob", "commits": 70, "percentage": 46.7}
-      ],
-      "project_type": "collaborative",
-      "branches": ["main", "develop"]
-    }
-  ],
-  "code_metrics": {
-    "total_files": 23,
-    "total_lines": 3700,
-    "code_lines": 2800,
-    "comment_lines": 400,
-    "functions": 85,
-    "classes": 12
-  },
-  "skills": [
-    {"name": "Python", "category": "language", "confidence": 0.95, "evidence_count": 15}
-  ],
-  "contribution_metrics": {
-    "project_type": "collaborative",
-    "total_commits": 150,
-    "total_contributors": 2,
-    "commit_frequency": 2.5,
-    "languages_detected": ["Python", "JavaScript"]
-  },
-  "duplicates": [
-    {"hash": "abc123", "files": ["src/utils.py", "backup/utils.py"], "wasted_bytes": 1024}
-  ],
-  "total_files": 23,
-  "total_size_bytes": 125000,
-  "llm_analysis": null
-}
-```
+- Success: `200` with parse output.
+- Errors: `401`, `403`, `404`, `500`.
 
-**Features:**
-- Runs local analysis: language detection, git history, code metrics, skills extraction, contribution analysis, duplicate detection
-- Optionally includes LLM-based analysis when `use_llm: true`, consent is granted, and API key is configured
-- Falls back to local-only analysis with `llm_status` indicating the reason
-- Determines project type (individual vs collaborative) from git analysis
+#### POST `/api/projects/from-upload`
+- Purpose: create a project from an uploaded zip using parse/analysis pipeline.
+- Success: `201` with project id/name/timestamp.
+- Errors: `400`, `401`, `403`, `404`, `500`.
 
-**Errors:**
-- `400 validation_error`: Missing upload_id or project_id
-- `403 forbidden`: User doesn't own the upload
-- `404 not_found`: Upload ID doesn't exist
-- `500 analysis_failed`: Error during analysis
+#### POST `/api/projects/{project_id}/append-upload/{upload_id}`
+- Purpose: incremental refresh by merging a new upload into an existing project.
+- Request body:
 
----
-
-### Stub Routes (`spec_routes.py`)
-
-Contains stub implementations for endpoints not yet fully implemented:
-- Consent management
-- Scans (desktop convenience)
-- Analysis
-- Projects CRUD
-- Resume/portfolio items
-- Search and deduplication
-- Configuration
-
-These stubs return placeholder responses to allow frontend development to proceed.
-
----
-
-## Testing
-
-Run tests for upload endpoints:
-```bash
-pytest tests/test_upload_api.py -v
-```
-
-All tests should pass (12/12).
-
-Run tests for Analysis endpoints (14 tests):
-```bash
-pytest tests/test_analysis_api.py -v
-```
----
-
-## Dependencies
-
-- `fastapi`: Web framework
-- `python-magic` / `python-magic-bin`: File type detection via magic bytes
-- `scanner.parser`: ZIP parsing and file extraction (existing module)
-- `cli.services.*`: Local analysis services (code, skills, contribution etc.)
-- `local_analysis.git_repo`: Git repository analysis
-- `auth.consent_validator`: Consent checking for LLM access
-
----
-
-## Storage
-
-Currently uses in-memory storage (`uploads_store` dict).
-
----
-
-### Portfolio Refresh (`portfolio_routes.py`)
-
-#### POST /api/portfolio/refresh
-Refresh entire portfolio with cross-project duplicate detection.
-
-**Request:**
-```json
-{
-  "include_duplicates": true
-}
-```
-
-**Response:** `200 OK`
-```json
-{
-  "status": "completed",
-  "projects_scanned": 5,
-  "total_files": 150,
-  "total_size_bytes": 5000000,
-  "dedup_report": {
-    "summary": {
-      "duplicate_groups_count": 3,
-      "total_wasted_bytes": 50000
-    },
-    "duplicate_groups": [
-      {
-        "sha256": "abc123...",
-        "file_count": 2,
-        "wasted_bytes": 25000,
-        "files": [
-          {"path": "src/utils.py", "project_id": "...", "project_name": "Project A"},
-          {"path": "lib/utils.py", "project_id": "...", "project_name": "Project B"}
-        ]
-      }
-    ]
-  }
-}
-```
-
-**Features:**
-- Scans all user projects for cached file metadata
-- Detects files duplicated across multiple projects using SHA-256 hash
-- Returns deduplication report with wasted bytes calculation
-- Sorted by wasted bytes (largest first)
-
-**Authentication:** Required (`Authorization: Bearer <JWT>`)
-
-**Errors:**
-- `401 Unauthorized`: Missing or invalid JWT token
-- `500 Internal Server Error`: Failed to refresh portfolio
-
----
-
-### Append Upload to Project (`project_routes.py`)
-
-#### POST /api/projects/{project_id}/append-upload/{upload_id}
-Merge files from a new upload into an existing project with deduplication.
-
-**Request:**
 ```json
 {
   "skip_duplicates": true
 }
 ```
 
-**Response:** `200 OK`
+- Success: `200` with per-file merge results (`added`, `updated`, `skipped_duplicate`).
+- Errors: `400`, `401`, `403`, `404`, `500`.
+
+#### POST `/api/portfolio/refresh`
+- Purpose: refresh portfolio-wide metadata and optional cross-project dedup report.
+- Request body:
+
 ```json
 {
-  "project_id": "ab5743df-c763-472b-98a0-d45548c4c5ce",
-  "upload_id": "upl_abc123def456",
-  "status": "completed",
-  "files_added": 5,
-  "files_updated": 2,
-  "files_skipped_duplicate": 3,
-  "total_files_in_upload": 10,
-  "files": [
-    {"path": "src/new_file.py", "status": "added", "sha256": "abc123..."},
-    {"path": "src/changed.py", "status": "updated", "sha256": "def456..."},
-    {"path": "src/existing.py", "status": "skipped_duplicate", "sha256": "789abc..."}
+  "include_duplicates": true
+}
+```
+
+- Success: `200` with projects scanned, file totals, optional dedup report.
+- Errors: `401`, `500`.
+
+### Consent
+
+#### POST `/api/consent`
+- Purpose: update consent state for data access and external services.
+- Request body:
+
+```json
+{
+  "data_access": true,
+  "external_services": false
+}
+```
+
+- Success: `200` with current consent status.
+- Errors: `400` (validation), `401`.
+
+#### GET `/api/consent`
+- Purpose: fetch current consent status for authenticated user.
+- Success: `200`.
+- Errors: `401`.
+
+### Projects and Skills
+
+#### GET `/api/projects`
+- Purpose: list user projects.
+- Success: `200` with `count` and project metadata list.
+- Errors: `401`, `500`.
+
+#### POST `/api/projects`
+- Purpose: create/store project scan data.
+- Request body includes `project_name`, `project_path`, `scan_data`.
+- Success: `201`.
+- Errors: `400`, `401`, `500`.
+
+#### GET `/api/projects/{project_id}`
+- Purpose: get a single project detail with scan data and overrides.
+- Success: `200`.
+- Errors: `401`, `404`, `500`.
+
+#### GET `/api/projects/timeline`
+- Purpose: chronology endpoint (supports override dates).
+- Success: `200`.
+- Errors: `401`, `500`.
+
+#### GET `/api/projects/top`
+- Purpose: top-ranked projects by contribution score.
+- Success: `200`.
+- Errors: `401`, `500`.
+
+#### GET `/api/projects/search`
+- Purpose: search file/skill content across projects.
+- Query: `q`, optional `scope`, `project_id`, `limit`, `offset`.
+- Success: `200`.
+- Errors: `400`, `401`, `404`, `500`.
+
+#### GET `/api/skills/timeline`
+- Purpose: skills timeline across user portfolio.
+- Success: `200` with `items`.
+- Errors: `401`, `500`.
+
+#### GET `/api/projects/{project_id}/skills/timeline`
+- Purpose: project-specific skill progression timeline.
+- Success: `200`.
+- Errors: `401`, `404`, `500`.
+
+#### POST `/api/projects/{project_id}/skills/summary`
+- Purpose: skill progression summary generation (uses cached/local/LLM depending on consent and key).
+- Success: `200` with summary or skip status.
+- Errors: `401`, `404`, `500`.
+
+### Human-in-the-Loop Customization
+
+#### Selection preferences
+- `POST /api/selection`: save project/skill ordering and selections.
+- `GET /api/selection`: read saved selections.
+- `DELETE /api/selection`: reset selections.
+
+#### Project overrides and display controls
+- `GET /api/projects/{project_id}/overrides`
+- `PATCH /api/projects/{project_id}/overrides`
+- `DELETE /api/projects/{project_id}/overrides`
+
+These routes support chronology corrections, highlighted skills, comparison attributes, evidence bullets, role, and custom ranking.
+
+#### Project role and evidence/thumbnails
+- Role/evidence are represented through project overrides.
+- Thumbnail/media:
+  - `POST /api/projects/{project_id}/thumbnail` (file upload)
+  - `PATCH /api/projects/{project_id}/thumbnail` (set URL)
+
+### Resume and Portfolio Item Endpoints
+
+#### Resume items
+- `GET /api/resume/items`
+- `POST /api/resume/items`
+- `GET /api/resume/items/{resume_id}`
+- `PATCH /api/resume/items/{resume_id}`
+- `DELETE /api/resume/items/{resume_id}`
+
+Create request example:
+
+```json
+{
+  "project_name": "Capstone Project",
+  "start_date": "2025-09",
+  "end_date": "2026-02",
+  "bullets": [
+    "Built FastAPI endpoints for upload/parse and project retrieval",
+    "Added timeline + skills views with user overrides"
   ]
 }
 ```
@@ -603,14 +321,3 @@ Run tests for resume item endpoints:
 ```bash
 pytest tests/test_resume_api.py -v
 ```
-
-**Test Results:** ✅ All tests passing
-
-Test coverage includes:
-- List items (empty and populated)
-- Create with auto-generated content
-- Retrieve single item
-- Partial update
-- Delete
-- Authentication validation (401 on missing/invalid token)
-- User-scoped access control (404 when accessing another user's item)
