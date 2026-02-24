@@ -144,7 +144,7 @@ Priority key: P0 = launch-critical parity; P1 = nice-to-have once P0 is stable; 
 - Current behavior: Saves generated resumes to Supabase `resume_items` with encryption (content/bullets); list, fetch, delete; applies access token for RLS.
 - Components: `backend/src/cli/services/resume_storage_service.py`.
 - Data: Table `resume_items`; metadata includes source path, ai_generated flag; requires `ENCRYPTION_MASTER_KEY`.
-- Migration notes: Resumes page listing items with preview; actions: view (decrypt), delete; ensure access token passed from auth; handle missing encryption key errors visibly.
+- Migration notes: **Implemented** — `frontend/app/(dashboard)/resumes/page.tsx` provides full CRUD: list items with project name, date range, and created date; inline create/edit dialog (project name, start/end dates, bullet points textarea); delete with confirm. API client at `frontend/lib/api/resume.ts`; types at `frontend/types/resume.ts`. Remaining: read-only content expand view, reorder items, wiring "Generate Resume Item" action from project Tools tab.
 
 ### Export reports
 - Current behavior: Generates HTML report (hero, summary cards, code/skills/contributions/git/media/pdf sections) and optional PDF via WeasyPrint; falls back to HTML if PDF deps missing.

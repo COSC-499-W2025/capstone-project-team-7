@@ -213,46 +213,111 @@ Create request example:
 }
 ```
 
-#### Portfolio items
-- `GET /api/portfolio/items`
-- `POST /api/portfolio/items`
-- `GET /api/portfolio/items/{item_id}`
-- `PATCH /api/portfolio/items/{item_id}`
-- `DELETE /api/portfolio/items/{item_id}`
+**Features:**
+- Verifies upload exists and user owns it
+- Verifies project exists and user owns it
+- Compares files by SHA-256 hash:
+  - If hash matches existing file → skipped (duplicate)
+  - If path exists but different hash → updated
+  - If new path → added
+- Persists new/updated file metadata to the project
 
-### Explicitly Missing Dedicated Endpoints
+**Authentication:** Required (`Authorization: Bearer <JWT>`)
 
-The following dedicated endpoints are not currently present on `main`:
+**Errors:**
+- `401 Unauthorized`: Missing or invalid JWT token
+- `403 Forbidden`: Access denied to upload (wrong user)
+- `404 Not Found`: Upload or project not found
+- `500 Internal Server Error`: Failed to parse or save files
 
-- `POST /api/resume/generate`
-- `POST /api/portfolio/generate`
+---
 
-Related functionality exists through item CRUD plus analysis/skills routes, but there is no dedicated generate endpoint path yet.
+## Testing
 
-## Milestone 2 Coverage Notes (21-31, 35-36)
+Run tests for incremental refresh endpoints:
+```bash
+pytest tests/test_incremental_refresh_api.py -v
+```
 
-- 21 Incremental info over time: covered by upload + append-upload + refresh flows.
-- 22 Duplicate recognition: covered by parse hash tracking and portfolio dedup report.
-- 23 User selection/correction: covered by selection and project overrides routes.
-- 24 User role in project: covered via project overrides role field.
-- 25 Evidence of success: covered via overrides evidence and analysis/ranking data.
-- 26 Portfolio image thumbnail: covered by thumbnail upload/update routes.
-- 27 Portfolio showcase customization/save: covered by portfolio item CRUD.
-- 28 Resume wording customization/save: covered by resume item CRUD.
-- 29 Display portfolio text: covered by portfolio item GET endpoints.
-- 30 Display resume text: covered by resume item GET endpoints.
-- 31 FastAPI service layer: implemented in `backend/src/main.py`.
-- 35 HTTP-style endpoint testing: covered by tests using FastAPI TestClient (see `tests/test_api_contracts.py` and endpoint-specific test files).
-- 36 Endpoint documentation: this file documents current routes and traceability to milestone wording.
+---
 
-## Route Source of Truth
+### Resume Items (`resume_routes.py`)
 
-For verification, route implementations live in:
+Full CRUD for resume items with JWT authentication, user-scoped access, and encrypted content storage.
 
-- `backend/src/api/upload_routes.py`
-- `backend/src/api/consent_routes.py`
-- `backend/src/api/project_routes.py`
-- `backend/src/api/portfolio_routes.py`
-- `backend/src/api/resume_routes.py`
-- `backend/src/api/selection_routes.py`
-- `backend/src/main.py` (router registration)
+#### GET /api/resume/items
+List resume items for the authenticated user.
+
+**Query Parameters:**
+- `limit`: Maximum items to return (default: 50)
+- `offset`: Items to skip (default: 0)
+
+**Response:** `200 OK`
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "project_name": "Capstone Project",
+      "start_date": "Sep 2024",
+      "end_date": "Apr 2025",
+      "created_at": "2025-04-01T10:00:00Z",
+      "metadata": {}
+    }
+  ],
+  "page": { "limit": 50, "offset": 0, "total": 1 }
+}
+```
+
+---
+
+#### POST /api/resume/items
+Create a new resume item. `content` is auto-generated from `bullets` and `overview` if omitted.
+
+**Request:**
+```json
+{
+  "project_name": "Capstone Project",
+  "start_date": "Sep 2024",
+  "end_date": "Apr 2025",
+  "bullets": ["Built REST API with FastAPI", "Reduced scan time by 40%"]
+}
+```
+
+**Response:** `201 Created` — full `ResumeItemRecord` with `bullets`, `content`, and `source_path`.
+
+---
+
+#### GET /api/resume/items/{item_id}
+Retrieve a single resume item with decrypted `content` and `bullets`.
+
+**Response:** `200 OK` — `ResumeItemRecord`
+
+**Errors:** `404` if item not found or belongs to a different user.
+
+---
+
+#### PATCH /api/resume/items/{item_id}
+Partially update a resume item.
+
+**Request:** Any subset of `project_name`, `start_date`, `end_date`, `content`, `bullets`, `metadata`.
+
+**Response:** `200 OK` — updated `ResumeItemRecord`
+
+---
+
+#### DELETE /api/resume/items/{item_id}
+Delete a resume item.
+
+**Response:** `204 No Content`
+
+**Errors:** `404` if item not found or belongs to a different user.
+
+---
+
+## Testing
+
+Run tests for resume item endpoints:
+```bash
+pytest tests/test_resume_api.py -v
+```
