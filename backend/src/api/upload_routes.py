@@ -10,11 +10,14 @@ import magic
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+
 from fastapi import APIRouter, UploadFile, File, HTTPException, status, Body, Header, Depends
 from pydantic import BaseModel, Field
 
 from scanner.parser import parse_zip
 from scanner.models import ParseResult, ScanPreferences, FileMetadata as ScanFileMetadata, ParseIssue as ScanParseIssue
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/api/uploads", tags=["uploads"])
