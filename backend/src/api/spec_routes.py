@@ -441,6 +441,7 @@ _scan_store_lock = threading.Lock()
 
 # Lazy-initialized scan service
 _scan_service = None
+_scan_service_lock = threading.Lock()
 
 # Lazy-initialized projects service for dedup reports
 _projects_service: Optional[ProjectsService] = None
@@ -448,11 +449,13 @@ _projects_service_lock = threading.Lock()
 
 
 def _get_scan_service():
-    """Get or create the singleton scan service instance."""
+    """Get or create the singleton scan service instance (thread-safe)."""
     global _scan_service
     if _scan_service is None:
-        from src.cli.services.scan_service import ScanService
-        _scan_service = ScanService(use_api=_use_api_mode)
+        with _scan_service_lock:
+            if _scan_service is None:
+                from src.cli.services.scan_service import ScanService
+                _scan_service = ScanService(use_api=_use_api_mode)
     return _scan_service
 
 
