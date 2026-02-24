@@ -413,6 +413,54 @@ class ViewPortfoliosScreen(ModalScreen[None]):
             self.dismiss(None)
 
 
+class ViewPortfolioDetailScreen(ModalScreen[None]):
+    """Modal screen that shows portfolio item details."""
+
+    def __init__(self, portfolio: Dict[str, Any]) -> None:
+        super().__init__()
+        self._portfolio = portfolio
+
+    def compose(self) -> ComposeResult:
+        p = self._portfolio
+        title = p.get("title") or p.get("name") or "Untitled"
+        summary = p.get("summary") or p.get("description") or "No summary available."
+        role = p.get("role") or "Not specified"
+        evidence = p.get("evidence") or "No evidence recorded."
+        created_at = p.get("created_at", "")
+        updated_at = p.get("updated_at", "")
+        
+        # Format timestamps if available
+        if created_at:
+            try:
+                from datetime import datetime
+                if isinstance(created_at, str):
+                    dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                    created_at = dt.strftime("%Y-%m-%d %H:%M")
+            except Exception:
+                pass
+        
+        yield Vertical(
+            Static(f"📁 {title}", classes="dialog-title"),
+            Static("Portfolio Item Details", classes="dialog-subtitle"),
+            Static(""),
+            Static(f"[bold]Summary:[/bold]", markup=True),
+            Static(f"  {summary}"),
+            Static(""),
+            Static(f"[bold]Role:[/bold] {role}", markup=True),
+            Static(""),
+            Static(f"[bold]Evidence:[/bold]", markup=True),
+            Static(f"  {evidence}"),
+            Static(""),
+            Static(f"[dim]Created: {created_at}[/dim]" if created_at else "", markup=True),
+            Horizontal(Button("Close", id="close-btn", variant="primary"), classes="dialog-buttons"),
+            classes="dialog",
+        )
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "close-btn":
+            self.dismiss(None)
+
+
 class EditPortfolioSubmitted(Message):
     """Raised when the user submits the edit-portfolio dialog."""
 
