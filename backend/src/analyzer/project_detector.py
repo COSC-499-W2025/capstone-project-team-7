@@ -61,7 +61,6 @@ class ProjectDetector:
             ],
             'typescript': [
                 'tsconfig.json',
-                'package.json'
             ],
             'java': [
                 'pom.xml',
@@ -212,7 +211,9 @@ class ProjectDetector:
             # Gather markers from root + immediate subdirs for accurate typing
             _, root_markers = self._find_project_markers(root_path)
             root_markers = list(root_markers)  # copy
-            root_markers.append('.git')
+            # .git is already picked up as a supplementary marker; avoid double-counting
+            if '.git' not in root_markers:
+                root_markers.append('.git')
             try:
                 for subdir in root_path.iterdir():
                     if subdir.is_dir() and subdir.name not in self.excluded_dirs:
