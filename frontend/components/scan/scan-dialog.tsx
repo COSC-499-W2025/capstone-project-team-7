@@ -12,10 +12,30 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ScanProgress } from "@/components/scan/scan-progress";
 import { useScan } from "@/hooks/use-scan";
+import { useAppendScan } from "@/hooks/use-append-scan";
+import { getProjects } from "@/lib/api/projects";
 import { getStoredToken } from "@/lib/auth";
-import { FolderOpen, AlertTriangle, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import type { ProjectMetadata } from "@/types/project";
+import {
+  FolderOpen,
+  AlertTriangle,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  Plus,
+  FolderPlus,
+} from "lucide-react";
+
+type ScanMode = "new" | "append";
 
 interface ScanDialogProps {
   open: boolean;
@@ -28,8 +48,20 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
   const [isElectron, setIsElectron] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isBrowsing, setIsBrowsing] = useState(false);
+  
+  // Append mode state
+  const [scanMode, setScanMode] = useState<ScanMode>("new");
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  const [projects, setProjects] = useState<ProjectMetadata[]>([]);
+  const [isLoadingProjects, setIsLoadingProjects] = useState(false);
 
-  const { state, progress, error, result, isScanning, start, reset } = useScan(onScanComplete);
+  // Hooks for both scan modes
+  const newScan = useScan(onScanComplete);
+  const appendScan = useAppendScan(onScanComplete);
+  
+  // Get current scan state based on mode
+  const currentScan = scanMode === "new" ? newScan : appendScan;
+  const { state, progress, error, isScanning, reset } = currentScan;
 
   // Check for Electron and auth on mount
   useEffect(() => {
@@ -37,17 +69,42 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
     setIsAuthenticated(!!getStoredToken());
   }, [open]);
 
+  // Load projects when append mode is selected
+  useEffect(() => {
+    if (scanMode === "append" && open && isAuthenticated) {
+      loadProjects();
+    }
+  }, [scanMode, open, isAuthenticated]);
+
   // Reset state when dialog closes
   useEffect(() => {
     if (!open) {
       // Delay reset to allow close animation
       const timeout = setTimeout(() => {
         setSourcePath("");
-        reset();
+        setScanMode("new");
+        setSelectedProjectId("");
+        newScan.reset();
+        appendScan.reset();
       }, 200);
       return () => clearTimeout(timeout);
     }
-  }, [open, reset]);
+  }, [open, newScan.reset, appendScan.reset]);
+
+  const loadProjects = async () => {
+    const token = getStoredToken();
+    if (!token) return;
+
+    setIsLoadingProjects(true);
+    try {
+      const response = await getProjects(token);
+      setProjects(response.projects);
+    } catch (err) {
+      console.error("Failed to load projects:", err);
+    } finally {
+      setIsLoadingProjects(false);
+    }
+  };
 
   const handleBrowse = async () => {
     if (!window.desktop?.selectDirectory) return;
@@ -69,29 +126,60 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
 
   const handleStartScan = () => {
     if (!sourcePath.trim()) return;
-    start(sourcePath.trim());
+    
+    if (scanMode === "new") {
+      newScan.start(sourcePath.trim());
+    } else {
+      if (!selectedProjectId) return;
+      appendScan.start(sourcePath.trim(), selectedProjectId);
+    }
   };
 
   const handleRetry = () => {
     reset();
   };
 
+  const handleModeChange = (mode: ScanMode) => {
+    setScanMode(mode);
+    setSelectedProjectId("");
+  };
+
   const isSuccess = state === "succeeded";
   const isFailed = state === "failed" || state === "canceled";
-  const canStartScan = sourcePath.trim() && !isScanning && isAuthenticated && isElectron;
+  const canStartScan =
+    sourcePath.trim() &&
+    !isScanning &&
+    isAuthenticated &&
+    isElectron &&
+    (scanMode === "new" || (scanMode === "append" && selectedProjectId));
+
+  // Get selected project name for display
+  const selectedProject = projects.find((p) => p.id === selectedProjectId);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold">
-            {isSuccess ? "Scan Complete" : isFailed ? "Scan Failed" : "New Portfolio Scan"}
+            {isSuccess
+              ? scanMode === "append"
+                ? "Files Added"
+                : "Scan Complete"
+              : isFailed
+              ? "Scan Failed"
+              : scanMode === "append"
+              ? "Add Files to Project"
+              : "New Portfolio Scan"}
           </DialogTitle>
           <DialogDescription>
             {isSuccess
-              ? "Your project has been scanned and saved."
+              ? scanMode === "append"
+                ? "New files have been merged with your project."
+                : "Your project has been scanned and saved."
               : isFailed
               ? "There was a problem scanning your project."
+              : scanMode === "append"
+              ? "Select a folder to add files to an existing project."
               : "Select a folder to scan for portfolio artifacts."}
           </DialogDescription>
         </DialogHeader>
@@ -127,17 +215,17 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
             </div>
           )}
 
-          {/* Success state */}
-          {isSuccess && result && (
+          {/* Success state - New project */}
+          {isSuccess && scanMode === "new" && newScan.result && (
             <div className="space-y-4">
               <div className="flex items-start gap-3 p-3 bg-green-50 border border-green-200 rounded-lg">
                 <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
                 <div className="text-sm">
                   <p className="font-medium text-green-800">Scan completed successfully</p>
                   <p className="text-green-700 mt-1">
-                    Processed {result.summary.total_files.toLocaleString()} files
-                    {result.languages.length > 0 && (
-                      <> • {result.languages.length} languages detected</>
+                    Processed {newScan.result.summary.total_files.toLocaleString()} files
+                    {newScan.result.languages.length > 0 && (
+                      <> • {newScan.result.languages.length} languages detected</>
                     )}
                   </p>
                 </div>
@@ -149,6 +237,42 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
                 </Button>
                 <Link href="/projects">
                   <Button onClick={() => onOpenChange(false)}>View Projects</Button>
+                </Link>
+              </div>
+            </div>
+          )}
+
+          {/* Success state - Append mode */}
+          {isSuccess && scanMode === "append" && appendScan.appendResult && (
+            <div className="space-y-4">
+              <div className="flex items-start gap-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+                <div className="text-sm">
+                  <p className="font-medium text-green-800">Files merged successfully</p>
+                  <div className="text-green-700 mt-1 space-y-1">
+                    <p>
+                      <span className="font-medium">{appendScan.appendResult.files_added}</span> files added
+                    </p>
+                    {appendScan.appendResult.files_updated > 0 && (
+                      <p>
+                        <span className="font-medium">{appendScan.appendResult.files_updated}</span> files updated
+                      </p>
+                    )}
+                    {appendScan.appendResult.files_skipped_duplicate > 0 && (
+                      <p>
+                        <span className="font-medium">{appendScan.appendResult.files_skipped_duplicate}</span> duplicates skipped
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <Button variant="outline" onClick={() => onOpenChange(false)}>
+                  Close
+                </Button>
+                <Link href={`/projects?id=${appendScan.appendResult.project_id}`}>
+                  <Button onClick={() => onOpenChange(false)}>View Project</Button>
                 </Link>
               </div>
             </div>
@@ -184,12 +308,17 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
               <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
                 <div className="flex items-center gap-2 mb-3">
                   <Loader2 className="h-4 w-4 animate-spin text-gray-600" />
-                  <span className="text-sm font-medium text-gray-700">Scanning in progress...</span>
+                  <span className="text-sm font-medium text-gray-700">
+                    {scanMode === "append" ? "Scanning and merging..." : "Scanning in progress..."}
+                  </span>
                 </div>
                 <ScanProgress percent={progress?.percent} message={progress?.message} />
               </div>
 
               <p className="text-xs text-gray-500 text-center">
+                {scanMode === "append" && selectedProject && (
+                  <>Adding to: {selectedProject.project_name} • </>
+                )}
                 Scanning: {sourcePath}
               </p>
             </div>
@@ -198,6 +327,77 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
           {/* Initial state - folder selection */}
           {!isScanning && !isSuccess && !isFailed && (
             <>
+              {/* Scan mode toggle */}
+              <div className="space-y-2">
+                <Label>Scan Type</Label>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant={scanMode === "new" ? "default" : "outline"}
+                    className="flex-1"
+                    onClick={() => handleModeChange("new")}
+                    disabled={!isAuthenticated}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    New Project
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={scanMode === "append" ? "default" : "outline"}
+                    className="flex-1"
+                    onClick={() => handleModeChange("append")}
+                    disabled={!isAuthenticated}
+                  >
+                    <FolderPlus className="h-4 w-4 mr-2" />
+                    Add to Existing
+                  </Button>
+                </div>
+              </div>
+
+              {/* Project selector (append mode only) */}
+              {scanMode === "append" && (
+                <div className="space-y-2">
+                  <Label htmlFor="project-select">Select Project</Label>
+                  <Select
+                    value={selectedProjectId}
+                    onValueChange={setSelectedProjectId}
+                    disabled={isLoadingProjects || projects.length === 0}
+                  >
+                    <SelectTrigger id="project-select">
+                      <SelectValue
+                        placeholder={
+                          isLoadingProjects
+                            ? "Loading projects..."
+                            : projects.length === 0
+                            ? "No projects found"
+                            : "Select a project"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {projects.map((project) => (
+                        <SelectItem key={project.id} value={project.id}>
+                          <div className="flex flex-col">
+                            <span>{project.project_name}</span>
+                            <span className="text-xs text-gray-500">
+                              {project.total_files} files
+                              {project.languages && project.languages.length > 0 && (
+                                <> • {project.languages.slice(0, 3).join(", ")}</>
+                              )}
+                            </span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {projects.length === 0 && !isLoadingProjects && (
+                    <p className="text-xs text-amber-600">
+                      No existing projects. Create a new project first.
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div className="space-y-2">
                 <Label htmlFor="source-path">Folder Path</Label>
                 <div className="flex gap-2">
@@ -232,7 +432,7 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
                   Cancel
                 </Button>
                 <Button onClick={handleStartScan} disabled={!canStartScan}>
-                  Start Scan
+                  {scanMode === "append" ? "Add Files" : "Start Scan"}
                 </Button>
               </div>
             </>

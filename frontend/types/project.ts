@@ -103,3 +103,25 @@ export interface ErrorResponse {
   detail: string;
   error_code?: string;
 }
+
+// Types for incremental scan (append upload to project)
+export interface AppendFileStatus {
+  path: string;
+  status: "added" | "updated" | "skipped_duplicate";
+  sha256?: string;
+}
+
+export interface AppendUploadResponse {
+  project_id: string;
+  upload_id: string;
+  status: string;
+  files_added: number;
+  files_updated: number;
+  files_skipped_duplicate: number;
+  total_files_in_upload: number;
+  files: AppendFileStatus[];
+}
+
+export interface AppendUploadRequest {
+  skip_duplicates?: boolean;
+}

@@ -5,6 +5,8 @@ import {
   ErrorResponse,
   SkillProgressTimelineResponse,
   SkillProgressSummaryResponse,
+  AppendUploadResponse,
+  AppendUploadRequest,
 } from "@/types/project";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -113,6 +115,35 @@ export async function generateProjectSkillSummary(
   if (!response.ok) {
     const error: ErrorResponse = await response.json();
     throw new Error(error.detail || "Failed to generate skills summary");
+  }
+
+  return response.json();
+}
+
+/**
+ * Append files from an upload to an existing project with deduplication
+ */
+export async function appendUploadToProject(
+  token: string,
+  projectId: string,
+  uploadId: string,
+  options?: AppendUploadRequest
+): Promise<AppendUploadResponse> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/projects/${projectId}/append-upload/${uploadId}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(options ?? { skip_duplicates: true }),
+    }
+  );
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json();
+    throw new Error(error.detail || "Failed to append files to project");
   }
 
   return response.json();
