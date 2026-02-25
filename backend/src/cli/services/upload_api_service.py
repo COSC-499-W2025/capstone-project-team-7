@@ -192,7 +192,14 @@ class UploadAPIService:
             
             if response.status_code == 403:
                 raise UploadAPIError("Access denied to this upload")
-            
+
+            if response.status_code >= 500:
+                try:
+                    msg = response.json().get("detail", {}).get("message", response.text)
+                except Exception:
+                    msg = response.text
+                raise UploadAPIError(f"Server error during parse: {msg}")
+
             response.raise_for_status()
             data = response.json()
             
@@ -213,7 +220,7 @@ class UploadAPIService:
                 if "media_info" in file_data and file_data["media_info"]:
                     from ...scanner.media_types import ImageMetadata, AudioMetadata, VideoMetadata
                     media_data = file_data["media_info"]
-                    media_type = media_data.get("media_type", "")
+                    media_type = media_data.get("media_type") or ""
                     
                     # Construct the appropriate media metadata based on type
                     if "image" in media_type.lower():

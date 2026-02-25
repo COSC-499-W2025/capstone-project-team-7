@@ -319,7 +319,7 @@ class PortfolioTextualApp(App):
         self._auth_api_service = AuthAPIService() if self._use_api_mode else None
         self._consent_api_service = ConsentAPIService() if self._use_api_mode else None
         self._analysis_api_service: Optional[AnalysisAPIService] = None
-        self._scan_service = ScanService(use_api=False)  # Always scan locally
+        self._scan_service = ScanService(use_api=self._use_api_mode)
         self._config_api_service = (
             ConfigAPIService(base_url=self._get_api_base_url()) if self._use_config_api else None
         )

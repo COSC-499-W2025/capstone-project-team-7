@@ -46,3 +46,11 @@ skill_summary_raw.txt
 frontend/.next/
 frontend/out/
 electron/dist/
+
+CLAUDE.md
+AGENTS.md
+.agents
+.claude
+*skills*
+frontend/playwright-report/index.html
+frontend/test-results/.last-run.json

@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 # Configuration constants
 MAX_FILES_IN_RESPONSE = 100  # Maximum number of files to include in scan response
+_use_api_mode = os.getenv("USE_API_MODE", "false").lower() in ("true", "1", "yes")
 
 
 def _now_iso() -> str:
@@ -440,6 +441,7 @@ _scan_store_lock = threading.Lock()
 
 # Lazy-initialized scan service
 _scan_service = None
+_scan_service_lock = threading.Lock()
 
 # Lazy-initialized projects service for dedup reports
 _projects_service: Optional[ProjectsService] = None
@@ -447,11 +449,13 @@ _projects_service_lock = threading.Lock()
 
 
 def _get_scan_service():
-    """Get or create the singleton scan service instance."""
+    """Get or create the singleton scan service instance (thread-safe)."""
     global _scan_service
     if _scan_service is None:
-        from src.cli.services.scan_service import ScanService
-        _scan_service = ScanService()
+        with _scan_service_lock:
+            if _scan_service is None:
+                from src.cli.services.scan_service import ScanService
+                _scan_service = ScanService(use_api=_use_api_mode)
     return _scan_service
 
 
@@ -657,6 +661,7 @@ def _run_scan_background(
     relevance_only: bool,
     persist_project: bool,
     profile_id: Optional[str],
+    access_token: Optional[str] = None,
 ) -> None:
     """Background task that executes the scan pipeline."""
     try:
@@ -703,7 +708,12 @@ def _run_scan_background(
         # Run the scan
         from src.scanner.models import ScanPreferences
         preferences = ScanPreferences()
-        scan_service = _get_scan_service()
+        if _use_api_mode and access_token:
+            from src.cli.services.scan_service import ScanService
+            scan_service = ScanService(use_api=True)
+            scan_service.set_auth_token(access_token)
+        else:
+            scan_service = _get_scan_service()
         scan_result = scan_service.run_scan(
             target=target,
             relevant_only=relevance_only,
@@ -815,23 +825,7 @@ def set_consent(payload: ConsentUpdateRequest = Body(...)):
     return status_obj
 
 
-@router.post("/api/uploads", response_model=Upload)
-async def create_upload(
-    file: UploadFile = File(...),
-    idempotency_key: Optional[str] = Header(default=None, convert_underscores=True),
-):
-    if idempotency_key and idempotency_key in _upload_store:
-        return _upload_store[idempotency_key]
-    upload_id = idempotency_key or str(uuid.uuid4())
-    upload = Upload(
-        upload_id=upload_id,
-        filename=file.filename,
-        size_bytes=None,
-        status="stored",
-        created_at=_now_iso(),
-    )
-    _upload_store[upload_id] = upload
-    return upload
+# POST /api/uploads removed — real implementation is in upload_routes.py
 
 
 @router.post("/api/scans", response_model=ScanStatus, status_code=status.HTTP_202_ACCEPTED)
@@ -912,6 +906,7 @@ async def create_scan(
         relevance_only=request.relevance_only,
         persist_project=request.persist_project,
         profile_id=profile_id,
+        access_token=auth.access_token,
     )
 
     return scan_status
