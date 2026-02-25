@@ -330,28 +330,46 @@ The Skills Extractor is **fully integrated** into the Textual CLI application wi
 7. Export JSON (skills automatically included)
 
 **🆕 Multi-Project Detection:**
-The system now automatically detects multiple projects within a scanned directory:
-- **Project markers identified**: package.json, requirements.txt, pom.xml, Cargo.toml, go.mod, and more
-- **Monorepo detection**: Automatically identifies monorepo structures
-- **Project types**: Detects Python, JavaScript, TypeScript, Java, Ruby, Go, Rust, PHP, C#, and multi-language projects
-- **Visual indicators**: Shows 📦 for projects and ⚡ for monorepos
+The system automatically detects project boundaries using three priority-ordered rules:
+
+1. **Git root rule** — if the scanned directory contains a `.git` folder, the entire tree is treated as **one project** (one git repo = one project). A full-stack repo with `backend/` and `frontend/` subdirectories is correctly classified as a single multi-language project.
+2. **Root marker rule** — if the root directory contains a primary language marker (`requirements.txt`, `package.json`, `pom.xml`, `Cargo.toml`, `go.mod`, etc.) but no `.git`, it is still treated as **one project**.
+3. **Subdirectory scan** — only when the root has no markers and no `.git` (a bare workspace containing several independent projects) does the detector scan subdirectories. Common structural directory names (`backend`, `frontend`, `api`, `tests`, `docs`, etc.) are never treated as independent project roots.
+
+**Supported project types**: Python, JavaScript, TypeScript, Java, Ruby, Go, Rust, PHP, C#, and multi-language projects.
+**Visual indicators**: Shows 📦 for projects and ⚡ for monorepos.
 
 **Enhanced Overview Display:**
+
+Single full-stack project (git repo with backend + frontend):
+```
+📦 Project Detection
+  1 project detected
+
+  Projects:
+    1. my-app (multi-language)
+       └─ .git, requirements.txt, package.json +2 more
+
+🎯 Skills Detected
+  Error Handling, Asynchronous Programming, React Framework,
+  RESTful API Design, Automated Testing, MongoDB, Hash-based Data Structures,
+  ...and 8 more
+```
+
+True multi-project workspace (no git, no root markers, independent project dirs):
 ```
 📦 Project Detection
   2 projects detected
   ⚡ Monorepo structure identified
 
   Projects:
-    1. frontend (javascript)
-       └─ package.json, package-lock.json, tsconfig.json +3 more
-    2. backend (python)
-       └─ requirements.txt, setup.py, pyproject.toml
+    1. service-a (python)
+       └─ requirements.txt, setup.py
+    2. service-b (javascript)
+       └─ package.json
 
 🎯 Skills Detected
-  Error Handling, Asynchronous Programming, React Framework, 
-  RESTful API Design, Automated Testing, MongoDB, Hash-based Data Structures,
-  ...and 8 more
+  ...
 ```
 
 **Display Format:**
@@ -374,10 +392,11 @@ Data Structures (5 skills):
 ```
 
 **Features:**
-- ✅ Multi-project detection 
-- ✅ Monorepo identification 
-- ✅ Project type recognition 
-- ✅ Enhanced visual overview 
+- ✅ Git-first project detection (one repo = one project)
+- ✅ No false positives from backend/frontend/tests subdirectories
+- ✅ Monorepo identification (true multi-project workspaces)
+- ✅ Project type recognition including multi-language
+- ✅ Enhanced visual overview
 - ✅ Background execution (non-blocking UI)
 - ✅ Result caching (instant re-viewing)
 - ✅ Automatic JSON export integration
@@ -392,16 +411,20 @@ from analyzer.project_detector import ProjectDetector
 
 detector = ProjectDetector()
 
-# Detect all projects in a directory
+# Detect all projects in a directory.
+# Rule 1: root has .git  → always returns 1 project (one repo = one project)
+# Rule 2: root has a primary language marker → returns 1 project
+# Rule 3: no root markers → scans subdirectories for independent projects
 projects = detector.detect_projects(Path("./workspace"))
 # Returns: List[ProjectInfo] with name, path, type, and markers
 
-# Check if it's a monorepo
+# Check if it's a monorepo (only true when Rule 3 finds multiple projects)
 is_monorepo = detector.is_monorepo(projects)
 
 # Get summary
 summary = detector.get_project_structure_summary(projects)
-# Returns: "Monorepo with 3 projects: 2 python, 1 javascript"
+# Single project:  "Single multi-language project: my-app"
+# Multi-project:   "Monorepo with 3 projects: 2 python, 1 javascript"
 ```
 
 **ProjectInfo Structure:**
@@ -454,21 +477,14 @@ Skills and project information are automatically included in JSON exports:
 {
   "detected_projects": [
     {
-      "name": "frontend",
-      "path": "/path/to/workspace/frontend",
-      "type": "javascript",
-      "markers": ["package.json", "package-lock.json", "tsconfig.json"],
-      "description": "JavaScript/Node.js project"
-    },
-    {
-      "name": "backend",
-      "path": "/path/to/workspace/backend",
-      "type": "python",
-      "markers": ["requirements.txt", "setup.py"],
-      "description": "Python project"
+      "name": "my-app",
+      "path": "/path/to/my-app",
+      "type": "multi-language",
+      "markers": [".git", "requirements.txt", "package.json"],
+      "description": "Multi-language project with Git"
     }
   ],
-  "is_monorepo": true,
+  "is_monorepo": false,
   "skills_analysis": {
     "success": true,
     "total_skills": 15,
@@ -494,7 +510,7 @@ Skills and project information are automatically included in JSON exports:
 
 **Testing:**
 ```bash
-# Run integration tests
+# Run skills integration tests
 python backend/test_skills_integration.py
 
 # Expected output:
@@ -502,13 +518,30 @@ python backend/test_skills_integration.py
 ✅ PASSED: Skills Extraction
 ✅ PASSED: ScanState Integration
 
-# Test project detection
-python backend/test_multi_project_tabs.py
+# Run project detector unit tests
+pytest tests/test_project_detector.py -v
 
-# Expected output:
-✓ Project detection works (5 projects found)
-✓ State structure is correct
-✓ ALL TESTS PASSED
+# Expected output (22 tests):
+✅ TestRule1GitRoot::test_git_root_with_backend_and_frontend
+✅ TestRule1GitRoot::test_git_root_type_is_inferred_from_subdirs
+✅ TestRule1GitRoot::test_git_root_single_language
+✅ TestRule2RootMarkers::test_no_false_positive_from_tests_subdir
+✅ TestRule3SubdirectoryScan::test_backend_frontend_no_git_suppressed
+✅ TestRule3SubdirectoryScan::test_true_multi_project_workspace
+... and more
+```
+
+**Quick manual test:**
+```bash
+python -c "
+from pathlib import Path
+from backend.src.analyzer.project_detector import ProjectDetector
+
+d = ProjectDetector()
+projects = d.detect_projects(Path('.'))
+print(d.get_project_structure_summary(projects))
+"
+# A git repo with backend/ + frontend/ → 'Single multi-language project: <name>'
 ```
 
 ### With API Routes (`api/`)
