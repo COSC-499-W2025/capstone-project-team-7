@@ -34,8 +34,15 @@ class ProjectDetector:
       2. Root markers — if the root has a primary language marker, it is the
                         project root; no subdirectory scanning needed.
       3. Subdirectory scan — root has no markers; scan for independent child
-                             projects, suppressing known structural sub-dirs
-                             (backend/, frontend/, tests/, etc.).
+                             projects.  Two suppression tiers apply:
+                             - structural_dirs (tests/, docs/, lib/, …) are
+                               always suppressed — they are never independent
+                               project roots.
+                             - architectural_dirs (backend/, frontend/, …) are
+                               only suppressed when already inside a detected
+                               project, so that a true multi-project workspace
+                               that happens to name its projects "backend" and
+                               "frontend" is still correctly identified.
     """
 
     def __init__(self):
@@ -163,16 +170,11 @@ class ProjectDetector:
             '.csproj', '.sln',
         }
 
-        # Directories that are sub-components of a parent project and must NOT
-        # be treated as independent project roots even when they contain primary
-        # marker files.  Covers both logical-internal dirs (tests/, docs/) and
-        # common full-stack structural names (backend/, frontend/, etc.).
-        self.project_internal_dirs = {
-            # Full-stack architectural sub-components
-            'backend', 'frontend', 'client', 'server', 'api',
-            'web', 'app', 'mobile', 'native', 'desktop', 'electron',
-            'ui', 'gui', 'cli', 'gateway', 'worker', 'service', 'services',
-            # Project-internal directories
+        # Directories that are ALWAYS treated as internal sub-components and
+        # never registered as independent project roots.  These names describe
+        # support infrastructure (tests, docs, scripts, assets, …) that is
+        # never meaningful as a standalone project.
+        self.structural_dirs = {
             'tests', 'test', 'spec', 'specs',
             'docs', 'doc', 'documentation',
             'scripts', 'bin', 'tools',
@@ -181,6 +183,23 @@ class ProjectDetector:
             'assets', 'static', 'public', 'resources',
             'lib', 'libs', 'vendor',
         }
+
+        # Directories whose names suggest full-stack sub-components but that
+        # CAN legitimately be independent project roots in a true multi-project
+        # workspace.  These are suppressed only when we are already inside a
+        # detected project (inside_project=True) to prevent double-counting
+        # sub-dirs of an already-registered project.  At the top level of a
+        # Rule-3 scan (inside_project=False) they are allowed through so that
+        # a workspace that names its projects "backend" and "frontend" is still
+        # correctly split into two independent projects.
+        self.architectural_dirs = {
+            'backend', 'frontend', 'client', 'server', 'api',
+            'web', 'app', 'mobile', 'native', 'desktop', 'electron',
+            'ui', 'gui', 'cli', 'gateway', 'worker', 'service', 'services',
+        }
+
+        # Union kept for any external code that referenced the old attribute.
+        self.project_internal_dirs = self.structural_dirs | self.architectural_dirs
 
     # ------------------------------------------------------------------
     # Public API
@@ -320,8 +339,11 @@ class ProjectDetector:
         """
         Recursively scan directory for project markers (Rule 3 only).
 
-        inside_project=True means we are already inside a detected project's
-        subtree; subdirectory names in project_internal_dirs are suppressed.
+        Suppression is two-tiered:
+          - structural_dirs  — always suppressed; never independent roots.
+          - architectural_dirs — suppressed only when inside_project=True so
+            that a workspace whose top-level directories happen to be named
+            "backend" or "frontend" is still split correctly.
         """
         if depth > max_depth:
             return
@@ -333,7 +355,14 @@ class ProjectDetector:
         dir_name_lower = current_path.name.lower()
 
         if primary_found:
-            is_internal = dir_name_lower in self.project_internal_dirs
+            # A directory is "internal" (non-registerable) if:
+            #   a) its name is in structural_dirs (always internal), OR
+            #   b) its name is in architectural_dirs AND we are already inside
+            #      a registered project (sub-component of a detected project).
+            is_internal = (
+                dir_name_lower in self.structural_dirs
+                or (dir_name_lower in self.architectural_dirs and inside_project)
+            )
             if not is_internal:
                 # Register as a genuine independent project root
                 project_type = self._determine_project_type(all_markers)
@@ -358,15 +387,15 @@ class ProjectDetector:
                             )
                 except PermissionError:
                     logger.debug(f"Permission denied: {current_path}")
-            # else: primary markers found but dir name is a known sub-component →
+            # else: primary markers found but dir is a known sub-component →
             # do NOT register, do NOT recurse further.
 
         else:
-            # No primary markers here.  Only recurse if not already inside a
-            # registered project — but skip project_internal_dirs names so that
-            # e.g. a grouping dir like packages/ can still be traversed to find
-            # genuine sub-projects inside it.
-            if not inside_project and dir_name_lower not in self.project_internal_dirs:
+            # No primary markers here.  Recurse only when not already inside a
+            # registered project, and only if the directory name does not belong
+            # to structural_dirs (architectural dirs are traversable at this
+            # level because they may contain genuine independent sub-projects).
+            if not inside_project and dir_name_lower not in self.structural_dirs:
                 try:
                     for subdir in current_path.iterdir():
                         if subdir.is_dir() and subdir.name not in self.excluded_dirs:

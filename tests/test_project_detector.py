@@ -4,7 +4,10 @@ Tests for ProjectDetector.
 Covers the three detection rules:
   Rule 1 — git root  → whole tree is one project
   Rule 2 — root has primary language markers → one project
-  Rule 3 — no root markers → subdirectory scan with project_internal_dirs filtering
+  Rule 3 — no root markers → subdirectory scan with two-tier suppression:
+           structural_dirs (tests, docs, …) always suppressed;
+           architectural_dirs (backend, frontend, …) suppressed only when
+           already inside a detected project.
 """
 
 import pytest
@@ -171,28 +174,51 @@ class TestRule3SubdirectoryScan:
         names = {p.name for p in projects}
         assert names == {"myapp", "mytool"}
 
-    def test_backend_frontend_no_git_suppressed(self, tmp_path):
-        """backend/ and frontend/ are in project_internal_dirs → 1 project."""
+    def test_backend_frontend_no_git_detected_as_separate(self, tmp_path):
+        """
+        backend/ and frontend/ at the top level of a Rule-3 scan (no .git,
+        no root markers) are detected as two independent projects.
+
+        architectural_dirs are only suppressed when inside_project=True, so a
+        genuine multi-project workspace that names its projects "backend" and
+        "frontend" is handled correctly.
+        """
         make_file(tmp_path / "backend", "requirements.txt")
         make_file(tmp_path / "frontend", "package.json")
 
         detector = ProjectDetector()
         projects = detector.detect_projects(tmp_path)
 
-        # Both dirs are structural sub-components → fallback single project
+        assert len(projects) == 2
+        names = {p.name for p in projects}
+        assert names == {"backend", "frontend"}
+
+    def test_architectural_subdir_of_detected_project_suppressed(self, tmp_path):
+        """
+        A project named 'myapp' that contains a 'backend/' sub-dir with its
+        own markers: backend/ must NOT be registered as a second project
+        (inside_project=True suppresses architectural_dirs).
+        """
+        make_file(tmp_path / "myapp", "requirements.txt")
+        make_file(tmp_path / "myapp" / "backend", "package.json")
+
+        detector = ProjectDetector()
+        projects = detector.detect_projects(tmp_path)
+
+        assert len(projects) == 1
+        assert projects[0].name == "myapp"
+
+    def test_structural_dirs_always_suppressed(self, tmp_path):
+        """tests/ and docs/ with their own markers are never registered as projects."""
+        make_file(tmp_path / "tests", "requirements.txt")
+        make_file(tmp_path / "docs", "package.json")
+
+        detector = ProjectDetector()
+        projects = detector.detect_projects(tmp_path)
+
+        # structural_dirs are always suppressed → fallback single project at root
         assert len(projects) == 1
         assert projects[0].path == tmp_path
-
-    def test_backend_frontend_no_git_type_inferred(self, tmp_path):
-        """Type should be inferred from subdirs in the fallback case, not 'unknown'."""
-        make_file(tmp_path / "backend", "requirements.txt")
-        make_file(tmp_path / "frontend", "package.json")
-
-        detector = ProjectDetector()
-        projects = detector.detect_projects(tmp_path)
-
-        # Type is inferred from subdirectory markers; the key assertion is it's not unknown.
-        assert projects[0].project_type != "unknown"
 
     def test_readme_alone_is_not_a_project_root(self, tmp_path):
         """README.md alone is not a primary marker → fallback unknown project."""
