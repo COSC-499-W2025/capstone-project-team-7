@@ -2,26 +2,29 @@
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ProjectDetail } from "@/types/project";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { 
   FileCode, 
-  Code2, 
-  GitBranch, 
-  Sparkles, 
-  FileText, 
-  Image, 
-  Video 
+  Image as ImageIcon, 
+  Video,
+  Upload,
+  X,
+  Loader2
 } from "lucide-react";
+import NextImage from "next/image";
+import { api } from "@/lib/api";
+import { getStoredToken } from "@/lib/auth";
 
 interface ProjectDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   project: ProjectDetail | null;
+  onProjectUpdate?: () => void;
 }
 
 type TabId = "overview" | "files" | "languages" | "git" | "skills" | "documents" | "media";
 
-export function ProjectDetailModal({ isOpen, onClose, project }: ProjectDetailModalProps) {
+export function ProjectDetailModal({ isOpen, onClose, project, onProjectUpdate }: ProjectDetailModalProps) {
   const [activeTab, setActiveTab] = useState<TabId>("overview");
 
   if (!project) return null;
@@ -68,7 +71,7 @@ export function ProjectDetailModal({ isOpen, onClose, project }: ProjectDetailMo
 
         {/* Tab Content */}
         <div className="flex-1 overflow-y-auto p-6">
-          {activeTab === "overview" && <OverviewTab project={project} />}
+          {activeTab === "overview" && <OverviewTab project={project} onProjectUpdate={onProjectUpdate} />}
           {activeTab === "files" && <FilesTab files={files} />}
           {activeTab === "languages" && <LanguagesTab languages={languagesData} />}
           {activeTab === "git" && <GitTab gitAnalysis={gitAnalysis} />}
@@ -81,8 +84,163 @@ export function ProjectDetailModal({ isOpen, onClose, project }: ProjectDetailMo
   );
 }
 
+// Thumbnail Section Component
+function ThumbnailSection({ project, onProjectUpdate }: { project: ProjectDetail; onProjectUpdate?: () => void }) {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      setError("Please select an image file (JPG, PNG)");
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Image must be less than 5MB");
+      return;
+    }
+
+    setError(null);
+    setUploading(true);
+
+    try {
+      const token = getStoredToken();
+      if (!token) {
+        setError("Not authenticated. Please log in.");
+        return;
+      }
+
+      const result = await api.projects.uploadThumbnail(token, project.id, file);
+      
+      if (!result.ok) {
+        setError(result.error || "Failed to upload thumbnail");
+        return;
+      }
+
+      // Refresh project data
+      onProjectUpdate?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const handleRemoveThumbnail = async () => {
+    if (!confirm("Remove project thumbnail?")) return;
+
+    setUploading(true);
+    setError(null);
+
+    try {
+      const token = getStoredToken();
+      if (!token) {
+        setError("Not authenticated. Please log in.");
+        return;
+      }
+
+      const result = await api.projects.deleteThumbnail(token, project.id);
+      
+      if (!result.ok) {
+        setError(result.error || "Failed to remove thumbnail");
+        return;
+      }
+
+      onProjectUpdate?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to remove thumbnail");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const thumbnailUrl = project.thumbnail_url || project.user_overrides?.thumbnail_url;
+
+  return (
+    <div>
+      <h3 className="text-sm font-semibold mb-2">Project Thumbnail</h3>
+      
+      <div className="flex items-start gap-4">
+        {/* Thumbnail Preview */}
+        <div className="relative w-32 h-32 bg-gray-100 rounded-lg border border-gray-200 overflow-hidden flex items-center justify-center">
+          {thumbnailUrl ? (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={thumbnailUrl}
+                alt={`${project.project_name} thumbnail`}
+                className="w-full h-full object-cover"
+              />
+              {/* Remove button overlay */}
+              <button
+                onClick={handleRemoveThumbnail}
+                disabled={uploading}
+                className="absolute top-1 right-1 p-1 bg-black/60 text-white rounded-full hover:bg-black/80 transition-colors disabled:opacity-50"
+                title="Remove thumbnail"
+              >
+                <X size={14} />
+              </button>
+            </>
+          ) : (
+            <div className="text-center text-gray-400">
+              <ImageIcon size={32} className="mx-auto mb-1" />
+              <span className="text-xs">No thumbnail</span>
+            </div>
+          )}
+          
+          {/* Loading overlay */}
+          {uploading && (
+            <div className="absolute inset-0 bg-white/80 flex items-center justify-center">
+              <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+            </div>
+          )}
+        </div>
+
+        {/* Upload Controls */}
+        <div className="flex flex-col gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/gif,image/webp"
+            onChange={handleFileSelect}
+            className="hidden"
+            disabled={uploading}
+          />
+          
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Upload size={16} />
+            {thumbnailUrl ? "Replace" : "Set Thumbnail"}
+          </button>
+          
+          <p className="text-xs text-gray-500">
+            JPG, PNG, GIF, or WebP. Max 5MB.
+          </p>
+          
+          {error && (
+            <p className="text-xs text-red-600">{error}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Overview Tab
-function OverviewTab({ project }: { project: ProjectDetail }) {
+function OverviewTab({ project, onProjectUpdate }: { project: ProjectDetail; onProjectUpdate?: () => void }) {
   const scanData = project.scan_data || {};
   const summary = scanData.summary || {};
   const rawLanguages = scanData.languages;
@@ -110,6 +268,9 @@ function OverviewTab({ project }: { project: ProjectDetail }) {
   
   return (
     <div className="space-y-6">
+      {/* Thumbnail Section */}
+      <ThumbnailSection project={project} onProjectUpdate={onProjectUpdate} />
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard label="Total Files" value={totalFiles.toLocaleString()} />
         <StatCard label="Total Lines" value={totalLines.toLocaleString()} />
@@ -319,7 +480,7 @@ function MediaTab({ media }: { media: any[] }) {
       {media.map((item, idx) => (
         <div key={idx} className="p-4 bg-gray-50 rounded border border-gray-200">
           <div className="flex items-start gap-3">
-            {item.type === "image" ? <Image size={20} /> : <Video size={20} />}
+            {item.type === "image" ? <ImageIcon size={20} /> : <Video size={20} />}
             <div className="flex-1">
               <h4 className="font-medium text-sm">{item.file_name || item.path}</h4>
               {item.analysis && <p className="text-xs text-gray-600 mt-1">{item.analysis}</p>}

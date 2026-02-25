@@ -210,7 +210,36 @@ export const api = {
           Authorization: `Bearer ${accessToken}`
         }
       })
-  }
+  },
+  projects: {
+    uploadThumbnail: async (token: string, projectId: string, file: File): Promise<ApiResult<{ thumbnail_url: string }>> => {
+      const baseUrl = getApiBaseUrl();
+      const form = new FormData();
+      form.append("file", file);
+      try {
+        const res = await fetch(`${baseUrl}/api/projects/${projectId}/thumbnail`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: form,
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          return { ok: false, status: res.status, error: text || res.statusText };
+        }
+        const data = await res.json();
+        return { ok: true, data };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Network error";
+        return { ok: false, error: message };
+      }
+    },
+
+    deleteThumbnail: (token: string, projectId: string) =>
+      request<{ ok: boolean; message: string }>(`/api/projects/${projectId}/thumbnail`, {
+        method: "DELETE",
+        headers: authHeaders(token),
+      }),
+  },
 };
 
 export const consent = {
