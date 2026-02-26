@@ -96,6 +96,29 @@ export async function getProjectSkillTimeline(
 }
 
 /**
+ * Update the user's role for a project via overrides
+ */
+export async function updateProjectRole(
+  token: string,
+  projectId: string,
+  role: string,
+): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/overrides`, {
+    method: "PATCH",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ role }),
+  });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json();
+    throw new Error(error.detail || "Failed to update role");
+  }
+}
+
+/**
  * Generate skill progression summary using the LLM
  */
 export async function generateProjectSkillSummary(
