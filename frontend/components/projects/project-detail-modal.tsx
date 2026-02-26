@@ -11,7 +11,6 @@ import {
   X,
   Loader2
 } from "lucide-react";
-import NextImage from "next/image";
 import { api } from "@/lib/api";
 import { getStoredToken } from "@/lib/auth";
 
@@ -88,6 +87,7 @@ export function ProjectDetailModal({ isOpen, onClose, project, onProjectUpdate }
 function ThumbnailSection({ project, onProjectUpdate }: { project: ProjectDetail; onProjectUpdate?: () => void }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmingRemoval, setConfirmingRemoval] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -107,6 +107,7 @@ function ThumbnailSection({ project, onProjectUpdate }: { project: ProjectDetail
     }
 
     setError(null);
+    setConfirmingRemoval(false);
     setUploading(true);
 
     try {
@@ -137,8 +138,7 @@ function ThumbnailSection({ project, onProjectUpdate }: { project: ProjectDetail
   };
 
   const handleRemoveThumbnail = async () => {
-    if (!confirm("Remove project thumbnail?")) return;
-
+    setConfirmingRemoval(false);
     setUploading(true);
     setError(null);
 
@@ -183,7 +183,7 @@ function ThumbnailSection({ project, onProjectUpdate }: { project: ProjectDetail
               />
               {/* Remove button overlay */}
               <button
-                onClick={handleRemoveThumbnail}
+                onClick={() => setConfirmingRemoval(true)}
                 disabled={uploading}
                 className="absolute top-1 right-1 p-1 bg-black/60 text-white rounded-full hover:bg-black/80 transition-colors disabled:opacity-50"
                 title="Remove thumbnail"
@@ -229,6 +229,28 @@ function ThumbnailSection({ project, onProjectUpdate }: { project: ProjectDetail
           <p className="text-xs text-gray-500">
             JPG, PNG, GIF, or WebP. Max 5MB.
           </p>
+
+          {confirmingRemoval && thumbnailUrl && (
+            <div className="rounded-md border border-red-200 bg-red-50 p-2">
+              <p className="text-xs text-red-700">Remove this project thumbnail?</p>
+              <div className="mt-2 flex gap-2">
+                <button
+                  onClick={handleRemoveThumbnail}
+                  disabled={uploading}
+                  className="rounded-md bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                >
+                  Yes, remove
+                </button>
+                <button
+                  onClick={() => setConfirmingRemoval(false)}
+                  disabled={uploading}
+                  className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
           
           {error && (
             <p className="text-xs text-red-600">{error}</p>

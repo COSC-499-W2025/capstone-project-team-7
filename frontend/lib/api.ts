@@ -234,11 +234,27 @@ export const api = {
       }
     },
 
-    deleteThumbnail: (token: string, projectId: string) =>
-      request<{ ok: boolean; message: string }>(`/api/projects/${projectId}/thumbnail`, {
-        method: "DELETE",
-        headers: authHeaders(token),
-      }),
+    deleteThumbnail: async (
+      token: string,
+      projectId: string
+    ): Promise<ApiResult<{ ok: boolean; message: string }>> => {
+      const baseUrl = getApiBaseUrl();
+      try {
+        const res = await fetch(`${baseUrl}/api/projects/${projectId}/thumbnail`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          return { ok: false, status: res.status, error: text || res.statusText };
+        }
+        const data = await res.json();
+        return { ok: true, data };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Network error";
+        return { ok: false, error: message };
+      }
+    },
   },
 };
 
