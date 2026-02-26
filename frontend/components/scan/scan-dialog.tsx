@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
   Dialog,
@@ -54,10 +54,13 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [projects, setProjects] = useState<ProjectMetadata[]>([]);
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
+  const [projectLoadError, setProjectLoadError] = useState<string | null>(null);
 
   // Hooks for both scan modes
   const newScan = useScan(onScanComplete);
   const appendScan = useAppendScan(onScanComplete);
+  const { reset: resetNewScan } = newScan;
+  const { reset: resetAppendScan } = appendScan;
   
   // Get current scan state based on mode
   const currentScan = scanMode === "new" ? newScan : appendScan;
@@ -69,12 +72,34 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
     setIsAuthenticated(!!getStoredToken());
   }, [open]);
 
+  const loadProjects = useCallback(async () => {
+    const token = getStoredToken();
+    if (!token) {
+      setProjects([]);
+      setProjectLoadError("Not authenticated. Please log in through Settings.");
+      return;
+    }
+
+    setIsLoadingProjects(true);
+    setProjectLoadError(null);
+    try {
+      const response = await getProjects(token);
+      setProjects(response.projects);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to load projects.";
+      setProjectLoadError(message);
+      console.error("Failed to load projects:", err);
+    } finally {
+      setIsLoadingProjects(false);
+    }
+  }, []);
+
   // Load projects when append mode is selected
   useEffect(() => {
     if (scanMode === "append" && open && isAuthenticated) {
       loadProjects();
     }
-  }, [scanMode, open, isAuthenticated]);
+  }, [scanMode, open, isAuthenticated, loadProjects]);
 
   // Reset state when dialog closes
   useEffect(() => {
@@ -84,27 +109,13 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
         setSourcePath("");
         setScanMode("new");
         setSelectedProjectId("");
-        newScan.reset();
-        appendScan.reset();
+        setProjectLoadError(null);
+        resetNewScan();
+        resetAppendScan();
       }, 200);
       return () => clearTimeout(timeout);
     }
-  }, [open, newScan.reset, appendScan.reset]);
-
-  const loadProjects = async () => {
-    const token = getStoredToken();
-    if (!token) return;
-
-    setIsLoadingProjects(true);
-    try {
-      const response = await getProjects(token);
-      setProjects(response.projects);
-    } catch (err) {
-      console.error("Failed to load projects:", err);
-    } finally {
-      setIsLoadingProjects(false);
-    }
-  };
+  }, [open, resetNewScan, resetAppendScan]);
 
   const handleBrowse = async () => {
     if (!window.desktop?.selectDirectory) return;
@@ -142,6 +153,7 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
   const handleModeChange = (mode: ScanMode) => {
     setScanMode(mode);
     setSelectedProjectId("");
+    setProjectLoadError(null);
   };
 
   const isSuccess = state === "succeeded";
@@ -358,6 +370,20 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
               {scanMode === "append" && (
                 <div className="space-y-2">
                   <Label htmlFor="project-select">Select Project</Label>
+                  {projectLoadError && (
+                    <div className="flex items-start justify-between gap-3 rounded-md border border-red-200 bg-red-50 p-2">
+                      <p className="text-xs text-red-700">{projectLoadError}</p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={loadProjects}
+                        disabled={isLoadingProjects}
+                      >
+                        Retry
+                      </Button>
+                    </div>
+                  )}
                   <Select
                     value={selectedProjectId}
                     onValueChange={setSelectedProjectId}
@@ -390,7 +416,7 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
                       ))}
                     </SelectContent>
                   </Select>
-                  {projects.length === 0 && !isLoadingProjects && (
+                  {projects.length === 0 && !isLoadingProjects && !projectLoadError && (
                     <p className="text-xs text-amber-600">
                       No existing projects. Create a new project first.
                     </p>
