@@ -3,7 +3,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ProjectDetail } from "@/types/project";
 import { useState, useEffect } from "react";
-import { updateProjectRole } from "@/lib/api/projects";
+import { updateProjectOverrides } from "@/lib/api/projects";
 import { 
   FileCode, 
   Code2, 
@@ -102,16 +102,23 @@ function OverviewTab({
   const [savingRole, setSavingRole] = useState(false);
   const [roleError, setRoleError] = useState<string | null>(null);
 
+  // Evidence state
+  const [evidence, setEvidence] = useState<string[]>(project.user_overrides?.evidence ?? []);
+  const [newEvidenceItem, setNewEvidenceItem] = useState("");
+  const [savingEvidence, setSavingEvidence] = useState(false);
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
+
   useEffect(() => {
     setSelectedRole(project.role || project.user_overrides?.role || "");
-  }, [project.role, project.user_overrides?.role]);
+    setEvidence(project.user_overrides?.evidence ?? []);
+  }, [project.role, project.user_overrides?.role, project.user_overrides?.evidence]);
 
   const handleSaveRole = async () => {
     if (!token || !selectedRole) return;
     setSavingRole(true);
     setRoleError(null);
     try {
-      await updateProjectRole(token, project.id, selectedRole);
+      await updateProjectOverrides(token, project.id, { role: selectedRole });
       onRoleUpdate?.(project.id, selectedRole);
       setIsEditingRole(false);
     } catch (err) {
@@ -125,6 +132,38 @@ function OverviewTab({
     setIsEditingRole(false);
     setSelectedRole(project.role || project.user_overrides?.role || "");
     setRoleError(null);
+  };
+
+  const handleAddEvidence = async () => {
+    const trimmed = newEvidenceItem.trim();
+    if (!token || !trimmed) return;
+    const updated = [...evidence, trimmed];
+    setSavingEvidence(true);
+    setEvidenceError(null);
+    try {
+      await updateProjectOverrides(token, project.id, { evidence: updated });
+      setEvidence(updated);
+      setNewEvidenceItem("");
+    } catch (err) {
+      setEvidenceError(err instanceof Error ? err.message : "Failed to save evidence");
+    } finally {
+      setSavingEvidence(false);
+    }
+  };
+
+  const handleRemoveEvidence = async (index: number) => {
+    if (!token) return;
+    const updated = evidence.filter((_, i) => i !== index);
+    setSavingEvidence(true);
+    setEvidenceError(null);
+    try {
+      await updateProjectOverrides(token, project.id, { evidence: updated });
+      setEvidence(updated);
+    } catch (err) {
+      setEvidenceError(err instanceof Error ? err.message : "Failed to save evidence");
+    } finally {
+      setSavingEvidence(false);
+    }
   };
 
   const scanData = project.scan_data || {};
@@ -212,6 +251,52 @@ function OverviewTab({
             )}
           </div>
         )}
+      </div>
+
+      {/* Evidence of Success section */}
+      <div>
+        <h3 className="text-sm font-semibold mb-2">Evidence of Success</h3>
+        <ul className="space-y-1 mb-2">
+          {evidence.map((item, idx) => (
+            <li key={idx} className="flex items-start gap-2 text-sm text-gray-700">
+              <span className="mt-0.5 text-gray-400">•</span>
+              <span className="flex-1">{item}</span>
+              {token && (
+                <button
+                  onClick={() => handleRemoveEvidence(idx)}
+                  disabled={savingEvidence}
+                  className="text-xs text-red-500 hover:text-red-700 disabled:opacity-50"
+                  aria-label="Remove evidence item"
+                >
+                  ×
+                </button>
+              )}
+            </li>
+          ))}
+          {evidence.length === 0 && (
+            <li className="text-sm text-gray-400">No evidence added yet.</li>
+          )}
+        </ul>
+        {token && (
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={newEvidenceItem}
+              onChange={(e) => setNewEvidenceItem(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleAddEvidence(); }}
+              placeholder="e.g. Throughput improved 35%"
+              className="flex-1 text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              onClick={handleAddEvidence}
+              disabled={savingEvidence || !newEvidenceItem.trim()}
+              className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {savingEvidence ? "Saving…" : "Add"}
+            </button>
+          </div>
+        )}
+        {evidenceError && <p className="text-xs text-red-600 mt-1">{evidenceError}</p>}
       </div>
 
       {languages.length > 0 && (
