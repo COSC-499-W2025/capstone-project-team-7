@@ -2411,6 +2411,18 @@ async def delete_project_overrides(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred",
         )
+
+
+@router.patch(
+    "/{project_id}/role",
+    response_model=RoleUpdateResponse,
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid role value"},
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Project not found"},
+        500: {"model": ErrorResponse, "description": "Server error"},
+    },
+)
 async def update_project_role(
     project_id: str,
     request: RoleUpdateRequest,

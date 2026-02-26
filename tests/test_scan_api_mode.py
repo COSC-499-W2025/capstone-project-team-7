@@ -42,7 +42,7 @@ class TestGetScanServiceApiMode:
         mod._scan_service = None  # ensure fresh
 
         with patch("api.spec_routes._use_api_mode", False):
-            with patch("src.cli.services.scan_service.ScanService") as MockScan:
+            with patch("services.services.scan_service.ScanService") as MockScan:
                 MockScan.return_value = MagicMock(use_api=False)
                 mod._scan_service = None
                 svc = mod._get_scan_service()
@@ -56,7 +56,7 @@ class TestGetScanServiceApiMode:
 
         assert mod._use_api_mode is True
 
-        with patch("src.cli.services.scan_service.ScanService") as MockScan:
+        with patch("services.services.scan_service.ScanService") as MockScan:
             MockScan.return_value = MagicMock(use_api=True)
             mod._get_scan_service()
             MockScan.assert_called_once_with(use_api=True)
@@ -116,7 +116,7 @@ class TestRunScanBackgroundAuthToken:
             result=None,
         )
 
-        with patch("src.cli.services.scan_service.ScanService", return_value=mock_service_instance) as MockScan:
+        with patch("services.services.scan_service.ScanService", return_value=mock_service_instance) as MockScan:
             mod._run_scan_background(
                 scan_id=scan_id,
                 source_path=str(target_dir),

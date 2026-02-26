@@ -454,7 +454,7 @@ def _get_scan_service():
     if _scan_service is None:
         with _scan_service_lock:
             if _scan_service is None:
-                from src.cli.services.scan_service import ScanService
+                from services.services.scan_service import ScanService
                 _scan_service = ScanService(use_api=_use_api_mode)
     return _scan_service
 
@@ -709,7 +709,7 @@ def _run_scan_background(
         from src.scanner.models import ScanPreferences
         preferences = ScanPreferences()
         if _use_api_mode and access_token:
-            from src.cli.services.scan_service import ScanService
+            from services.services.scan_service import ScanService
             scan_service = ScanService(use_api=True)
             scan_service.set_auth_token(access_token)
         else:
