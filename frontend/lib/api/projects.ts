@@ -2,6 +2,7 @@
 import {
   ProjectListResponse,
   ProjectDetail,
+  ProjectOverrides,
   ErrorResponse,
   SkillProgressTimelineResponse,
   SkillProgressSummaryResponse,
@@ -115,6 +116,29 @@ export async function updateProjectRole(
   if (!response.ok) {
     const error: ErrorResponse = await response.json();
     throw new Error(error.detail || "Failed to update role");
+  }
+}
+
+/**
+ * Update one or more project override fields (role, evidence, custom_rank, etc.)
+ */
+export async function updateProjectOverrides(
+  token: string,
+  projectId: string,
+  overrides: Partial<ProjectOverrides>,
+): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/overrides`, {
+    method: "PATCH",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(overrides),
+  });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json();
+    throw new Error(error.detail || "Failed to update project overrides");
   }
 }
 
