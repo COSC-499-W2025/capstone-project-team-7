@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { DocumentAnalysisTab } from "@/components/project/document-analysis-tab";
@@ -108,6 +108,7 @@ function PlaceholderContent({ label }: { label: string }) {
 
 export default function ProjectPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const projectIdParam = searchParams.get("projectId");
 
   const [projectId, setProjectId] = useState<string | null>(projectIdParam);
@@ -414,12 +415,12 @@ export default function ProjectPage() {
   return (
     <div className="p-8">
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 mb-6">
-        <Link
-          href={"/scanned-results" as any}
+        <button
+          onClick={() => router.back()}
           className="text-sm text-gray-600 hover:text-gray-900 mb-2 inline-block"
         >
           ← Back
-        </Link>
+        </button>
 
         <h1 className="text-4xl font-bold text-gray-900 tracking-tight">
           {hasProject ? `Project: ${projectName}` : "Project"}

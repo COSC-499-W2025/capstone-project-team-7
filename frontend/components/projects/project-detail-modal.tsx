@@ -2,7 +2,8 @@
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ProjectDetail } from "@/types/project";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { updateProjectRole } from "@/lib/api/projects";
 import { 
   FileCode, 
   Code2, 
@@ -17,11 +18,13 @@ interface ProjectDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   project: ProjectDetail | null;
+  token?: string | null;
+  onRoleUpdate?: (projectId: string, newRole: string) => void;
 }
 
 type TabId = "overview" | "files" | "languages" | "git" | "skills" | "documents" | "media";
 
-export function ProjectDetailModal({ isOpen, onClose, project }: ProjectDetailModalProps) {
+export function ProjectDetailModal({ isOpen, onClose, project, token, onRoleUpdate }: ProjectDetailModalProps) {
   const [activeTab, setActiveTab] = useState<TabId>("overview");
 
   if (!project) return null;
@@ -68,7 +71,7 @@ export function ProjectDetailModal({ isOpen, onClose, project }: ProjectDetailMo
 
         {/* Tab Content */}
         <div className="flex-1 overflow-y-auto p-6">
-          {activeTab === "overview" && <OverviewTab project={project} />}
+          {activeTab === "overview" && <OverviewTab project={project} token={token} onRoleUpdate={onRoleUpdate} />}
           {activeTab === "files" && <FilesTab files={files} />}
           {activeTab === "languages" && <LanguagesTab languages={languagesData} />}
           {activeTab === "git" && <GitTab gitAnalysis={gitAnalysis} />}
@@ -81,8 +84,49 @@ export function ProjectDetailModal({ isOpen, onClose, project }: ProjectDetailMo
   );
 }
 
+const ALLOWED_ROLES = ["author", "contributor", "lead", "maintainer", "reviewer"] as const;
+
 // Overview Tab
-function OverviewTab({ project }: { project: ProjectDetail }) {
+function OverviewTab({
+  project,
+  token,
+  onRoleUpdate,
+}: {
+  project: ProjectDetail;
+  token?: string | null;
+  onRoleUpdate?: (projectId: string, newRole: string) => void;
+}) {
+  const currentRole = project.role || project.user_overrides?.role || "";
+  const [isEditingRole, setIsEditingRole] = useState(false);
+  const [selectedRole, setSelectedRole] = useState(currentRole);
+  const [savingRole, setSavingRole] = useState(false);
+  const [roleError, setRoleError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSelectedRole(project.role || project.user_overrides?.role || "");
+  }, [project.role, project.user_overrides?.role]);
+
+  const handleSaveRole = async () => {
+    if (!token || !selectedRole) return;
+    setSavingRole(true);
+    setRoleError(null);
+    try {
+      await updateProjectRole(token, project.id, selectedRole);
+      onRoleUpdate?.(project.id, selectedRole);
+      setIsEditingRole(false);
+    } catch (err) {
+      setRoleError(err instanceof Error ? err.message : "Failed to update role");
+    } finally {
+      setSavingRole(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditingRole(false);
+    setSelectedRole(project.role || project.user_overrides?.role || "");
+    setRoleError(null);
+  };
+
   const scanData = project.scan_data || {};
   const summary = scanData.summary || {};
   const rawLanguages = scanData.languages;
@@ -115,6 +159,59 @@ function OverviewTab({ project }: { project: ProjectDetail }) {
         <StatCard label="Total Lines" value={totalLines.toLocaleString()} />
         <StatCard label="Languages" value={languages.length} />
         <StatCard label="Size" value={formatBytes(bytesProcessed)} />
+      </div>
+
+      {/* Role section */}
+      <div>
+        <h3 className="text-sm font-semibold mb-2">Your Role</h3>
+        {isEditingRole ? (
+          <div className="flex items-center gap-2 flex-wrap">
+            <select
+              value={selectedRole}
+              onChange={(e) => setSelectedRole(e.target.value)}
+              className="text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Select a role...</option>
+              {ALLOWED_ROLES.map((r) => (
+                <option key={r} value={r}>
+                  {r.charAt(0).toUpperCase() + r.slice(1)}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={handleSaveRole}
+              disabled={savingRole || !selectedRole}
+              className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {savingRole ? "Saving..." : "Save"}
+            </button>
+            <button
+              onClick={handleCancelEdit}
+              className="px-3 py-1 bg-gray-100 text-gray-700 text-sm rounded hover:bg-gray-200"
+            >
+              Cancel
+            </button>
+            {roleError && <p className="text-xs text-red-600 w-full mt-1">{roleError}</p>}
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            {currentRole ? (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                {currentRole}
+              </span>
+            ) : (
+              <span className="text-sm text-gray-400">No role set</span>
+            )}
+            {token && (
+              <button
+                onClick={() => setIsEditingRole(true)}
+                className="text-xs text-blue-600 hover:text-blue-800 underline"
+              >
+                Edit Role
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {languages.length > 0 && (

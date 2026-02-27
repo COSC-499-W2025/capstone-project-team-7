@@ -19,6 +19,46 @@ from services.project_overrides_service import (
 )
 
 
+class TestServiceRoleKeyPriority:
+    """Regression tests for Supabase key priority order (must use service role key first)."""
+
+    def test_prefers_service_role_key_over_supabase_key(self):
+        """SUPABASE_SERVICE_ROLE_KEY must take priority over SUPABASE_KEY.
+
+        If SUPABASE_KEY is the anon key and SUPABASE_SERVICE_ROLE_KEY is the
+        service role key, the service must pick the service role key so that
+        RLS is bypassed for backend writes to project_overrides.
+        """
+        env = {
+            "SUPABASE_URL": "https://example.supabase.co",
+            "SUPABASE_KEY": "anon-key",
+            "SUPABASE_SERVICE_ROLE_KEY": "service-role-key",
+        }
+        with patch.dict("os.environ", env, clear=True):
+            with patch("services.project_overrides_service.create_client") as mock_create:
+                mock_create.return_value = MagicMock()
+                service = ProjectOverridesService()
+                _, call_kwargs = mock_create.call_args
+                used_key = mock_create.call_args[0][1]
+                assert used_key == "service-role-key", (
+                    "Service must use SUPABASE_SERVICE_ROLE_KEY over SUPABASE_KEY "
+                    "to bypass RLS for backend writes"
+                )
+
+    def test_falls_back_to_supabase_key_when_no_service_role_key(self):
+        """Falls back to SUPABASE_KEY when SUPABASE_SERVICE_ROLE_KEY is not set."""
+        env = {
+            "SUPABASE_URL": "https://example.supabase.co",
+            "SUPABASE_KEY": "some-key",
+        }
+        with patch.dict("os.environ", env, clear=True):
+            with patch("services.project_overrides_service.create_client") as mock_create:
+                mock_create.return_value = MagicMock()
+                service = ProjectOverridesService()
+                used_key = mock_create.call_args[0][1]
+                assert used_key == "some-key"
+
+
 class DummyProjectOverridesService(ProjectOverridesService):
     """ProjectOverridesService that accepts an injected Supabase client for testing."""
 

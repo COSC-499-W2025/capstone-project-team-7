@@ -115,6 +115,15 @@ export default function ProjectsPage() {
     setSelectedProject(null);
   };
 
+  const handleRoleUpdate = (projectId: string, newRole: string) => {
+    setSelectedProject((prev) =>
+      prev ? { ...prev, role: newRole } : prev
+    );
+    setProjects((prev) =>
+      prev.map((p) => (p.id === projectId ? { ...p, role: newRole } : p))
+    );
+  };
+
   if (loading) {
     return (
       <div className="p-8">
@@ -195,6 +204,8 @@ export default function ProjectsPage() {
         isOpen={isModalOpen}
         onClose={handleCloseModal}
         project={selectedProject}
+        token={getAuthToken()}
+        onRoleUpdate={handleRoleUpdate}
       />
     </div>
   );
