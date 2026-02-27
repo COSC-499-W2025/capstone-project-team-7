@@ -5,6 +5,8 @@ import {
   ErrorResponse,
   SkillProgressTimelineResponse,
   SkillProgressSummaryResponse,
+  SearchResponse,
+  SkillsListResponse,
 } from "@/types/project";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -136,6 +138,62 @@ export async function generateProjectSkillSummary(
   if (!response.ok) {
     const error: ErrorResponse = await response.json();
     throw new Error(error.detail || "Failed to generate skills summary");
+  }
+
+  return response.json();
+}
+
+/**
+ * Search across projects and files
+ */
+export async function searchProjects(
+  token: string,
+  query: string,
+  options?: {
+    scope?: "all" | "files" | "skills";
+    projectId?: string;
+    limit?: number;
+    offset?: number;
+  }
+): Promise<SearchResponse> {
+  const params = new URLSearchParams();
+  if (query) params.set("q", query);
+  if (options?.scope) params.set("scope", options.scope);
+  if (options?.projectId) params.set("project_id", options.projectId);
+  if (options?.limit) params.set("limit", String(options.limit));
+  if (options?.offset) params.set("offset", String(options.offset));
+
+  const response = await fetch(`${API_BASE_URL}/api/projects/search?${params}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json();
+    throw new Error(error.detail || "Search failed");
+  }
+
+  return response.json();
+}
+
+/**
+ * Fetch all unique skills across user's projects
+ */
+export async function getSkills(token: string): Promise<SkillsListResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/skills`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json();
+    throw new Error(error.detail || "Failed to fetch skills");
   }
 
   return response.json();
