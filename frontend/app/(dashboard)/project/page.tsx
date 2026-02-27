@@ -57,7 +57,16 @@ import {
   Check,
   Loader2,
   AlertCircle,
+  Info,
 } from "lucide-react";
+import { FileTreeView } from "@/components/project/file-tree-view";
+import type { FileEntry } from "@/lib/file-tree";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 // Main section tabs (4 sections)
 const mainTabs = [
@@ -375,6 +384,15 @@ export default function ProjectPage() {
     });
     return skills.sort();
   }, [skillsByCategory]);
+
+  const projectFiles: FileEntry[] = Array.isArray(scanData.files)
+    ? (scanData.files as any[])
+        .map((f: any) => ({
+          ...f,
+          path: typeof f.path === "string" ? f.path : typeof f.file_path === "string" ? f.file_path : "",
+        }))
+        .filter((f: any) => typeof f.path === "string" && f.path.length > 0)
+    : [];
 
   const hasProject = Boolean(project);
 
@@ -706,7 +724,28 @@ export default function ProjectPage() {
                         <p className="text-2xl font-bold text-gray-900">
                           {filesProcessedLabel}
                         </p>
-                        <p className="text-xs text-gray-500 mt-1">Files Processed</p>
+                        <p className="text-xs text-gray-500 mt-1 inline-flex items-center gap-1">
+                          Files Processed
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  type="button"
+                                  aria-label="Files processed info"
+                                  className="inline-flex items-center"
+                                >
+                                  <Info size={12} className="text-gray-400 cursor-help" />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" className="max-w-xs text-xs">
+                                Only relevant files are counted. Files in excluded
+                                directories (node_modules, .git, __pycache__, etc.)
+                                and unsupported file types are filtered out during
+                                scanning.
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </p>
                       </div>
                       <div className="bg-gray-50 rounded-lg p-4 text-center">
                         <p className="text-2xl font-bold text-gray-900">
@@ -1444,7 +1483,7 @@ export default function ProjectPage() {
           <TabsContent value="tools">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {/* File Browser */}
-              <Card className="bg-white border border-gray-200">
+              <Card className="bg-white border border-gray-200 md:col-span-2 lg:col-span-3">
                 <CardHeader className="border-b border-gray-200">
                   <CardTitle className="text-base font-bold text-gray-900 flex items-center gap-2">
                     <FileText size={18} />
@@ -1452,10 +1491,7 @@ export default function ProjectPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-6">
-                  <p className="text-sm text-gray-500 mb-4">
-                    Browse and view all files in the project.
-                  </p>
-                  <PlaceholderContent label="File Browser" />
+                  <FileTreeView files={projectFiles} />
                 </CardContent>
               </Card>
 

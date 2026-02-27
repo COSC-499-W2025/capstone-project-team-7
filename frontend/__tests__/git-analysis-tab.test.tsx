@@ -295,6 +295,62 @@ describe("normalizeGitAnalysis", () => {
 // normalizeRepo unit tests
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Git email formatting in ContributorsTable
+// ---------------------------------------------------------------------------
+
+describe("GitAnalysisTab — email formatting", () => {
+  it("renders noreply email as 'username (GitHub)'", () => {
+    const repoWithNoreply = [
+      {
+        path: "/repo",
+        commit_count: 10,
+        project_type: "individual",
+        date_range: null,
+        branches: ["main"],
+        contributors: [
+          {
+            name: "DevUser",
+            email: "12345+devuser@users.noreply.github.com",
+            commits: 10,
+            percent: 100,
+            active_days: 5,
+          },
+        ],
+        timeline: [],
+      },
+    ];
+    render(<GitAnalysisTab loading={false} error={null} gitAnalysis={repoWithNoreply} />);
+    expect(screen.getByText("devuser (GitHub)")).toBeInTheDocument();
+  });
+
+  it("shows (+N) indicator when contributor has multiple emails", () => {
+    const repoWithMultiEmail = [
+      {
+        path: "/repo",
+        commit_count: 20,
+        project_type: "collaborative",
+        date_range: null,
+        branches: ["main"],
+        contributors: [
+          {
+            name: "MultiUser",
+            email: "multi@example.com",
+            commits: 20,
+            percent: 100,
+            active_days: 10,
+            all_emails: ["multi@example.com", "multi-alt@example.com", "multi-work@company.com"],
+          },
+        ],
+        timeline: [],
+      },
+    ];
+    render(<GitAnalysisTab loading={false} error={null} gitAnalysis={repoWithMultiEmail} />);
+    expect(screen.getByText("multi@example.com")).toBeInTheDocument();
+    expect(screen.getByText("(+2)")).toBeInTheDocument();
+  });
+});
+
 describe("normalizeRepo", () => {
   it("returns null for null/undefined", () => {
     expect(normalizeRepo(null)).toBeNull();

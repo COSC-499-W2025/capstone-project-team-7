@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { GitRepoAnalysis, GitContributor, GitTimelineEntry } from "@/types/git-analysis";
+import { formatContributorEmail } from "@/lib/git-email";
 
 /* ------------------------------------------------------------------ */
 /*  Normalisation — handle data shape variations                      */
@@ -206,8 +207,16 @@ function ContributorsTable({ contributors }: { contributors: GitContributor[] })
                   <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">
                     {c.name}
                   </td>
-                  <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
-                    {c.email ?? "—"}
+                  <td
+                    className="px-4 py-3 text-gray-500 whitespace-nowrap"
+                    title={c.email ?? undefined}
+                  >
+                    {formatContributorEmail(c.email)}
+                    {(c.all_emails?.length ?? 0) > 1 && (
+                      <span className="ml-1 text-xs text-gray-400">
+                        (+{(c.all_emails!.length) - 1})
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3">{c.commits}</td>
                   <td className="px-4 py-3">

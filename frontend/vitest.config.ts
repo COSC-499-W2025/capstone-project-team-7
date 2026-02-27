@@ -6,7 +6,7 @@ export default defineConfig({
     environment: "happy-dom",
     setupFiles: ["./vitest.setup.ts"],
     globals: true,
-    include: ["../tests/**/*.test.tsx", "./__tests__/**/*.test.tsx"],
+    include: ["../tests/**/*.test.tsx", "./__tests__/**/*.test.{ts,tsx}"],
   },
   esbuild: {
     jsx: "automatic",
