@@ -36,6 +36,7 @@ class PortfolioTimelineService:
                     "end_date": end_date,
                     "duration_days": _duration_days(start_date, end_date),
                     "role": project.get("role"),
+                    "evidence": project.get("evidence", []),
                 }
             )
 

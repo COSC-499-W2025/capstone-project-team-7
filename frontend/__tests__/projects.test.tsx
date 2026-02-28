@@ -75,6 +75,7 @@ vi.mock("@/lib/api/projects", () => ({
   getProjects: vi.fn(),
   getProjectById: vi.fn(),
   deleteProject: vi.fn(),
+  updateProjectRole: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -86,12 +87,13 @@ vi.mock("@/lib/auth", () => ({
   getStoredToken: vi.fn(),
 }));
 
-import { getProjects, getProjectById, deleteProject } from "@/lib/api/projects";
+import { getProjects, getProjectById, deleteProject, updateProjectRole } from "@/lib/api/projects";
 import { getStoredToken } from "@/lib/auth";
 
 const mockGetProjects = getProjects as Mock;
 const mockGetProjectById = getProjectById as Mock;
 const mockDeleteProject = deleteProject as Mock;
+const mockUpdateProjectRole = updateProjectRole as Mock;
 const mockGetStoredToken = getStoredToken as Mock;
 
 // Mock window.confirm
@@ -132,6 +134,7 @@ beforeEach(() => {
   });
   mockGetProjectById.mockResolvedValue(MOCK_PROJECT_DETAIL);
   mockDeleteProject.mockResolvedValue(undefined);
+  mockUpdateProjectRole.mockResolvedValue(undefined);
 });
 
 // ---------------------------------------------------------------------------
@@ -427,10 +430,143 @@ describe("ProjectsPage", () => {
 
   it("displays all language badges without truncation for short lists", async () => {
     await renderAndWait();
-    
+
     // First project has 3 languages - all should be visible
     expect(screen.getByText("TypeScript")).toBeInTheDocument();
     expect(screen.getByText("JavaScript")).toBeInTheDocument();
     expect(screen.getByText("CSS")).toBeInTheDocument();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Role editing
+  // ---------------------------------------------------------------------------
+
+  it("shows existing role badge in modal overview", async () => {
+    await renderAndWait();
+    const eyeButtons = screen.getAllByTitle("View details");
+    await userEvent.click(eyeButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText("My Portfolio", { selector: "h2" })).toBeInTheDocument();
+    });
+
+    // MOCK_PROJECT_DETAIL has role: "author"
+    expect(screen.getByText("author")).toBeInTheDocument();
+  });
+
+  it("shows Edit Role button in modal when token is available", async () => {
+    await renderAndWait();
+    const eyeButtons = screen.getAllByTitle("View details");
+    await userEvent.click(eyeButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText("My Portfolio", { selector: "h2" })).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Edit Role")).toBeInTheDocument();
+  });
+
+  it("shows role select dropdown when Edit Role is clicked", async () => {
+    await renderAndWait();
+    const eyeButtons = screen.getAllByTitle("View details");
+    await userEvent.click(eyeButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText("Edit Role")).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByText("Edit Role"));
+
+    expect(screen.getByRole("combobox")).toBeInTheDocument();
+    expect(screen.getByText("Save")).toBeInTheDocument();
+    expect(screen.getByText("Cancel")).toBeInTheDocument();
+  });
+
+  it("calls updateProjectRole with correct args when saved", async () => {
+    await renderAndWait();
+    const eyeButtons = screen.getAllByTitle("View details");
+    await userEvent.click(eyeButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText("Edit Role")).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByText("Edit Role"));
+
+    const select = screen.getByRole("combobox");
+    await userEvent.selectOptions(select, "lead");
+
+    await userEvent.click(screen.getByText("Save"));
+
+    await waitFor(() => {
+      expect(mockUpdateProjectRole).toHaveBeenCalledWith("test-token", "proj-1", "lead");
+    });
+  });
+
+  it("updates role badge in table after successful save", async () => {
+    await renderAndWait();
+    const eyeButtons = screen.getAllByTitle("View details");
+    await userEvent.click(eyeButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText("Edit Role")).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByText("Edit Role"));
+    const select = screen.getByRole("combobox");
+    await userEvent.selectOptions(select, "lead");
+    await userEvent.click(screen.getByText("Save"));
+
+    await waitFor(() => {
+      expect(mockUpdateProjectRole).toHaveBeenCalled();
+    });
+
+    // Close the modal, then confirm the table row shows the updated role
+    const closeButton = screen.getByRole("button", { name: /close/i });
+    await userEvent.click(closeButton);
+
+    await waitFor(() => {
+      expect(screen.queryByText("My Portfolio", { selector: "h2" })).not.toBeInTheDocument();
+    });
+
+    expect(screen.getByText("lead")).toBeInTheDocument();
+  });
+
+  it("shows error message when updateProjectRole fails", async () => {
+    mockUpdateProjectRole.mockRejectedValue(new Error("Server error"));
+
+    await renderAndWait();
+    const eyeButtons = screen.getAllByTitle("View details");
+    await userEvent.click(eyeButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText("Edit Role")).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByText("Edit Role"));
+    const select = screen.getByRole("combobox");
+    await userEvent.selectOptions(select, "contributor");
+    await userEvent.click(screen.getByText("Save"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Server error")).toBeInTheDocument();
+    });
+  });
+
+  it("cancels role edit without calling API", async () => {
+    await renderAndWait();
+    const eyeButtons = screen.getAllByTitle("View details");
+    await userEvent.click(eyeButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText("Edit Role")).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByText("Edit Role"));
+    await userEvent.click(screen.getByText("Cancel"));
+
+    expect(mockUpdateProjectRole).not.toHaveBeenCalled();
+    // Edit Role button should be visible again
+    expect(screen.getByText("Edit Role")).toBeInTheDocument();
   });
 });

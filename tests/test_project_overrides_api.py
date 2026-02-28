@@ -38,19 +38,24 @@ def create_test_project() -> str:
 class TestGetProjectOverrides:
     """Tests for GET /api/projects/{project_id}/overrides"""
 
-    def test_get_overrides_empty_for_new_project(self):
-        """Test that GET returns empty overrides for project with no overrides set."""
+    def test_get_overrides_for_new_project(self):
+        """Test that GET returns overrides for a new project.
+
+        New projects automatically get an inferred role ('author' or 'contributor')
+        based on contribution metrics. Evidence and other user-set fields start empty.
+        """
         project_id = create_test_project()
-        
+
         response = client.get(
             f"/api/projects/{project_id}/overrides",
             headers={"Authorization": f"Bearer {TEST_TOKEN}"},
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["project_id"] == project_id
-        assert data["overrides"]["role"] is None
+        # Role is auto-inferred on project creation (defaults to 'contributor' when no git data)
+        assert data["overrides"]["role"] in (None, "author", "contributor")
         assert data["overrides"]["evidence"] == []
         assert data["overrides"]["highlighted_skills"] == []
         assert data["overrides"]["start_date_override"] is None
@@ -64,21 +69,21 @@ class TestGetProjectOverrides:
         client.patch(
             f"/api/projects/{project_id}/overrides",
             json={
-                "role": "Lead Developer",
+                "role": "lead",
                 "highlighted_skills": ["Python", "FastAPI"],
             },
             headers={"Authorization": f"Bearer {TEST_TOKEN}"},
         )
-        
+
         # Then get them
         response = client.get(
             f"/api/projects/{project_id}/overrides",
             headers={"Authorization": f"Bearer {TEST_TOKEN}"},
         )
-        
+
         assert response.status_code == 200
         data = response.json()
-        assert data["overrides"]["role"] == "Lead Developer"
+        assert data["overrides"]["role"] == "lead"
         assert data["overrides"]["highlighted_skills"] == ["Python", "FastAPI"]
 
     def test_get_overrides_nonexistent_project_returns_404(self):
@@ -111,7 +116,7 @@ class TestPatchProjectOverrides:
         response = client.patch(
             f"/api/projects/{project_id}/overrides",
             json={
-                "role": "Backend Engineer",
+                "role": "author",
                 "evidence": ["Implemented API endpoints", "Wrote unit tests"],
                 "highlighted_skills": ["Python", "PostgreSQL"],
                 "start_date_override": "2024-01-15",
@@ -119,11 +124,11 @@ class TestPatchProjectOverrides:
             },
             headers={"Authorization": f"Bearer {TEST_TOKEN}"},
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["project_id"] == project_id
-        assert data["overrides"]["role"] == "Backend Engineer"
+        assert data["overrides"]["role"] == "author"
         assert data["overrides"]["evidence"] == ["Implemented API endpoints", "Wrote unit tests"]
         assert data["overrides"]["highlighted_skills"] == ["Python", "PostgreSQL"]
         assert data["overrides"]["start_date_override"] == "2024-01-15"
@@ -136,19 +141,19 @@ class TestPatchProjectOverrides:
         # Create initial overrides
         client.patch(
             f"/api/projects/{project_id}/overrides",
-            json={"role": "Junior Developer"},
+            json={"role": "contributor"},
             headers={"Authorization": f"Bearer {TEST_TOKEN}"},
         )
-        
+
         # Update role
         response = client.patch(
             f"/api/projects/{project_id}/overrides",
-            json={"role": "Senior Developer"},
+            json={"role": "lead"},
             headers={"Authorization": f"Bearer {TEST_TOKEN}"},
         )
-        
+
         assert response.status_code == 200
-        assert response.json()["overrides"]["role"] == "Senior Developer"
+        assert response.json()["overrides"]["role"] == "lead"
 
     def test_patch_partial_update(self):
         """Test that PATCH only updates provided fields."""
@@ -158,22 +163,22 @@ class TestPatchProjectOverrides:
         client.patch(
             f"/api/projects/{project_id}/overrides",
             json={
-                "role": "Developer",
+                "role": "contributor",
                 "highlighted_skills": ["JavaScript"],
             },
             headers={"Authorization": f"Bearer {TEST_TOKEN}"},
         )
-        
+
         # Update only role
         response = client.patch(
             f"/api/projects/{project_id}/overrides",
-            json={"role": "Senior Developer"},
+            json={"role": "lead"},
             headers={"Authorization": f"Bearer {TEST_TOKEN}"},
         )
-        
+
         assert response.status_code == 200
         data = response.json()
-        assert data["overrides"]["role"] == "Senior Developer"
+        assert data["overrides"]["role"] == "lead"
         # highlighted_skills should still be set
         assert data["overrides"]["highlighted_skills"] == ["JavaScript"]
 
@@ -268,16 +273,22 @@ class TestDeleteProjectOverrides:
         assert get_response.status_code == 200
         assert get_response.json()["overrides"]["role"] is None
 
-    def test_delete_returns_404_when_no_overrides(self):
-        """Test that DELETE returns 404 when no overrides exist."""
+    def test_delete_returns_404_on_second_delete(self):
+        """Test that DELETE returns 404 when overrides have already been deleted."""
         project_id = create_test_project()
-        
-        # Try to delete non-existent overrides
+
+        # First delete succeeds (new projects have auto-inferred overrides)
+        client.delete(
+            f"/api/projects/{project_id}/overrides",
+            headers={"Authorization": f"Bearer {TEST_TOKEN}"},
+        )
+
+        # Second delete should return 404 — nothing left to delete
         response = client.delete(
             f"/api/projects/{project_id}/overrides",
             headers={"Authorization": f"Bearer {TEST_TOKEN}"},
         )
-        
+
         assert response.status_code == 404
 
     def test_delete_nonexistent_project_returns_404(self):
@@ -311,37 +322,46 @@ class TestProjectDetailWithOverrides:
         client.patch(
             f"/api/projects/{project_id}/overrides",
             json={
-                "role": "Tech Lead",
+                "role": "lead",
                 "highlighted_skills": ["Architecture", "Python"],
             },
             headers={"Authorization": f"Bearer {TEST_TOKEN}"},
         )
-        
+
         # Get project detail
         response = client.get(
             f"/api/projects/{project_id}",
             headers={"Authorization": f"Bearer {TEST_TOKEN}"},
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         assert "user_overrides" in data
-        assert data["user_overrides"]["role"] == "Tech Lead"
+        assert data["user_overrides"]["role"] == "lead"
         assert data["user_overrides"]["highlighted_skills"] == ["Architecture", "Python"]
 
-    def test_get_project_returns_null_overrides_when_none_set(self):
-        """Test that GET project detail returns null user_overrides when none exist."""
+    def test_get_project_includes_user_overrides_with_inferred_role(self):
+        """Test that GET project detail includes user_overrides with the auto-inferred role.
+
+        New projects automatically get an inferred role via save_scan, so user_overrides
+        is always populated (never None) after project creation.
+        """
         project_id = create_test_project()
-        
+
         response = client.get(
             f"/api/projects/{project_id}",
             headers={"Authorization": f"Bearer {TEST_TOKEN}"},
         )
-        
+
         assert response.status_code == 200
         data = response.json()
-        # user_overrides should be None when no overrides are set
-        assert data.get("user_overrides") is None
+        assert "user_overrides" in data
+        overrides = data["user_overrides"]
+        # Auto-inferred role is set; evidence and highlights start empty
+        assert overrides is not None
+        assert overrides.get("role") in ("author", "contributor")
+        assert overrides.get("evidence") == []
+        assert overrides.get("highlighted_skills") == []
 
 
 class TestTimelineWithOverrides:
@@ -386,46 +406,46 @@ class TestOverridesWorkflow:
         """Test complete CRUD workflow for overrides."""
         project_id = create_test_project()
         
-        # 1. Initially no overrides
+        # 1. New project has auto-inferred role (author or contributor)
         get_response = client.get(
             f"/api/projects/{project_id}/overrides",
             headers={"Authorization": f"Bearer {TEST_TOKEN}"},
         )
         assert get_response.status_code == 200
-        assert get_response.json()["overrides"]["role"] is None
+        assert get_response.json()["overrides"]["role"] in (None, "author", "contributor")
         
-        # 2. Create overrides
+        # 2. Update overrides (project already has auto-inferred 'contributor' role)
         create_response = client.patch(
             f"/api/projects/{project_id}/overrides",
             json={
-                "role": "Developer",
+                "role": "contributor",
                 "evidence": ["Initial evidence"],
             },
             headers={"Authorization": f"Bearer {TEST_TOKEN}"},
         )
         assert create_response.status_code == 200
-        assert create_response.json()["overrides"]["role"] == "Developer"
-        
+        assert create_response.json()["overrides"]["role"] == "contributor"
+
         # 3. Update overrides
         update_response = client.patch(
             f"/api/projects/{project_id}/overrides",
             json={
-                "role": "Senior Developer",
+                "role": "lead",
                 "evidence": ["Updated evidence", "New accomplishment"],
             },
             headers={"Authorization": f"Bearer {TEST_TOKEN}"},
         )
         assert update_response.status_code == 200
-        assert update_response.json()["overrides"]["role"] == "Senior Developer"
+        assert update_response.json()["overrides"]["role"] == "lead"
         assert len(update_response.json()["overrides"]["evidence"]) == 2
-        
+
         # 4. Read and verify
         read_response = client.get(
             f"/api/projects/{project_id}/overrides",
             headers={"Authorization": f"Bearer {TEST_TOKEN}"},
         )
         assert read_response.status_code == 200
-        assert read_response.json()["overrides"]["role"] == "Senior Developer"
+        assert read_response.json()["overrides"]["role"] == "lead"
         
         # 5. Delete overrides
         delete_response = client.delete(
@@ -441,3 +461,77 @@ class TestOverridesWorkflow:
         )
         assert final_response.status_code == 200
         assert final_response.json()["overrides"]["role"] is None
+
+
+class TestEvidenceOverrides:
+    """Tests for evidence of success CRUD via project overrides."""
+
+    def test_set_evidence_bullets(self):
+        """PATCH overrides with evidence stores and returns the bullets."""
+        project_id = create_test_project()
+
+        bullets = ["Throughput improved 35%", "Led 3-person team", "Zero downtime deployment"]
+        response = client.patch(
+            f"/api/projects/{project_id}/overrides",
+            json={"evidence": bullets},
+            headers={"Authorization": f"Bearer {TEST_TOKEN}"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["overrides"]["evidence"] == bullets
+
+        # Confirm persisted via GET
+        get_response = client.get(
+            f"/api/projects/{project_id}/overrides",
+            headers={"Authorization": f"Bearer {TEST_TOKEN}"},
+        )
+        assert get_response.status_code == 200
+        assert get_response.json()["overrides"]["evidence"] == bullets
+
+    def test_evidence_survives_role_only_patch(self):
+        """PATCHing only role does not erase existing evidence."""
+        project_id = create_test_project()
+
+        # Set evidence first
+        client.patch(
+            f"/api/projects/{project_id}/overrides",
+            json={"evidence": ["Received positive client feedback"]},
+            headers={"Authorization": f"Bearer {TEST_TOKEN}"},
+        )
+
+        # Update only role — evidence should be untouched
+        client.patch(
+            f"/api/projects/{project_id}/overrides",
+            json={"role": "lead"},
+            headers={"Authorization": f"Bearer {TEST_TOKEN}"},
+        )
+
+        get_response = client.get(
+            f"/api/projects/{project_id}/overrides",
+            headers={"Authorization": f"Bearer {TEST_TOKEN}"},
+        )
+        assert get_response.status_code == 200
+        overrides = get_response.json()["overrides"]
+        assert overrides["role"] == "lead"
+        assert overrides["evidence"] == ["Received positive client feedback"]
+
+    def test_clear_evidence_with_empty_list(self):
+        """Passing evidence=[] clears all bullets."""
+        project_id = create_test_project()
+
+        # Set evidence
+        client.patch(
+            f"/api/projects/{project_id}/overrides",
+            json={"evidence": ["Passed all evaluations"]},
+            headers={"Authorization": f"Bearer {TEST_TOKEN}"},
+        )
+
+        # Clear with empty list
+        response = client.patch(
+            f"/api/projects/{project_id}/overrides",
+            json={"evidence": []},
+            headers={"Authorization": f"Bearer {TEST_TOKEN}"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["overrides"]["evidence"] == []

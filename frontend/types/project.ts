@@ -103,3 +103,46 @@ export interface ErrorResponse {
   detail: string;
   error_code?: string;
 }
+
+export interface AppendUploadResponse {
+  project_id: string;
+  upload_id: string;
+  status: string;
+  files_added: number;
+  files_updated: number;
+  files_skipped_duplicate: number;
+  total_files_in_upload: number;
+}
+
+export interface AppendUploadRequest {
+  skip_duplicates?: boolean;
+}
+
+// Search API types
+export interface SearchResultItem {
+  type: "file" | "skill";
+  project_id: string;
+  project_name: string;
+  // File fields
+  path?: string;
+  name?: string;
+  size_bytes?: number;
+  mime_type?: string;
+  // Skill fields
+  category?: string;
+  skill?: string;
+  proficiency?: string;
+}
+
+export interface SearchResponse {
+  items: SearchResultItem[];
+  page: {
+    limit: number;
+    offset: number;
+    total: number;
+  };
+}
+
+export interface SkillsListResponse {
+  skills: string[];
+}

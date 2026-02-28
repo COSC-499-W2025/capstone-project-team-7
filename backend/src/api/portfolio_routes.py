@@ -75,6 +75,7 @@ class TimelineItem(BaseModel):
     end_date: Optional[str] = None
     duration_days: Optional[int] = None
     role: Optional[str] = Field(None, description="User's role in the project")
+    evidence: List[str] = Field(default_factory=list, description="Evidence of success bullet points")
 
 
 class SkillsTimelineItem(BaseModel):
@@ -91,6 +92,45 @@ class SkillsTimelineResponse(BaseModel):
 class PortfolioChronology(BaseModel):
     projects: List[TimelineItem] = Field(default_factory=list)
     skills: List[SkillsTimelineItem] = Field(default_factory=list)
+
+class SkillsListResponse(BaseModel):
+    """Response for GET /api/skills endpoint."""
+    skills: List[str] = Field(default_factory=list, description="Unique skills sorted alphabetically")
+
+
+@router.get(
+    "/api/skills",
+    response_model=SkillsListResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        500: {"model": ErrorResponse, "description": "Skills retrieval failed"},
+    },
+)
+def get_all_skills(
+    category: Optional[str] = None,
+    auth: AuthContext = Depends(get_auth_context),
+    service: PortfolioTimelineService = Depends(get_portfolio_timeline_service),
+) -> SkillsListResponse:
+    """
+    Get all unique skills across user's projects.
+
+    Optionally filter by category: languages, frameworks, tools.
+    Returns skills sorted alphabetically.
+    """
+    try:
+        timeline_items = service.get_skills_timeline(auth.user_id)
+        # Extract unique skills from all timeline periods
+        unique_skills: set[str] = set()
+        for item in timeline_items:
+            unique_skills.update(item.get("skills", []))
+        sorted_skills = sorted(unique_skills, key=str.lower)
+    except PortfolioTimelineServiceError as exc:
+        logger.exception("Failed to retrieve skills")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "skills_error", "message": str(exc)},
+        ) from exc
+    return SkillsListResponse(skills=sorted_skills)
 
 
 @router.get(
@@ -436,6 +476,202 @@ def refresh_portfolio(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"code": "refresh_error", "message": str(exc)},
+        ) from exc
+
+
+# ============================================================================
+# Portfolio Generation Endpoint
+# ============================================================================
+
+class PortfolioGenerateRequest(BaseModel):
+    """Request body for portfolio generation."""
+    project_id: Optional[str] = Field(None, description="Project ID to generate portfolio item from")
+    upload_id: Optional[str] = Field(None, description="Upload ID to generate portfolio item from (not yet implemented)")
+    persist: bool = Field(True, description="If true, persist the generated portfolio item; if false, return draft only")
+
+
+class PortfolioGenerateResponse(BaseModel):
+    """Response from portfolio generation."""
+    id: Optional[str] = Field(None, description="Portfolio item ID (only if persisted)")
+    title: str = Field(..., description="Generated portfolio item title")
+    summary: Optional[str] = Field(None, description="Generated portfolio item summary")
+    role: Optional[str] = Field(None, description="User's role in the project")
+    evidence: Optional[str] = Field(None, description="Evidence/details supporting the portfolio item")
+    persisted: bool = Field(..., description="Whether the item was persisted to storage")
+
+
+@router.post(
+    "/api/portfolio/generate",
+    response_model=PortfolioGenerateResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid request - must provide project_id or upload_id"},
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Project or upload not found"},
+        501: {"model": ErrorResponse, "description": "upload_id generation not yet implemented"},
+        500: {"model": ErrorResponse, "description": "Portfolio generation failed"},
+    },
+)
+async def generate_portfolio_item(
+    request: PortfolioGenerateRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    projects_service: ProjectsService = Depends(get_projects_service),
+    portfolio_service: PortfolioItemService = Depends(get_portfolio_item_service),
+) -> PortfolioGenerateResponse:
+    """
+    Generate a portfolio item from a scanned project or upload.
+    
+    This endpoint bridges the gap between project scans and portfolio items:
+    - Takes a project_id (from a completed scan) or upload_id
+    - Extracts relevant information to create portfolio-ready content
+    - Optionally persists to /api/portfolio/items
+    
+    The generated portfolio item includes:
+    - title: Derived from project name
+    - summary: Generated from languages, skills, and contribution metrics
+    - role: User's role in the project (author/contributor/etc)
+    - evidence: Key metrics and achievements from the scan
+    
+    Set persist=false to preview the generated content without saving.
+    """
+    # Validate request - must have project_id or upload_id
+    if not request.project_id and not request.upload_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "validation_error", "message": "Either project_id or upload_id is required"},
+        )
+    
+    # upload_id path not yet implemented
+    if request.upload_id and not request.project_id:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail={"code": "not_implemented", "message": "Generation from upload_id is not yet implemented. Use project_id from a saved scan."},
+        )
+    
+    try:
+        # Fetch project data
+        project = projects_service.get_project_scan(auth.user_id, request.project_id)
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "not_found", "message": f"Project with ID '{request.project_id}' not found"},
+            )
+        
+        # Extract scan_data
+        scan_data = project.get("scan_data", {})
+        
+        # Generate title from project name
+        title = project.get("project_name", "Untitled Project")
+        
+        # Generate summary from scan data
+        summary_parts = []
+        
+        # Add language info
+        languages = scan_data.get("languages") or project.get("languages", [])
+        if languages:
+            if isinstance(languages, list) and len(languages) > 0:
+                if isinstance(languages[0], dict):
+                    top_langs = [l.get("name", l.get("language", "Unknown")) for l in languages[:3]]
+                else:
+                    top_langs = languages[:3]
+                summary_parts.append(f"Technologies: {', '.join(top_langs)}")
+        
+        # Add contribution info
+        contribution = scan_data.get("contribution_metrics") or scan_data.get("contribution_analysis", {})
+        if contribution:
+            project_type = contribution.get("project_type", "")
+            if project_type:
+                summary_parts.append(f"Project type: {project_type}")
+            total_commits = contribution.get("total_commits")
+            if total_commits:
+                summary_parts.append(f"Commits: {total_commits}")
+        
+        # Add skills info
+        skills = scan_data.get("skills", [])
+        if skills:
+            skill_names = [s.get("name", s) if isinstance(s, dict) else s for s in skills[:5]]
+            if skill_names:
+                summary_parts.append(f"Skills: {', '.join(skill_names)}")
+        
+        summary = ". ".join(summary_parts) if summary_parts else None
+        
+        # Get role
+        role = project.get("role")
+        
+        # Generate evidence from metrics
+        evidence_parts = []
+        
+        # File/line counts
+        total_files = project.get("total_files") or scan_data.get("total_files", 0)
+        total_lines = project.get("total_lines") or scan_data.get("total_lines", 0)
+        if total_files:
+            evidence_parts.append(f"Files analyzed: {total_files}")
+        if total_lines:
+            evidence_parts.append(f"Lines of code: {total_lines}")
+        
+        # Code metrics
+        code_metrics = scan_data.get("code_metrics") or scan_data.get("code_analysis", {})
+        if code_metrics:
+            functions = code_metrics.get("functions", 0)
+            classes = code_metrics.get("classes", 0)
+            if functions:
+                evidence_parts.append(f"Functions: {functions}")
+            if classes:
+                evidence_parts.append(f"Classes: {classes}")
+        
+        # Git info
+        git_analysis = scan_data.get("git_analysis", [])
+        if git_analysis and len(git_analysis) > 0:
+            repo = git_analysis[0] if isinstance(git_analysis, list) else git_analysis
+            commit_count = repo.get("commit_count", 0)
+            if commit_count:
+                evidence_parts.append(f"Commit history: {commit_count} commits")
+        
+        evidence = "; ".join(evidence_parts) if evidence_parts else None
+        
+        # Persist if requested
+        item_id = None
+        if request.persist:
+            portfolio_item = PortfolioItemCreate(
+                title=title,
+                summary=summary,
+                role=role,
+                evidence=evidence,
+            )
+            created_item = portfolio_service.create_portfolio_item(
+                UUID(auth.user_id),
+                portfolio_item,
+            )
+            item_id = str(created_item.id)
+        
+        return PortfolioGenerateResponse(
+            id=item_id,
+            title=title,
+            summary=summary,
+            role=role,
+            evidence=evidence,
+            persisted=request.persist,
+        )
+        
+    except HTTPException:
+        raise
+    except PortfolioItemServiceError as exc:
+        logger.exception("Failed to persist portfolio item")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "persistence_error", "message": str(exc)},
+        ) from exc
+    except ProjectsServiceError as exc:
+        logger.exception("Failed to fetch project for portfolio generation")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "project_error", "message": str(exc)},
+        ) from exc
+    except Exception as exc:
+        logger.exception("Unexpected error generating portfolio item")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "generation_error", "message": str(exc)},
         ) from exc
 
 

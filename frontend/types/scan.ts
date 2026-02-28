@@ -55,3 +55,13 @@ export interface ScanRequest {
 export interface StartScanResponse {
   scan_id: string;
 }
+
+// Types for incremental scan (append mode)
+export interface AppendScanResult {
+  project_id: string;
+  upload_id: string;
+  files_added: number;
+  files_updated: number;
+  files_skipped_duplicate: number;
+  total_files_in_upload: number;
+}

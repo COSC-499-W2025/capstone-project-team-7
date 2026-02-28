@@ -345,16 +345,19 @@ class ProjectsService:
                     pid = project.get("id")
                     if pid and pid in overrides_map:
                         project["role"] = overrides_map[pid].get("role")
+                        project["evidence"] = overrides_map[pid].get("evidence", [])
                     else:
                         project["role"] = None
+                        project["evidence"] = []
             except Exception as exc:
                 logging.getLogger(__name__).warning(f"Failed to fetch overrides: {exc}")
-                # Set role to None for all projects if overrides fetch fails
                 for project in projects:
                     project["role"] = None
+                    project["evidence"] = []
         else:
             for project in projects:
                 project["role"] = None
+                project["evidence"] = []
         
         return projects
 
