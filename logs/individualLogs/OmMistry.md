@@ -1,5 +1,111 @@
 # Om Mistry (@OM200401)
 
+## Week 22: February 23 - March 1
+
+This week I delivered a high volume of bug fixes and features across the full stack: fixing the API scan pipeline, overhauling project detection, syncing milestone 2 changes into main, and shipping two new user-facing features - role editing and evidence of success - end-to-end from DB to UI.
+
+**Core Implementation:**
+
+1. **API Upload Scan Bug Fix (PR #341):**
+   - Diagnosed and fixed 6 root causes in the API scan mode pipeline that prevented `PORTFOLIO_USE_API=true` from working correctly
+   - Restored `ScanService(use_api=self._use_api_mode)` in `textual_app.py` which was hardcoded to `False`
+   - Removed stub `POST /api/uploads` route in `spec_routes.py` that was shadowing the real implementation and causing 404s
+   - Forwarded the auth token from the incoming scan request to `UploadAPIService` so API mode uploads are authenticated
+   - Fixed double-offset datetime strings (`2026-02-22T23:59:32+00:00+00:00`) by stripping `tzinfo` before `isoformat()`
+   - Fixed `AttributeError` in `media_info` fields by switching from dot-attribute to `.get()` access on TypedDict
+   - Fixed `None` guard for `media_type` in `upload_api_service.py`
+
+2. **Project Detection Enhancement (PR #342):**
+   - Rewrote `ProjectDetector.detect_projects()` with three priority-ordered rules to eliminate false multi-project detection on monorepos
+   - Rule 1 (Git root): if the scan root has `.git`, the entire tree is one project
+   - Rule 2 (Root marker): if the root has a primary language marker (`requirements.txt`, `package.json`, etc.) but no `.git`, treat as one project
+   - Rule 3 (Subdirectory scan): only for bare workspaces - structural dirs like `backend/`, `frontend/`, `tests/`, `docs/` are never treated as independent project roots
+   - Added `primary_markers` set (strong signals only - excludes `README.md`, `Dockerfile`, lock files) and `project_internal_dirs` blocklist
+   - Added comprehensive tests for all detection rules
+
+3. **Sync Milestone 2 API Updates into Main (PR #357):**
+   - Selectively synced backend changes from PRs #338, #341, and #342 from the milestone2 branch into main, intentionally excluding CLI/TUI code
+   - Fixed `ScanService` import path in `spec_routes.py` (`src.cli.services` → `services.services`) for main-branch compatibility
+   - Added missing `@router.patch` decorator to `update_project_role` endpoint in `project_routes.py`
+   - Updated mock patch paths in `test_scan_api_mode.py` to match corrected import location
+
+4. **Role Editing UI (PR #358):**
+   - Added `updateProjectRole()` API function in `frontend/lib/api/projects.ts` calling `PATCH /api/projects/{id}/overrides`
+   - Added a "Your Role" section to the Project Overview tab in `project-detail-modal.tsx` showing the current role as a badge with an inline Edit Role dropdown (`author`, `contributor`, `lead`, `maintainer`, `reviewer`)
+   - Role persists to the backend on save and updates both the modal badge and the projects table immediately
+   - Fixed a bug in `ProjectOverridesService` where `SUPABASE_KEY` was being picked up before `SUPABASE_SERVICE_ROLE_KEY`, causing RLS violations on `project_overrides` inserts/updates
+   - Fixed the Back button on the project detail page being hardcoded to `/scanned-results` - replaced with `router.back()`
+   - Added 7 new automated tests and a regression test for the service role key priority fix
+
+5. **Evidence of Success (PR #359):**
+   - Added an "Evidence of Success" section to the `ProjectDetailModal` with add/remove bullet point functionality for quantitative metrics, feedback, and evaluations
+   - Replaced the role-only `updateProjectRole` call with a generic `updateProjectOverrides` API function to support all override fields
+   - Extended `get_user_projects_with_roles()` in `ProjectsService` to return `evidence` from `project_overrides` alongside `role`
+   - Added `evidence: List[str]` field to the `TimelineItem` Pydantic model and surfaced it in `GET /api/portfolio/chronology`
+   - Added `TestEvidenceOverrides` class with 3 new tests (set bullets, survive role-only patch, clear with empty list)
+   - Fixed 8 pre-existing test failures caused by invalid role strings violating the DB `project_overrides_role_check` constraint
+
+**What Went Well:**
+- Diagnosing the 6 root causes in the API scan pipeline systematically meant every failure mode was permanently fixed rather than patched around
+- The two-tier suppression approach in `ProjectDetector` elegantly handles the monorepo case without needing complex heuristics
+- Using a single generic `updateProjectOverrides` function future-proofs the override system for any new fields added to `project_overrides`
+
+**What Didn't Go Well:**
+- The milestone2-to-main sync required extra care due to CLI/TUI code that only belongs on milestone2 - diffing selectively across branches added overhead
+- Pre-existing test failures in `test_project_overrides_api.py` had to be debugged and fixed before the evidence feature could be validated, which was unexpected scope
+
+**Next Steps:**
+- Connect evidence bullets to the portfolio export/PDF output
+- Add UI indicators on the projects table to show which projects have evidence populated
+- Verify the API scan pipeline end-to-end in a staging environment with real ZIP uploads
+
+Issues resolved: [#340 - /api/uploads fix](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/340), [#350 - Electron role editing UI](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/350), [#218 - Support Evidence of Success](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/218)
+
+PRs: [#341 - API Upload Scan Bug Fix](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/341) (Merged), [#342 - Project Detection Enhancement](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/342) (Merged), [#357 - Sync Milestone 2 API updates into main](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/357) (Merged), [#358 - Role Edit Option Added](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/358) (Merged), [#359 - Evidence of Success](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/359) (Merged)
+
+---
+
+## Week 21: February 16 - February 22
+
+This week I closed out the two open PRs carried over from last week, then shipped the Resume Items page - a full CRUD interface for the previously dead `/resumes` sidebar link - with a complete API client, TypeScript types, and unit test suite.
+
+**Core Implementation:**
+
+1. **Session Logout Fix Merged (PR #326):**
+   - Merged the global 401/403 error handler and `auth:signout` event pattern from last week after resolving merge conflicts with PR #322
+   - Confirmed cross-component logout sync is working correctly in production
+
+2. **Forgot Password Flow Merged (PR #331):**
+   - `/auth/forgot-password` and `/auth/reset-password` pages merged and live
+   - Backend password reset endpoint, API docs, and backend tests all included
+
+3. **Resume Items Page (PR #339):**
+   - Added `frontend/types/resume.ts` with TypeScript types mirroring the backend `ResumeItem` Pydantic models
+   - Built `frontend/lib/api/resume.ts` as an API client covering all 5 resume CRUD endpoints, following the same pattern as `lib/api/projects.ts`
+   - Implemented `frontend/app/(dashboard)/resumes/page.tsx` - full CRUD page with item list, create/edit dialog (date range, description, technologies), and delete confirmation flow
+   - Unauthenticated visits redirect to `/auth/login` via the existing dashboard layout guard
+   - Added `frontend/__tests__/resumes.test.tsx` with 16 Vitest + React Testing Library unit tests covering: loading state, unauthenticated redirect, item list rendering, date range formatting, empty state, create dialog, edit pre-fill, delete confirm/cancel, form validation, error banners, and refresh
+
+**What Went Well:**
+- Following the same API client pattern as `projects.ts` made the resume API client fast to build and immediately familiar to reviewers
+- Writing tests first for the resume page caught a bug in date range formatting before it reached review
+- Closing the two carry-over PRs early in the week freed up the rest of the week for new feature work
+
+**What Didn't Go Well:**
+- The `/resumes` page had been a dead link for several weeks - better inter-team communication about which pages are unimplemented would help prioritize these earlier
+- Merge conflict resolution on PR #326 required extra back-and-forth with the PR #322 author to agree on the correct auth file state
+
+**Next Steps:**
+- Wire the resume items page into the portfolio export so resume entries appear in generated output
+- Add pagination or infinite scroll to the resume list for users with many entries
+- Begin connecting remaining unimplemented sidebar pages to their backend endpoints
+
+Issues resolved: [#325 - Unexpected Session Logouts](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/325), [#330 - Forgot Password functionality](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/330), [#337 - Resume Items Page](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/337)
+
+PRs: [#326 - Session Logout Issues](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/326) (Merged), [#331 - Forgot Password Page and Functionality](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/331) (Merged), [#339 - Resume Items Page](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/339) (Merged)
+
+---
+
 ## Week 20: February 9 - February 15
 
 This week I focused on fixing authentication and session management issues across the frontend, removing insecure auth patterns, and starting the forgot password feature.
@@ -357,7 +463,7 @@ This week, I implemented a comprehensive contribution metrics system that analyz
 5. **Comprehensive Testing**: Wrote 24 tests (16 Git + 8 non-Git scenarios) achieving 100% pass rate.
 
 **Challenges & Learning:**
-Initially struggled with making Git analysis optional—the system raised errors for non-Git projects. Resolved by implementing graceful fallback logic that detects project type automatically. Learned importance of defensive programming when dealing with optional data sources.
+Initially struggled with making Git analysis optional-the system raised errors for non-Git projects. Resolved by implementing graceful fallback logic that detects project type automatically. Learned importance of defensive programming when dealing with optional data sources.
 
 **Impact:**
 Users can now analyze any project folder (Git or not) and get meaningful contribution insights without external APIs. All processing remains local, maintaining privacy-first principles.
