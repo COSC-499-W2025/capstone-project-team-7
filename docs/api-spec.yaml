@@ -342,6 +342,51 @@ components:
         evidence: { type: string, nullable: true, maxLength: 2048 }
         thumbnail: { type: string, nullable: true, maxLength: 1024 }
 
+    PortfolioGenerateRequest:
+      type: object
+      description: Request body for generating a portfolio item from a scanned project
+      properties:
+        project_id:
+          type: string
+          format: uuid
+          description: Project ID to generate portfolio item from (from a saved scan)
+        upload_id:
+          type: string
+          description: Upload ID to generate from (not yet implemented, returns 501)
+        persist:
+          type: boolean
+          default: true
+          description: If true, persist the portfolio item; if false, return draft only
+
+    PortfolioGenerateResponse:
+      type: object
+      description: Response from portfolio generation endpoint
+      properties:
+        id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Portfolio item ID (only present if persist=true)
+        title:
+          type: string
+          description: Generated title (from project name)
+        summary:
+          type: string
+          nullable: true
+          description: Generated summary (technologies, skills, contribution info)
+        role:
+          type: string
+          nullable: true
+          description: User's role in the project
+        evidence:
+          type: string
+          nullable: true
+          description: Evidence metrics (files, lines, functions, commits)
+        persisted:
+          type: boolean
+          description: Whether the item was persisted to storage
+      required: [title, persisted]
+
     PortfolioRefreshRequest:
       type: object
       properties:
@@ -1453,6 +1498,95 @@ paths:
                   job_id: { type: string }
                   state: { $ref: '#/components/schemas/JobState' }
                   progress: { $ref: '#/components/schemas/Progress' }
+
+  /api/portfolio/generate:
+    post:
+      summary: Generate portfolio item from scanned project
+      description: |
+        Generates a portfolio-ready item from a previously scanned and saved project.
+        Extracts title (from project name), summary (from languages, skills, contribution metrics),
+        role (from project overrides), and evidence (from file counts, code metrics, git history).
+        
+        When persist=true (default), creates a new portfolio item in /api/portfolio/items.
+        When persist=false, returns a draft payload without saving.
+        
+        Note: upload_id parameter is not yet implemented and will return 501.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PortfolioGenerateRequest' }
+            examples:
+              with_persist:
+                summary: Generate and persist
+                value:
+                  project_id: "550e8400-e29b-41d4-a716-446655440000"
+                  persist: true
+              draft_only:
+                summary: Generate draft only
+                value:
+                  project_id: "550e8400-e29b-41d4-a716-446655440000"
+                  persist: false
+      responses:
+        '201':
+          description: Portfolio item generated (and optionally persisted)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PortfolioGenerateResponse' }
+              examples:
+                persisted:
+                  summary: Persisted portfolio item
+                  value:
+                    id: "660e8400-e29b-41d4-a716-446655440001"
+                    title: "my-react-app"
+                    summary: "Technologies: TypeScript, JavaScript. Project type: solo. Skills: React, Node.js"
+                    role: "author"
+                    evidence: "Files analyzed: 42; Lines of code: 3500; Functions: 120; Commit history: 87 commits"
+                    persisted: true
+                draft:
+                  summary: Draft only (not persisted)
+                  value:
+                    id: null
+                    title: "my-react-app"
+                    summary: "Technologies: TypeScript, JavaScript"
+                    role: "contributor"
+                    evidence: "Files analyzed: 15; Lines of code: 800"
+                    persisted: false
+        '400':
+          description: Invalid request - must provide project_id or upload_id
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                code: "validation_error"
+                message: "Either project_id or upload_id is required"
+        '401':
+          description: Unauthorized - missing or invalid JWT
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Project not found or not owned by user
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                code: "not_found"
+                message: "Project with ID 'xxx' not found"
+        '501':
+          description: upload_id generation not yet implemented
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                code: "not_implemented"
+                message: "Generation from upload_id is not yet implemented. Use project_id from a saved scan."
+        '500':
+          description: Server error during generation or persistence
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   /api/portfolio/items:
     get:
