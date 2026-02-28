@@ -3,6 +3,7 @@ Upload and Parse API routes
 Implements /api/uploads endpoints per api-plan.md
 """
 
+import logging
 import os
 import uuid
 import hashlib
@@ -10,11 +11,14 @@ import magic
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+
 from fastapi import APIRouter, UploadFile, File, HTTPException, status, Body, Header, Depends
 from pydantic import BaseModel, Field
 
 from scanner.parser import parse_zip
 from scanner.models import ParseResult, ScanPreferences, FileMetadata as ScanFileMetadata, ParseIssue as ScanParseIssue
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/api/uploads", tags=["uploads"])
@@ -388,19 +392,19 @@ async def parse_upload(
                 "path": file_meta.path,
                 "size_bytes": file_meta.size_bytes,
                 "mime_type": file_meta.mime_type,
-                "created_at": file_meta.created_at.isoformat() + "Z",
-                "modified_at": file_meta.modified_at.isoformat() + "Z",
+                "created_at": file_meta.created_at.replace(tzinfo=None).isoformat() + "Z",
+                "modified_at": file_meta.modified_at.replace(tzinfo=None).isoformat() + "Z",
                 "file_hash": file_meta.file_hash
             }
             
             # Add media info if present
             if file_meta.media_info:
                 file_dict["media_info"] = {
-                    "media_type": file_meta.media_info.media_type,
-                    "duration_seconds": getattr(file_meta.media_info, "duration_seconds", None),
-                    "width": getattr(file_meta.media_info, "width", None),
-                    "height": getattr(file_meta.media_info, "height", None),
-                    "format": getattr(file_meta.media_info, "format", None),
+                    "media_type": file_meta.media_info.get("media_type"),
+                    "duration_seconds": file_meta.media_info.get("duration_seconds"),
+                    "width": file_meta.media_info.get("width"),
+                    "height": file_meta.media_info.get("height"),
+                    "format": file_meta.media_info.get("format"),
                 }
             
             files.append(FileMetadata(**file_dict))
@@ -443,10 +447,10 @@ async def parse_upload(
         )
         
     except Exception as e:
-        # Update status to failed
+        logger.exception("parse_upload failed for upload_id=%s", upload_id)
         upload_data["status"] = "parse_failed"
         upload_data["error"] = str(e)
-        
+
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={

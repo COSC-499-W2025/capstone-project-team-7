@@ -2,11 +2,14 @@
 import {
   ProjectListResponse,
   ProjectDetail,
+  ProjectOverrides,
   ErrorResponse,
   SkillProgressTimelineResponse,
   SkillProgressSummaryResponse,
   AppendUploadResponse,
   AppendUploadRequest,
+  SearchResponse,
+  SkillsListResponse,
 } from "@/types/project";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -98,6 +101,52 @@ export async function getProjectSkillTimeline(
 }
 
 /**
+ * Update the user's role for a project via overrides
+ */
+export async function updateProjectRole(
+  token: string,
+  projectId: string,
+  role: string,
+): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/overrides`, {
+    method: "PATCH",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ role }),
+  });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json();
+    throw new Error(error.detail || "Failed to update role");
+  }
+}
+
+/**
+ * Update one or more project override fields (role, evidence, custom_rank, etc.)
+ */
+export async function updateProjectOverrides(
+  token: string,
+  projectId: string,
+  overrides: Partial<ProjectOverrides>,
+): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/overrides`, {
+    method: "PATCH",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(overrides),
+  });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json();
+    throw new Error(error.detail || "Failed to update project overrides");
+  }
+}
+
+/**
  * Generate skill progression summary using the LLM
  */
 export async function generateProjectSkillSummary(
@@ -148,3 +197,60 @@ export async function appendUploadToProject(
 
   return response.json();
 }
+
+/**
+ * Search across projects and files
+ */
+export async function searchProjects(
+  token: string,
+  query: string,
+  options?: {
+    scope?: "all" | "files" | "skills";
+    projectId?: string;
+    limit?: number;
+    offset?: number;
+  }
+): Promise<SearchResponse> {
+  const params = new URLSearchParams();
+  if (query) params.set("q", query);
+  if (options?.scope) params.set("scope", options.scope);
+  if (options?.projectId) params.set("project_id", options.projectId);
+  if (options?.limit) params.set("limit", String(options.limit));
+  if (options?.offset) params.set("offset", String(options.offset));
+
+  const response = await fetch(`${API_BASE_URL}/api/projects/search?${params}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json();
+    throw new Error(error.detail || "Search failed");
+  }
+
+  return response.json();
+}
+
+/**
+ * Fetch all unique skills across user's projects
+ */
+export async function getSkills(token: string): Promise<SkillsListResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/skills`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json();
+    throw new Error(error.detail || "Failed to fetch skills");
+  }
+
+  return response.json();
+}
+>>>>>>> origin/main
