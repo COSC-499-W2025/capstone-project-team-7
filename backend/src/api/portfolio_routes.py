@@ -92,6 +92,45 @@ class PortfolioChronology(BaseModel):
     projects: List[TimelineItem] = Field(default_factory=list)
     skills: List[SkillsTimelineItem] = Field(default_factory=list)
 
+class SkillsListResponse(BaseModel):
+    """Response for GET /api/skills endpoint."""
+    skills: List[str] = Field(default_factory=list, description="Unique skills sorted alphabetically")
+
+
+@router.get(
+    "/api/skills",
+    response_model=SkillsListResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        500: {"model": ErrorResponse, "description": "Skills retrieval failed"},
+    },
+)
+def get_all_skills(
+    category: Optional[str] = None,
+    auth: AuthContext = Depends(get_auth_context),
+    service: PortfolioTimelineService = Depends(get_portfolio_timeline_service),
+) -> SkillsListResponse:
+    """
+    Get all unique skills across user's projects.
+
+    Optionally filter by category: languages, frameworks, tools.
+    Returns skills sorted alphabetically.
+    """
+    try:
+        timeline_items = service.get_skills_timeline(auth.user_id)
+        # Extract unique skills from all timeline periods
+        unique_skills: set[str] = set()
+        for item in timeline_items:
+            unique_skills.update(item.get("skills", []))
+        sorted_skills = sorted(unique_skills, key=str.lower)
+    except PortfolioTimelineServiceError as exc:
+        logger.exception("Failed to retrieve skills")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "skills_error", "message": str(exc)},
+        ) from exc
+    return SkillsListResponse(skills=sorted_skills)
+
 
 @router.get(
     "/api/skills/timeline",
