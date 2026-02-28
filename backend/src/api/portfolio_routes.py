@@ -75,6 +75,7 @@ class TimelineItem(BaseModel):
     end_date: Optional[str] = None
     duration_days: Optional[int] = None
     role: Optional[str] = Field(None, description="User's role in the project")
+    evidence: List[str] = Field(default_factory=list, description="Evidence of success bullet points")
 
 
 class SkillsTimelineItem(BaseModel):
