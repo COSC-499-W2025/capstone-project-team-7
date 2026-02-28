@@ -2,7 +2,7 @@
   "name": "capstone-project-team-7",
   "version": "1.0.0",
   "private": true,
-  "description": "```text ├── backend │   └── src │       ├── analyzer/ │       ├── api/ │       ├── auth/ │       ├── scanner/ │       ├── storage/ │       └── main.py ├── docs │   ├── assets/ │   ├── WBS.md │   ├── dfd.md │   ├── systemArchitecture.md │   ├── projectProposal.md │   ├── projectRequirements.md ├── tests ├── docker-compose.yml └── README.md ```",
+  "description": "Portfolio Analysis System - FastAPI + Next.js + Electron",
   "main": "index.js",
   "workspaces": [
     "frontend",
@@ -14,6 +14,8 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
+    "install:all": "npm install && npm install -w frontend && npm install -w electron",
+    "start:desktop": "npm run install:all && npm run dev:desktop",
     "dev:desktop": "concurrently -k -n backend,frontend,electron \"cd backend && uvicorn src.main:app --reload\" \"cd frontend && npm run dev\" \"cd electron && cross-env ELECTRON_START_URL=http://localhost:3000 npm run dev\"",
     "preview:desktop": "npm run export --workspace frontend && npm run build --workspace electron && npm run start --workspace electron"
   },
