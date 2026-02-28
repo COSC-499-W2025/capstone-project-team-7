@@ -14,6 +14,23 @@ import {
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+export interface SelectionResponse {
+  user_id: string;
+  project_order: string[];
+  skill_order: string[];
+  selected_project_ids: string[];
+  selected_skill_ids: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SelectionUpdateRequest {
+  project_order?: string[];
+  skill_order?: string[];
+  selected_project_ids?: string[];
+  selected_skill_ids?: string[];
+}
+
 /**
  * Fetch all projects for the authenticated user
  */
@@ -249,6 +266,44 @@ export async function getSkills(token: string): Promise<SkillsListResponse> {
   if (!response.ok) {
     const error: ErrorResponse = await response.json();
     throw new Error(error.detail || "Failed to fetch skills");
+  }
+
+  return response.json();
+}
+
+export async function getSelection(token: string): Promise<SelectionResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/selection`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json();
+    throw new Error(error.detail || "Failed to fetch selection preferences");
+  }
+
+  return response.json();
+}
+
+export async function saveSelection(
+  token: string,
+  payload: SelectionUpdateRequest,
+): Promise<SelectionResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/selection`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json();
+    throw new Error(error.detail || "Failed to save selection preferences");
   }
 
   return response.json();
