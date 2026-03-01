@@ -1,0 +1,10 @@
+{
+  "text": "ACME\nSupermarket\nDate: 2025-07-20\n2x Muffin - $4.00\nTotal: $8.00\n",
+  "lines": [
+    "ACME",
+    "Supermarket",
+    "Date: 2025-07-20",
+    "2x Muffin - $4.00",
+    "Total: $8.00"
+  ]
+}
