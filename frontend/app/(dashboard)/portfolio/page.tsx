@@ -400,6 +400,16 @@ export default function PortfolioPage() {
                       className="p-5 border border-gray-200 rounded-xl hover:border-gray-300 transition-colors"
                     >
                       <div className="flex items-start justify-between gap-4">
+                        {item.thumbnail && (
+                          <img
+                            src={item.thumbnail}
+                            alt={item.title}
+                            className="w-16 h-16 rounded-lg object-cover flex-shrink-0 border border-gray-200"
+                            onError={(e) => {
+                              (e.currentTarget as HTMLImageElement).style.display = "none";
+                            }}
+                          />
+                        )}
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-semibold text-gray-900">
                             {item.title}
