@@ -16,6 +16,18 @@ function authHeaders(token: string): Record<string, string> {
   };
 }
 
+// Portfolio endpoints return detail as an object: {"code": "...", "message": "..."}
+// This extracts a human-readable string from either format.
+function extractError(error: Record<string, unknown>, fallback: string): string {
+  const detail = error.detail;
+  if (typeof detail === "string") return detail;
+  if (detail && typeof detail === "object") {
+    const msg = (detail as Record<string, unknown>).message;
+    if (typeof msg === "string") return msg;
+  }
+  return fallback;
+}
+
 export async function listPortfolioItems(token: string): Promise<PortfolioItem[]> {
   const response = await fetch(`${API_BASE_URL}/api/portfolio/items`, {
     method: "GET",
@@ -23,7 +35,7 @@ export async function listPortfolioItems(token: string): Promise<PortfolioItem[]
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.detail || "Failed to fetch portfolio items");
+    throw new Error(extractError(error, "Failed to fetch portfolio items"));
   }
   return response.json();
 }
@@ -35,7 +47,7 @@ export async function getPortfolioItem(token: string, id: string): Promise<Portf
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.detail || "Failed to fetch portfolio item");
+    throw new Error(extractError(error, "Failed to fetch portfolio item"));
   }
   return response.json();
 }
@@ -51,7 +63,7 @@ export async function createPortfolioItem(
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.detail || "Failed to create portfolio item");
+    throw new Error(extractError(error, "Failed to create portfolio item"));
   }
   return response.json();
 }
@@ -68,7 +80,7 @@ export async function updatePortfolioItem(
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.detail || "Failed to update portfolio item");
+    throw new Error(extractError(error, "Failed to update portfolio item"));
   }
   return response.json();
 }
@@ -80,7 +92,7 @@ export async function deletePortfolioItem(token: string, id: string): Promise<vo
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.detail || "Failed to delete portfolio item");
+    throw new Error(extractError(error, "Failed to delete portfolio item"));
   }
 }
 
@@ -95,7 +107,7 @@ export async function generatePortfolioItem(
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.detail || "Failed to generate portfolio item");
+    throw new Error(extractError(error, "Failed to generate portfolio item"));
   }
   return response.json();
 }
@@ -107,7 +119,7 @@ export async function getPortfolioChronology(token: string): Promise<PortfolioCh
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.detail || "Failed to fetch portfolio chronology");
+    throw new Error(extractError(error, "Failed to fetch portfolio chronology"));
   }
   return response.json();
 }

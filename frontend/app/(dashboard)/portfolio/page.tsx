@@ -507,14 +507,14 @@ export default function PortfolioPage() {
 
       {/* Create / Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={handleDialogClose}>
-        <DialogContent className="sm:max-w-[580px]">
+        <DialogContent className="sm:max-w-[580px] flex flex-col max-h-[90vh]">
           <DialogHeader>
             <DialogTitle>
               {editing ? "Edit Portfolio Item" : "New Portfolio Item"}
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
+          <div className="space-y-4 py-2 overflow-y-auto flex-1 pr-1">
             {formError && (
               <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
                 {formError}
