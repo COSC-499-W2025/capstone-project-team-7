@@ -1,4 +1,26 @@
 # Aaron Banerjee (@aaronbanerjee123)
+
+
+
+
+## Term 2 - Week 7 (Feb 15 - Feb 22)
+Portfolio Generate Route [(PR#338)](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/338): Implemented POST /api/portfolio/generate endpoint for Milestone 2 requirement 32, automatically generating portfolio items from scanned projects. The endpoint accepts a project_id and intelligently extracts portfolio content: title from project name, summary from languages/skills/contribution metrics (e.g., "Technologies: Python, JavaScript. Skills: FastAPI, React"), role from project overrides, and evidence from file counts/code metrics/git history (e.g., "Files: 42; Lines: 3500; Functions: 120; Commits: 87"). Implemented flexible persist flag for draft preview (persist=false) or automatic save (persist=true). Integrated endpoint into TUI workflow to auto-generate portfolio items after successful scan saves. Fixed View Portfolios to display comprehensive detail modal (ViewPortfolioDetailScreen) showing full item details instead of just status messages. Fixed critical scan service bug by forcing local execution regardless of PORTFOLIO_USE_API setting. Added PortfolioGenerateAPIService client with proper error handling (400, 401, 404, 501) and updated API documentation in api-spec.yaml and api-plan.md.
+
+Challenges & Learning:
+Designed intelligent content extraction algorithm handling diverse scan data structures (languages as strings vs dicts, contribution_metrics vs contribution_analysis). Implemented graceful degradation with fallback defaults for missing fields, ensuring partial data doesn't break generation. Learned progressive enhancement patterns and dual-mode operation (persist vs draft) for workflow flexibility. Gained experience with end-to-end feature integration across backend routes, CLI services, and TUI components.
+
+Impact:
+Transformed portfolio creation from manual, tedious process to automated, seamless experience. Users now scan projects and automatically receive professionally formatted portfolio items with zero manual data entry. Enhanced UX with detailed portfolio view modal for content review and validation.
+
+Issues Resolved:
+[#334
+](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/334)
+PR's:
+https://github.com/COSC-499-W2025/capstone-project-team-7/pull/338
+
+
+
+
 ## Term 2 - Week 6 (Feb 8 - Feb 15)
 **Code Analysis Tab[(PR#332)](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/332)**: Implemented comprehensive code analysis tab functionality and resolved critical display issues in the project detail view. Restructured the entire tab architecture by removing duplicate TabsContent implementations and properly integrating the CodeAnalysisTab component. Fixed underlying backend import path errors (cli.services -> services.services) that were preventing the API from starting and serving analysis data. Implemented proper component hierarchy with the CodeAnalysisTab component expecting flat data structures (total_files, total_lines, avg_maintainability) while eliminating the conflicting inline version expecting nested structures (metrics.total_lines, quality.avg_maintainability). Enhanced component debugging with detailed prop validation logging and improved no-data condition logic to properly handle valid backend responses. Successfully implemented complete tab functionality displaying comprehensive code quality metrics including file counts (37 files), maintainability scores (96.08%), dead code detection, duplicate identification, magic value flagging (71 detected), and actionable recommendations with detailed analysis breakdowns.
 
