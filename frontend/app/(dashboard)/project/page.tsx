@@ -50,6 +50,10 @@ import {
   FileJson,
   FileCode2,
   Printer,
+  Download,
+  Check,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 
 // Main section tabs (4 sections)
@@ -117,6 +121,10 @@ export default function ProjectPage() {
   const [projectLoading, setProjectLoading] = useState(true);
 
   const isMountedRef = useRef(true);
+
+  // Export JSON state
+  const [exportStatus, setExportStatus] = useState<"idle" | "exporting" | "success" | "error">("idle");
+  const [exportError, setExportError] = useState<string | null>(null);
 
   // Skills / progression state (from main)
   const [skillsTimeline, setSkillsTimeline] = useState<SkillProgressPeriod[]>(
@@ -214,6 +222,76 @@ export default function ProjectPage() {
       cancelled = true;
     };
   }, [projectId, project?.id]);
+
+  /** Build and trigger a JSON report download for the current project. */
+  const handleExportJson = useCallback(() => {
+    if (!project) {
+      setExportError("No project loaded");
+      setExportStatus("error");
+      return;
+    }
+
+    try {
+      setExportStatus("exporting");
+      setExportError(null);
+
+      // Build the export payload: project metadata + everything in scan_data.
+      // scan_data keys vary depending on how the scan was created (upload vs
+      // full TUI scan), so we spread all of scan_data rather than cherry-picking
+      // keys that might not exist yet.
+      const sd = project.scan_data ?? {};
+      const payload: Record<string, unknown> = {
+        export_format: "json",
+        exported_at: new Date().toISOString(),
+        project: {
+          id: project.id,
+          name: project.project_name,
+          path: project.project_path,
+          scan_timestamp: project.scan_timestamp ?? null,
+          total_files: project.total_files,
+          total_lines: project.total_lines,
+          languages: project.languages ?? [],
+          contribution_score: project.contribution_score ?? null,
+          primary_contributor: project.primary_contributor ?? null,
+          role: project.role ?? null,
+        },
+        // Spread every key from scan_data so nothing is silently dropped
+        ...sd,
+      };
+
+      const jsonStr = JSON.stringify(payload, null, 2);
+      const blob = new Blob([jsonStr], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+
+      // Sanitise project name for filename
+      const safeName = (project.project_name || "project")
+        .replace(/[^a-zA-Z0-9_-]/g, "_")
+        .replace(/_+/g, "_")
+        .toLowerCase();
+      const ts = new Date().toISOString().slice(0, 10);
+      const filename = `${safeName}_report_${ts}.json`;
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      setExportStatus("success");
+      // Reset back to idle after a brief period
+      setTimeout(() => setExportStatus("idle"), 2500);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Export failed";
+      setExportError(msg);
+      setExportStatus("error");
+      setTimeout(() => {
+        setExportStatus("idle");
+        setExportError(null);
+      }, 4000);
+    }
+  }, [project]);
 
   const scanData = (project?.scan_data ?? {}) as any;
   const summary = (scanData.summary ?? {}) as any;
@@ -1288,12 +1366,30 @@ export default function ProjectPage() {
                     Export project analysis in various formats.
                   </p>
                   <div className="flex flex-wrap gap-2">
+                    {/* Export JSON — active */}
                     <button
-                      disabled
-                      className="px-3 py-2 text-xs font-semibold rounded-md bg-gray-100 text-gray-400 cursor-not-allowed flex items-center gap-1"
+                      onClick={handleExportJson}
+                      disabled={!hasProject || exportStatus === "exporting"}
+                      className={[
+                        "px-3 py-2 text-xs font-semibold rounded-md flex items-center gap-1 transition-colors",
+                        exportStatus === "success"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : exportStatus === "error"
+                            ? "bg-red-100 text-red-700"
+                            : !hasProject
+                              ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                              : "bg-gray-900 text-white hover:bg-gray-700 cursor-pointer",
+                      ].join(" ")}
                     >
-                      <FileJson size={14} />
-                      Export JSON
+                      {exportStatus === "exporting" ? (
+                        <><Loader2 size={14} className="animate-spin" /> Exporting…</>
+                      ) : exportStatus === "success" ? (
+                        <><Check size={14} /> Downloaded!</>
+                      ) : exportStatus === "error" ? (
+                        <><AlertCircle size={14} /> {exportError ?? "Failed"}</>
+                      ) : (
+                        <><Download size={14} /> Export JSON</>
+                      )}
                     </button>
                     <button
                       disabled
@@ -1310,7 +1406,9 @@ export default function ProjectPage() {
                       Print
                     </button>
                   </div>
-                  <p className="text-xs text-gray-400 mt-2">Export features coming soon.</p>
+                  {exportStatus === "error" && exportError && (
+                    <p className="text-xs text-red-500 mt-1">{exportError}</p>
+                  )}
                 </CardContent>
               </Card>
             </div>
