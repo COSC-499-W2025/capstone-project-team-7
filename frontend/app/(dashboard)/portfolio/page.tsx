@@ -103,6 +103,8 @@ export default function PortfolioPage() {
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [generating, setGenerating] = useState(false);
 
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
   // Skills section toggle
   const [skillsExpanded, setSkillsExpanded] = useState(true);
 
@@ -213,11 +215,14 @@ export default function PortfolioPage() {
     if (!confirm("Delete this portfolio item? This cannot be undone.")) return;
     const token = getStoredToken();
     if (!token) return;
+    setDeletingId(id);
     try {
       await deletePortfolioItem(token, id);
       setItems((prev) => prev.filter((item) => item.id !== id));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete portfolio item");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -441,10 +446,11 @@ export default function PortfolioPage() {
                           </button>
                           <button
                             onClick={() => handleDelete(item.id)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
+                            disabled={deletingId === item.id}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <Trash2 size={14} />
-                            Delete
+                            {deletingId === item.id ? "Deleting…" : "Delete"}
                           </button>
                         </div>
                       </div>
@@ -583,6 +589,7 @@ export default function PortfolioPage() {
               <Input
                 id="title"
                 placeholder="e.g. Full-Stack E-Commerce Platform"
+                maxLength={255}
                 value={form.title}
                 onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
               />
@@ -593,6 +600,7 @@ export default function PortfolioPage() {
               <Input
                 id="role"
                 placeholder="e.g. Lead Developer"
+                maxLength={255}
                 value={form.role}
                 onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
               />
@@ -604,6 +612,7 @@ export default function PortfolioPage() {
                 id="summary"
                 placeholder="Brief description of the project and your contribution..."
                 rows={3}
+                maxLength={1000}
                 value={form.summary}
                 onChange={(e) => setForm((f) => ({ ...f, summary: e.target.value }))}
               />
@@ -615,6 +624,7 @@ export default function PortfolioPage() {
                 id="evidence"
                 placeholder="Describe measurable outcomes, impact, and evidence of your work..."
                 rows={4}
+                maxLength={2048}
                 value={form.evidence}
                 onChange={(e) => setForm((f) => ({ ...f, evidence: e.target.value }))}
               />
@@ -625,6 +635,7 @@ export default function PortfolioPage() {
               <Input
                 id="thumbnail"
                 placeholder="https://example.com/image.png"
+                maxLength={1024}
                 value={form.thumbnail}
                 onChange={(e) => setForm((f) => ({ ...f, thumbnail: e.target.value }))}
               />

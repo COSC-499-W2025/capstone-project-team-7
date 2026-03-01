@@ -12,7 +12,7 @@ import {
   SkillsListResponse,
 } from "@/types/project";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
 export interface SelectionResponse {
   user_id: string;
@@ -44,7 +44,7 @@ export async function getProjects(token: string): Promise<ProjectListResponse> {
   });
 
   if (!response.ok) {
-    const error: ErrorResponse = await response.json();
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
     throw new Error(error.detail || "Failed to fetch projects");
   }
 
@@ -64,7 +64,7 @@ export async function getProjectById(token: string, projectId: string): Promise<
   });
 
   if (!response.ok) {
-    const error: ErrorResponse = await response.json();
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
     throw new Error(error.detail || "Failed to fetch project details");
   }
 
@@ -84,7 +84,7 @@ export async function deleteProject(token: string, projectId: string): Promise<v
   });
 
   if (!response.ok) {
-    const error: ErrorResponse = await response.json();
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
     throw new Error(error.detail || "Failed to delete project");
   }
 }
@@ -110,7 +110,7 @@ export async function getProjectSkillTimeline(
   );
 
   if (!response.ok) {
-    const error: ErrorResponse = await response.json();
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
     throw new Error(error.detail || "Failed to fetch skills timeline");
   }
 
@@ -135,7 +135,7 @@ export async function updateProjectRole(
   });
 
   if (!response.ok) {
-    const error: ErrorResponse = await response.json();
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
     throw new Error(error.detail || "Failed to update role");
   }
 }
@@ -158,7 +158,7 @@ export async function updateProjectOverrides(
   });
 
   if (!response.ok) {
-    const error: ErrorResponse = await response.json();
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
     throw new Error(error.detail || "Failed to update project overrides");
   }
 }
@@ -179,7 +179,7 @@ export async function generateProjectSkillSummary(
   });
 
   if (!response.ok) {
-    const error: ErrorResponse = await response.json();
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
     throw new Error(error.detail || "Failed to generate skills summary");
   }
 
@@ -208,7 +208,7 @@ export async function appendUploadToProject(
   );
 
   if (!response.ok) {
-    const error: ErrorResponse = await response.json();
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
     throw new Error(error.detail || "Failed to append files to project");
   }
 
@@ -244,7 +244,7 @@ export async function searchProjects(
   });
 
   if (!response.ok) {
-    const error: ErrorResponse = await response.json();
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
     throw new Error(error.detail || "Search failed");
   }
 
@@ -254,8 +254,12 @@ export async function searchProjects(
 /**
  * Fetch all unique skills across user's projects
  */
-export async function getSkills(token: string): Promise<SkillsListResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/skills`, {
+export async function getSkills(
+  token: string,
+  category?: string,
+): Promise<SkillsListResponse> {
+  const params = category ? `?category=${encodeURIComponent(category)}` : "";
+  const response = await fetch(`${API_BASE_URL}/api/skills${params}`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -264,7 +268,7 @@ export async function getSkills(token: string): Promise<SkillsListResponse> {
   });
 
   if (!response.ok) {
-    const error: ErrorResponse = await response.json();
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
     throw new Error(error.detail || "Failed to fetch skills");
   }
 
@@ -281,7 +285,7 @@ export async function getSelection(token: string): Promise<SelectionResponse> {
   });
 
   if (!response.ok) {
-    const error: ErrorResponse = await response.json();
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
     throw new Error(error.detail || "Failed to fetch selection preferences");
   }
 
@@ -302,7 +306,7 @@ export async function saveSelection(
   });
 
   if (!response.ok) {
-    const error: ErrorResponse = await response.json();
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
     throw new Error(error.detail || "Failed to save selection preferences");
   }
 

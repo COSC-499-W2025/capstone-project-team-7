@@ -7,7 +7,7 @@ import type {
   PortfolioChronology,
 } from "@/types/portfolio";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
 function authHeaders(token: string): Record<string, string> {
   return {
