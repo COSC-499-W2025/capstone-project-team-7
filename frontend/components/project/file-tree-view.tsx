@@ -10,6 +10,8 @@ import {
   FolderOpen,
   File,
   Search,
+  List,
+  GitBranch,
 } from "lucide-react";
 import {
   buildFileTree,
@@ -24,6 +26,7 @@ import {
 
 export function FileTreeView({ files }: { files: FileEntry[] }) {
   const [search, setSearch] = useState("");
+  const [viewMode, setViewMode] = useState<"tree" | "list">("tree");
 
   const filteredFiles = useMemo(() => {
     if (!search.trim()) return files;
@@ -64,22 +67,60 @@ export function FileTreeView({ files }: { files: FileEntry[] }) {
         />
       </div>
 
-      {/* Summary */}
-      <p className="text-xs text-gray-500">
-        {filteredFiles.length} file{filteredFiles.length !== 1 ? "s" : ""}
-        {isSearching && filteredFiles.length !== files.length
-          ? ` (of ${files.length})`
-          : ""}
-        , {formatFileSize(totalSize)} total
-      </p>
+      {/* Summary + View Toggle */}
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-gray-500">
+          {filteredFiles.length} file{filteredFiles.length !== 1 ? "s" : ""}
+          {isSearching && filteredFiles.length !== files.length
+            ? ` (of ${files.length})`
+            : ""}
+          , {formatFileSize(totalSize)} total
+        </p>
+        <div className="flex items-center gap-1 border border-gray-200 rounded-md p-0.5">
+          <button
+            type="button"
+            onClick={() => setViewMode("tree")}
+            aria-label="Tree view"
+            className={`p-1 rounded ${viewMode === "tree" ? "bg-gray-200 text-gray-900" : "text-gray-400 hover:text-gray-600"}`}
+          >
+            <GitBranch size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("list")}
+            aria-label="List view"
+            className={`p-1 rounded ${viewMode === "list" ? "bg-gray-200 text-gray-900" : "text-gray-400 hover:text-gray-600"}`}
+          >
+            <List size={14} />
+          </button>
+        </div>
+      </div>
 
-      {/* Tree */}
+      {/* Tree / List */}
       <div className="border border-gray-200 rounded-lg overflow-hidden">
-        <div key={search.trim()} className="max-h-[480px] overflow-y-auto p-2">
-          {tree.children.length === 0 ? (
+        <div key={`${viewMode}-${search.trim()}`} className="max-h-[480px] overflow-y-auto p-2">
+          {filteredFiles.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-4">
               No matching files.
             </p>
+          ) : viewMode === "list" ? (
+            filteredFiles.map((f) => (
+              <div
+                key={f.path}
+                className="flex items-center gap-1.5 px-2 py-1 text-sm"
+              >
+                <File size={14} className="text-gray-400 shrink-0" />
+                <span className="text-gray-700 truncate">{f.path}</span>
+                {f.mime_type && (
+                  <span className="ml-1 px-1.5 py-0.5 rounded bg-gray-100 text-[10px] text-gray-500 shrink-0">
+                    {f.mime_type}
+                  </span>
+                )}
+                <span className="ml-auto text-xs text-gray-400 shrink-0">
+                  {formatFileSize(f.size_bytes ?? 0)}
+                </span>
+              </div>
+            ))
           ) : (
             tree.children.map((child) => (
               <TreeNode
