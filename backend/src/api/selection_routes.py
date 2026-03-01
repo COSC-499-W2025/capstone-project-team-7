@@ -40,6 +40,14 @@ def get_selection_service() -> SelectionService:
     return _selection_service
 
 
+def get_authenticated_selection_service(
+    auth: AuthContext = Depends(get_auth_context),
+    service: SelectionService = Depends(get_selection_service),
+) -> SelectionService:
+    service.apply_access_token(auth.access_token)
+    return service
+
+
 class SelectionRequest(BaseModel):
     """Request model for saving user selections."""
     project_order: Optional[List[str]] = Field(default=None, description="Ordered list of project IDs")
@@ -63,7 +71,7 @@ class SelectionResponse(BaseModel):
 async def save_selection(
     payload: SelectionRequest,
     auth: AuthContext = Depends(get_auth_context),
-    service: SelectionService = Depends(get_selection_service),
+    service: SelectionService = Depends(get_authenticated_selection_service),
 ) -> SelectionResponse:
     """
     Save or update user's selection preferences.
@@ -123,7 +131,7 @@ async def save_selection(
 @router.get("", response_model=SelectionResponse, status_code=status.HTTP_200_OK)
 async def get_selection(
     auth: AuthContext = Depends(get_auth_context),
-    service: SelectionService = Depends(get_selection_service),
+    service: SelectionService = Depends(get_authenticated_selection_service),
 ) -> SelectionResponse:
     """
     Get user's current selection preferences.
@@ -178,7 +186,7 @@ async def get_selection(
 @router.delete("", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def delete_selection(
     auth: AuthContext = Depends(get_auth_context),
-    service: SelectionService = Depends(get_selection_service),
+    service: SelectionService = Depends(get_authenticated_selection_service),
 ) -> None:
     """
     Delete user's selection preferences.
