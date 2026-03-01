@@ -1,0 +1,10 @@
+{
+  "text": "ACME Store\nDate: 2025-09-01\nItems:\n1x Coffee - $3.50\n1x Bagel - $2.00\nTotal: $5.50\n",
+  "lines": [
+    "ACME Store",
+    "Date: 2025-09-01",
+    "1x Coffee - $3.50",
+    "1x Bagel - $2.00",
+    "Total: $5.50"
+  ]
+}

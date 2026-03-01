@@ -1,0 +1,7 @@
+{
+  "vendor":"Corner Shop",
+  "date":"2025-07-15",
+  "total": null,
+  "currency":"GBP",
+  "items":[{"name":"Tea","qty":1,"price":2.0},{"name":"Biscuit","qty":1,"price":1.0}]
+}

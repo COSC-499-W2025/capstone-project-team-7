@@ -1,0 +1,7 @@
+{
+  "vendor": "ACME Supermarket",
+  "date": "2025-07-20",
+  "total": 8.0,
+  "currency": "USD",
+  "items": [ {"name":"Muffin","qty":2,"price":4.0} ]
+}

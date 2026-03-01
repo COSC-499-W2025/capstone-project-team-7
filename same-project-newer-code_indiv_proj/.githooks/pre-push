@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+echo "Running pre-push checks: secret scan"
+# run the repo secret scanner; it exits non-zero if it finds potential secrets
+./scripts/check-secrets.sh || {
+  echo "Pre-push check failed: potential secrets detected. Review and remove before pushing." >&2
+  exit 1
+}
+echo "Pre-push checks passed."

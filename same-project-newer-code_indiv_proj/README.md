@@ -1,116 +1,145 @@
-# Wordoku
+# Ankas Agent
 
-A SwiftUI-based word sudoku puzzle game for iOS and iPadOS. Solve sudoku puzzles using letters instead of numbers, where completing the puzzle reveals a hidden word.
+Small Express + TypeScript app that processes receipts through a worker pipeline.
 
-## Features
+Features
 
-- **Letter-based Sudoku**: Classic 9x9 sudoku puzzles using 9 unique letters
-- **Hidden Words**: Each puzzle reveals a secret word when solved
-- **Progressive Difficulty**: Easy, Medium, and Hard difficulty levels
-- **Level Progression**: Unlock new levels as you complete puzzles
-- **Progress Tracking**: Your progress is automatically saved
-- **Conflict Highlighting**: Optional visual indicators for invalid placements
-- **Clean UI**: Minimalist design that works in both light and dark mode
+- In-memory queue with retry and dead-letter persistence
+- Worker that uploads images to Drive, runs OCR, parses receipts, and appends to Sheets
+- OpenAI-powered receipt parser for production workflows
+- Twilio WhatsApp webhook + outbound helper for interactive flows
+- Mockable services for local development
+- Tools to run OCR batches, create label templates, and compute parser metrics
 
-## Requirements
+Quick commands
 
-- iOS 16.0+ / iPadOS 16.0+
-- Xcode 15.0+
-- Swift 5.9+
-
-## Getting Started
-
-### Building the Project
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/yourusername/word-sudoku.git
-   cd word-sudoku
-   ```
-
-2. Open the active project in Xcode:
-   ```bash
-   open wordsudoku/wordsudoku.xcodeproj
-   ```
-
-   Do not work from `WordokuGiftApp/`; it is an archive snapshot.
-
-3. Select your target device or simulator
-
-4. Build and run (⌘R)
-
-### Running Tests
+- Run unit tests:
 
 ```bash
-xcodebuild test \
-  -project wordsudoku/wordsudoku.xcodeproj \
-  -scheme wordsudoku \
-  -destination 'platform=iOS Simulator,name=iPhone 15'
+npm test
 ```
 
-Or run tests directly in Xcode with ⌘U.
+- Run OCR batch (reads images from `test/receipts/` and writes OCR JSON to `test/ocr_raw/`):
 
-## Architecture
-
-The app follows the **MVVM (Model-View-ViewModel)** architecture pattern:
-
-```
-wordsudoku/wordsudoku/
-├── App/                    # App entry point
-├── Data/                   # Data loading utilities
-├── Engine/                 # Core game logic
-│   ├── WordokuGrid         # Grid data structure
-│   ├── WordokuWord         # Word validation
-│   ├── WordokuValidator    # Sudoku rule validation
-│   ├── WordokuSolver       # Backtracking solver
-│   ├── WordokuSolutionGenerator
-│   ├── WordokuPuzzleGenerator
-│   └── WordokuLevelFactory
-├── UI/                     # SwiftUI views
-│   ├── LevelSelectView     # Level selection screen
-│   ├── GameView            # Main game screen
-│   ├── GridView            # Sudoku grid display
-│   ├── LetterPaletteView   # Letter input palette
-│   ├── WinOverlayView      # Victory overlay
-│   └── Components/         # Reusable UI components
-└── ViewModels/             # View state management
-    ├── LevelSelectViewModel
-    └── GameViewModel
+```bash
+node scripts/run_ocr_batch.js
 ```
 
-## How to Play
+- Compute parser metrics (compare `test/ocr_raw/` to `test/labels/`):
 
-1. **Select a Level**: Choose from available levels on the main screen
-2. **Place Letters**: Tap a cell, then tap a letter from the palette
-3. **Follow Sudoku Rules**: Each row, column, and 3x3 box must contain all 9 letters exactly once
-4. **Find the Word**: Complete the puzzle to reveal the hidden word highlighted in a row or column
-5. **Progress**: Completing a level unlocks the next one
+```bash
+node scripts/compute_metrics.js
+```
 
-## Data Storage
+Run locally
 
-The app uses `UserDefaults` to persist:
-- Unlocked level count
-- Completed levels
-- Difficulty preference
-- In-progress game state (resume directly from level cards)
+```bash
+npm install
+npm run dev
+```
 
-No personal data is collected or transmitted.
+Environment variables (summary)
 
-## Contributing
+Copy `.env.example` to `.env` and fill values. Key variables used by the project:
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+- `PORT` (default 3000)
+- `USE_MOCK_SERVICES` (true/false) — set to `false` to use real services
+- `ADMIN_TOKEN` — admin token for protected endpoints
+- `SPREADSHEET_ID` — Google Sheets ID used by the app
+- `DRIVE_UPLOAD_FOLDER_ID` — Drive folder for uploads
+- Twilio credentials:
+  - `TWILIO_ACCOUNT_SID`
+  - `TWILIO_AUTH_TOKEN`
+  - `TWILIO_WHATSAPP_FROM` — the WhatsApp-enabled number (e.g. `whatsapp:+14155238886` for sandbox)
+  - `TWILIO_WEBHOOK_URL` (optional override for signature validation when behind proxies)
+  - `TWILIO_CONTENT_SID_CONFIRMATION` (optional Content Template for confirmation buttons; body should include `{{1}}` to inject the summary)
+  - `TWILIO_CONTENT_SID_FIELD_SELECTION` (optional Content Template for field selection list)
+  - `TWILIO_CONTENT_SID_COMPANY_SELECTION` (optional Content Template for company selection buttons)
+  - `WHATSAPP_ALLOWED_NUMBERS` (optional comma-separated allowlist of `whatsapp:+...` numbers)
+- Company routing (for multi-company flows):
+  - `COMPANY_ATOMO_NAME` (optional override)
+  - `COMPANY_ATOMO_SPREADSHEET_ID`
+  - `COMPANY_ATOMO_DRIVE_FOLDER_ID`
+  - `COMPANY_APRILIS_NAME` (optional override)
+  - `COMPANY_APRILIS_SPREADSHEET_ID`
+  - `COMPANY_APRILIS_DRIVE_FOLDER_ID`
+  - `COMPANY_MASIVA_NAME` (optional override)
+  - `COMPANY_MASIVA_SPREADSHEET_ID`
+  - `COMPANY_MASIVA_DRIVE_FOLDER_ID`
+- OpenAI credentials:
+  - `OPENAI_API_KEY`
+  - `OPENAI_MODEL` (optional, defaults to `gpt-4o-mini`)
+- Google credentials:
+  - `GOOGLE_SERVICE_ACCOUNT_B64` (base64-encoded JSON)
+  - `GOOGLE_SERVICE_ACCOUNT_JSON` (raw JSON string)
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+Full `.env` example (local development):
 
-## License
+```env
+USE_MOCK_SERVICES=true
+ADMIN_TOKEN=changeme
+SPREADSHEET_ID=your_spreadsheet_id_here
+DRIVE_UPLOAD_FOLDER_ID=your_drive_folder_id_here
+TWILIO_ACCOUNT_SID=ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+TWILIO_AUTH_TOKEN=your_twilio_auth_token
+TWILIO_WHATSAPP_FROM=whatsapp:+14155238886
+# TWILIO_WEBHOOK_URL=https://example.com/webhook (set if Twilio signature fails behind a proxy)
+# TWILIO_CONTENT_SID_CONFIRMATION=HX... (optional confirmation template, include {{1}} in body)
+# TWILIO_CONTENT_SID_FIELD_SELECTION=HX... (optional field selection list template)
+# TWILIO_CONTENT_SID_COMPANY_SELECTION=HX... (optional company selection template)
+# COMPANY_ATOMO_NAME=Átomo Consulting SAC
+# COMPANY_ATOMO_SPREADSHEET_ID=your_atomo_sheet
+# COMPANY_ATOMO_DRIVE_FOLDER_ID=your_atomo_drive_folder
+# COMPANY_APRILIS_NAME=Aprilis EIRL
+# COMPANY_APRILIS_SPREADSHEET_ID=your_aprilis_sheet
+# COMPANY_APRILIS_DRIVE_FOLDER_ID=your_aprilis_drive_folder
+# COMPANY_MASIVA_NAME=Masiva Estrategias SAC
+# COMPANY_MASIVA_SPREADSHEET_ID=your_masiva_sheet
+# COMPANY_MASIVA_DRIVE_FOLDER_ID=your_masiva_drive_folder
+OPENAI_API_KEY=sk-your-key
+# OPENAI_MODEL=gpt-4o-mini
+# GOOGLE_SERVICE_ACCOUNT_B64=... (preferred for local)
+```
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+Label JSON schema
 
-## Acknowledgments
+Place label JSON files in `test/labels/` with the same basename as the OCR output JSON. Example (`test/labels/sample-1.json`):
 
-- Built with SwiftUI
-- Inspired by classic Sudoku and word puzzle games
+```json
+{
+  "vendor": "ACME Store",
+  "date": "2025-09-10",
+  "total": "12.50",
+  "currency": "USD",
+  "items": [
+    { "name": "Coffee", "qty": 1, "price": "2.50" },
+    { "name": "Sandwich", "qty": 1, "price": "10.00" }
+  ]
+}
+```
+
+Useful scripts
+
+```bash
+# generate placeholder labels for images in test/receipts/
+node scripts/generate_label_template.js
+
+# run OCR on images in test/receipts/ (writes JSON to test/ocr_raw/)
+node scripts/run_ocr_batch.js
+
+# compute metrics comparing parser output to labels
+node scripts/compute_metrics.js
+```
+
+Google credentials guide
+
+- Create a service account in GCP and grant Drive/Sheets access.
+- Store the JSON securely. For local runs you can set `GOOGLE_SERVICE_ACCOUNT_B64` to the base64 of the JSON file. Example:
+
+  ```bash
+  export GOOGLE_SERVICE_ACCOUNT_B64=$(base64 -w0 /path/to/sa.json)
+  ```
+
+- The app will prefer `GOOGLE_SERVICE_ACCOUNT_B64` then `GOOGLE_SERVICE_ACCOUNT_JSON`.
+
+Security note: never commit service-account JSON. Use environment variables or a secret manager.

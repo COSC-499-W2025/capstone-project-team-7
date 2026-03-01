@@ -1,0 +1,17 @@
+{
+    "compilerOptions": {
+        "target": "ES2020",
+            "module": "NodeNext",
+        "lib": ["ES2020", "DOM"],
+            "moduleResolution": "nodenext",
+        "outDir": "dist",
+        "rootDir": ".",
+            "strict": false,
+        "esModuleInterop": true,
+        "resolveJsonModule": true,
+            "skipLibCheck": true,
+                "noEmit": false
+    },
+    "include": ["src/**/*.ts", "queue/**/*.ts"],
+    "exclude": ["node_modules", "dist"]
+}
