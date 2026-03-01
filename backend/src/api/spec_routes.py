@@ -28,6 +28,30 @@ try:
 except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
     from backend.src.services.services.projects_service import ProjectsService, ProjectsServiceError
 
+# Import analysis helper functions
+try:
+    from api.project_routes import (
+        _run_git_analysis_for_path,
+        _run_code_analysis_for_path,
+        _build_skills_analysis,
+        _serialize_contribution_metrics,
+        _run_media_analysis,
+        _run_pdf_analysis,
+        _run_document_analysis,
+        _run_duplicate_detection,
+    )
+except (ModuleNotFoundError, ImportError):  # pragma: no cover
+    from backend.src.api.project_routes import (
+        _run_git_analysis_for_path,
+        _run_code_analysis_for_path,
+        _build_skills_analysis,
+        _serialize_contribution_metrics,
+        _run_media_analysis,
+        _run_pdf_analysis,
+        _run_document_analysis,
+        _run_duplicate_detection,
+    )
+
 # Add parent directory to path for absolute imports (needed for lazy imports in background tasks)
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -721,7 +745,159 @@ def _run_scan_background(
             progress_callback=progress_callback,
         )
 
-        # Build result payload
+        # ========================================
+        # RUN ALL ANALYSES (same as create_project_from_upload)
+        # ========================================
+        logger.info("=" * 50)
+        logger.info("🚀 Starting all analysis pipelines...")
+        logger.info("=" * 50)
+        
+        # Update progress for analyses
+        _update_scan_status(
+            scan_id,
+            JobState.running,
+            progress=Progress(percent=40.0, message="Running git analysis..."),
+        )
+        
+        # 1. Git Analysis
+        git_analysis = _run_git_analysis_for_path(target)
+        git_data = git_analysis[0] if git_analysis else None
+        
+        # 2. Code Analysis (with timeout to prevent hanging)
+        _update_scan_status(
+            scan_id,
+            JobState.running,
+            progress=Progress(percent=50.0, message="Running code analysis..."),
+        )
+        code_analysis = None
+        try:
+            import concurrent.futures
+            import threading
+            
+            # Run code analysis with 60 second timeout
+            result_container = [None]
+            exception_container = [None]
+            
+            def run_with_exception_handling():
+                try:
+                    result_container[0] = _run_code_analysis_for_path(target, preferences)
+                except Exception as e:
+                    exception_container[0] = e
+            
+            thread = threading.Thread(target=run_with_exception_handling, daemon=True)
+            thread.start()
+            thread.join(timeout=60)
+            
+            if thread.is_alive():
+                logger.warning("⚠️  Code analysis timed out after 60 seconds - skipping")
+                code_analysis = None
+            elif exception_container[0]:
+                logger.warning(f"⚠️  Code analysis error: {exception_container[0]} - skipping")
+                code_analysis = None
+            else:
+                code_analysis = result_container[0]
+                if code_analysis:
+                    logger.info(f"✅ Code analysis completed: {list(code_analysis.keys())}")
+                else:
+                    logger.info("⚠️  Code analysis returned None")
+        except Exception as e:
+            logger.warning(f"⚠️  Code analysis setup error: {e} - skipping")
+            code_analysis = None
+        
+        # 3. Skills Analysis
+        _update_scan_status(
+            scan_id,
+            JobState.running,
+            progress=Progress(percent=60.0, message="Running skills analysis..."),
+        )
+        skills_analysis = None
+        try:
+            from services.services.skills_analysis_service import SkillsAnalysisService
+            skills_service = SkillsAnalysisService()
+            skills_service.extract_skills(
+                target_path=target,
+                code_analysis_result=code_analysis,
+                git_analysis_result=git_data,
+            )
+            skills_analysis = _build_skills_analysis(skills_service)
+            logger.info("✅ Skills analysis completed")
+        except Exception as e:
+            logger.error(f"❌ Skills analysis failed: {e}", exc_info=True)
+        
+        # 4. Contribution Metrics
+        _update_scan_status(
+            scan_id,
+            JobState.running,
+            progress=Progress(percent=65.0, message="Running contribution analysis..."),
+        )
+        contribution_metrics_payload = None
+        metrics_obj = None
+        if git_data:
+            try:
+                from services.services.contribution_analysis_service import ContributionAnalysisService
+                metrics_obj = ContributionAnalysisService().analyze_contributions(
+                    git_analysis=git_data,
+                    code_analysis=code_analysis,
+                    parse_result=scan_result.parse_result,
+                )
+                contribution_metrics_payload = _serialize_contribution_metrics(metrics_obj)
+                logger.info("✅ Contribution metrics completed")
+            except Exception as e:
+                logger.error(f"❌ Contribution analysis failed: {e}", exc_info=True)
+        
+        # 5. Skills Progress Timeline
+        skills_progress = None
+        if skills_analysis:
+            chronological = skills_analysis.get("chronological_overview") or []
+            if chronological:
+                try:
+                    from local_analysis.skill_progress_timeline import build_skill_progression
+                    progression = build_skill_progression(chronological, metrics_obj)
+                    from api.project_routes import _period_to_dict
+                    skills_progress = {
+                        "timeline": [_period_to_dict(period) for period in progression.timeline],
+                    }
+                    logger.info("✅ Skills progress timeline completed")
+                except Exception as e:
+                    logger.error(f"❌ Skills progress failed: {e}", exc_info=True)
+        
+        # 6. Media Analysis
+        _update_scan_status(
+            scan_id,
+            JobState.running,
+            progress=Progress(percent=70.0, message="Running media analysis..."),
+        )
+        media_analysis = _run_media_analysis(scan_result.parse_result)
+        
+        # 7. PDF Analysis
+        _update_scan_status(
+            scan_id,
+            JobState.running,
+            progress=Progress(percent=75.0, message="Running PDF analysis..."),
+        )
+        pdf_analysis = _run_pdf_analysis(target, scan_result.parse_result)
+        
+        # 8. Document Analysis
+        _update_scan_status(
+            scan_id,
+            JobState.running,
+            progress=Progress(percent=80.0, message="Running document analysis..."),
+        )
+        document_analysis = _run_document_analysis(target, scan_result.parse_result)
+        
+        # 9. Duplicate Detection
+        _update_scan_status(
+            scan_id,
+            JobState.running,
+            progress=Progress(percent=85.0, message="Running duplicate detection..."),
+        )
+        duplicate_report = _run_duplicate_detection(scan_result.parse_result)
+        
+        logger.info("=" * 50)
+        logger.info("✨ All analysis pipelines completed")
+        logger.info("=" * 50)
+
+        # Build result payload with all analyses
         parse_summary = dict(scan_result.parse_result.summary) if scan_result.parse_result else {}
         files_data = []
         for meta in scan_result.parse_result.files[:MAX_FILES_IN_RESPONSE]:
@@ -746,10 +922,65 @@ def _run_scan_background(
             "files": files_data,
             "timings": scan_result.timings,
         }
+        
+        # Add all analyses to the result payload
+        if git_analysis:
+            logger.info(f"💾 Saving git analysis to scan_data ({len(git_analysis)} repos)")
+            result_payload["git_analysis"] = git_analysis
+        
+        if code_analysis:
+            logger.info(f"💾 Saving code analysis to scan_data")
+            result_payload["code_analysis"] = code_analysis
+        else:
+            logger.warning("⚠️  No code analysis data to save")
+        
+        if skills_analysis:
+            logger.info(f"💾 Saving skills analysis to scan_data")
+            result_payload["skills_analysis"] = skills_analysis
+        
+        if contribution_metrics_payload:
+            logger.info(f"💾 Saving contribution metrics to scan_data")
+            result_payload["contribution_metrics"] = contribution_metrics_payload
+        
+        if skills_progress:
+            logger.info(f"💾 Saving skills progress to scan_data")
+            result_payload["skills_progress"] = skills_progress
+        
+        if media_analysis:
+            logger.info(f"💾 Saving media analysis to scan_data")
+            result_payload["media_analysis"] = media_analysis
+        
+        if pdf_analysis:
+            logger.info(f"💾 Saving PDF analysis to scan_data ({len(pdf_analysis)} PDFs)")
+            result_payload["pdf_analysis"] = pdf_analysis
+        
+        if document_analysis:
+            logger.info(f"💾 Saving document analysis to scan_data ({len(document_analysis)} documents)")
+            result_payload["document_analysis"] = document_analysis
+        
+        if duplicate_report:
+            logger.info(f"💾 Saving duplicate report to scan_data")
+            result_payload["duplicate_report"] = duplicate_report
+
+        # Convert all sets to lists for JSON serialization
+        def convert_sets_to_lists(obj):
+            """Recursively convert all sets to lists in a data structure."""
+            if isinstance(obj, set):
+                return list(obj)
+            elif isinstance(obj, dict):
+                return {k: convert_sets_to_lists(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_sets_to_lists(item) for item in obj]
+            else:
+                return obj
+        
+        result_payload = convert_sets_to_lists(result_payload)
+        logger.info("✅ Converted all sets to lists for JSON serialization")
 
         # Optionally persist to database
         project_id = None
         if persist_project and profile_id:
+            logger.info(f"📝 Attempting to save project to database (user_id={profile_id}, project_name={target.name})")
             try:
                 from src.services.services.projects_service import ProjectsService
                 projects_service = ProjectsService()
@@ -762,9 +993,14 @@ def _run_scan_background(
                 )
                 project_id = saved.get("id")
                 result_payload["project_id"] = project_id
+                logger.info(f"✅ Project saved successfully! project_id={project_id}")
             except Exception as persist_err:
-                logger.warning(f"Failed to persist scan to database: {persist_err}")
+                logger.error(f"❌ Failed to persist scan to database: {persist_err}", exc_info=True)
                 result_payload["persist_warning"] = str(persist_err)
+        elif not persist_project:
+            logger.warning(f"⚠️  Project NOT saved: persist_project=False")
+        elif not profile_id:
+            logger.warning(f"⚠️  Project NOT saved: profile_id is None")
 
         _update_scan_status(
             scan_id,
