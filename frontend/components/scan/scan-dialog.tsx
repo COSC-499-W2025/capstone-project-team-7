@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 
 type ScanMode = "new" | "append";
+type SourceType = "folder" | "zip";
 
 interface ScanDialogProps {
   open: boolean;
@@ -48,6 +49,7 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
   const [isElectron, setIsElectron] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isBrowsing, setIsBrowsing] = useState(false);
+  const [sourceType, setSourceType] = useState<SourceType>("folder");
   
   // Append mode state
   const [scanMode, setScanMode] = useState<ScanMode>("new");
@@ -68,7 +70,8 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
 
   // Check for Electron and auth on mount
   useEffect(() => {
-    setIsElectron(typeof window !== "undefined" && !!window.desktop?.selectDirectory);
+    const desktopApi = typeof window !== "undefined" ? window.desktop : undefined;
+    setIsElectron(!!desktopApi?.selectDirectory || !!desktopApi?.openFile);
     setIsAuthenticated(!!getStoredToken());
   }, [open]);
 
@@ -108,6 +111,7 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
       const timeout = setTimeout(() => {
         setSourcePath("");
         setScanMode("new");
+        setSourceType("folder");
         setSelectedProjectId("");
         setProjectLoadError(null);
         resetNewScan();
@@ -118,18 +122,30 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
   }, [open, resetNewScan, resetAppendScan]);
 
   const handleBrowse = async () => {
-    if (!window.desktop?.selectDirectory) return;
+    if (!window.desktop) return;
 
     setIsBrowsing(true);
     try {
-      const paths = await window.desktop.selectDirectory({
-        title: "Select folder to scan",
-      });
+      let paths: string[] = [];
+      if (sourceType === "zip") {
+        if (!window.desktop.openFile) return;
+        paths = await window.desktop.openFile({
+          title: "Select ZIP archive to scan",
+          filters: [{ name: "ZIP Archives", extensions: ["zip"] }],
+          properties: ["openFile"],
+        });
+      } else {
+        if (!window.desktop.selectDirectory) return;
+        paths = await window.desktop.selectDirectory({
+          title: "Select folder to scan",
+        });
+      }
+
       if (paths && paths.length > 0) {
         setSourcePath(paths[0]);
       }
     } catch (err) {
-      console.error("Failed to open directory picker:", err);
+      console.error("Failed to open source picker:", err);
     } finally {
       setIsBrowsing(false);
     }
@@ -191,8 +207,8 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
               : isFailed
               ? "There was a problem scanning your project."
               : scanMode === "append"
-              ? "Select a folder to add files to an existing project."
-              : "Select a folder to scan for portfolio artifacts."}
+              ? "Select a folder or ZIP archive to add files to an existing project."
+              : "Select a folder or ZIP archive to scan for portfolio artifacts."}
           </DialogDescription>
         </DialogHeader>
 
@@ -425,11 +441,44 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="source-path">Folder Path</Label>
+                <Label>Source Type</Label>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant={sourceType === "folder" ? "default" : "outline"}
+                    className="flex-1"
+                    onClick={() => setSourceType("folder")}
+                    disabled={!isAuthenticated || isBrowsing}
+                  >
+                    <FolderOpen className="h-4 w-4 mr-2" />
+                    Folder
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={sourceType === "zip" ? "default" : "outline"}
+                    className="flex-1"
+                    onClick={() => setSourceType("zip")}
+                    disabled={!isAuthenticated || isBrowsing}
+                  >
+                    ZIP Archive
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="source-path">{sourceType === "zip" ? "ZIP File Path" : "Folder Path"}</Label>
                 <div className="flex gap-2">
                   <Input
                     id="source-path"
-                    placeholder={isElectron ? "Click Browse to select a folder" : "/path/to/project"}
+                    placeholder={
+                      isElectron
+                        ? sourceType === "zip"
+                          ? "Click Browse to select a .zip file"
+                          : "Click Browse to select a folder"
+                        : sourceType === "zip"
+                        ? "/path/to/archive.zip"
+                        : "/path/to/project"
+                    }
                     value={sourcePath}
                     onChange={(e) => setSourcePath(e.target.value)}
                     disabled={!isAuthenticated || isBrowsing}

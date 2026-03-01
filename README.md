@@ -1,7 +1,84 @@
 # Portfolio Analysis (Team 7)
 
-A portfolio analysis system for scanning projects, summarizing artifacts, and generating resume-ready snippets. The stack couples a Python/FastAPI backend, Supabase persistence, and optional OpenAI-powered analysis while keeping all local analysis (PDFs/documents/media/git) on-device.
+Portfolio analysis system for scanning projects, summarizing artifacts, and generating resume-ready snippets. Stack: FastAPI backend + Next.js frontend + Electron desktop shell + Supabase storage.
 
+## Quick start (Electron app)
+From repo root:
+
+```bash
+./scripts/dev_up_desktop.sh
+```
+
+This launches:
+- backend: `http://localhost:8000`
+- frontend: `http://localhost:3000`
+- Electron desktop window
+
+Stop with `Ctrl+C`.
+
+Alternative root scripts:
+
+```bash
+npm run dev:desktop      # backend + frontend + electron (deps already installed)
+npm run start:desktop    # installs workspace npm deps, then runs desktop stack
+npm run preview:desktop  # static frontend build + electron preview
+```
+
+## Backend only
+
+```bash
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+## Prerequisites
+- Python 3.12.x
+- `ffmpeg` + `libsndfile` (macOS: `brew install ffmpeg libsndfile`)
+- `.env` configured with `SUPABASE_URL` and `SUPABASE_KEY`
+- Optional `OPENAI_API_KEY` for AI features
+
+## Testing
+
+Backend:
+
+```bash
+cd backend
+source .venv/bin/activate
+pytest -q
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm run test
+```
+
+Feature-focused reorder test:
+
+```bash
+cd frontend
+npx vitest run __tests__/projects.test.tsx --silent
+```
+
+For testing, use these files (repo root):
+
+- `same-project-newer-code_indiv_proj.zip` — newer snapshot of the same code project
+- `same-project-older-code_indiv_proj.zip` — older snapshot of that same project
+- `test-data-multiproject.zip` — combined dataset with `code_indiv_proj`, `code_collab_proj`, `text_indiv_proj`, and `image_indiv_proj`
+
+Note: there are zipped and unzipped versions of the test folders. Zip archives often exclude `.git`, so keep unzipped copies when git/contribution analysis parity is needed.
+
+## Docker
+
+```bash
+cp .env.example .env
+docker compose up api
+```
+
+## Repo layout
 ```text
 ├── backend/                  # FastAPI app + analyzers + services
 │   └── src/
@@ -15,97 +92,29 @@ A portfolio analysis system for scanning projects, summarizing artifacts, and ge
 │       ├── local_analysis/   # PDF/doc/media/git analyzers (offline)
 │       ├── scanner/          # File walker, duplicate detection, preferences
 │       └── main.py           # FastAPI entrypoint
-├── frontend/                 # Next.js web UI (in development)
+├── frontend/                 # Next.js web UI
 │   ├── app/                  # Next.js App Router pages
 │   ├── components/           # React components + shadcn/ui
 │   ├── lib/                  # Utilities and helpers
 │   └── types/                # TypeScript type definitions
-├── electron/                 # Desktop app wrapper (in development)
+├── electron/                 # Desktop app wrapper
 │   └── ipc/                  # IPC handlers for main/renderer
 ├── db/                       # SQL migration scripts
-├── docs/                     # Architecture, DFD, WBS, proposal/requirements
-│   └── assets/               # Documentation images
+├── docs/                     # Architecture, DFD, WBS, requirements/proposal
 ├── supabase/                 # Schema guide + migrations
 │   └── migrations/           # Supabase migration files
 ├── scripts/                  # Setup + launch helpers
 └── tests/                    # Pytest suite for services/analyzers
-    ├── analyzers/            # Analyzer unit tests
-    ├── services/             # Service tests
-    ├── fixtures/             # Test fixtures and sample data
-    ├── integration/          # Integration tests
-    ├── local_analysis/       # Local analysis tests
-    └── scanner/              # Scanner tests
 ```
 
-## Highlights
-- Local analysis pipeline (PDF/doc/media summaries, git timelines, contribution scoring, duplicate detection) with no external calls.
-- AI-powered insights and resume bullet generation via OpenAI (opt-in; consent gates + key verification API).
-- FastAPI backend for project scanning, analysis, and portfolio management.
-- Supabase-backed storage for scans (`projects`/`scan_files`), resume snippets (`resume_items`), user configs, and consent records.
-- Privacy-first controls: consent screens, offline-first defaults, and ability to clear stored API keys/sessions.
-
-## Prerequisites
-- Python 3.12.x (see `.python-version`). The launcher can install `python@3.12` via Homebrew when missing.
-- `ffmpeg` and `libsndfile1` are required for media analysis (installed automatically in Docker; on macOS `brew install ffmpeg libsndfile`).
-- Supabase project URL + service role key (`.env`), optional OpenAI API key for AI features.
-
-## Docs & Resources
+## Docs & references
 - [Data Flow Diagrams](docs/dfd.md)
 - [System Architecture](docs/systemArchitecture.md)
 - [Work Breakdown Structure](docs/WBS.md)
 - [Team Contract](docs/teamContract.pdf)
-- [Shared Drive](https://drive.google.com/drive/folders/1Ic_HO0ReyS5_xveO-FNnUX63wc-phoV9?usp=sharing)
-
-## Setup & Run the FastAPI Service
-From `backend/`:
-```bash
-uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
-```
-Exposes health checks plus `/api/llm` routes for API-key verification and consent-aware client status.
-
-First-time setup:
-1) Copy env vars: `cp .env.example .env` and fill `SUPABASE_URL` + `SUPABASE_KEY` (service role). Set `PORTFOLIO_USER_EMAIL` for commit attribution filtering; provide `OPENAI_API_KEY` at runtime when prompted.
-2) Create virtual environment and install dependencies:
-```bash
-cd backend
-python -m venv .venv && source .venv/bin/activate  # or use existing venv
-pip install -r requirements.txt
-uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-## Docker
-Before running for the first time:
-```bash
-cp .env.example .env   # populate values first
-```
-
-To run the FastAPI service inside the container:
-```bash
-docker compose up api
-```
-
-## Testing
-
-### Backend
-```bash
-cd backend
-python -m venv .venv && source .venv/bin/activate  # or use existing venv
-pip install -r requirements.txt
-pytest -q
-```
-Tests cover services, analyzers (PDF/doc/media/git), consent flows, Supabase-backed services, and API routes. Some suites load Torch/vision/audio; allow extra time on first install.
-
-### Frontend
-```bash
-cd frontend
-npm run test          # single run (vitest)
-npm run test:watch    # watch mode
-```
-Tests use Vitest + Testing Library (jsdom). Test files are in `frontend/__tests__/`.
-
-## Key references
-- Architecture + diagrams: `docs/systemArchitecture.md`, `docs/dfd.md`
-- Requirements & planning: `docs/projectRequirements.md`, `docs/projectProposal.md`, `docs/WBS.md`
-- Supabase schema & migrations: `supabase/SCHEMA.md`, `supabase/migrations/`
-- Analyzer guides: `backend/src/local_analysis/README.md`, `backend/src/analyzer/README.md`
-- Consent system: `backend/src/auth/README.md`
+- [Project Requirements](docs/projectRequirements.md)
+- [Project Proposal](docs/projectProposal.md)
+- [Supabase Schema](supabase/SCHEMA.md)
+- [Local Analysis Guide](backend/src/local_analysis/README.md)
+- [Analyzer Guide](backend/src/analyzer/README.md)
+- [Consent/Auth Guide](backend/src/auth/README.md)

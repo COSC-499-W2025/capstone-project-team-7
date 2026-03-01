@@ -76,6 +76,9 @@ vi.mock("@/lib/api/projects", () => ({
   getProjectById: vi.fn(),
   deleteProject: vi.fn(),
   updateProjectRole: vi.fn(),
+  updateProjectOverrides: vi.fn(),
+  getSelection: vi.fn(),
+  saveSelection: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -87,13 +90,16 @@ vi.mock("@/lib/auth", () => ({
   getStoredToken: vi.fn(),
 }));
 
-import { getProjects, getProjectById, deleteProject, updateProjectRole } from "@/lib/api/projects";
+import { getProjects, getProjectById, deleteProject, updateProjectRole, updateProjectOverrides, getSelection, saveSelection } from "@/lib/api/projects";
 import { getStoredToken } from "@/lib/auth";
 
 const mockGetProjects = getProjects as Mock;
 const mockGetProjectById = getProjectById as Mock;
 const mockDeleteProject = deleteProject as Mock;
 const mockUpdateProjectRole = updateProjectRole as Mock;
+const mockUpdateProjectOverrides = updateProjectOverrides as Mock;
+const mockGetSelection = getSelection as Mock;
+const mockSaveSelection = saveSelection as Mock;
 const mockGetStoredToken = getStoredToken as Mock;
 
 // Mock window.confirm
@@ -135,6 +141,25 @@ beforeEach(() => {
   mockGetProjectById.mockResolvedValue(MOCK_PROJECT_DETAIL);
   mockDeleteProject.mockResolvedValue(undefined);
   mockUpdateProjectRole.mockResolvedValue(undefined);
+  mockUpdateProjectOverrides.mockResolvedValue(undefined);
+  mockGetSelection.mockResolvedValue({
+    user_id: "user-1",
+    project_order: [],
+    skill_order: [],
+    selected_project_ids: [],
+    selected_skill_ids: [],
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+  });
+  mockSaveSelection.mockResolvedValue({
+    user_id: "user-1",
+    project_order: [],
+    skill_order: [],
+    selected_project_ids: [],
+    selected_skill_ids: [],
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -415,6 +440,53 @@ describe("ProjectsPage", () => {
     expect(mockGetProjects).toHaveBeenCalledWith("test-token");
   });
 
+  it("applies saved project order from selection API", async () => {
+    mockGetSelection.mockResolvedValue({
+      user_id: "user-1",
+      project_order: ["proj-2", "proj-1"],
+      skill_order: [],
+      selected_project_ids: [],
+      selected_skill_ids: [],
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-01T00:00:00Z",
+    });
+
+    await renderAndWait();
+
+    const rows = screen.getAllByRole("row");
+    expect(rows[1].textContent).toContain("Backend API");
+    expect(rows[2].textContent).toContain("My Portfolio");
+  });
+
+  it("reorders projects with move buttons and persists order", async () => {
+    await renderAndWait();
+
+    const moveDownButtons = screen.getAllByTitle("Move down");
+    await userEvent.click(moveDownButtons[0]);
+
+    await waitFor(() => {
+      expect(mockSaveSelection).toHaveBeenCalledWith("test-token", {
+        project_order: ["proj-2", "proj-1"],
+      });
+    });
+
+    expect(screen.getByText("Project order saved.")).toBeInTheDocument();
+  });
+
+  it("reorders projects with keyboard arrows and persists order", async () => {
+    await renderAndWait();
+
+    const reorderButtons = screen.getAllByTitle("Reorder project");
+    reorderButtons[0].focus();
+    await userEvent.keyboard("{ArrowDown}");
+
+    await waitFor(() => {
+      expect(mockSaveSelection).toHaveBeenCalledWith("test-token", {
+        project_order: ["proj-2", "proj-1"],
+      });
+    });
+  });
+
   it("modal displays loading state while fetching project details", async () => {
     mockGetProjectById.mockReturnValue(new Promise(() => {})); // never resolves
 
@@ -499,7 +571,7 @@ describe("ProjectsPage", () => {
     await userEvent.click(screen.getByText("Save"));
 
     await waitFor(() => {
-      expect(mockUpdateProjectRole).toHaveBeenCalledWith("test-token", "proj-1", "lead");
+      expect(mockUpdateProjectOverrides).toHaveBeenCalledWith("test-token", "proj-1", { role: "lead" });
     });
   });
 
@@ -518,7 +590,7 @@ describe("ProjectsPage", () => {
     await userEvent.click(screen.getByText("Save"));
 
     await waitFor(() => {
-      expect(mockUpdateProjectRole).toHaveBeenCalled();
+      expect(mockUpdateProjectOverrides).toHaveBeenCalled();
     });
 
     // Close the modal, then confirm the table row shows the updated role
@@ -533,7 +605,7 @@ describe("ProjectsPage", () => {
   });
 
   it("shows error message when updateProjectRole fails", async () => {
-    mockUpdateProjectRole.mockRejectedValue(new Error("Server error"));
+    mockUpdateProjectOverrides.mockRejectedValue(new Error("Server error"));
 
     await renderAndWait();
     const eyeButtons = screen.getAllByTitle("View details");

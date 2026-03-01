@@ -5,7 +5,10 @@ import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { DocumentAnalysisTab } from "@/components/project/document-analysis-tab";
+import { PdfAnalysisTab } from "@/components/project/pdf-analysis-tab";
 import { getStoredToken } from "@/lib/auth";
 import {CodeAnalysisTab} from "@/components/project/code-analysis-tab";
 import {
@@ -14,6 +17,7 @@ import {
   getProjectSkillTimeline,
   generateProjectSkillSummary,
   exportProjectHtml,
+  updateProjectOverrides,
 } from "@/lib/api/projects";
 import {
   detectLanguageMetric,
@@ -54,7 +58,20 @@ import {
   Loader2,
   Check,
   AlertCircle,
+  Download,
+  Check,
+  Loader2,
+  AlertCircle,
+  Info,
 } from "lucide-react";
+import { FileTreeView } from "@/components/project/file-tree-view";
+import type { FileEntry } from "@/lib/file-tree";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 // Main section tabs (4 sections)
 const mainTabs = [
@@ -125,6 +142,9 @@ export default function ProjectPage() {
   // Export HTML state
   const [htmlExportStatus, setHtmlExportStatus] = useState<"idle" | "exporting" | "success" | "error">("idle");
   const [htmlExportError, setHtmlExportError] = useState<string | null>(null);
+  // Export JSON state
+  const [exportStatus, setExportStatus] = useState<"idle" | "exporting" | "success" | "error">("idle");
+  const [exportError, setExportError] = useState<string | null>(null);
 
   // Skills / progression state (from main)
   const [skillsTimeline, setSkillsTimeline] = useState<SkillProgressPeriod[]>(
@@ -135,6 +155,11 @@ export default function ProjectPage() {
   const [skillsNote, setSkillsNote] = useState<string | null>(null);
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [summaryLoading, setSummaryLoading] = useState(false);
+
+  // Highlighted skills state
+  const [highlightedSkills, setHighlightedSkills] = useState<string[]>([]);
+  const [isSavingHighlights, setIsSavingHighlights] = useState(false);
+  const [highlightSaveStatus, setHighlightSaveStatus] = useState<"idle" | "success" | "error">("idle");
 
   // Keep local projectId in sync with URL
   useEffect(() => {
@@ -189,6 +214,58 @@ export default function ProjectPage() {
     };
   }, [loadProject]);
 
+  // Load highlighted skills from project data
+  useEffect(() => {
+    if (project?.user_overrides?.highlighted_skills) {
+      setHighlightedSkills(project.user_overrides.highlighted_skills);
+    } else {
+      setHighlightedSkills([]);
+    }
+  }, [project]);
+
+  // Save highlighted skills to backend
+  const saveHighlightedSkills = async (skills: string[]) => {
+    const token = getStoredToken();
+    if (!token || !project?.id) return;
+
+    try {
+      setIsSavingHighlights(true);
+      setHighlightSaveStatus("idle");
+      
+      await updateProjectOverrides(token, project.id, {
+        highlighted_skills: skills,
+      });
+      
+      setHighlightSaveStatus("success");
+      
+      // Reload project to get updated data
+      await loadProject();
+      
+      // Clear success message after 2 seconds
+      setTimeout(() => {
+        setHighlightSaveStatus("idle");
+      }, 2000);
+    } catch (err) {
+      console.error("Failed to save highlighted skills:", err);
+      setHighlightSaveStatus("error");
+      setTimeout(() => {
+        setHighlightSaveStatus("idle");
+      }, 3000);
+    } finally {
+      setIsSavingHighlights(false);
+    }
+  };
+
+  // Toggle skill highlight
+  const toggleSkillHighlight = (skillName: string) => {
+    setHighlightedSkills((prev) => {
+      const newHighlights = prev.includes(skillName)
+        ? prev.filter((s) => s !== skillName)
+        : [...prev, skillName];
+      return newHighlights;
+    });
+  };
+
   // Fetch skills timeline/summary when we have a projectId
   useEffect(() => {
     const effectiveProjectId = projectId ?? project?.id ?? null;
@@ -235,6 +312,11 @@ export default function ProjectPage() {
     if (!token) {
       setHtmlExportError("Not authenticated");
       setHtmlExportStatus("error");
+  /** Build and trigger a JSON report download for the current project. */
+  const handleExportJson = useCallback(() => {
+    if (!project) {
+      setExportError("No project loaded");
+      setExportStatus("error");
       return;
     }
 
@@ -247,12 +329,45 @@ export default function ProjectPage() {
       const blob = new Blob([htmlContent], { type: "text/html" });
       const url = URL.createObjectURL(blob);
 
+      setExportStatus("exporting");
+      setExportError(null);
+
+      // Build the export payload: project metadata + everything in scan_data.
+      // scan_data keys vary depending on how the scan was created (upload vs
+      // full TUI scan), so we spread all of scan_data rather than cherry-picking
+      // keys that might not exist yet.
+      const sd = project.scan_data ?? {};
+      const payload: Record<string, unknown> = {
+        export_format: "json",
+        exported_at: new Date().toISOString(),
+        project: {
+          id: project.id,
+          name: project.project_name,
+          path: project.project_path,
+          scan_timestamp: project.scan_timestamp ?? null,
+          total_files: project.total_files,
+          total_lines: project.total_lines,
+          languages: project.languages ?? [],
+          contribution_score: project.contribution_score ?? null,
+          primary_contributor: project.primary_contributor ?? null,
+          role: project.role ?? null,
+        },
+        // Spread every key from scan_data so nothing is silently dropped
+        ...sd,
+      };
+
+      const jsonStr = JSON.stringify(payload, null, 2);
+      const blob = new Blob([jsonStr], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+
+      // Sanitise project name for filename
       const safeName = (project.project_name || "project")
         .replace(/[^a-zA-Z0-9_-]/g, "_")
         .replace(/_+/g, "_")
         .toLowerCase();
       const ts = new Date().toISOString().slice(0, 10);
       const filename = `${safeName}_report_${ts}.html`;
+      const filename = `${safeName}_report_${ts}.json`;
 
       const a = document.createElement("a");
       a.href = url;
@@ -271,6 +386,16 @@ export default function ProjectPage() {
       setTimeout(() => {
         setHtmlExportStatus("idle");
         setHtmlExportError(null);
+      setExportStatus("success");
+      // Reset back to idle after a brief period
+      setTimeout(() => setExportStatus("idle"), 2500);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Export failed";
+      setExportError(msg);
+      setExportStatus("error");
+      setTimeout(() => {
+        setExportStatus("idle");
+        setExportError(null);
       }, 4000);
     }
   }, [project]);
@@ -280,6 +405,32 @@ export default function ProjectPage() {
   const skillsAnalysis = (scanData.skills_analysis ?? {}) as any;
   const skillsByCategory = (skillsAnalysis.skills_by_category ?? {}) as any;
   const totalSkills = (skillsAnalysis.total_skills ?? 0) as number;
+
+  // Extract all available skill names
+  const allAvailableSkills = useMemo(() => {
+    const skills: string[] = [];
+    Object.values(skillsByCategory).forEach((categorySkills: any) => {
+      if (Array.isArray(categorySkills)) {
+        categorySkills.forEach((skill: any) => {
+          if (typeof skill === "string") {
+            skills.push(skill);
+          } else if (skill && typeof skill.name === "string") {
+            skills.push(skill.name);
+          }
+        });
+      }
+    });
+    return skills.sort();
+  }, [skillsByCategory]);
+
+  const projectFiles: FileEntry[] = Array.isArray(scanData.files)
+    ? (scanData.files as any[])
+        .map((f: any) => ({
+          ...f,
+          path: typeof f.path === "string" ? f.path : typeof f.file_path === "string" ? f.file_path : "",
+        }))
+        .filter((f: any) => typeof f.path === "string" && f.path.length > 0)
+    : [];
 
   const hasProject = Boolean(project);
 
@@ -611,7 +762,28 @@ export default function ProjectPage() {
                         <p className="text-2xl font-bold text-gray-900">
                           {filesProcessedLabel}
                         </p>
-                        <p className="text-xs text-gray-500 mt-1">Files Processed</p>
+                        <p className="text-xs text-gray-500 mt-1 inline-flex items-center gap-1">
+                          Files Processed
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  type="button"
+                                  aria-label="Files processed info"
+                                  className="inline-flex items-center"
+                                >
+                                  <Info size={12} className="text-gray-400 cursor-help" />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" className="max-w-xs text-xs">
+                                Only relevant files are counted. Files in excluded
+                                directories (node_modules, .git, __pycache__, etc.)
+                                and unsupported file types are filtered out during
+                                scanning.
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </p>
                       </div>
                       <div className="bg-gray-50 rounded-lg p-4 text-center">
                         <p className="text-2xl font-bold text-gray-900">
@@ -757,11 +929,76 @@ export default function ProjectPage() {
 
               {/* Skills Main */}
               <TabsContent value="skills-main" className="space-y-6">
+                {/* Highlighted Skills Section */}
                 <Card className="bg-white border border-gray-200">
                   <CardHeader className="border-b border-gray-200">
-                    <CardTitle className="text-xl font-bold text-gray-900">
-                      Skills Analysis
-                    </CardTitle>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-xl font-bold text-gray-900">
+                        Highlighted Skills
+                      </CardTitle>
+                      {highlightSaveStatus === "success" && (
+                        <span className="flex items-center gap-1.5 text-sm text-green-600 font-medium">
+                          <Check size={16} />
+                          Saved
+                        </span>
+                      )}
+                      {highlightSaveStatus === "error" && (
+                        <span className="flex items-center gap-1.5 text-sm text-red-600 font-medium">
+                          <AlertCircle size={16} />
+                          Save failed
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Select skills you want to emphasize on your resume or portfolio
+                    </p>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    {highlightedSkills.length === 0 ? (
+                      <p className="text-sm text-gray-500">
+                        No skills highlighted yet. Select skills below to highlight them.
+                      </p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {highlightedSkills.map((skill) => (
+                          <span
+                            key={`highlighted-${skill}`}
+                            className="px-3 py-1.5 rounded-full bg-blue-600 text-white text-sm font-medium flex items-center gap-2"
+                          >
+                            {skill}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* All Skills with Selection */}
+                <Card className="bg-white border border-gray-200">
+                  <CardHeader className="border-b border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-xl font-bold text-gray-900">
+                        Select Skills to Highlight
+                      </CardTitle>
+                      <Button
+                        onClick={() => saveHighlightedSkills(highlightedSkills)}
+                        disabled={isSavingHighlights}
+                        size="sm"
+                        className="bg-gray-900 hover:bg-gray-800"
+                      >
+                        {isSavingHighlights ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          <>
+                            <Check className="mr-2 h-4 w-4" />
+                            Save Highlights
+                          </>
+                        )}
+                      </Button>
+                    </div>
                   </CardHeader>
                   <CardContent className="p-6 space-y-4">
                     {skillsAnalysis.success === false && (
@@ -783,6 +1020,9 @@ export default function ProjectPage() {
                           <span className="px-3 py-1 rounded-full bg-gray-900 text-white text-xs font-semibold">
                             Total skills · {totalSkills}
                           </span>
+                          <span className="px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">
+                            Highlighted · {highlightedSkills.length}
+                          </span>
                           <span className="px-3 py-1 rounded-full bg-gray-100 text-gray-700 text-xs font-semibold">
                             Categories · {Object.keys(skillsByCategory).length}
                           </span>
@@ -790,20 +1030,45 @@ export default function ProjectPage() {
 
                         {Object.entries(skillsByCategory).map(([category, skills]) => (
                           <div key={category} className="border border-gray-200 rounded-lg p-4">
-                            <p className="text-xs font-semibold text-gray-500 uppercase">
+                            <p className="text-xs font-semibold text-gray-500 uppercase mb-3">
                               {category.replace(/_/g, " ")}
                             </p>
-                            <div className="mt-3 flex flex-wrap gap-2">
+                            <div className="space-y-2">
                               {(skills as Array<{ name: string; proficiency?: string }>).map(
-                                (skill) => (
-                                  <span
-                                    key={`${category}-${skill.name}`}
-                                    className="px-3 py-1 rounded-full bg-gray-900 text-white text-xs"
-                                  >
-                                    {skill.name}
-                                    {skill.proficiency ? ` · ${formatConfidence(skill.proficiency)}` : ""}
-                                  </span>
-                                )
+                                (skill) => {
+                                  const skillName = skill.name;
+                                  const isHighlighted = highlightedSkills.includes(skillName);
+                                  
+                                  return (
+                                    <div
+                                      key={`${category}-${skillName}`}
+                                      className={`flex items-center gap-3 p-2 rounded-md transition-colors ${
+                                        isHighlighted ? "bg-blue-50 border border-blue-200" : "hover:bg-gray-50"
+                                      }`}
+                                    >
+                                      <Checkbox
+                                        id={`skill-${category}-${skillName}`}
+                                        checked={isHighlighted}
+                                        onChange={() => toggleSkillHighlight(skillName)}
+                                        className="border-gray-300"
+                                      />
+                                      <label
+                                        htmlFor={`skill-${category}-${skillName}`}
+                                        className="flex-1 text-sm font-medium text-gray-900 cursor-pointer"
+                                      >
+                                        {skillName}
+                                        {skill.proficiency && (
+                                          <span className="ml-2 text-xs text-gray-500">
+                                            · {formatConfidence(skill.proficiency)}
+                                          </span>
+                                        )}
+                                      </label>
+                                      {isHighlighted && (
+                                        <Check size={16} className="text-blue-600" />
+                                      )}
+                                    </div>
+                                  );
+                                }
                               )}
                             </div>
                           </div>
@@ -1243,9 +1508,13 @@ export default function ProjectPage() {
                 />
               </TabsContent>
 
-              {/* PDFs Placeholder */}
+              {/* PDFs */}
               <TabsContent value="pdfs">
-                <PlaceholderContent label="PDF Analysis" />
+                <PdfAnalysisTab
+                  pdfAnalysis={scanData.pdf_analysis}
+                  isLoading={projectLoading}
+                  errorMessage={projectError}
+                />
               </TabsContent>
             </Tabs>
           </TabsContent>
@@ -1256,7 +1525,7 @@ export default function ProjectPage() {
           <TabsContent value="tools">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {/* File Browser */}
-              <Card className="bg-white border border-gray-200">
+              <Card className="bg-white border border-gray-200 md:col-span-2 lg:col-span-3">
                 <CardHeader className="border-b border-gray-200">
                   <CardTitle className="text-base font-bold text-gray-900 flex items-center gap-2">
                     <FileText size={18} />
@@ -1264,10 +1533,7 @@ export default function ProjectPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-6">
-                  <p className="text-sm text-gray-500 mb-4">
-                    Browse and view all files in the project.
-                  </p>
-                  <PlaceholderContent label="File Browser" />
+                  <FileTreeView files={projectFiles} />
                 </CardContent>
               </Card>
 
@@ -1348,12 +1614,30 @@ export default function ProjectPage() {
                     Export project analysis in various formats.
                   </p>
                   <div className="flex flex-wrap gap-2">
+                    {/* Export JSON — active */}
                     <button
-                      disabled
-                      className="px-3 py-2 text-xs font-semibold rounded-md bg-gray-100 text-gray-400 cursor-not-allowed flex items-center gap-1"
+                      onClick={handleExportJson}
+                      disabled={!hasProject || exportStatus === "exporting"}
+                      className={[
+                        "px-3 py-2 text-xs font-semibold rounded-md flex items-center gap-1 transition-colors",
+                        exportStatus === "success"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : exportStatus === "error"
+                            ? "bg-red-100 text-red-700"
+                            : !hasProject
+                              ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                              : "bg-gray-900 text-white hover:bg-gray-700 cursor-pointer",
+                      ].join(" ")}
                     >
-                      <FileJson size={14} />
-                      Export JSON
+                      {exportStatus === "exporting" ? (
+                        <><Loader2 size={14} className="animate-spin" /> Exporting…</>
+                      ) : exportStatus === "success" ? (
+                        <><Check size={14} /> Downloaded!</>
+                      ) : exportStatus === "error" ? (
+                        <><AlertCircle size={14} /> {exportError ?? "Failed"}</>
+                      ) : (
+                        <><Download size={14} /> Export JSON</>
+                      )}
                     </button>
                     <button
                       onClick={handleExportHtml}
@@ -1383,6 +1667,8 @@ export default function ProjectPage() {
                   </div>
                   {htmlExportStatus === "error" && htmlExportError && (
                     <p className="text-xs text-red-500 mt-1">{htmlExportError}</p>
+                  {exportStatus === "error" && exportError && (
+                    <p className="text-xs text-red-500 mt-1">{exportError}</p>
                   )}
                 </CardContent>
               </Card>

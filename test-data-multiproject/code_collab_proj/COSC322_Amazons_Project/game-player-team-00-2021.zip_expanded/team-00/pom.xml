@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+ 
+    <groupId>ubc.cosc322</groupId>
+    <artifactId>team-00</artifactId>
+    <version>1.0</version>
+    <packaging>jar</packaging>
+     
+
+    <name>COSC322-Team-00</name>
+    <description>COSC 322 Game Player Project</description>
+    <inceptionYear>2021</inceptionYear>
+    
+	
+    <dependencies> 
+        <dependency>	        
+	    <groupId>ubc-yong-gao</groupId>
+            <artifactId>ygraph-ai-smartfox-client</artifactId>
+            <version>2.1</version>
+            <type>jar</type>
+        </dependency>
+    </dependencies>
+	
+    <repositories>
+        <repository>
+            <id>ubc-yong-gao</id>
+            <name>ubc-yong-gao</name>
+            <url>https://cmps-people.ok.ubc.ca/yongg/computing_resources/</url>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
+    
+    <url>https:people.ok.uc.ca/yongg</url>
+    <developers>
+        <developer>
+            <id>Team-00</id>
+            <name>Team members</name>
+            <email></email>
+        </developer> 
+        <developer>
+            <id>yg</id>
+            <name>Yong Gao</name>
+            <email>yong.gao@ubc.ca</email>
+        </developer> 
+    </developers>
+
+    <build>
+ 
+    </build>
+    <properties>
+        <maven.compiler.source>1.8</maven.compiler.source>
+        <maven.compiler.target>1.8</maven.compiler.target>
+    </properties>
+</project>

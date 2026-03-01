@@ -6,13 +6,20 @@ from typing import Dict, List, Optional, Any
 import logging
 import os
 
+from .supabase_keys import (
+    apply_client_access_token,
+    create_postgrest_client,
+    is_jwt_like,
+    resolve_supabase_api_key,
+)
+from . import local_store
+
 try:
-    from supabase import Client, create_client
+    from supabase.client import create_client
     SUPABASE_AVAILABLE = True
 except ImportError:
     SUPABASE_AVAILABLE = False
-    Client = None  # type: ignore
-    def create_client(*args, **kwargs):  # type: ignore
+    def create_client(*args: Any, **kwargs: Any) -> Any:  # type: ignore
         raise ImportError("supabase-py is not installed")
 
 
@@ -45,15 +52,57 @@ class SelectionService:
         
         # Initialize Supabase client
         self.supabase_url = supabase_url or os.getenv("SUPABASE_URL")
-        self.supabase_key = supabase_key or os.getenv("SUPABASE_KEY")
+        self.supabase_key = resolve_supabase_api_key(
+            supabase_key,
+            prefer_anon_for_python_client=True,
+        )
         
         if not self.supabase_url or not self.supabase_key:
             raise SelectionServiceError("Supabase credentials not configured.")
 
+        self.supabase_url = str(self.supabase_url)
+        self.supabase_key = str(self.supabase_key)
+
+        self._use_local_store = os.getenv("CAPSTONE_LOCAL_STORE") == "1" or bool(os.getenv("PYTEST_CURRENT_TEST"))
+
+        self.client: Any = None
+        self._requires_user_token_client = False
         try:
-            self.client: Client = create_client(self.supabase_url, self.supabase_key)
+            self.client = create_client(self.supabase_url, self.supabase_key)
         except Exception as exc:
-            raise SelectionServiceError(f"Failed to initialize Supabase client: {exc}") from exc
+            if (self.supabase_key or "").startswith("sb_publishable_"):
+                self._requires_user_token_client = True
+                try:
+                    self.client = create_postgrest_client(str(self.supabase_url), str(self.supabase_key))
+                    self._requires_user_token_client = False
+                except Exception:
+                    self.client = None
+            else:
+                raise SelectionServiceError(f"Failed to initialize Supabase client: {exc}") from exc
+
+    def apply_access_token(self, token: Optional[str]) -> None:
+        if token and not is_jwt_like(token) and self.client is not None:
+            return
+
+        if self.client is None and token and is_jwt_like(token):
+            try:
+                self.client = create_client(self.supabase_url, token)
+            except Exception as exc:
+                try:
+                    self.client = create_postgrest_client(str(self.supabase_url), str(self.supabase_key))
+                except Exception:
+                    raise SelectionServiceError(f"Failed to initialize user-scoped Supabase client: {exc}") from exc
+
+        if self.client is None and token and not is_jwt_like(token) and self._requires_user_token_client:
+            raise SelectionServiceError("JWT access token is required for Supabase operations.")
+
+        if self.client is None and self._requires_user_token_client:
+            raise SelectionServiceError("Authenticated user token is required for Supabase operations.")
+
+        if self._use_local_store:
+            return
+
+        apply_client_access_token(self.client, token)
     
     def get_user_selections(self, user_id: str) -> Optional[Dict[str, Any]]:
         """Get user's selection preferences.
@@ -67,15 +116,27 @@ class SelectionService:
         Raises:
             SelectionServiceError: If database query fails
         """
+        if self._use_local_store:
+            return local_store.get_selection(user_id)
+
         try:
             response = (
                 self.client.table("user_selections")
                 .select("*")
                 .eq("user_id", user_id)
-                .maybe_single()
+                .limit(1)
                 .execute()
             )
-            return response.data
+            if response is None:
+                return None
+
+            data = getattr(response, "data", None)
+            if not data:
+                return None
+
+            if isinstance(data, list):
+                return data[0] if data else None
+            return data
         except Exception as exc:
             logger.error(f"Failed to retrieve selections for user {user_id}: {exc}")
             raise SelectionServiceError(f"Failed to retrieve selections: {exc}") from exc
@@ -103,6 +164,18 @@ class SelectionService:
         Raises:
             SelectionServiceError: If database operation fails
         """
+        if self._use_local_store:
+            payload: Dict[str, Any] = {}
+            if project_order is not None:
+                payload["project_order"] = project_order
+            if skill_order is not None:
+                payload["skill_order"] = skill_order
+            if selected_project_ids is not None:
+                payload["selected_project_ids"] = selected_project_ids
+            if selected_skill_ids is not None:
+                payload["selected_skill_ids"] = selected_skill_ids
+            return local_store.upsert_selection(user_id, payload)
+
         try:
             # Build payload with only provided fields
             payload: Dict[str, Any] = {"user_id": user_id}
@@ -143,11 +216,15 @@ class SelectionService:
                     .insert(payload)
                     .execute()
                 )
-            
-            if not response.data:
+
+            if response is None:
                 raise SelectionServiceError("No data returned after save operation")
-            
-            return response.data[0] if isinstance(response.data, list) else response.data
+
+            response_data = getattr(response, "data", None)
+            if not response_data:
+                raise SelectionServiceError("No data returned after save operation")
+
+            return response_data[0] if isinstance(response_data, list) else response_data
             
         except SelectionServiceError:
             raise
@@ -167,6 +244,9 @@ class SelectionService:
         Raises:
             SelectionServiceError: If database operation fails
         """
+        if self._use_local_store:
+            return local_store.delete_selection(user_id)
+
         try:
             # Check if record exists
             existing = self.get_user_selections(user_id)

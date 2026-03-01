@@ -63,6 +63,11 @@ except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fal
     from backend.src.local_analysis.git_repo import analyze_git_repo
     from backend.src.api.upload_routes import uploads_store
 
+try:
+    from api.request_context import get_request_access_token, set_request_access_token
+except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
+    from backend.src.api.request_context import get_request_access_token, set_request_access_token
+
 logger = logging.getLogger(__name__)
 
 # Create router for project endpoints
@@ -99,6 +104,8 @@ def get_projects_service() -> ProjectsService:
                     encryption_service=_encryption_service_instance,
                     encryption_required=False,  # Graceful degradation if encryption unavailable
                 )
+    token = get_request_access_token()
+    _projects_service.apply_access_token(token)
     return _projects_service
 
 
@@ -143,6 +150,8 @@ def get_overrides_service() -> ProjectOverridesService:
                     encryption_service=_encryption_service_instance,
                     encryption_required=False,  # Allow unencrypted storage if encryption unavailable
                 )
+    token = get_request_access_token()
+    _overrides_service.apply_access_token(token)
     return _overrides_service
 
 
@@ -433,17 +442,198 @@ def _extract_archive_for_analysis(storage_path: Path, temp_path: Path) -> Path:
     return temp_path
 
 
+def _run_media_analysis(parse_result: Any) -> Optional[Dict[str, Any]]:
+    """Run media analysis on parsed files."""
+    logger.info("🎬 Starting media analysis...")
+    try:
+        from local_analysis.media_analyzer import MediaAnalyzer
+        analyzer = MediaAnalyzer()
+        result = analyzer.analyze(parse_result.files)
+        if result:
+            logger.info(f"✅ Media analysis completed: {len(result.get('media', []))} media files found")
+        else:
+            logger.info("⚠️ Media analysis returned None")
+        return result
+    except Exception as e:
+        logger.error(f"❌ Media analysis failed: {e}", exc_info=True)
+        return None
+
+
+def _run_pdf_analysis(target_path: Path, parse_result: Any) -> Optional[List[Dict[str, Any]]]:
+    """Run PDF analysis on PDF files in the project."""
+    logger.info("📄 Starting PDF analysis...")
+    try:
+        from local_analysis.pdf_parser import create_parser
+        from local_analysis.pdf_summarizer import create_summarizer
+        
+        pdf_files = [f for f in parse_result.files if f.path.lower().endswith('.pdf')]
+        if not pdf_files:
+            logger.info("⚠️ No PDF files found in project")
+            return None
+        
+        parser = create_parser()
+        summarizer = create_summarizer(max_summary_sentences=5, keyword_count=10)
+        results = []
+        
+        for pdf_meta in pdf_files[:20]:  # Limit to 20 PDFs
+            # Handle case where scanner includes folder name in path
+            relative_path = pdf_meta.path
+            folder_name = target_path.name
+            if relative_path.startswith(f"{folder_name}/") or relative_path.startswith(f"{folder_name}\\"):
+                relative_path = relative_path[len(folder_name) + 1:]
+            
+            pdf_path = target_path / relative_path
+            if not pdf_path.exists():
+                continue
+            
+            try:
+                # Step 1: Parse PDF to extract text
+                parse_result_pdf = parser.extract_text_from_pdf(pdf_path)
+                if not parse_result_pdf.success or not parse_result_pdf.text_content:
+                    logger.warning(f"Failed to parse PDF {pdf_meta.path}: {parse_result_pdf.error_message}")
+                    continue
+                
+                # Step 2: Generate summary from extracted text
+                summary_result = summarizer.generate_summary(parse_result_pdf.text_content, pdf_meta.path)
+                if not summary_result.success:
+                    logger.warning(f"Failed to summarize PDF {pdf_meta.path}: {summary_result.error_message}")
+                    continue
+                
+                # Step 3: Extract key topics from summary
+                key_topics = summary_result.key_points[:3] if summary_result.key_points else []
+                
+                # Step 4: Calculate reading time (avg 200 words per minute)
+                word_count = summary_result.statistics.get('total_words', 0) if summary_result.statistics else 0
+                reading_time = word_count / 200.0 if word_count > 0 else 0
+                
+                results.append({
+                    "file_name": pdf_meta.path,
+                    "file_path": pdf_meta.path,
+                    "page_count": parse_result_pdf.num_pages,
+                    "summary": summary_result.summary_text,
+                    "key_topics": key_topics,
+                    "keywords": [{"word": kw, "count": cnt} for kw, cnt in summary_result.keywords],
+                    "reading_time": reading_time,
+                    "file_size_mb": pdf_meta.size_bytes / (1024 * 1024),
+                })
+                logger.info(f"✅ Successfully analyzed PDF: {pdf_meta.path} ({parse_result_pdf.num_pages} pages)")
+            except Exception as e:
+                logger.warning(f"Failed to analyze PDF {pdf_meta.path}: {e}")
+                continue
+        
+        if results:
+            logger.info(f"✅ PDF analysis completed: {len(results)} PDFs analyzed")
+        else:
+            logger.info("⚠️ PDF analysis found no valid PDFs")
+        return results if results else None
+    except Exception as e:
+        logger.error(f"❌ PDF analysis failed: {e}", exc_info=True)
+        return None
+
+
+def _run_document_analysis(target_path: Path, parse_result: Any) -> Optional[List[Dict[str, Any]]]:
+    """Run document analysis on text files in the project."""
+    logger.info("📝 Starting document analysis...")
+    try:
+        from local_analysis.document_analyzer import DocumentAnalyzer
+        
+        doc_extensions = {'.txt', '.md', '.markdown', '.rst', '.log'}
+        doc_files = [f for f in parse_result.files if any(f.path.lower().endswith(ext) for ext in doc_extensions)]
+        
+        if not doc_files:
+            logger.info("⚠️ No document files found in project")
+            return None
+        
+        analyzer = DocumentAnalyzer()
+        results = []
+        
+        for doc_meta in doc_files[:50]:  # Limit to 50 documents
+            # Handle case where scanner includes folder name in path
+            relative_path = doc_meta.path
+            folder_name = target_path.name
+            if relative_path.startswith(f"{folder_name}/") or relative_path.startswith(f"{folder_name}\\"):
+                relative_path = relative_path[len(folder_name) + 1:]
+            
+            doc_path = target_path / relative_path
+            if not doc_path.exists():
+                continue
+            
+            try:
+                result = analyzer.analyze_document(doc_path)
+                if result.success:
+                    results.append({
+                        "file_name": result.file_name,
+                        "path": doc_meta.path,
+                        "file_type": result.file_type,
+                        "summary": result.summary,
+                        "word_count": result.metadata.word_count if result.metadata else 0,
+                        "keywords": [{"word": kw, "count": cnt} for kw, cnt in (result.keywords or [])],
+                        "key_topics": result.key_topics or [],
+                        "reading_time": result.metadata.reading_time_minutes if result.metadata else 0,
+                    })
+            except Exception as e:
+                logger.warning(f"Failed to analyze document {doc_meta.path}: {e}")
+                continue
+        
+        if results:
+            logger.info(f"✅ Document analysis completed: {len(results)} documents analyzed")
+        else:
+            logger.info("⚠️ Document analysis found no valid documents")
+        return results if results else None
+    except Exception as e:
+        logger.error(f"❌ Document analysis failed: {e}", exc_info=True)
+        return None
+
+
+def _run_duplicate_detection(parse_result: Any) -> Optional[Dict[str, Any]]:
+    """Run duplicate detection on parsed files."""
+    logger.info("🔍 Starting duplicate detection...")
+    try:
+        from services.services.duplicate_detection_service import DuplicateDetectionService
+        service = DuplicateDetectionService()
+        result = service.analyze_duplicates(parse_result)
+        
+        duplicates = []
+        total_wasted_bytes = 0
+        
+        for group in result.duplicate_groups:
+            if group.is_duplicate:
+                duplicates.append({
+                    "hash": group.file_hash,
+                    "files": [f.path for f in group.files],
+                    "wasted_bytes": group.wasted_bytes,
+                    "count": len(group.files),
+                })
+                total_wasted_bytes += group.wasted_bytes
+        
+        if not duplicates:
+            logger.info("⚠️ No duplicate files found")
+            return None
+        
+        logger.info(f"✅ Duplicate detection completed: {len(duplicates)} duplicate groups found")
+        return {
+            "duplicate_groups": duplicates,
+            "total_duplicates": len(duplicates),
+            "total_wasted_bytes": total_wasted_bytes,
+            "total_wasted_mb": total_wasted_bytes / (1024 * 1024),
+        }
+    except Exception as e:
+        logger.error(f"❌ Duplicate detection failed: {e}", exc_info=True)
+        return None
+
+
 def _run_code_analysis_for_path(
     target_path: Path,
     preferences: Optional[ScanPreferences],
 ) -> Optional[Dict[str, Any]]:
+    logger.info(f"Starting code analysis for path: {target_path}")
     try:
         try:
             from services.services.code_analysis_service import CodeAnalysisService, CodeAnalysisUnavailableError
         except ImportError:
             from src.services.services.code_analysis_service import CodeAnalysisService, CodeAnalysisUnavailableError
-    except ImportError:
-        logger.info("Code analysis unavailable (services.services.code_analysis_service not installed)")
+    except ImportError as e:
+        logger.warning(f"Code analysis unavailable - import error: {e}")
         return None
 
     try:
@@ -548,13 +738,13 @@ def _run_code_analysis_for_path(
         }
     except Exception as exc:
         if "CodeAnalysisUnavailableError" in type(exc).__name__ or "tree-sitter" in str(exc).lower():
-            logger.info("Code analysis unavailable (tree-sitter not installed)")
+            logger.warning(f"Code analysis unavailable (tree-sitter issue): {exc}")
         else:
-            logger.warning(f"Code analysis failed: {exc}")
+            logger.error(f"Code analysis failed with exception: {exc}", exc_info=True)
         return None
 
 
-def verify_auth_token(authorization: Optional[str] = Header(None)) -> str:
+async def verify_auth_token(authorization: Optional[str] = Header(None)) -> str:
     """
     Verify JWT token from Authorization header.
     
@@ -573,8 +763,7 @@ def verify_auth_token(authorization: Optional[str] = Header(None)) -> str:
             detail="Missing authorization token",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
-    # Extract token from "Bearer <token>" format
+
     parts = authorization.split()
     if len(parts) != 2 or parts[0].lower() != "bearer":
         raise HTTPException(
@@ -582,15 +771,13 @@ def verify_auth_token(authorization: Optional[str] = Header(None)) -> str:
             detail="Invalid authorization header format. Use 'Bearer <token>'",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     token = parts[1]
-    
-    # For now, we'll do basic JWT validation
-    # In production, verify the signature against Supabase's public key
+    set_request_access_token(token)
+
     try:
         import jwt
-        # Decode without verification for now (development)
-        # In production, use jwt.decode(token, key, algorithms=["HS256"])
+
         payload = jwt.decode(token, options={"verify_signature": False})
         user_id = payload.get("sub")
         if not user_id:
@@ -1018,6 +1205,12 @@ async def create_project_from_upload(
     user_id: str = Depends(verify_auth_token),
 ) -> CreateProjectResponse:
     """Create a project from an uploaded zip using the existing analysis pipeline."""
+    logger.info("="*80)
+    logger.info("📤 CREATE PROJECT FROM UPLOAD ENDPOINT CALLED")
+    logger.info(f"   Upload ID: {request.upload_id}")
+    logger.info(f"   User ID: {user_id}")
+    logger.info(f"   Project Name: {request.project_name}")
+    logger.info("="*80)
     try:
         upload_id = request.upload_id.strip()
         if not upload_id:
@@ -1070,7 +1263,9 @@ async def create_project_from_upload(
             git_analysis = _run_git_analysis_for_path(analysis_target)
             git_data = git_analysis[0] if git_analysis else None
 
+            logger.info("Running code analysis...")
             code_analysis = _run_code_analysis_for_path(analysis_target, preferences)
+            logger.info(f"Code analysis result: {'SUCCESS' if code_analysis else 'NONE'} - Keys: {list(code_analysis.keys()) if code_analysis else 'N/A'}")
 
             skills_service = SkillsAnalysisService()
             skills_service.extract_skills(
@@ -1103,6 +1298,24 @@ async def create_project_from_upload(
                     "timeline": [_period_to_dict(period) for period in progression.timeline],
                 }
 
+            # Run media analysis
+            logger.info("=" * 50)
+            logger.info("🚀 Starting all analysis pipelines...")
+            logger.info("=" * 50)
+            media_analysis = _run_media_analysis(parse_result)
+            
+            # Run PDF analysis
+            pdf_analysis = _run_pdf_analysis(analysis_target, parse_result)
+            
+            # Run document analysis
+            document_analysis = _run_document_analysis(analysis_target, parse_result)
+            
+            # Run duplicate detection
+            duplicate_report = _run_duplicate_detection(parse_result)
+            logger.info("=" * 50)
+            logger.info("✨ All analysis pipelines completed")
+            logger.info("=" * 50)
+
             scan_data: Dict[str, Any] = {
                 "archive": str(storage_path),
                 "summary": summary,
@@ -1116,7 +1329,36 @@ async def create_project_from_upload(
             }
 
             if code_analysis:
-                scan_data["code_analysis"] = {"metrics": code_analysis}
+                logger.info(f"💾 Saving code analysis to scan_data (size: {len(str(code_analysis))} chars)")
+                scan_data["code_analysis"] = code_analysis
+            else:
+                logger.warning("⚠️  No code analysis data to save")
+            
+            if media_analysis:
+                logger.info(f"💾 Saving media analysis to scan_data")
+                scan_data["media_analysis"] = media_analysis
+            else:
+                logger.warning("⚠️  No media analysis data to save")
+            
+            if pdf_analysis:
+                logger.info(f"💾 Saving PDF analysis to scan_data ({len(pdf_analysis)} PDFs)")
+                scan_data["pdf_analysis"] = pdf_analysis
+            else:
+                logger.warning("⚠️  No PDF analysis data to save")
+            
+            if document_analysis:
+                logger.info(f"💾 Saving document analysis to scan_data ({len(document_analysis)} docs)")
+                scan_data["document_analysis"] = document_analysis
+            else:
+                logger.warning("⚠️  No document analysis data to save")
+            
+            if duplicate_report:
+                logger.info(f"💾 Saving duplicate report to scan_data ({duplicate_report.get('total_duplicates', 0)} groups)")
+                scan_data["duplicate_report"] = duplicate_report
+            else:
+                logger.warning("⚠️  No duplicate report data to save")
+            
+            logger.info(f"📦 Final scan_data keys: {list(scan_data.keys())}")
 
         project_path = request.project_path or upload_data.get("metadata", {}).get("original_filename") or storage_path.name
         project_name = request.project_name or Path(project_path).stem
