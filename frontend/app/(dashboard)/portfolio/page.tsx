@@ -122,7 +122,12 @@ export default function PortfolioPage() {
         getPortfolioChronology(token),
       ]);
 
-      if (itemsData.status === "fulfilled") setItems(itemsData.value);
+      if (itemsData.status === "fulfilled") {
+        setItems(itemsData.value);
+      } else {
+        const reason = itemsData.reason;
+        setError(reason instanceof Error ? reason.message : "Failed to load portfolio items");
+      }
       if (skillsData.status === "fulfilled") setSkills(skillsData.value.skills);
       if (chronologyData.status === "fulfilled") setTimeline(chronologyData.value.projects);
     } catch (err) {
@@ -477,7 +482,7 @@ export default function PortfolioPage() {
                           {project.evidence.length > 0 && (
                             <ul className="mt-2 space-y-0.5">
                               {project.evidence.slice(0, 3).map((point, i) => (
-                                <li key={i} className="text-xs text-gray-600 flex gap-1.5">
+                                <li key={`${project.project_id}-e${i}`} className="text-xs text-gray-600 flex gap-1.5">
                                   <span className="text-gray-400 flex-shrink-0">•</span>
                                   <span>{point}</span>
                                 </li>
