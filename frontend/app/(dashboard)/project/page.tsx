@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { DocumentAnalysisTab } from "@/components/project/document-analysis-tab";
 import { getStoredToken } from "@/lib/auth";
 import {CodeAnalysisTab} from "@/components/project/code-analysis-tab";
@@ -13,6 +15,7 @@ import {
   getProjectById,
   getProjectSkillTimeline,
   generateProjectSkillSummary,
+  updateProjectOverrides,
 } from "@/lib/api/projects";
 import {
   detectLanguageMetric,
@@ -136,6 +139,11 @@ export default function ProjectPage() {
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [summaryLoading, setSummaryLoading] = useState(false);
 
+  // Highlighted skills state
+  const [highlightedSkills, setHighlightedSkills] = useState<string[]>([]);
+  const [isSavingHighlights, setIsSavingHighlights] = useState(false);
+  const [highlightSaveStatus, setHighlightSaveStatus] = useState<"idle" | "success" | "error">("idle");
+
   // Keep local projectId in sync with URL
   useEffect(() => {
     setProjectId(projectIdParam);
@@ -188,6 +196,58 @@ export default function ProjectPage() {
       isMountedRef.current = false;
     };
   }, [loadProject]);
+
+  // Load highlighted skills from project data
+  useEffect(() => {
+    if (project?.user_overrides?.highlighted_skills) {
+      setHighlightedSkills(project.user_overrides.highlighted_skills);
+    } else {
+      setHighlightedSkills([]);
+    }
+  }, [project]);
+
+  // Save highlighted skills to backend
+  const saveHighlightedSkills = async (skills: string[]) => {
+    const token = getStoredToken();
+    if (!token || !project?.id) return;
+
+    try {
+      setIsSavingHighlights(true);
+      setHighlightSaveStatus("idle");
+      
+      await updateProjectOverrides(token, project.id, {
+        highlighted_skills: skills,
+      });
+      
+      setHighlightSaveStatus("success");
+      
+      // Reload project to get updated data
+      await loadProject();
+      
+      // Clear success message after 2 seconds
+      setTimeout(() => {
+        setHighlightSaveStatus("idle");
+      }, 2000);
+    } catch (err) {
+      console.error("Failed to save highlighted skills:", err);
+      setHighlightSaveStatus("error");
+      setTimeout(() => {
+        setHighlightSaveStatus("idle");
+      }, 3000);
+    } finally {
+      setIsSavingHighlights(false);
+    }
+  };
+
+  // Toggle skill highlight
+  const toggleSkillHighlight = (skillName: string) => {
+    setHighlightedSkills((prev) => {
+      const newHighlights = prev.includes(skillName)
+        ? prev.filter((s) => s !== skillName)
+        : [...prev, skillName];
+      return newHighlights;
+    });
+  };
 
   // Fetch skills timeline/summary when we have a projectId
   useEffect(() => {
@@ -298,6 +358,23 @@ export default function ProjectPage() {
   const skillsAnalysis = (scanData.skills_analysis ?? {}) as any;
   const skillsByCategory = (skillsAnalysis.skills_by_category ?? {}) as any;
   const totalSkills = (skillsAnalysis.total_skills ?? 0) as number;
+
+  // Extract all available skill names
+  const allAvailableSkills = useMemo(() => {
+    const skills: string[] = [];
+    Object.values(skillsByCategory).forEach((categorySkills: any) => {
+      if (Array.isArray(categorySkills)) {
+        categorySkills.forEach((skill: any) => {
+          if (typeof skill === "string") {
+            skills.push(skill);
+          } else if (skill && typeof skill.name === "string") {
+            skills.push(skill.name);
+          }
+        });
+      }
+    });
+    return skills.sort();
+  }, [skillsByCategory]);
 
   const hasProject = Boolean(project);
 
@@ -775,11 +852,76 @@ export default function ProjectPage() {
 
               {/* Skills Main */}
               <TabsContent value="skills-main" className="space-y-6">
+                {/* Highlighted Skills Section */}
                 <Card className="bg-white border border-gray-200">
                   <CardHeader className="border-b border-gray-200">
-                    <CardTitle className="text-xl font-bold text-gray-900">
-                      Skills Analysis
-                    </CardTitle>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-xl font-bold text-gray-900">
+                        Highlighted Skills
+                      </CardTitle>
+                      {highlightSaveStatus === "success" && (
+                        <span className="flex items-center gap-1.5 text-sm text-green-600 font-medium">
+                          <Check size={16} />
+                          Saved
+                        </span>
+                      )}
+                      {highlightSaveStatus === "error" && (
+                        <span className="flex items-center gap-1.5 text-sm text-red-600 font-medium">
+                          <AlertCircle size={16} />
+                          Save failed
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Select skills you want to emphasize on your resume or portfolio
+                    </p>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    {highlightedSkills.length === 0 ? (
+                      <p className="text-sm text-gray-500">
+                        No skills highlighted yet. Select skills below to highlight them.
+                      </p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {highlightedSkills.map((skill) => (
+                          <span
+                            key={`highlighted-${skill}`}
+                            className="px-3 py-1.5 rounded-full bg-blue-600 text-white text-sm font-medium flex items-center gap-2"
+                          >
+                            {skill}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* All Skills with Selection */}
+                <Card className="bg-white border border-gray-200">
+                  <CardHeader className="border-b border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-xl font-bold text-gray-900">
+                        Select Skills to Highlight
+                      </CardTitle>
+                      <Button
+                        onClick={() => saveHighlightedSkills(highlightedSkills)}
+                        disabled={isSavingHighlights}
+                        size="sm"
+                        className="bg-gray-900 hover:bg-gray-800"
+                      >
+                        {isSavingHighlights ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          <>
+                            <Check className="mr-2 h-4 w-4" />
+                            Save Highlights
+                          </>
+                        )}
+                      </Button>
+                    </div>
                   </CardHeader>
                   <CardContent className="p-6 space-y-4">
                     {skillsAnalysis.success === false && (
@@ -801,6 +943,9 @@ export default function ProjectPage() {
                           <span className="px-3 py-1 rounded-full bg-gray-900 text-white text-xs font-semibold">
                             Total skills · {totalSkills}
                           </span>
+                          <span className="px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">
+                            Highlighted · {highlightedSkills.length}
+                          </span>
                           <span className="px-3 py-1 rounded-full bg-gray-100 text-gray-700 text-xs font-semibold">
                             Categories · {Object.keys(skillsByCategory).length}
                           </span>
@@ -808,20 +953,45 @@ export default function ProjectPage() {
 
                         {Object.entries(skillsByCategory).map(([category, skills]) => (
                           <div key={category} className="border border-gray-200 rounded-lg p-4">
-                            <p className="text-xs font-semibold text-gray-500 uppercase">
+                            <p className="text-xs font-semibold text-gray-500 uppercase mb-3">
                               {category.replace(/_/g, " ")}
                             </p>
-                            <div className="mt-3 flex flex-wrap gap-2">
+                            <div className="space-y-2">
                               {(skills as Array<{ name: string; proficiency?: string }>).map(
-                                (skill) => (
-                                  <span
-                                    key={`${category}-${skill.name}`}
-                                    className="px-3 py-1 rounded-full bg-gray-900 text-white text-xs"
-                                  >
-                                    {skill.name}
-                                    {skill.proficiency ? ` · ${formatConfidence(skill.proficiency)}` : ""}
-                                  </span>
-                                )
+                                (skill) => {
+                                  const skillName = skill.name;
+                                  const isHighlighted = highlightedSkills.includes(skillName);
+                                  
+                                  return (
+                                    <div
+                                      key={`${category}-${skillName}`}
+                                      className={`flex items-center gap-3 p-2 rounded-md transition-colors ${
+                                        isHighlighted ? "bg-blue-50 border border-blue-200" : "hover:bg-gray-50"
+                                      }`}
+                                    >
+                                      <Checkbox
+                                        id={`skill-${category}-${skillName}`}
+                                        checked={isHighlighted}
+                                        onChange={() => toggleSkillHighlight(skillName)}
+                                        className="border-gray-300"
+                                      />
+                                      <label
+                                        htmlFor={`skill-${category}-${skillName}`}
+                                        className="flex-1 text-sm font-medium text-gray-900 cursor-pointer"
+                                      >
+                                        {skillName}
+                                        {skill.proficiency && (
+                                          <span className="ml-2 text-xs text-gray-500">
+                                            · {formatConfidence(skill.proficiency)}
+                                          </span>
+                                        )}
+                                      </label>
+                                      {isHighlighted && (
+                                        <Check size={16} className="text-blue-600" />
+                                      )}
+                                    </div>
+                                  );
+                                }
                               )}
                             </div>
                           </div>
