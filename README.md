@@ -63,6 +63,18 @@ cd frontend
 npx vitest run __tests__/projects.test.tsx --silent
 ```
 
+Issue #220 test data artifacts (repo root):
+
+- `same-project-newer-code_indiv_proj.zip` — newer snapshot of the same code project
+- `same-project-older-code_indiv_proj.zip` — older snapshot of that same project
+- `test-data-multiproject.zip` — combined dataset with `code_indiv_proj`, `code_collab_proj`, `text_indiv_proj`, and `image_indiv_proj`
+
+Quick verification command:
+
+```bash
+python3 -m zipfile -l test-data-multiproject.zip
+```
+
 ## Docker
 
 ```bash
