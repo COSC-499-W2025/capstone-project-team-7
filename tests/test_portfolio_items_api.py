@@ -29,7 +29,10 @@ TEST_USER_ID = "9870edb5-2741-4c0a-b5cd-494a498f7485"
 
 # Override authentication for testing
 async def _override_auth() -> AuthContext:
-    return AuthContext(user_id=TEST_USER_ID, access_token="test-token")
+    return AuthContext(
+        user_id=TEST_USER_ID,
+        access_token="eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.signature",
+    )
 
 
 @pytest.fixture
