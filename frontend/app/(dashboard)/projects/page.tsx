@@ -115,6 +115,21 @@ export default function ProjectsPage() {
     setSelectedProject(null);
   };
 
+  const handleProjectUpdate = async () => {
+    // Refresh the selected project's details after thumbnail update
+    if (selectedProject) {
+      const token = getAuthToken();
+      if (token) {
+        try {
+          const updatedProject = await getProjectById(token, selectedProject.id);
+          setSelectedProject(updatedProject);
+        } catch (err) {
+          console.error("Failed to refresh project details:", err);
+        }
+      }
+    }
+  };
+
   const handleRoleUpdate = (projectId: string, newRole: string) => {
     setSelectedProject((prev) =>
       prev ? { ...prev, role: newRole } : prev
@@ -204,6 +219,7 @@ export default function ProjectsPage() {
         isOpen={isModalOpen}
         onClose={handleCloseModal}
         project={selectedProject}
+        onProjectUpdate={handleProjectUpdate}
         token={getAuthToken()}
         onRoleUpdate={handleRoleUpdate}
       />
