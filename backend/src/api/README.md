@@ -142,9 +142,3 @@ These routes are currently mounted via `spec_router` and intended for compatibil
 2. `POST /api/portfolio/items` (or CRUD existing)
 3. `POST /api/portfolio/refresh`
 4. `POST /api/resume/items` (or CRUD existing)
-
-## Presentation Notes
-
-- For live demos, use `/docs` as the source of truth because it is generated from code.
-- Keep `docs/api-spec.yaml` as draft/planning unless it is regenerated from the running app.
-- If a route appears in this README but not in `/docs`, check router registration in `backend/src/main.py`.
