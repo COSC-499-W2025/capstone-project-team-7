@@ -63,7 +63,7 @@ cd frontend
 npx vitest run __tests__/projects.test.tsx --silent
 ```
 
-Issue #220 test data artifacts (repo root):
+For testing, use these files (repo root):
 
 - `same-project-newer-code_indiv_proj.zip` — newer snapshot of the same code project
 - `same-project-older-code_indiv_proj.zip` — older snapshot of that same project
