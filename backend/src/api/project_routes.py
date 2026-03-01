@@ -61,6 +61,11 @@ except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fal
     from backend.src.local_analysis.git_repo import analyze_git_repo
     from backend.src.api.upload_routes import uploads_store
 
+try:
+    from api.request_context import get_request_access_token, set_request_access_token
+except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
+    from backend.src.api.request_context import get_request_access_token, set_request_access_token
+
 logger = logging.getLogger(__name__)
 
 # Create router for project endpoints
@@ -97,6 +102,8 @@ def get_projects_service() -> ProjectsService:
                     encryption_service=_encryption_service_instance,
                     encryption_required=False,  # Graceful degradation if encryption unavailable
                 )
+    token = get_request_access_token()
+    _projects_service.apply_access_token(token)
     return _projects_service
 
 
@@ -141,6 +148,8 @@ def get_overrides_service() -> ProjectOverridesService:
                     encryption_service=_encryption_service_instance,
                     encryption_required=False,  # Allow unencrypted storage if encryption unavailable
                 )
+    token = get_request_access_token()
+    _overrides_service.apply_access_token(token)
     return _overrides_service
 
 
@@ -552,7 +561,7 @@ def _run_code_analysis_for_path(
         return None
 
 
-def verify_auth_token(authorization: Optional[str] = Header(None)) -> str:
+async def verify_auth_token(authorization: Optional[str] = Header(None)) -> str:
     """
     Verify JWT token from Authorization header.
     
@@ -571,8 +580,7 @@ def verify_auth_token(authorization: Optional[str] = Header(None)) -> str:
             detail="Missing authorization token",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
-    # Extract token from "Bearer <token>" format
+
     parts = authorization.split()
     if len(parts) != 2 or parts[0].lower() != "bearer":
         raise HTTPException(
@@ -580,15 +588,13 @@ def verify_auth_token(authorization: Optional[str] = Header(None)) -> str:
             detail="Invalid authorization header format. Use 'Bearer <token>'",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     token = parts[1]
-    
-    # For now, we'll do basic JWT validation
-    # In production, verify the signature against Supabase's public key
+    set_request_access_token(token)
+
     try:
         import jwt
-        # Decode without verification for now (development)
-        # In production, use jwt.decode(token, key, algorithms=["HS256"])
+
         payload = jwt.decode(token, options={"verify_signature": False})
         user_id = payload.get("sub")
         if not user_id:
