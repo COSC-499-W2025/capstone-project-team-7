@@ -2,7 +2,7 @@
 # Provides models, services, and utilities for project scan CRUD operations
 # Endpoints are registered in this module's router
 
-from fastapi import APIRouter, HTTPException, status, Header, Depends, File, UploadFile, Query
+from fastapi import APIRouter, HTTPException, status, Header, Depends, File, UploadFile, Query, Response
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any, cast
 from datetime import datetime
@@ -26,12 +26,14 @@ try:
     from services.services.project_overrides_service import ProjectOverridesService, ProjectOverridesServiceError
     from auth.consent_validator import ConsentValidator
     from api.llm_routes import get_user_client
+    from services.services.export_service import ExportService
 except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
     from backend.src.services.services.projects_service import ProjectsService, ProjectsServiceError
     from backend.src.services.services.encryption import EncryptionService
     from backend.src.services.services.project_overrides_service import ProjectOverridesService, ProjectOverridesServiceError
     from backend.src.auth.consent_validator import ConsentValidator
     from backend.src.api.llm_routes import get_user_client
+    from backend.src.services.services.export_service import ExportService
 
 try:
     from scanner.parser import parse_zip
@@ -1636,6 +1638,181 @@ async def generate_project_skill_summary(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred",
         )
+
+
+@router.post(
+    "/{project_id}/export-html",
+    responses={
+        200: {"content": {"text/html": {}}, "description": "HTML report"},
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Project not found"},
+        500: {"model": ErrorResponse, "description": "Server error"},
+    },
+)
+async def export_project_html(
+    project_id: str,
+    user_id: str = Depends(verify_auth_token),
+) -> Response:
+    """
+    Generate and return an HTML report for the given project.
+
+    Uses the existing ExportService._generate_html_report() that powers the
+    TUI export, so the Electron/web app gets the same rich report.
+    """
+    try:
+        service = get_projects_service()
+        project = await asyncio.to_thread(service.get_project_scan, user_id, project_id)
+
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Project {project_id} not found",
+            )
+
+        scan_data = project.get("scan_data") or {}
+        project_name = project.get("project_name") or scan_data.get("target", "Portfolio Report")
+
+        payload = _normalize_export_payload(scan_data, project)
+
+        logger.info(
+            "export-html payload keys for project %s: %s",
+            project_id,
+            list(payload.keys()),
+        )
+
+        export_svc = ExportService()
+        html_content = export_svc._generate_html_report(payload, project_name)
+
+        safe_name = project_name.replace(" ", "_")[:60]
+        filename = f"{safe_name}_report.html"
+
+        return Response(
+            content=html_content,
+            media_type="text/html",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+            },
+        )
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Unexpected error generating HTML export")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate HTML report: {str(exc)}",
+        )
+
+
+def _normalize_export_payload(
+    scan_data: Dict[str, Any],
+    project: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Reshape scan_data into the payload format that ExportService._generate_html_report expects.
+
+    The web/upload flow stores data slightly differently from the TUI scanner:
+      - code_analysis may lack a "success" flag
+      - language items use "files" instead of "count"
+      - pdf_analysis / document_analysis may be flat arrays
+      - summary.languages may be missing while a top-level "languages" key exists
+    """
+    payload: Dict[str, Any] = {**scan_data}
+
+    # Ensure target is present
+    payload.setdefault("target", project.get("project_path", ""))
+
+    # ── summary.languages fallback ──────────────────────────────────────
+    summary = payload.get("summary")
+    if not isinstance(summary, dict):
+        summary = {}
+        payload["summary"] = summary
+
+    # Populate summary.languages from top-level "languages" key if absent
+    if not summary.get("languages"):
+        top_langs = payload.get("languages")
+        if top_langs:
+            summary["languages"] = top_langs
+
+    # Normalise each language entry so both "count" and "files" exist
+    langs = summary.get("languages") or []
+    for lang_entry in langs:
+        if isinstance(lang_entry, dict):
+            lang_entry.setdefault("count", lang_entry.get("files", 0))
+            lang_entry.setdefault("files", lang_entry.get("count", 0))
+            lang_entry.setdefault("language", lang_entry.get("name", "Unknown"))
+            lang_entry.setdefault("name", lang_entry.get("language", "Unknown"))
+    summary["languages"] = langs
+
+    # ── code_analysis: inject "success" if data exists ──────────────────
+    code = payload.get("code_analysis")
+    if isinstance(code, dict) and code and "success" not in code:
+        payload["code_analysis"] = {**code, "success": True}
+
+    # ── skills_analysis: inject "success" if data exists ────────────────
+    skills = payload.get("skills_analysis")
+    if isinstance(skills, dict) and skills and "success" not in skills:
+        payload["skills_analysis"] = {**skills, "success": True}
+
+    # ── pdf_analysis: wrap raw array into {"summaries": [...]} ──────────
+    pdf = payload.get("pdf_analysis")
+    if isinstance(pdf, list):
+        payload["pdf_analysis"] = {"summaries": pdf, "total_pdfs": len(pdf), "successful": len(pdf)}
+
+    # ── document_analysis: wrap raw array into {"documents": [...]} ─────
+    docs = payload.get("document_analysis")
+    if isinstance(docs, list):
+        payload["document_analysis"] = {"documents": docs, "total_documents": len(docs), "successful": len(docs)}
+
+    # ── media_analysis: if it's a flat list, wrap into {"summary": ...} ─
+    media = payload.get("media_analysis")
+    if isinstance(media, list) and media:
+        payload["media_analysis"] = {
+            "summary": {
+                "total_files": len(media),
+                "total_size_bytes": sum(m.get("size_bytes", 0) for m in media if isinstance(m, dict)),
+                "by_type": _group_media_by_type(media),
+            }
+        }
+
+    # ── contribution_metrics: ensure dict (not None) ────────────────────
+    if payload.get("contribution_metrics") is None:
+        payload["contribution_metrics"] = {}
+
+    # ── summary: enrich with project-level totals as fallback ───────────
+    summary.setdefault("files_processed", project.get("total_files", 0))
+    summary.setdefault("bytes_processed", summary.get("total_size_bytes", 0) or summary.get("total_bytes", 0) or 0)
+
+    return payload
+
+
+def _group_media_by_type(media_items: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Group a flat list of media items into {images: {count, size_bytes}, ...}."""
+    IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg", ".webp", ".ico", ".tiff"}
+    VIDEO_EXTS = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".flv"}
+    AUDIO_EXTS = {".mp3", ".wav", ".ogg", ".flac", ".aac", ".m4a"}
+
+    groups: Dict[str, Dict[str, int]] = {
+        "images": {"count": 0, "size_bytes": 0},
+        "videos": {"count": 0, "size_bytes": 0},
+        "audio":  {"count": 0, "size_bytes": 0},
+    }
+    for item in media_items:
+        if not isinstance(item, dict):
+            continue
+        path = item.get("path", item.get("file_name", "")).lower()
+        ext = Path(path).suffix
+        size = item.get("size_bytes", 0)
+        if ext in IMAGE_EXTS:
+            groups["images"]["count"] += 1
+            groups["images"]["size_bytes"] += size
+        elif ext in VIDEO_EXTS:
+            groups["videos"]["count"] += 1
+            groups["videos"]["size_bytes"] += size
+        elif ext in AUDIO_EXTS:
+            groups["audio"]["count"] += 1
+            groups["audio"]["size_bytes"] += size
+    return groups
 
 
 @router.get(

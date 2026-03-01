@@ -210,8 +210,8 @@ class ExportService:
         if skills_analysis and skills_analysis.get("success") and self.config.include_skills:
             html_parts.append(self._html_skills_section(skills_analysis))
         
-        # Contribution metrics
-        if contribution_metrics and self.config.include_contributions:
+        # Contribution metrics (skip if empty dict with no real data)
+        if contribution_metrics and contribution_metrics.get("total_commits", 0) and self.config.include_contributions:
             html_parts.append(self._html_contributions_section(contribution_metrics))
         
         # Git analysis
@@ -689,7 +689,9 @@ class ExportService:
         """Generate summary cards section."""
         
         files_processed = summary.get("files_processed", file_count)
-        bytes_processed = summary.get("bytes_processed", 0)
+        bytes_processed = summary.get("bytes_processed",
+                                       summary.get("total_size_bytes",
+                                                    summary.get("total_bytes", 0)))
         issues_count = summary.get("issues_count", 0)
         language_count = len(languages) if languages else 0
         
@@ -727,8 +729,15 @@ class ExportService:
         if not languages:
             return ""
         
-        # Calculate total for percentages
-        total_files = sum(lang.get("count", 0) for lang in languages)
+        # Calculate total for percentages — accept "count", "files", or "bytes"
+        total_files = sum(lang.get("count", lang.get("files", 0)) for lang in languages)
+        if total_files == 0:
+            # Fall back to byte-based percentages
+            total_files = sum(lang.get("bytes", 0) for lang in languages)
+            use_bytes = True
+        else:
+            use_bytes = False
+        
         if total_files == 0:
             return ""
         
@@ -740,16 +749,26 @@ class ExportService:
         
         bars_html = []
         for i, lang in enumerate(languages[:10]):  # Top 10 languages
-            name = lang.get("language", "Unknown")
-            count = lang.get("count", 0)
-            percentage = (count / total_files) * 100
+            name = lang.get("language", lang.get("name", "Unknown"))
+            if use_bytes:
+                count = lang.get("bytes", 0)
+                label = self._format_bytes(count)
+            else:
+                count = lang.get("count", lang.get("files", 0))
+                label = f"{count} files"
+            percentage = (count / total_files * 100) if total_files else 0
+            # Use pre-computed percentage if available
+            if not use_bytes and "file_percent" in lang:
+                percentage = lang["file_percent"]
+            elif use_bytes and "byte_percent" in lang:
+                percentage = lang["byte_percent"]
             color = colors[i % len(colors)]
             
             bars_html.append(f'''
             <div class="language-bar">
                 <div class="language-header">
                     <span class="language-name">{self._escape_html(name)}</span>
-                    <span class="language-stats">{count} files ({percentage:.1f}%)</span>
+                    <span class="language-stats">{label} ({percentage:.1f}%)</span>
                 </div>
                 <div class="language-progress">
                     <div class="language-fill" style="width: {percentage}%; background: {color};"></div>
