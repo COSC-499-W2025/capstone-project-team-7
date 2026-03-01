@@ -1009,6 +1009,64 @@ def _run_scan_background(
                 project_id = saved.get("id")
                 result_payload["project_id"] = project_id
                 logger.info(f"✅ Project saved successfully! project_id={project_id}")
+                
+                # Auto-generate portfolio item using the shared helper function
+                try:
+                    logger.info(f"📋 Auto-generating portfolio item for project {project_id}...")
+                    from services.services.portfolio_item_service import PortfolioItemService
+                    from api.portfolio_routes import generate_portfolio_content_from_project
+                    
+                    portfolio_service = PortfolioItemService()
+                    
+                    # Generate and persist portfolio item
+                    portfolio_result = generate_portfolio_content_from_project(
+                        project=saved,
+                        persist=True,
+                        user_id=profile_id,
+                        portfolio_service=portfolio_service
+                    )
+                    
+                    if portfolio_result.get('id'):
+                        logger.info(f"✅ Portfolio item auto-generated! portfolio_item_id={portfolio_result['id']}")
+                        result_payload["portfolio_item_id"] = portfolio_result['id']
+                    else:
+                        logger.warning("⚠️ Portfolio generation succeeded but no ID returned")
+                    
+                except Exception as portfolio_err:
+                    logger.warning(f"⚠️ Failed to auto-generate portfolio item: {portfolio_err}", exc_info=True)
+                    # Don't fail the scan if portfolio generation fails
+                    result_payload["portfolio_generation_warning"] = str(portfolio_err)
+                
+                # Auto-generate resume item using the shared helper function
+                try:
+                    logger.info(f"📝 Auto-generating resume item for project {project_id}...")
+                    from services.services.resume_storage_service import ResumeStorageService
+                    from api.resume_routes import generate_resume_content_from_project
+                    
+                    resume_service = ResumeStorageService()
+                    # Apply access token if available for RLS
+                    if access_token:
+                        resume_service.apply_access_token(access_token)
+                    
+                    # Generate and persist resume item
+                    resume_result = generate_resume_content_from_project(
+                        project=saved,
+                        persist=True,
+                        user_id=profile_id,
+                        resume_service=resume_service
+                    )
+                    
+                    if resume_result.get('id'):
+                        logger.info(f"✅ Resume item auto-generated! resume_item_id={resume_result['id']}")
+                        result_payload["resume_item_id"] = resume_result['id']
+                    else:
+                        logger.warning("⚠️ Resume generation succeeded but no ID returned")
+                    
+                except Exception as resume_err:
+                    logger.warning(f"⚠️ Failed to auto-generate resume item: {resume_err}", exc_info=True)
+                    # Don't fail the scan if resume generation fails
+                    result_payload["resume_generation_warning"] = str(resume_err)
+                
             except Exception as persist_err:
                 logger.error(f"❌ Failed to persist scan to database: {persist_err}", exc_info=True)
                 result_payload["persist_warning"] = str(persist_err)

@@ -16,6 +16,134 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/resume", tags=["Resume"])
 
 
+def generate_resume_content_from_project(
+    project: Dict[str, Any],
+    persist: bool,
+    user_id: str,
+    resume_service: ResumeStorageService
+) -> Dict[str, Any]:
+    """
+    Helper function to generate resume item content from a project.
+    Can be called synchronously from background tasks or other contexts.
+    
+    Args:
+        project: Project data dictionary from database
+        persist: Whether to save to database
+        user_id: User ID string
+        resume_service: ResumeStorageService instance
+        
+    Returns:
+        Dictionary with id, project_name, start_date, end_date, bullets, content, persisted
+    """
+    # Extract scan_data - handle None or non-dict values
+    _raw = project.get("scan_data")
+    scan_data = _raw if isinstance(_raw, dict) else {}
+    
+    # Generate project name
+    project_name = project.get("project_name", "Untitled Project")
+    
+    # Extract dates if available
+    start_date = None
+    end_date = None
+    git_analysis = scan_data.get("git_analysis", [])
+    if git_analysis and len(git_analysis) > 0:
+        repo = git_analysis[0] if isinstance(git_analysis, list) else git_analysis
+        first_commit = repo.get("first_commit_date")
+        last_commit = repo.get("last_commit_date")
+        if first_commit:
+            # Format as "Mon YYYY" 
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(first_commit.replace('Z', '+00:00'))
+                start_date = dt.strftime("%b %Y")
+            except:
+                pass
+        if last_commit:
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(last_commit.replace('Z', '+00:00'))
+                end_date = dt.strftime("%b %Y")
+            except:
+                pass
+    
+    # Generate bullets from scan data
+    bullets = []
+    
+    # Bullet 1: Technologies used
+    languages = scan_data.get("languages") or project.get("languages", [])
+    if languages:
+        if isinstance(languages, list) and len(languages) > 0:
+            if isinstance(languages[0], dict):
+                lang_names = [l.get("name", l.get("language", "Unknown")) for l in languages[:4]]
+            else:
+                lang_names = languages[:4]
+            if lang_names:
+                bullets.append(f"Developed using {', '.join(lang_names)}")
+    
+    # Bullet 2: Project scope/metrics
+    total_files = project.get("total_files") or scan_data.get("total_files", 0)
+    total_lines = project.get("total_lines") or scan_data.get("total_lines", 0)
+    code_metrics = scan_data.get("code_metrics") or scan_data.get("code_analysis", {})
+    if total_files and total_lines:
+        metric_parts = [f"{total_files} files", f"{total_lines:,} lines of code"]
+        if code_metrics:
+            functions = code_metrics.get("functions", 0)
+            if functions:
+                metric_parts.append(f"{functions} functions")
+        bullets.append(f"Implemented {', '.join(metric_parts)}")
+    
+    # Bullet 3: Git contribution
+    if git_analysis and len(git_analysis) > 0:
+        repo = git_analysis[0] if isinstance(git_analysis, list) else git_analysis
+        commit_count = repo.get("commit_count", 0)
+        if commit_count:
+            bullets.append(f"Contributed {commit_count} commits to the codebase")
+    
+    # Bullet 4: Skills demonstrated
+    skills = scan_data.get("skills", [])
+    if skills:
+        skill_names = [s.get("name", s) if isinstance(s, dict) else s for s in skills[:4]]
+        if skill_names:
+            bullets.append(f"Applied skills in {', '.join(skill_names)}")
+    
+    # Generate markdown content
+    content = _build_markdown_content(
+        project_name=project_name,
+        start_date=start_date,
+        end_date=end_date,
+        overview=None,
+        bullets=bullets,
+    )
+    
+    # Persist if requested
+    item_id = None
+    if persist and bullets:
+        try:
+            record = resume_service.save_resume_record(
+                user_id=user_id,
+                project_name=project_name,
+                start_date=start_date,
+                end_date=end_date,
+                content=content,
+                bullets=bullets,
+                metadata={"auto_generated": True, "project_id": project.get("id")},
+                source_path=project.get("project_path"),
+            )
+            item_id = record.get("id")
+        except Exception as e:
+            logger.warning(f"Failed to persist resume item: {e}")
+    
+    return {
+        "id": item_id,
+        "project_name": project_name,
+        "start_date": start_date,
+        "end_date": end_date,
+        "bullets": bullets,
+        "content": content,
+        "persisted": persist,
+    }
+
+
 def get_resume_service() -> ResumeStorageService:
     """Create a ResumeStorageService instance."""
     try:
