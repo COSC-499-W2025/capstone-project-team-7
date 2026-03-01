@@ -28,39 +28,36 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Portfolio"])
 
-_timeline_service: Optional[PortfolioTimelineService] = None
-_portfolio_item_service: Optional[PortfolioItemService] = None
-_projects_service: Optional[ProjectsService] = None
+
+def get_portfolio_timeline_service(
+    auth: AuthContext = Depends(get_auth_context),
+) -> PortfolioTimelineService:
+    projects_service = get_projects_service(auth)
+    return PortfolioTimelineService(projects_service=projects_service)
 
 
-def get_portfolio_timeline_service() -> PortfolioTimelineService:
-    global _timeline_service
-    if _timeline_service is None:
-        _timeline_service = PortfolioTimelineService()
-    return _timeline_service
+def get_portfolio_item_service(
+    auth: AuthContext = Depends(get_auth_context),
+) -> PortfolioItemService:
+    service = PortfolioItemService()
+    service.apply_access_token(auth.access_token)
+    return service
 
 
-def get_portfolio_item_service() -> PortfolioItemService:
-    global _portfolio_item_service
-    if _portfolio_item_service is None:
-        _portfolio_item_service = PortfolioItemService()
-    return _portfolio_item_service
-
-
-def get_projects_service() -> ProjectsService:
-    """Get or create the ProjectsService singleton."""
-    global _projects_service
-    if _projects_service is None:
-        try:
-            from services.services.encryption import EncryptionService
-            encryption_service = EncryptionService()
-        except Exception:
-            encryption_service = None
-        _projects_service = ProjectsService(
-            encryption_service=encryption_service,
-            encryption_required=False,
-        )
-    return _projects_service
+def get_projects_service(
+    auth: AuthContext = Depends(get_auth_context),
+) -> ProjectsService:
+    try:
+        from services.services.encryption import EncryptionService
+        encryption_service = EncryptionService()
+    except Exception:
+        encryption_service = None
+    service = ProjectsService(
+        encryption_service=encryption_service,
+        encryption_required=False,
+    )
+    service.apply_access_token(auth.access_token)
+    return service
 
 
 class ErrorResponse(BaseModel):

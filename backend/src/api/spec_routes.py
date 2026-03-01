@@ -12,6 +12,7 @@ import logging
 import os
 import sys
 import threading
+import tempfile
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
@@ -39,6 +40,7 @@ try:
         _run_pdf_analysis,
         _run_document_analysis,
         _run_duplicate_detection,
+        _extract_archive_for_analysis,
     )
 except (ModuleNotFoundError, ImportError):  # pragma: no cover
     from backend.src.api.project_routes import (
@@ -50,6 +52,7 @@ except (ModuleNotFoundError, ImportError):  # pragma: no cover
         _run_pdf_analysis,
         _run_document_analysis,
         _run_duplicate_detection,
+        _extract_archive_for_analysis,
     )
 
 # Add parent directory to path for absolute imports (needed for lazy imports in background tasks)
@@ -745,6 +748,14 @@ def _run_scan_background(
             progress_callback=progress_callback,
         )
 
+        analysis_target = target
+        temp_analysis_dir: Optional[tempfile.TemporaryDirectory[str]] = None
+
+        if target.is_file() and target.suffix.lower() == ".zip":
+            temp_analysis_dir = tempfile.TemporaryDirectory(prefix="scan-analysis-")
+            _extract_archive_for_analysis(target, Path(temp_analysis_dir.name))
+            analysis_target = Path(temp_analysis_dir.name)
+
         # ========================================
         # RUN ALL ANALYSES (same as create_project_from_upload)
         # ========================================
@@ -760,7 +771,7 @@ def _run_scan_background(
         )
         
         # 1. Git Analysis
-        git_analysis = _run_git_analysis_for_path(target)
+        git_analysis = _run_git_analysis_for_path(analysis_target)
         git_data = git_analysis[0] if git_analysis else None
         
         # 2. Code Analysis (with timeout to prevent hanging)
@@ -780,7 +791,7 @@ def _run_scan_background(
             
             def run_with_exception_handling():
                 try:
-                    result_container[0] = _run_code_analysis_for_path(target, preferences)
+                    result_container[0] = _run_code_analysis_for_path(analysis_target, preferences)
                 except Exception as e:
                     exception_container[0] = e
             
@@ -815,7 +826,7 @@ def _run_scan_background(
             from services.services.skills_analysis_service import SkillsAnalysisService
             skills_service = SkillsAnalysisService()
             skills_service.extract_skills(
-                target_path=target,
+                target_path=analysis_target,
                 code_analysis_result=code_analysis,
                 git_analysis_result=git_data,
             )
@@ -875,7 +886,7 @@ def _run_scan_background(
             JobState.running,
             progress=Progress(percent=75.0, message="Running PDF analysis..."),
         )
-        pdf_analysis = _run_pdf_analysis(target, scan_result.parse_result)
+        pdf_analysis = _run_pdf_analysis(analysis_target, scan_result.parse_result)
         
         # 8. Document Analysis
         _update_scan_status(
@@ -883,7 +894,7 @@ def _run_scan_background(
             JobState.running,
             progress=Progress(percent=80.0, message="Running document analysis..."),
         )
-        document_analysis = _run_document_analysis(target, scan_result.parse_result)
+        document_analysis = _run_document_analysis(analysis_target, scan_result.parse_result)
         
         # 9. Duplicate Detection
         _update_scan_status(
@@ -962,6 +973,9 @@ def _run_scan_background(
             logger.info(f"💾 Saving duplicate report to scan_data")
             result_payload["duplicate_report"] = duplicate_report
 
+        if temp_analysis_dir is not None:
+            temp_analysis_dir.cleanup()
+
         # Convert all sets to lists for JSON serialization
         def convert_sets_to_lists(obj):
             """Recursively convert all sets to lists in a data structure."""
@@ -982,8 +996,9 @@ def _run_scan_background(
         if persist_project and profile_id:
             logger.info(f"📝 Attempting to save project to database (user_id={profile_id}, project_name={target.name})")
             try:
-                from src.services.services.projects_service import ProjectsService
                 projects_service = ProjectsService()
+                if access_token and hasattr(projects_service, "apply_access_token"):
+                    projects_service.apply_access_token(access_token)
                 project_name = target.name or "scan"
                 saved = projects_service.save_scan(
                     user_id=profile_id,

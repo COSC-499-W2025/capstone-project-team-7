@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 
 from scanner.parser import parse_zip
 from scanner.models import ParseResult, ScanPreferences, FileMetadata as ScanFileMetadata, ParseIssue as ScanParseIssue
+from api.request_context import set_request_access_token
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ router = APIRouter(prefix="/api/uploads", tags=["uploads"])
 
 
 # Authentication helper
-def verify_auth_token(authorization: Optional[str] = Header(None)) -> str:
+async def verify_auth_token(authorization: Optional[str] = Header(None)) -> str:
     """
     Verify JWT token from Authorization header.
     Returns user_id from token.
@@ -36,8 +37,7 @@ def verify_auth_token(authorization: Optional[str] = Header(None)) -> str:
             detail="Missing authorization token",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
-    # Extract token from "Bearer <token>" format
+
     parts = authorization.split()
     if len(parts) != 2 or parts[0].lower() != "bearer":
         raise HTTPException(
@@ -45,14 +45,13 @@ def verify_auth_token(authorization: Optional[str] = Header(None)) -> str:
             detail="Invalid authorization header format. Use 'Bearer <token>'",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     token = parts[1]
-    
-    # Basic JWT validation
+    set_request_access_token(token)
+
     try:
         import jwt
-        # Decode without verification for development
-        # In production, verify against Supabase public key
+
         payload = jwt.decode(token, options={"verify_signature": False})
         user_id = payload.get("sub")
         if not user_id:
@@ -61,7 +60,7 @@ def verify_auth_token(authorization: Optional[str] = Header(None)) -> str:
                 detail="Invalid token: missing user ID",
             )
         return user_id
-    except Exception as exc:
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
@@ -195,6 +194,7 @@ async def upload_file(
     - Requires authentication
     """
     try:
+        filename = file.filename or "upload.zip"
         # Read file content
         content = await file.read()
         file_size = len(content)
@@ -211,7 +211,7 @@ async def upload_file(
             )
         
         # Validate ZIP format
-        is_valid, error_msg = validate_zip_file(content, file.filename)
+        is_valid, error_msg = validate_zip_file(content, filename)
         if not is_valid:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -238,13 +238,13 @@ async def upload_file(
             "upload_id": upload_id,
             "user_id": user_id,
             "status": "stored",
-            "filename": file.filename,
+            "filename": filename,
             "size_bytes": file_size,
             "file_hash": file_hash,
             "storage_path": str(upload_path),
             "created_at": datetime.utcnow().isoformat() + "Z",
             "metadata": {
-                "original_filename": file.filename,
+                "original_filename": filename,
                 "content_type": file.content_type,
             }
         }
@@ -254,7 +254,7 @@ async def upload_file(
         return UploadResponse(
             upload_id=upload_id,
             status="stored",
-            filename=file.filename,
+            filename=filename,
             size_bytes=file_size
         )
         
@@ -315,7 +315,7 @@ async def get_upload_status(
 @router.post("/{upload_id}/parse", response_model=ParseResponse)
 async def parse_upload(
     upload_id: str,
-    parse_request: ParseRequest = Body(default=ParseRequest()),
+    parse_request: Optional[ParseRequest] = Body(default=None),
     user_id: str = Depends(verify_auth_token)
 ):
     """
@@ -362,6 +362,8 @@ async def parse_upload(
         )
     
     try:
+        if parse_request is None:
+            parse_request = ParseRequest(profile_id=None, relevance_only=False, preferences=None)
         parse_started = datetime.utcnow()
         
         # Build scan preferences from request
