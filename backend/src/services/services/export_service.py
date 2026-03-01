@@ -192,47 +192,66 @@ class ExportService:
             self._html_summary_cards(summary, len(files), languages),
         ]
         
+        # Track if we added any meaningful data sections
+        has_data_sections = False
+        
         # Executive Summary with key insights
-        html_parts.append(self._html_executive_summary(
+        exec_summary = self._html_executive_summary(
             payload, code_analysis, skills_analysis, 
             contribution_metrics, contribution_ranking
-        ))
+        )
+        if exec_summary.strip():
+            html_parts.append(exec_summary)
+            has_data_sections = True
         
         # Language breakdown
         if languages and self.config.include_code_analysis:
             html_parts.append(self._html_language_section(languages))
+            has_data_sections = True
         
         # Code analysis
         if code_analysis and code_analysis.get("success") and self.config.include_code_analysis:
             html_parts.append(self._html_code_analysis_section(code_analysis))
+            has_data_sections = True
         
         # Skills analysis
         if skills_analysis and skills_analysis.get("success") and self.config.include_skills:
             html_parts.append(self._html_skills_section(skills_analysis))
+            has_data_sections = True
         
         # Contribution metrics (skip if empty dict with no real data)
         if contribution_metrics and contribution_metrics.get("total_commits", 0) and self.config.include_contributions:
             html_parts.append(self._html_contributions_section(contribution_metrics))
+            has_data_sections = True
         
         # Git analysis
         if git_analysis and self.config.include_git_analysis:
             html_parts.append(self._html_git_section(git_analysis))
+            has_data_sections = True
         
         # PDF Document Analysis
         if pdf_analysis and pdf_analysis.get("summaries") and self.config.include_pdf_summaries:
             html_parts.append(self._html_pdf_analysis_section(pdf_analysis))
+            has_data_sections = True
         
         # Document Analysis (DOCX, etc.)
         if document_analysis and document_analysis.get("documents"):
             html_parts.append(self._html_document_analysis_section(document_analysis))
+            has_data_sections = True
         
         # Media Analysis
         if media_analysis and self.config.include_media_analysis:
             html_parts.append(self._html_media_analysis_section(media_analysis))
+            has_data_sections = True
         
         # File list
         if files and self.config.include_file_list:
             html_parts.append(self._html_file_list_section(files))
+            has_data_sections = True
+        
+        # Check if report has meaningful content - show empty message if no data sections
+        if not has_data_sections and not files:
+            html_parts.append(self._html_empty_report_message())
         
         html_parts.append(self._html_footer())
         
@@ -904,7 +923,7 @@ class ExportService:
                 top_funcs = candidate.get("top_functions", [])
                 funcs_html = ""
                 if top_funcs:
-                    func_names = [f.get("name", "") for f in top_funcs[:2] if f.get("needs_refactor", False)]
+                    func_names = [self._escape_html(f.get("name", "")) for f in top_funcs[:2] if f.get("needs_refactor", False)]
                     if func_names:
                         funcs_html = f'<div class="refactor-funcs">Functions: {", ".join(func_names)}</div>'
                 
@@ -1710,7 +1729,7 @@ class ExportService:
                 <div class="card" style="margin-bottom: 1rem;">
                     <h3 style="font-size: 1.1rem; margin-bottom: 0.5rem;">📂 {self._escape_html(name)}</h3>
                     <p style="color: var(--gray-500); font-size: 0.875rem;">
-                        {commit_count:,} commits{f" • Branch: {branch}" if branch else ""}
+                        {commit_count:,} commits{f" • Branch: {self._escape_html(branch)}" if branch else ""}
                     </p>
                 </div>
 ''')
@@ -1787,7 +1806,7 @@ class ExportService:
         if skills_analysis and skills_analysis.get("success"):
             skills = skills_analysis.get("skills", [])
             if skills:
-                top_skills = [s.get("name", "") for s in skills[:5]]
+                top_skills = [self._escape_html(s.get("name", "")) for s in skills[:5]]
                 insights.append(f'''
             <div class="insight-card">
                 <div class="insight-icon">🎯</div>
@@ -1825,7 +1844,7 @@ class ExportService:
                 <div class="insight-content">
                     <div class="insight-title">Contribution Score</div>
                     <div class="score-badge">{score:.0f}</div>
-                    <p class="insight-detail">Level: {level}</p>
+                    <p class="insight-detail">Level: {self._escape_html(level)}</p>
                 </div>
             </div>
 ''')
@@ -2335,6 +2354,20 @@ class ExportService:
                 </tbody>
             </table>
             {remaining_note}
+        </div>
+'''
+    
+    def _html_empty_report_message(self) -> str:
+        """Generate a user-friendly message when the report has no analysis data."""
+        return '''
+        <div class="section" style="text-align: center; padding: 3rem 2rem;">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">📭</div>
+            <h2 style="color: var(--gray-700); margin-bottom: 1rem;">No Analysis Data Available</h2>
+            <p style="color: var(--gray-500); max-width: 500px; margin: 0 auto; line-height: 1.6;">
+                This report doesn't contain any analysis results yet. 
+                Try running an analysis on your project first, or check that your project 
+                contains files that can be analyzed (code, documents, etc.).
+            </p>
         </div>
 '''
     
