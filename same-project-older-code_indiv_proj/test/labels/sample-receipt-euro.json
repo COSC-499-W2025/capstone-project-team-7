@@ -1,0 +1,7 @@
+{
+  "vendor": "Europa Mart",
+  "date": "2025-08-15",
+  "total": 1.5,
+  "currency": "EUR",
+  "items": [ {"name":"Water","qty":1,"price":1.5} ]
+}

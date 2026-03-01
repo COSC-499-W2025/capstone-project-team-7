@@ -1,0 +1,7 @@
+{
+  "vendor":"MegaMart",
+  "date":"2025-06-01",
+  "total":2.0,
+  "currency":"USD",
+  "items":[{"name":"Apple","qty":2,"price":1.0}]
+}
