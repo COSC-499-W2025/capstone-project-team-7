@@ -124,10 +124,19 @@ class SelectionService:
                 self.client.table("user_selections")
                 .select("*")
                 .eq("user_id", user_id)
-                .maybe_single()
+                .limit(1)
                 .execute()
             )
-            return response.data
+            if response is None:
+                return None
+
+            data = getattr(response, "data", None)
+            if not data:
+                return None
+
+            if isinstance(data, list):
+                return data[0] if data else None
+            return data
         except Exception as exc:
             logger.error(f"Failed to retrieve selections for user {user_id}: {exc}")
             raise SelectionServiceError(f"Failed to retrieve selections: {exc}") from exc
@@ -207,11 +216,15 @@ class SelectionService:
                     .insert(payload)
                     .execute()
                 )
-            
-            if not response.data:
+
+            if response is None:
                 raise SelectionServiceError("No data returned after save operation")
-            
-            return response.data[0] if isinstance(response.data, list) else response.data
+
+            response_data = getattr(response, "data", None)
+            if not response_data:
+                raise SelectionServiceError("No data returned after save operation")
+
+            return response_data[0] if isinstance(response_data, list) else response_data
             
         except SelectionServiceError:
             raise
