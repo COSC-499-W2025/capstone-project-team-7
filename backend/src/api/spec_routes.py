@@ -757,50 +757,105 @@ def _run_scan_background(
             analysis_target = Path(temp_analysis_dir.name)
 
         # ========================================
-        # RUN ALL ANALYSES (same as create_project_from_upload)
+        # RUN ALL ANALYSES (optimized with parallel execution)
         # ========================================
         logger.info("=" * 50)
-        logger.info("🚀 Starting all analysis pipelines...")
+        logger.info("🚀 Starting all analysis pipelines (parallel mode)...")
         logger.info("=" * 50)
         
-        # Update progress for analyses
         _update_scan_status(
             scan_id,
             JobState.running,
-            progress=Progress(percent=40.0, message="Running git analysis..."),
+            progress=Progress(percent=40.0, message="Running parallel analyses..."),
         )
         
-        # 1. Git Analysis
-        git_analysis = _run_git_analysis_for_path(analysis_target)
+        # PHASE 1: Run independent analyses in parallel
+        # Git, Media, PDF, Document can all run simultaneously
+        import concurrent.futures
+        import threading
+        
+        git_analysis = None
+        media_analysis = None
+        pdf_analysis = None
+        document_analysis = None
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            logger.info("🔄 Phase 1: Running independent analyses in parallel...")
+            
+            # Submit all independent analyses
+            future_git = executor.submit(_run_git_analysis_for_path, analysis_target)
+            future_media = executor.submit(_run_media_analysis, scan_result.parse_result)
+            future_pdf = executor.submit(_run_pdf_analysis, analysis_target, scan_result.parse_result)
+            future_document = executor.submit(_run_document_analysis, analysis_target, scan_result.parse_result)
+            
+            # Collect results as they complete
+            try:
+                git_analysis = future_git.result(timeout=120)
+                logger.info("✅ Git analysis completed")
+            except Exception as e:
+                logger.warning(f"⚠️  Git analysis failed: {e}")
+            
+            try:
+                media_analysis = future_media.result(timeout=60)
+                logger.info("✅ Media analysis completed")
+            except Exception as e:
+                logger.warning(f"⚠️  Media analysis failed: {e}")
+            
+            try:
+                pdf_analysis = future_pdf.result(timeout=90)
+                logger.info("✅ PDF analysis completed")
+            except Exception as e:
+                logger.warning(f"⚠️  PDF analysis failed: {e}")
+            
+            try:
+                document_analysis = future_document.result(timeout=60)
+                logger.info("✅ Document analysis completed")
+            except Exception as e:
+                logger.warning(f"⚠️  Document analysis failed: {e}")
+        
+        logger.info("✨ Phase 1 complete")
+        
         git_data = git_analysis[0] if git_analysis else None
         
-        # 2. Code Analysis (with timeout to prevent hanging)
+        # PHASE 2: Code Analysis (with timeout to prevent hanging)
         _update_scan_status(
             scan_id,
             JobState.running,
             progress=Progress(percent=50.0, message="Running code analysis..."),
         )
+        
         code_analysis = None
         try:
-            import concurrent.futures
-            import threading
+            # Calculate timeout based on file count (minimum 60s, +10s per 100 files)
+            total_files = len(scan_result.parse_result.files) if scan_result and scan_result.parse_result else 0
+            base_timeout = 60
+            file_based_timeout = max(base_timeout, base_timeout + (total_files // 100) * 10)
+            timeout_seconds = min(file_based_timeout, 300)  # Cap at 5 minutes
             
-            # Run code analysis with 60 second timeout
+            logger.info(f"🔄 Phase 2: Code analysis starting...")
+            logger.info(f"   Target: {analysis_target}")
+            logger.info(f"   Timeout: {timeout_seconds}s for {total_files} files")
+            
+            # Run code analysis with dynamic timeout
             result_container = [None]
             exception_container = [None]
             
             def run_with_exception_handling():
                 try:
+                    logger.info(f"   Starting code analysis thread...")
                     result_container[0] = _run_code_analysis_for_path(analysis_target, preferences)
+                    logger.info(f"   Code analysis thread completed")
                 except Exception as e:
+                    logger.error(f"   Code analysis thread error: {e}")
                     exception_container[0] = e
             
             thread = threading.Thread(target=run_with_exception_handling, daemon=True)
             thread.start()
-            thread.join(timeout=60)
+            logger.info(f"   Waiting for code analysis (max {timeout_seconds}s)...")
+            thread.join(timeout=timeout_seconds)
             
             if thread.is_alive():
-                logger.warning("⚠️  Code analysis timed out after 60 seconds - skipping")
+                logger.warning(f"⚠️  Code analysis timed out after {timeout_seconds} seconds - skipping")
                 code_analysis = None
             elif exception_container[0]:
                 logger.warning(f"⚠️  Code analysis error: {exception_container[0]} - skipping")
@@ -815,53 +870,100 @@ def _run_scan_background(
             logger.warning(f"⚠️  Code analysis setup error: {e} - skipping")
             code_analysis = None
         
-        # 3. Skills Analysis
-        _update_scan_status(
-            scan_id,
-            JobState.running,
-            progress=Progress(percent=60.0, message="Running skills analysis..."),
-        )
-        skills_analysis = None
-        try:
-            from services.services.skills_analysis_service import SkillsAnalysisService
-            skills_service = SkillsAnalysisService()
-            skills_service.extract_skills(
-                target_path=analysis_target,
-                code_analysis_result=code_analysis,
-                git_analysis_result=git_data,
-            )
-            skills_analysis = _build_skills_analysis(skills_service)
-            logger.info("✅ Skills analysis completed")
-        except Exception as e:
-            logger.error(f"❌ Skills analysis failed: {e}", exc_info=True)
+        logger.info("✨ Phase 2 complete")
         
-        # 4. Contribution Metrics
+        # PHASE 3: Run dependent analyses in parallel
+        # Skills, Contribution Metrics, and Duplicate Detection can run together
         _update_scan_status(
             scan_id,
             JobState.running,
-            progress=Progress(percent=65.0, message="Running contribution analysis..."),
+            progress=Progress(percent=65.0, message="Running dependent analyses..."),
         )
+        
+        skills_analysis = None
         contribution_metrics_payload = None
         metrics_obj = None
-        if git_data:
-            try:
-                from services.services.contribution_analysis_service import ContributionAnalysisService
-                metrics_obj = ContributionAnalysisService().analyze_contributions(
-                    git_analysis=git_data,
-                    code_analysis=code_analysis,
-                    parse_result=scan_result.parse_result,
-                )
-                contribution_metrics_payload = _serialize_contribution_metrics(metrics_obj)
-                logger.info("✅ Contribution metrics completed")
-            except Exception as e:
-                logger.error(f"❌ Contribution analysis failed: {e}", exc_info=True)
+        duplicate_report = None
         
-        # 5. Skills Progress Timeline
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+            logger.info("🔄 Phase 3: Running dependent analyses in parallel...")
+            
+            # Skills Analysis
+            def run_skills_analysis():
+                try:
+                    from services.services.skills_analysis_service import SkillsAnalysisService
+                    skills_service = SkillsAnalysisService()
+                    skills_service.extract_skills(
+                        target_path=analysis_target,
+                        code_analysis_result=code_analysis,
+                        git_analysis_result=git_data,
+                    )
+                    return _build_skills_analysis(skills_service)
+                except Exception as e:
+                    logger.error(f"❌ Skills analysis failed: {e}", exc_info=True)
+                    return None
+            
+            # Contribution Metrics
+            def run_contribution_metrics():
+                if not git_data:
+                    return None, None
+                try:
+                    from services.services.contribution_analysis_service import ContributionAnalysisService
+                    metrics = ContributionAnalysisService().analyze_contributions(
+                        git_analysis=git_data,
+                        code_analysis=code_analysis,
+                        parse_result=scan_result.parse_result,
+                    )
+                    payload = _serialize_contribution_metrics(metrics)
+                    return payload, metrics
+                except Exception as e:
+                    logger.error(f"❌ Contribution analysis failed: {e}", exc_info=True)
+                    return None, None
+            
+            # Duplicate Detection
+            def run_duplicate_detection():
+                try:
+                    return _run_duplicate_detection(scan_result.parse_result)
+                except Exception as e:
+                    logger.warning(f"⚠️  Duplicate detection failed: {e}")
+                    return None
+            
+            # Submit parallel tasks
+            future_skills = executor.submit(run_skills_analysis)
+            future_contrib = executor.submit(run_contribution_metrics)
+            future_dupes = executor.submit(run_duplicate_detection)
+            
+            # Collect results
+            try:
+                skills_analysis = future_skills.result(timeout=120)
+                if skills_analysis:
+                    logger.info("✅ Skills analysis completed")
+            except Exception as e:
+                logger.warning(f"⚠️  Skills analysis timeout/error: {e}")
+            
+            try:
+                contribution_metrics_payload, metrics_obj = future_contrib.result(timeout=90)
+                if contribution_metrics_payload:
+                    logger.info("✅ Contribution metrics completed")
+            except Exception as e:
+                logger.warning(f"⚠️  Contribution metrics timeout/error: {e}")
+            
+            try:
+                duplicate_report = future_dupes.result(timeout=60)
+                if duplicate_report:
+                    logger.info("✅ Duplicate detection completed")
+            except Exception as e:
+                logger.warning(f"⚠️  Duplicate detection timeout/error: {e}")
+        
+        logger.info("✨ Phase 3 complete")
+        
+        # PHASE 4: Skills Progress Timeline (depends on skills analysis)
         skills_progress = None
         if skills_analysis:
             chronological = skills_analysis.get("chronological_overview") or []
             if chronological:
                 try:
+                    logger.info("🔄 Phase 4: Building skills progress timeline...")
                     from local_analysis.skill_progress_timeline import build_skill_progression
                     progression = build_skill_progression(chronological, metrics_obj)
                     from api.project_routes import _period_to_dict
@@ -871,38 +973,6 @@ def _run_scan_background(
                     logger.info("✅ Skills progress timeline completed")
                 except Exception as e:
                     logger.error(f"❌ Skills progress failed: {e}", exc_info=True)
-        
-        # 6. Media Analysis
-        _update_scan_status(
-            scan_id,
-            JobState.running,
-            progress=Progress(percent=70.0, message="Running media analysis..."),
-        )
-        media_analysis = _run_media_analysis(scan_result.parse_result)
-        
-        # 7. PDF Analysis
-        _update_scan_status(
-            scan_id,
-            JobState.running,
-            progress=Progress(percent=75.0, message="Running PDF analysis..."),
-        )
-        pdf_analysis = _run_pdf_analysis(analysis_target, scan_result.parse_result)
-        
-        # 8. Document Analysis
-        _update_scan_status(
-            scan_id,
-            JobState.running,
-            progress=Progress(percent=80.0, message="Running document analysis..."),
-        )
-        document_analysis = _run_document_analysis(analysis_target, scan_result.parse_result)
-        
-        # 9. Duplicate Detection
-        _update_scan_status(
-            scan_id,
-            JobState.running,
-            progress=Progress(percent=85.0, message="Running duplicate detection..."),
-        )
-        duplicate_report = _run_duplicate_detection(scan_result.parse_result)
         
         logger.info("=" * 50)
         logger.info("✨ All analysis pipelines completed")
