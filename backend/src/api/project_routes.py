@@ -461,6 +461,7 @@ def _run_pdf_analysis(target_path: Path, parse_result: Any) -> Optional[List[Dic
     """Run PDF analysis on PDF files in the project."""
     logger.info("📄 Starting PDF analysis...")
     try:
+        from local_analysis.pdf_parser import create_parser
         from local_analysis.pdf_summarizer import create_summarizer
         
         pdf_files = [f for f in parse_result.files if f.path.lower().endswith('.pdf')]
@@ -468,26 +469,52 @@ def _run_pdf_analysis(target_path: Path, parse_result: Any) -> Optional[List[Dic
             logger.info("⚠️ No PDF files found in project")
             return None
         
+        parser = create_parser()
         summarizer = create_summarizer(max_summary_sentences=5, keyword_count=10)
         results = []
         
         for pdf_meta in pdf_files[:20]:  # Limit to 20 PDFs
-            pdf_path = target_path / pdf_meta.path
+            # Handle case where scanner includes folder name in path
+            relative_path = pdf_meta.path
+            folder_name = target_path.name
+            if relative_path.startswith(f"{folder_name}/") or relative_path.startswith(f"{folder_name}\\"):
+                relative_path = relative_path[len(folder_name) + 1:]
+            
+            pdf_path = target_path / relative_path
             if not pdf_path.exists():
                 continue
             
             try:
-                summary_result = summarizer.summarize(str(pdf_path))
+                # Step 1: Parse PDF to extract text
+                parse_result_pdf = parser.extract_text_from_pdf(pdf_path)
+                if not parse_result_pdf.success or not parse_result_pdf.text_content:
+                    logger.warning(f"Failed to parse PDF {pdf_meta.path}: {parse_result_pdf.error_message}")
+                    continue
+                
+                # Step 2: Generate summary from extracted text
+                summary_result = summarizer.generate_summary(parse_result_pdf.text_content, pdf_meta.path)
+                if not summary_result.success:
+                    logger.warning(f"Failed to summarize PDF {pdf_meta.path}: {summary_result.error_message}")
+                    continue
+                
+                # Step 3: Extract key topics from summary
+                key_topics = summary_result.key_points[:3] if summary_result.key_points else []
+                
+                # Step 4: Calculate reading time (avg 200 words per minute)
+                word_count = summary_result.statistics.get('total_words', 0) if summary_result.statistics else 0
+                reading_time = word_count / 200.0 if word_count > 0 else 0
+                
                 results.append({
                     "file_name": pdf_meta.path,
                     "file_path": pdf_meta.path,
-                    "page_count": summary_result.page_count,
-                    "summary": summary_result.summary,
-                    "key_topics": summary_result.key_topics,
+                    "page_count": parse_result_pdf.num_pages,
+                    "summary": summary_result.summary_text,
+                    "key_topics": key_topics,
                     "keywords": [{"word": kw, "count": cnt} for kw, cnt in summary_result.keywords],
-                    "reading_time": summary_result.estimated_reading_time,
+                    "reading_time": reading_time,
                     "file_size_mb": pdf_meta.size_bytes / (1024 * 1024),
                 })
+                logger.info(f"✅ Successfully analyzed PDF: {pdf_meta.path} ({parse_result_pdf.num_pages} pages)")
             except Exception as e:
                 logger.warning(f"Failed to analyze PDF {pdf_meta.path}: {e}")
                 continue
@@ -519,7 +546,13 @@ def _run_document_analysis(target_path: Path, parse_result: Any) -> Optional[Lis
         results = []
         
         for doc_meta in doc_files[:50]:  # Limit to 50 documents
-            doc_path = target_path / doc_meta.path
+            # Handle case where scanner includes folder name in path
+            relative_path = doc_meta.path
+            folder_name = target_path.name
+            if relative_path.startswith(f"{folder_name}/") or relative_path.startswith(f"{folder_name}\\"):
+                relative_path = relative_path[len(folder_name) + 1:]
+            
+            doc_path = target_path / relative_path
             if not doc_path.exists():
                 continue
             

@@ -8,6 +8,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DocumentAnalysisTab } from "@/components/project/document-analysis-tab";
+import { PdfAnalysisTab } from "@/components/project/pdf-analysis-tab";
 import { getStoredToken } from "@/lib/auth";
 import {CodeAnalysisTab} from "@/components/project/code-analysis-tab";
 import {
@@ -1470,9 +1471,13 @@ export default function ProjectPage() {
                 />
               </TabsContent>
 
-              {/* PDFs Placeholder */}
+              {/* PDFs */}
               <TabsContent value="pdfs">
-                <PlaceholderContent label="PDF Analysis" />
+                <PdfAnalysisTab
+                  pdfAnalysis={scanData.pdf_analysis}
+                  isLoading={projectLoading}
+                  errorMessage={projectError}
+                />
               </TabsContent>
             </Tabs>
           </TabsContent>
