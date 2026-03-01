@@ -537,7 +537,13 @@ def _run_document_analysis(target_path: Path, parse_result: Any) -> Optional[Lis
         results = []
         
         for doc_meta in doc_files[:50]:  # Limit to 50 documents
-            doc_path = target_path / doc_meta.path
+            # Handle case where scanner includes folder name in path
+            relative_path = doc_meta.path
+            folder_name = target_path.name
+            if relative_path.startswith(f"{folder_name}/") or relative_path.startswith(f"{folder_name}\\"):
+                relative_path = relative_path[len(folder_name) + 1:]
+            
+            doc_path = target_path / relative_path
             if not doc_path.exists():
                 continue
             
