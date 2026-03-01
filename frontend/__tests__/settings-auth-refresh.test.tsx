@@ -75,7 +75,7 @@ describe("Settings page auth recovery", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      expect(mockGetSession).toHaveBeenCalledTimes(1);
+      expect(mockGetSession).toHaveBeenCalledTimes(2);
     });
 
     expect(screen.getByText("Logged in as")).toBeInTheDocument();

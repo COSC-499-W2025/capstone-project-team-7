@@ -4,8 +4,10 @@ import { useState, useEffect } from "react";
 import { toast } from "@/lib/notifications";
 import { api, consent as consentApi } from "@/lib/api";
 import {
+  auth as authApi,
   clearStoredRefreshToken,
   clearStoredToken,
+  getStoredRefreshToken,
   getStoredToken,
   setStoredRefreshToken,
   setStoredToken,
@@ -47,21 +49,48 @@ export function useAuth(): UseAuthReturn {
   }, []);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem("user");
-    const accessToken = getStoredToken();
+    let cancelled = false;
 
-    if (storedUser && accessToken) {
-      try {
-        const parsedUser = JSON.parse(storedUser) as User;
-        setUser(parsedUser);
-      } catch (error) {
-        localStorage.removeItem("user");
-        clearStoredToken();
-        clearStoredRefreshToken();
+    const hydrateAuthState = async () => {
+      const storedUser = localStorage.getItem("user");
+      const accessToken = getStoredToken();
+      const refreshToken = getStoredRefreshToken();
+
+      if (storedUser && accessToken) {
+        try {
+          const parsedUser = JSON.parse(storedUser) as User;
+          if (!cancelled) {
+            setUser(parsedUser);
+            setIsLoading(false);
+          }
+          return;
+        } catch {
+          localStorage.removeItem("user");
+        }
       }
-    }
 
-    setIsLoading(false);
+      if (accessToken || refreshToken) {
+        const sessionResult = await authApi.getSession(accessToken ?? undefined);
+        if (!cancelled && sessionResult.ok) {
+          const recoveredUser: User = {
+            id: sessionResult.data.user_id,
+            email: sessionResult.data.email ?? sessionResult.data.user_id,
+          };
+          localStorage.setItem("user", JSON.stringify(recoveredUser));
+          setUser(recoveredUser);
+        }
+      }
+
+      if (!cancelled) {
+        setIsLoading(false);
+      }
+    };
+
+    void hydrateAuthState();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const login = async (
