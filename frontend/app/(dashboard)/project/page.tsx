@@ -59,9 +59,6 @@ import {
   Check,
   AlertCircle,
   Download,
-  Check,
-  Loader2,
-  AlertCircle,
   Info,
 } from "lucide-react";
 import { FileTreeView } from "@/components/project/file-tree-view";
@@ -312,11 +309,6 @@ export default function ProjectPage() {
     if (!token) {
       setHtmlExportError("Not authenticated");
       setHtmlExportStatus("error");
-  /** Build and trigger a JSON report download for the current project. */
-  const handleExportJson = useCallback(() => {
-    if (!project) {
-      setExportError("No project loaded");
-      setExportStatus("error");
       return;
     }
 
@@ -329,6 +321,44 @@ export default function ProjectPage() {
       const blob = new Blob([htmlContent], { type: "text/html" });
       const url = URL.createObjectURL(blob);
 
+      // Sanitise project name for filename
+      const safeName = (project.project_name || "project")
+        .replace(/[^a-zA-Z0-9_-]/g, "_")
+        .replace(/_+/g, "_")
+        .toLowerCase();
+      const ts = new Date().toISOString().slice(0, 10);
+      const filename = `${safeName}_report_${ts}.html`;
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      setHtmlExportStatus("success");
+      setTimeout(() => setHtmlExportStatus("idle"), 2500);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "HTML export failed";
+      setHtmlExportError(msg);
+      setHtmlExportStatus("error");
+      setTimeout(() => {
+        setHtmlExportStatus("idle");
+        setHtmlExportError(null);
+      }, 4000);
+    }
+  }, [project]);
+
+  /** Build and trigger a JSON report download for the current project. */
+  const handleExportJson = useCallback(() => {
+    if (!project) {
+      setExportError("No project loaded");
+      setExportStatus("error");
+      return;
+    }
+
+    try {
       setExportStatus("exporting");
       setExportError(null);
 
@@ -366,7 +396,6 @@ export default function ProjectPage() {
         .replace(/_+/g, "_")
         .toLowerCase();
       const ts = new Date().toISOString().slice(0, 10);
-      const filename = `${safeName}_report_${ts}.html`;
       const filename = `${safeName}_report_${ts}.json`;
 
       const a = document.createElement("a");
@@ -377,15 +406,6 @@ export default function ProjectPage() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      setHtmlExportStatus("success");
-      setTimeout(() => setHtmlExportStatus("idle"), 2500);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "HTML export failed";
-      setHtmlExportError(msg);
-      setHtmlExportStatus("error");
-      setTimeout(() => {
-        setHtmlExportStatus("idle");
-        setHtmlExportError(null);
       setExportStatus("success");
       // Reset back to idle after a brief period
       setTimeout(() => setExportStatus("idle"), 2500);
@@ -1667,6 +1687,7 @@ export default function ProjectPage() {
                   </div>
                   {htmlExportStatus === "error" && htmlExportError && (
                     <p className="text-xs text-red-500 mt-1">{htmlExportError}</p>
+                  )}
                   {exportStatus === "error" && exportError && (
                     <p className="text-xs text-red-500 mt-1">{exportError}</p>
                   )}
