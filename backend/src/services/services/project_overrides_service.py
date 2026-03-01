@@ -7,13 +7,20 @@ import json
 import logging
 import os
 
+from .supabase_keys import (
+    apply_client_access_token,
+    create_postgrest_client,
+    is_jwt_like,
+    resolve_supabase_api_key,
+)
+from . import local_store
+
 try:
-    from supabase import Client, create_client
+    from supabase.client import create_client
     SUPABASE_AVAILABLE = True
 except ImportError:
     SUPABASE_AVAILABLE = False
-    Client = None  # type: ignore
-    def create_client(*args, **kwargs):  # type: ignore
+    def create_client(*args: Any, **kwargs: Any) -> Any:  # type: ignore
         raise ImportError("supabase-py is not installed")
 
 
@@ -68,15 +75,17 @@ class ProjectOverridesService:
         
         # Initialize Supabase client
         self.supabase_url = supabase_url or os.getenv("SUPABASE_URL")
-        self.supabase_key = (
-            supabase_key
-            or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-            or os.getenv("SUPABASE_KEY")
-            or os.getenv("SUPABASE_ANON_KEY")
+        self.supabase_key = resolve_supabase_api_key(
+            supabase_key,
+            prefer_anon_for_python_client=True,
         )
         
         if not self.supabase_url or not self.supabase_key:
             raise ProjectOverridesServiceError("Supabase credentials not configured.")
+
+        self.supabase_url = str(self.supabase_url)
+        self.supabase_key = str(self.supabase_key)
+        self._use_local_store = os.getenv("CAPSTONE_LOCAL_STORE") == "1" or bool(os.getenv("PYTEST_CURRENT_TEST"))
         
         # Initialize encryption service
         self._encryption = encryption_service
@@ -90,10 +99,44 @@ class ProjectOverridesService:
                 logger.warning(f"Encryption unavailable, sensitive fields will be stored unencrypted: {exc}")
                 self._encryption = None
 
+        self.client: Any = None
+        self._requires_user_token_client = False
         try:
-            self.client: Client = create_client(self.supabase_url, self.supabase_key)
+            self.client = create_client(self.supabase_url, self.supabase_key)
         except Exception as exc:
-            raise ProjectOverridesServiceError(f"Failed to initialize Supabase client: {exc}") from exc
+            if (self.supabase_key or "").startswith("sb_publishable_"):
+                self._requires_user_token_client = True
+                try:
+                    self.client = create_postgrest_client(str(self.supabase_url), str(self.supabase_key))
+                    self._requires_user_token_client = False
+                except Exception:
+                    self.client = None
+            else:
+                raise ProjectOverridesServiceError(f"Failed to initialize Supabase client: {exc}") from exc
+
+    def apply_access_token(self, token: Optional[str]) -> None:
+        if token and not is_jwt_like(token) and self.client is not None:
+            return
+
+        if self.client is None and token and is_jwt_like(token):
+            try:
+                self.client = create_client(self.supabase_url, token)
+            except Exception as exc:
+                try:
+                    self.client = create_postgrest_client(str(self.supabase_url), str(self.supabase_key))
+                except Exception:
+                    raise ProjectOverridesServiceError(f"Failed to initialize user-scoped Supabase client: {exc}") from exc
+
+        if self.client is None and token and not is_jwt_like(token) and self._requires_user_token_client:
+            raise ProjectOverridesServiceError("JWT access token is required for Supabase operations.")
+
+        if self.client is None and self._requires_user_token_client:
+            raise ProjectOverridesServiceError("Authenticated user token is required for Supabase operations.")
+
+        if self._use_local_store:
+            return
+
+        apply_client_access_token(self.client, token)
     
     def get_overrides(self, user_id: str, project_id: str) -> Optional[Dict[str, Any]]:
         """Get overrides for a specific project.
@@ -108,6 +151,9 @@ class ProjectOverridesService:
         Raises:
             ProjectOverridesServiceError: If database query fails
         """
+        if self._use_local_store:
+            return local_store.get_project_override(user_id, project_id)
+
         try:
             # Don't use maybe_single() as it returns None directly when no rows found
             # which makes it hard to distinguish from errors. Use limit(1) instead.
@@ -144,6 +190,9 @@ class ProjectOverridesService:
         """
         if not project_ids:
             return {}
+
+        if self._use_local_store:
+            return local_store.get_project_overrides_for_projects(user_id, project_ids)
         
         try:
             response = (
@@ -203,6 +252,26 @@ class ProjectOverridesService:
         Raises:
             ProjectOverridesServiceError: If database operation fails
         """
+        if self._use_local_store:
+            payload: Dict[str, Any] = {}
+            if role is not None:
+                payload["role"] = role
+            if evidence is not None:
+                payload["evidence"] = evidence
+            if thumbnail_url is not None:
+                payload["thumbnail_url"] = thumbnail_url
+            if custom_rank is not None:
+                payload["custom_rank"] = custom_rank
+            if start_date_override is not None:
+                payload["start_date_override"] = start_date_override if start_date_override else None
+            if end_date_override is not None:
+                payload["end_date_override"] = end_date_override if end_date_override else None
+            if comparison_attributes is not None:
+                payload["comparison_attributes"] = comparison_attributes
+            if highlighted_skills is not None:
+                payload["highlighted_skills"] = highlighted_skills
+            return local_store.upsert_project_override(user_id, project_id, payload)
+
         try:
             # Build payload with only provided fields
             payload: Dict[str, Any] = {
@@ -297,6 +366,9 @@ class ProjectOverridesService:
         Raises:
             ProjectOverridesServiceError: If database operation fails
         """
+        if self._use_local_store:
+            return local_store.delete_project_override(user_id, project_id)
+
         try:
             # Check if record exists
             existing = self.get_overrides(user_id, project_id)

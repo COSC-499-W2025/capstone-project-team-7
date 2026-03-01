@@ -3,20 +3,27 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any, Tuple, cast
 import json
 import logging
 import os
 import uuid
 import io
 
+from .supabase_keys import (
+    apply_client_access_token,
+    create_postgrest_client,
+    is_jwt_like,
+    resolve_supabase_api_key,
+)
+from . import local_store
+
 try:
-    from supabase import Client, create_client
+    from supabase.client import create_client
     SUPABASE_AVAILABLE = True
 except ImportError:
     SUPABASE_AVAILABLE = False
-    Client = None  # type: ignore
-    def create_client(*args, **kwargs):  # type: ignore
+    def create_client(*args: Any, **kwargs: Any) -> Any:  # type: ignore
         raise ImportError("supabase-py is not installed")
 
 
@@ -41,15 +48,17 @@ class ProjectsService:
         # Initialize Supabase client
         import os
         self.supabase_url = supabase_url or os.getenv("SUPABASE_URL")
-        self.supabase_key = (
-            supabase_key
-            or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-            or os.getenv("SUPABASE_KEY")
-            or os.getenv("SUPABASE_ANON_KEY")
+        self.supabase_key = resolve_supabase_api_key(
+            supabase_key,
+            prefer_anon_for_python_client=True,
         )
         
         if not self.supabase_url or not self.supabase_key:
             raise ProjectsServiceError("Supabase credentials not configured.")
+
+        self.supabase_url = str(self.supabase_url)
+        self.supabase_key = str(self.supabase_key)
+        self._use_local_store = os.getenv("CAPSTONE_LOCAL_STORE") == "1" or bool(os.getenv("PYTEST_CURRENT_TEST"))
 
         self._encryption = encryption_service
         if self._encryption is None:
@@ -62,15 +71,54 @@ class ProjectsService:
                 self._encryption = None
         
         # Lazy-load overrides service
-        self._overrides_service = None
+        self._overrides_service: Optional[Any] = None
+        self._overrides_service_failed = False
+
+        self.client: Any = None
+        self._requires_user_token_client = False
         
         try:
-            self.client: Client = create_client(self.supabase_url, self.supabase_key)
+            self.client = create_client(self.supabase_url, self.supabase_key)
         except Exception as exc:
-            raise ProjectsServiceError(f"Failed to initialize Supabase client: {exc}") from exc
+            if (self.supabase_key or "").startswith("sb_publishable_"):
+                self._requires_user_token_client = True
+                try:
+                    self.client = create_postgrest_client(str(self.supabase_url), str(self.supabase_key))
+                    self._requires_user_token_client = False
+                except Exception:
+                    self.client = None
+            else:
+                raise ProjectsServiceError(f"Failed to initialize Supabase client: {exc}") from exc
+
+    def apply_access_token(self, token: Optional[str]) -> None:
+        if token and not is_jwt_like(token) and self.client is not None:
+            return
+
+        if self.client is None and token and is_jwt_like(token):
+            try:
+                self.client = create_client(self.supabase_url, token)
+            except Exception as exc:
+                try:
+                    self.client = create_postgrest_client(str(self.supabase_url), str(self.supabase_key))
+                except Exception:
+                    raise ProjectsServiceError(f"Failed to initialize user-scoped Supabase client: {exc}") from exc
+
+        if self.client is None and token and not is_jwt_like(token) and self._requires_user_token_client:
+            raise ProjectsServiceError("JWT access token is required for Supabase operations.")
+
+        if self.client is None and self._requires_user_token_client:
+            raise ProjectsServiceError("Authenticated user token is required for Supabase operations.")
+
+        if self._use_local_store:
+            return
+
+        apply_client_access_token(self.client, token)
     
-    def _get_overrides_service(self):
+    def _get_overrides_service(self) -> Optional[Any]:
         """Get or create the ProjectOverridesService (lazy-loaded)."""
+        if self._overrides_service_failed:
+            return None
+
         if self._overrides_service is None:
             try:
                 from .project_overrides_service import ProjectOverridesService
@@ -82,13 +130,9 @@ class ProjectsService:
                 )
             except Exception as exc:
                 logging.getLogger(__name__).warning(f"Could not initialize overrides service: {exc}")
-                self._overrides_service = False  # Cache the failure with a sentinel value
+                self._overrides_service_failed = True
                 return None
-        
-        # Check if it's the sentinel "failed" value
-        if self._overrides_service is False:
-            return None  # Skip re-initialization attempts
-        
+
         return self._overrides_service
     
     @staticmethod
@@ -136,6 +180,49 @@ class ProjectsService:
         Returns:
             Saved project record (includes 'role' field from overrides if available)
         """
+        if self._use_local_store:
+            summary = scan_data.get("summary", {}) or {}
+            code_analysis = scan_data.get("code_analysis")
+            languages = scan_data.get("languages") or summary.get("languages") or []
+            if isinstance(languages, dict):
+                languages = list(languages.keys())
+            if not isinstance(languages, list):
+                languages = []
+            total_lines = 0
+            if isinstance(code_analysis, dict):
+                total_lines = code_analysis.get("metrics", {}).get("total_lines", 0) if code_analysis.get("metrics") else code_analysis.get("total_lines", 0)
+            record = {
+                "project_path": project_path,
+                "scan_data": self._encrypt_scan_data(scan_data),
+                "scan_timestamp": datetime.now().isoformat(),
+                "total_files": summary.get("total_files", 0) or summary.get("files_processed", 0),
+                "total_lines": total_lines,
+                "languages": [str(lang) for lang in languages if lang],
+                "has_media_analysis": "media_analysis" in scan_data,
+                "has_pdf_analysis": "pdf_analysis" in scan_data,
+                "has_code_analysis": code_analysis is not None,
+                "has_skills_analysis": "skills_analysis" in scan_data and bool((scan_data.get("skills_analysis") or {}).get("success")),
+                "has_document_analysis": "document_analysis" in scan_data,
+                "has_git_analysis": "git_analysis" in scan_data,
+                "has_contribution_metrics": "contribution_metrics" in scan_data,
+                "contribution_score": (scan_data.get("contribution_ranking") or {}).get("score"),
+                "user_commit_share": (scan_data.get("contribution_ranking") or {}).get("user_commit_share"),
+                "total_commits": (scan_data.get("contribution_metrics") or {}).get("total_commits"),
+                "primary_contributor": (((scan_data.get("contribution_metrics") or {}).get("primary_contributor") or {}).get("name") if isinstance((scan_data.get("contribution_metrics") or {}).get("primary_contributor"), dict) else None),
+                "project_end_date": (scan_data.get("contribution_metrics") or {}).get("project_end_date"),
+                "has_skills_progress": bool(scan_data.get("skills_progress")),
+            }
+            saved_project = local_store.upsert_project(user_id, project_name, record)
+            project_id = saved_project.get("id")
+            if role is not None and project_id:
+                local_store.upsert_project_override(user_id, project_id, {"role": role})
+                saved_project["role"] = role
+            elif project_id:
+                existing_override = local_store.get_project_override(user_id, project_id)
+                if existing_override is not None and existing_override.get("role"):
+                    saved_project["role"] = existing_override.get("role")
+            return saved_project
+
         try:
             # Extract metadata from scan_data
             summary = scan_data.get("summary", {}) or {}
@@ -216,10 +303,11 @@ class ProjectsService:
             # Auto-infer and save role to project_overrides if not already set
             if project_id:
                 overrides_service = self._get_overrides_service()
-                if overrides_service:
+                if overrides_service is not None:
                     try:
+                        overrides_service_obj = cast(Any, overrides_service)
                         # Check existing overrides
-                        existing_overrides = overrides_service.get_overrides(user_id, project_id)
+                        existing_overrides = overrides_service_obj.get_overrides(user_id, project_id)
                         existing_role = existing_overrides.get("role") if existing_overrides else None
                         
                         # Determine role to save
@@ -229,7 +317,7 @@ class ProjectsService:
                             role_to_save = self.infer_role_from_contribution(scan_data)
                         
                         if role_to_save:
-                            overrides_service.upsert_overrides(
+                            overrides_service_obj.upsert_overrides(
                                 user_id=user_id,
                                 project_id=project_id,
                                 role=role_to_save,
@@ -287,6 +375,12 @@ class ProjectsService:
         Returns:
             List of project records with scan_data included
         """
+        if self._use_local_store:
+            projects = local_store.list_projects(user_id)
+            for project in projects:
+                project["scan_data"] = self._decrypt_scan_data(project.get("scan_data"))
+            return projects
+
         try:
             response = self.client.table("projects").select(
                 "id, project_name, project_path, scan_timestamp, "
@@ -334,13 +428,14 @@ class ProjectsService:
             return projects
         
         # Get all project IDs
-        project_ids = [p.get("id") for p in projects if p.get("id")]
+        project_ids = [str(p["id"]) for p in projects if p.get("id") is not None]
         
         # Fetch overrides for all projects in one query
         overrides_service = self._get_overrides_service()
-        if overrides_service and project_ids:
+        if overrides_service is not None and project_ids:
             try:
-                overrides_map = overrides_service.get_overrides_for_projects(user_id, project_ids)
+                overrides_service_obj = cast(Any, overrides_service)
+                overrides_map = overrides_service_obj.get_overrides_for_projects(user_id, project_ids)
                 for project in projects:
                     pid = project.get("id")
                     if pid and pid in overrides_map:
@@ -368,6 +463,9 @@ class ProjectsService:
         Returns:
             List of project records with scan_data field.
         """
+        if self._use_local_store:
+            return self.get_user_projects(user_id)
+
         try:
             response = (
                 self.client.table("projects")
@@ -394,6 +492,15 @@ class ProjectsService:
         Returns:
             Complete project record with scan_data and role, or None if not found
         """
+        if self._use_local_store:
+            record = local_store.get_project(user_id, project_id)
+            if not record:
+                return None
+            record["scan_data"] = self._decrypt_scan_data(record.get("scan_data"))
+            override = local_store.get_project_override(user_id, project_id)
+            record["role"] = override.get("role") if override else None
+            return record
+
         try:
             response = self.client.table("projects").select("*").eq(
                 "user_id", user_id
@@ -407,9 +514,10 @@ class ProjectsService:
             
             # Fetch role from overrides
             overrides_service = self._get_overrides_service()
-            if overrides_service:
+            if overrides_service is not None:
                 try:
-                    overrides = overrides_service.get_overrides(user_id, project_id)
+                    overrides_service_obj = cast(Any, overrides_service)
+                    overrides = overrides_service_obj.get_overrides(user_id, project_id)
                     record["role"] = overrides.get("role") if overrides else None
                 except Exception:
                     record["role"] = None
@@ -428,6 +536,9 @@ class ProjectsService:
         Returns:
             True if deleted successfully
         """
+        if self._use_local_store:
+            return local_store.delete_project(user_id, project_id)
+
         try:
             response = (
                 self.client.table("projects")
@@ -448,6 +559,35 @@ class ProjectsService:
         This clears `scan_data` and all cached per-file metadata so the user can
         re-run analysis later without losing shared artifacts.
         """
+        if self._use_local_store:
+            project = local_store.get_project(user_id, project_id)
+            if not project:
+                return False
+            local_store.upsert_project(user_id, project.get("project_name", ""), {
+                "id": project_id,
+                "project_path": project.get("project_path"),
+                "scan_data": {},
+                "scan_timestamp": None,
+                "total_files": 0,
+                "total_lines": 0,
+                "languages": [],
+                "has_media_analysis": False,
+                "has_pdf_analysis": False,
+                "has_code_analysis": False,
+                "has_skills_analysis": False,
+                "has_document_analysis": False,
+                "has_git_analysis": False,
+                "has_contribution_metrics": False,
+                "contribution_score": None,
+                "user_commit_share": None,
+                "total_commits": None,
+                "primary_contributor": None,
+                "project_end_date": None,
+                "has_skills_progress": False,
+                "insights_deleted_at": datetime.now().isoformat(),
+            })
+            return True
+
         try:
             timestamp = datetime.now().isoformat()
             update_fields = {
@@ -518,6 +658,14 @@ class ProjectsService:
 
         Returns the project record or None if not found.
         """
+        if self._use_local_store:
+            projects = local_store.list_projects(user_id)
+            for record in projects:
+                if record.get("project_name") == project_name:
+                    record["scan_data"] = self._decrypt_scan_data(record.get("scan_data"))
+                    return record
+            return None
+
         try:
             response = (
                 self.client.table("projects")
