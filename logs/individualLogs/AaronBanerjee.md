@@ -1,5 +1,73 @@
 # Aaron Banerjee (@aaronbanerjee123)
 
+## Term 2 - Week 8 (Feb 23 - Mar 1)
+
+## Highlighted Skills Feature [(PR#367)](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/367)
+
+Implemented comprehensive user-controlled skill highlighting feature enabling users to pin and emphasize specific skills per project for resume and portfolio customization. Restructured the Skills tab by adding a dedicated Highlighted Skills section at the top displaying selected skills as prominent blue badges (bg-blue-600 with white text), creating clear visual hierarchy for emphasized competencies. Transformed the skill display from static badges to interactive selection interface by adding Material-UI Checkbox components next to each detected skill, organized by category (Languages, Frameworks, Tools, Testing, DevOps, etc.). Skills are grouped in bordered category cards with uppercase labels and hover effects (hover:bg-gray-50) to improve discoverability and interaction feedback. Implemented "Save Highlights" button with loading states (Loader2 spinner animation) triggering persistent storage via existing `PATCH /api/projects/{id}/overrides` endpoint to the `highlighted_skills` array field in the project overrides table. Feature provides real-time feedback through success/error status messages displaying checkmarks or alert icons with green/red color coding, automatically clearing after 2-3 seconds. State management handled through React hooks (useState, useEffect) with bidirectional sync: loading initial highlights from `project.user_overrides.highlighted_skills` on mount and persisting changes back to database on save. Enhanced UX by adding highlighted skill count badge (bg-blue-100 text-blue-700) alongside existing total skills and categories statistics, giving users immediate visibility into selection progress. Selected skills render with check icons and blue background highlighting (bg-blue-50 border-blue-200) to distinguish them from unselected skills. No backend changes required as leveraged existing project overrides infrastructure already supporting arbitrary JSON fields.
+
+**Challenges & Learning:**
+Primary challenge involved designing intuitive UX for skill selection that didn't clutter the existing Skills tab layout. Learned to leverage existing API infrastructure rather than building new endpoints, utilizing the project overrides system already in place for role/evidence/thumbnail customization via the PATCH endpoint pattern. Implemented proper state management with React hooks to handle checkbox selection state, managing the toggleSkillHighlight function that adds/removes skills from the highlightedSkills array while maintaining immutability. Gained experience with optimistic UI updates where highlighted skills display immediately on checkbox change, providing instant feedback before backend confirmation. Designed error recovery patterns where save failures display error messages and allow users to retry without losing their selections. Handled edge cases like filtering out duplicate skill names, normalizing skill objects vs string formats from different data sources, and gracefully handling projects with no skills analysis data. Learned about React rendering optimization to prevent unnecessary re-renders when toggling individual checkboxes in large skill lists (using useMemo for allAvailableSkills extraction).
+
+**Impact:**
+Empowers users to customize which skills are emphasized in their portfolio presentation, directly addressing the core value proposition of helping developers curate professional project showcases tailored to specific opportunities. Users can now select 3-5 key skills per project that align with target job requirements, enabling strategic portfolio positioning where different projects highlight complementary skill sets. This feature bridges the gap between raw skill detection (which identifies everything in the codebase) and professional presentation (which emphasizes relevant competencies). Particularly valuable for developers with diverse projects who need to highlight Python/ML skills for data science roles vs JavaScript/React skills for frontend positions. The persistent storage ensures highlighted skills remain consistent across sessions and can be leveraged in future features like resume auto-generation that prioritizes highlighted competencies.
+
+**Issues Resolved:**
+[#347](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/347)
+
+---
+
+## Scan Analysis Pipeline Fix [(PR#365)](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/365)
+
+Fixed critical bug where `POST /api/scans` endpoint only performed basic file scanning without running any of the 7 analysis pipelines (Git, Code, Skills, Contributions, Media, PDF, Document, Duplicate Detection), causing all analysis tabs to display empty in the frontend despite successful scans. Modified `_run_scan_background()` in spec_routes.py to execute all analysis pipelines sequentially after scan completion, with progress updates at each stage (40%, 50%, 60%, 65%, 70%, 75%, 80%, 85%). Fixed code_analysis data structure by removing incorrect metrics wrapper that prevented proper data access. Implemented recursive set-to-list conversion function to resolve JSON serialization errors when scan results contained Python set objects. Added 60-second timeout wrapper for code analysis using threading to prevent scans from hanging indefinitely on large/complex codebases. Enhanced pipeline with comprehensive logging (🚀, ✅, ⚠️, ❌, 💾 emoji markers) for debugging and monitoring execution flow.
+
+**Challenges & Learning:**
+Primary challenge involved diagnosing why scans completed successfully but produced no analysis data. Traced issue through multiple layers: frontend tabs expecting nested data structures, backend routes constructing payloads, and analysis pipeline execution. Discovered spec_routes.py was missing all analysis pipeline calls that existed in project_routes.py's upload flow. Learned about Python set serialization issues with JSON and implemented recursive type conversion. Gained experience with thread-based timeout patterns for blocking operations and graceful degradation when analyses fail.
+
+**Impact:**
+Transformed scan functionality from broken (empty tabs) to fully operational with all 7 analysis types populating correctly. Users now see comprehensive project analysis immediately after scanning: Git history, code quality metrics, detected skills, contribution breakdowns, media/PDF/document inventories, and duplicate file reports. This restore the core scanning feature to its intended state, making the application usable for its primary purpose.
+
+**Issues Resolved:**
+[#364](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/364)
+
+---
+
+## Auto-Generate Resume Items [(PR#373)](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/373)
+
+Fixed missing resume item auto-generation causing Resumes page to remain empty after scans despite portfolio items being created successfully. Implemented `generate_resume_content_from_project()` helper function in resume_routes.py to extract structured resume content from project scan data, including professional bullet generation covering technologies used (programming languages), project scope (file counts, LOC, functions), git contributions (commit history), and demonstrated skills. Integrated auto-generation into `_run_scan_background()` in spec_routes.py to execute after project persistence, running immediately after portfolio item generation. Extracted date formatting from git history (first_commit_date/last_commit_date) to ISO format (e.g., "Jan 2024 - Mar 2026"), generated 4 professional resume bullets per project, and constructed markdown-formatted content. Implemented graceful error handling ensuring resume generation failures don't break scan completion, logging warnings instead of throwing exceptions.
+
+**Challenges & Learning:**
+Designed content extraction algorithm to handle diverse scan data structures (languages as strings vs dicts, code_metrics vs code_analysis). Learned to generate professional, action-oriented resume bullets from raw technical metrics (e.g., "Developed using Python, JavaScript" from languages array, "Implemented 42 files, 3,500 lines of code" from parse results). Gained experience with defensive programming patterns for optional fields and type coercion in loosely-typed scan data.
+
+**Impact:**
+Restored parity between portfolio and resume generation, ensuring both pages populate after scans. Users now receive automatically formatted resume items ready for export or editing, significantly reducing manual work required to build professional resume content from project scans. This completes the scan-to-resume pipeline, fulfilling a core application requirement.
+
+**Issues Resolved:**
+[#372](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/372)
+
+---
+
+## PDF Analysis Tab Implementation [(PR#374)](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/374)
+
+Implemented PDF Analysis Tab component displaying comprehensive PDF metrics and fixed critical scan pipeline bugs preventing PDF/document analysis from executing. Created complete PdfAnalysisTab component with statistics grid (total PDFs, pages, average pages/PDF, reading time), document list showing file details with summaries/topics/keywords, and graceful empty/loading/error states. Fixed backend PDF analysis bug where code called non-existent `summarizer.summarize()` method instead of two-step process: `parser.extract_text_from_pdf()` then `summarizer.generate_summary()`. Resolved path handling bug where scanner includes folder name in relative_path (e.g., "dolphins/file.pdf") which when combined with target_path (C:\Downloads\dolphins) produced doubled paths (dolphins\dolphins\file.pdf), causing "file not found" errors. Implemented folder name prefix stripping before path joining in both PDF and document analysis functions. Added comprehensive test suite with 60+ test cases covering statistics calculation, document rendering, empty states, loading/error states, and data normalization with malformed inputs.
+
+**Challenges & Learning:**
+Debugged multi-layer issue combining backend method signature mismatch and path construction bugs. Used print() debugging with flush=True (Windows console doesn't show logger.info() from background threads) to trace path resolution failures. Discovered scanner includes parent folder in relative paths, requiring prefix stripping logic. Learned about Windows-specific debugging challenges (charmap codec errors with emoji characters) and cross-platform path handling (forward/backslash normalization).
+
+**Impact:**
+Transformed PDF Analysis from completely broken (nothing displayed despite PDFs in scan) to fully functional tab displaying AI-generated summaries, key topics, and keyword extraction for all PDFs. Users can now understand PDF content at a glance without opening files, supporting research/documentation discovery workflows. The 8 metrics per PDF provide actionable insights for portfolio evidence gathering.
+
+**Issues Resolved:**
+[#302](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/302)
+
+---
+
+**PR's:**
+- https://github.com/COSC-499-W2025/capstone-project-team-7/pull/367
+- https://github.com/COSC-499-W2025/capstone-project-team-7/pull/365
+- https://github.com/COSC-499-W2025/capstone-project-team-7/pull/373
+- https://github.com/COSC-499-W2025/capstone-project-team-7/pull/374
+
 
 
 
