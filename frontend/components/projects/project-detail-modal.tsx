@@ -43,7 +43,14 @@ export function ProjectDetailModal({
   if (!project) return null;
 
   const scanData = project.scan_data || {};
-  const files = scanData.files || [];
+  const files = Array.isArray(scanData.files)
+    ? (scanData.files as any[])
+        .map((f: any) => ({
+          ...f,
+          path: typeof f.path === "string" ? f.path : typeof f.file_path === "string" ? f.file_path : "",
+        }))
+        .filter((f: any) => typeof f.path === "string" && f.path.length > 0)
+    : [];
   
   // Handle languages as either array or object
   let languagesData: Record<string, any> = {};
