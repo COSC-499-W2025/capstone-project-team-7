@@ -313,6 +313,119 @@ class TestExportService:
         assert "<script>" not in content
         assert "&lt;script&gt;" in content
 
+    def test_export_html_escapes_branch_names(self, export_service, tmp_path):
+        """Test that branch names with XSS payloads are escaped."""
+        output_path = tmp_path / "report.html"
+        payload = {
+            "summary": {},
+            "files": [],
+            "git_analysis": [
+                {
+                    "repo_name": "test-repo",
+                    "commit_count": 10,
+                    "current_branch": "<script>alert('xss')</script>",
+                }
+            ],
+        }
+        
+        result = export_service.export_html(payload, output_path)
+        
+        assert result.success is True
+        content = output_path.read_text(encoding="utf-8")
+        assert "<script>alert" not in content
+        assert "&lt;script&gt;" in content
+
+    def test_export_html_escapes_skill_names(self, export_service, tmp_path):
+        """Test that skill names with XSS payloads are escaped."""
+        output_path = tmp_path / "report.html"
+        payload = {
+            "summary": {},
+            "files": [],
+            "skills_analysis": {
+                "success": True,
+                "skills": [
+                    {"name": "<img onerror=alert('xss') src=x>", "level": 80},
+                    {"name": "Python", "level": 90},
+                ],
+            },
+        }
+        
+        result = export_service.export_html(payload, output_path)
+        
+        assert result.success is True
+        content = output_path.read_text(encoding="utf-8")
+        assert "<img onerror" not in content
+        assert "&lt;img onerror" in content
+
+    def test_export_html_escapes_contribution_level(self, export_service, tmp_path):
+        """Test that contribution level with XSS payloads is escaped."""
+        output_path = tmp_path / "report.html"
+        payload = {
+            "summary": {},
+            "files": [],
+            "contribution_ranking": {
+                "score": 85,
+                "level": "<script>document.cookie</script>",
+            },
+        }
+        
+        result = export_service.export_html(payload, output_path)
+        
+        assert result.success is True
+        content = output_path.read_text(encoding="utf-8")
+        assert "<script>document" not in content
+        assert "&lt;script&gt;" in content
+
+    def test_export_html_escapes_function_names(self, export_service, tmp_path):
+        """Test that function names in refactor suggestions are escaped."""
+        output_path = tmp_path / "report.html"
+        payload = {
+            "summary": {},
+            "files": [],
+            "code_analysis": {
+                "success": True,
+                "metrics": {
+                    "average_complexity": 5.0,
+                    "average_maintainability": 70,
+                    "total_functions": 10,
+                    "total_classes": 2,
+                },
+                "quality": {},
+                "refactor_candidates": [
+                    {
+                        "path": "test.py",
+                        "complexity": 15.0,
+                        "maintainability": 40.0,
+                        "top_functions": [
+                            {"name": "<svg onload=alert(1)>", "needs_refactor": True},
+                        ],
+                    }
+                ],
+            },
+        }
+        
+        result = export_service.export_html(payload, output_path)
+        
+        assert result.success is True
+        content = output_path.read_text(encoding="utf-8")
+        assert "<svg onload" not in content
+        assert "&lt;svg onload" in content
+
+    def test_export_html_empty_report_shows_message(self, export_service, tmp_path):
+        """Test that empty reports display a user-friendly message."""
+        output_path = tmp_path / "report.html"
+        payload = {
+            "summary": {},
+            "files": [],
+        }
+        
+        result = export_service.export_html(payload, output_path)
+        
+        assert result.success is True
+        content = output_path.read_text(encoding="utf-8")
+        assert "No Analysis Data Available" in content
+        assert "doesn't contain any analysis results" in content
+
     # =========================================================================
     # PDF Export Tests
     # =========================================================================

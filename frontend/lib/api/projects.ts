@@ -252,6 +252,38 @@ export async function searchProjects(
 }
 
 /**
+ * Generate and download an HTML report for a project.
+ * Returns the raw HTML string.
+ */
+export async function exportProjectHtml(
+  token: string,
+  projectId: string,
+): Promise<string> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/projects/${projectId}/export-html`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+
+  if (!response.ok) {
+    let detail = "Failed to generate HTML report";
+    try {
+      const err = await response.json();
+      detail = err.detail || detail;
+    } catch {
+      // response wasn't JSON
+    }
+    throw new Error(detail);
+  }
+
+  return response.text();
+}
+
+/**
  * Fetch all unique skills across user's projects
  */
 export async function getSkills(token: string): Promise<SkillsListResponse> {

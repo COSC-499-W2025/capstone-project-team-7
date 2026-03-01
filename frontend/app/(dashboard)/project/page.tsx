@@ -16,6 +16,7 @@ import {
   getProjectById,
   getProjectSkillTimeline,
   generateProjectSkillSummary,
+  exportProjectHtml,
   updateProjectOverrides,
 } from "@/lib/api/projects";
 import {
@@ -54,6 +55,9 @@ import {
   FileJson,
   FileCode2,
   Printer,
+  Loader2,
+  Check,
+  AlertCircle,
   Download,
   Check,
   Loader2,
@@ -135,6 +139,9 @@ export default function ProjectPage() {
 
   const isMountedRef = useRef(true);
 
+  // Export HTML state
+  const [htmlExportStatus, setHtmlExportStatus] = useState<"idle" | "exporting" | "success" | "error">("idle");
+  const [htmlExportError, setHtmlExportError] = useState<string | null>(null);
   // Export JSON state
   const [exportStatus, setExportStatus] = useState<"idle" | "exporting" | "success" | "error">("idle");
   const [exportError, setExportError] = useState<string | null>(null);
@@ -293,6 +300,18 @@ export default function ProjectPage() {
     };
   }, [projectId, project?.id]);
 
+  /** Build and trigger an HTML report download for the current project. */
+  const handleExportHtml = useCallback(async () => {
+    if (!project) {
+      setHtmlExportError("No project loaded");
+      setHtmlExportStatus("error");
+      return;
+    }
+
+    const token = getStoredToken();
+    if (!token) {
+      setHtmlExportError("Not authenticated");
+      setHtmlExportStatus("error");
   /** Build and trigger a JSON report download for the current project. */
   const handleExportJson = useCallback(() => {
     if (!project) {
@@ -302,6 +321,14 @@ export default function ProjectPage() {
     }
 
     try {
+      setHtmlExportStatus("exporting");
+      setHtmlExportError(null);
+
+      const htmlContent = await exportProjectHtml(token, project.id);
+
+      const blob = new Blob([htmlContent], { type: "text/html" });
+      const url = URL.createObjectURL(blob);
+
       setExportStatus("exporting");
       setExportError(null);
 
@@ -339,6 +366,7 @@ export default function ProjectPage() {
         .replace(/_+/g, "_")
         .toLowerCase();
       const ts = new Date().toISOString().slice(0, 10);
+      const filename = `${safeName}_report_${ts}.html`;
       const filename = `${safeName}_report_${ts}.json`;
 
       const a = document.createElement("a");
@@ -349,6 +377,15 @@ export default function ProjectPage() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
+      setHtmlExportStatus("success");
+      setTimeout(() => setHtmlExportStatus("idle"), 2500);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "HTML export failed";
+      setHtmlExportError(msg);
+      setHtmlExportStatus("error");
+      setTimeout(() => {
+        setHtmlExportStatus("idle");
+        setHtmlExportError(null);
       setExportStatus("success");
       // Reset back to idle after a brief period
       setTimeout(() => setExportStatus("idle"), 2500);
@@ -1603,20 +1640,33 @@ export default function ProjectPage() {
                       )}
                     </button>
                     <button
-                      disabled
-                      className="px-3 py-2 text-xs font-semibold rounded-md bg-gray-100 text-gray-400 cursor-not-allowed flex items-center gap-1"
+                      onClick={handleExportHtml}
+                      disabled={!hasProject || htmlExportStatus === "exporting"}
+                      className={[
+                        "px-3 py-2 text-xs font-semibold rounded-md flex items-center gap-1 transition-colors",
+                        htmlExportStatus === "success"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : htmlExportStatus === "error"
+                            ? "bg-red-100 text-red-700"
+                            : !hasProject
+                              ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                              : "bg-gray-900 text-white hover:bg-gray-700 cursor-pointer",
+                      ].join(" ")}
                     >
-                      <FileCode2 size={14} />
-                      Export HTML
+                      {htmlExportStatus === "exporting" ? (
+                        <><Loader2 size={14} className="animate-spin" /> Exporting…</>
+                      ) : htmlExportStatus === "success" ? (
+                        <><Check size={14} /> Downloaded!</>
+                      ) : htmlExportStatus === "error" ? (
+                        <><AlertCircle size={14} /> {htmlExportError ?? "Failed"}</>
+                      ) : (
+                        <><FileCode2 size={14} /> Export HTML</>
+                      )}
                     </button>
-                    <button
-                      disabled
-                      className="px-3 py-2 text-xs font-semibold rounded-md bg-gray-100 text-gray-400 cursor-not-allowed flex items-center gap-1"
-                    >
-                      <Printer size={14} />
-                      Print
-                    </button>
+                    
                   </div>
+                  {htmlExportStatus === "error" && htmlExportError && (
+                    <p className="text-xs text-red-500 mt-1">{htmlExportError}</p>
                   {exportStatus === "error" && exportError && (
                     <p className="text-xs text-red-500 mt-1">{exportError}</p>
                   )}
