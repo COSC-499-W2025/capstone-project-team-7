@@ -69,6 +69,8 @@ For testing, use these files (repo root):
 - `same-project-older-code_indiv_proj.zip` — older snapshot of that same project
 - `test-data-multiproject.zip` — combined dataset with `code_indiv_proj`, `code_collab_proj`, `text_indiv_proj`, and `image_indiv_proj`
 
+Note: there are zipped and unzipped versions of the test folders. Zip archives often exclude `.git`, so keep unzipped copies when git/contribution analysis parity is needed.
+
 ## Docker
 
 ```bash
