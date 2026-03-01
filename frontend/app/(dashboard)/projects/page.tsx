@@ -1,12 +1,55 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ProjectsTable } from "@/components/projects/projects-table";
-import { getProjects, deleteProject, getProjectById } from "@/lib/api/projects";
+import { getProjects, deleteProject, getProjectById, getSelection, saveSelection } from "@/lib/api/projects";
 import { ProjectMetadata, ProjectDetail } from "@/types/project";
 import { Loader2, RefreshCw } from "lucide-react";
 import { getStoredToken } from "@/lib/auth";
 import { ProjectDetailModal } from "@/components/projects/project-detail-modal";
+
+function applyProjectOrder(projects: ProjectMetadata[], projectOrder: string[]): ProjectMetadata[] {
+  if (projectOrder.length === 0) {
+    return projects;
+  }
+
+  const byId = new Map(projects.map((project) => [project.id, project]));
+  const ordered: ProjectMetadata[] = [];
+  const seen = new Set<string>();
+
+  for (const projectId of projectOrder) {
+    const project = byId.get(projectId);
+    if (project) {
+      ordered.push(project);
+      seen.add(projectId);
+    }
+  }
+
+  for (const project of projects) {
+    if (!seen.has(project.id)) {
+      ordered.push(project);
+    }
+  }
+
+  return ordered;
+}
+
+function moveItem<T>(items: T[], fromIndex: number, toIndex: number): T[] {
+  if (
+    fromIndex < 0 ||
+    toIndex < 0 ||
+    fromIndex >= items.length ||
+    toIndex >= items.length ||
+    fromIndex === toIndex
+  ) {
+    return items;
+  }
+
+  const nextItems = [...items];
+  const [item] = nextItems.splice(fromIndex, 1);
+  nextItems.splice(toIndex, 0, item);
+  return nextItems;
+}
 
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<ProjectMetadata[]>([]);
@@ -16,6 +59,18 @@ export default function ProjectsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [savingOrder, setSavingOrder] = useState(false);
+  const [orderSaveStatus, setOrderSaveStatus] = useState<"saved" | null>(null);
+  const orderSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (orderSaveTimeoutRef.current) {
+        clearTimeout(orderSaveTimeoutRef.current);
+      }
+    },
+    [],
+  );
 
   // Get auth token using the same method as Settings page
   const getAuthToken = () => {
@@ -39,10 +94,14 @@ export default function ProjectsPage() {
       }
       
       console.log("Fetching projects with token...");
-      const response = await getProjects(token);
+      const [response, selection] = await Promise.all([
+        getProjects(token),
+        getSelection(token).catch(() => null),
+      ]);
+      const orderedProjects = applyProjectOrder(response.projects, selection?.project_order ?? []);
       console.log("Projects fetched successfully:", response);
-      console.log("First project data:", response.projects[0]);
-      setProjects(response.projects);
+      console.log("First project data:", orderedProjects[0]);
+      setProjects(orderedProjects);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to load projects";
       console.error("Error fetching projects:", err);
@@ -139,6 +198,44 @@ export default function ProjectsPage() {
     );
   };
 
+  const persistProjectOrder = async (orderedProjects: ProjectMetadata[]) => {
+    const token = getAuthToken();
+    if (!token) {
+      return;
+    }
+
+    setSavingOrder(true);
+    setOrderSaveStatus(null);
+    try {
+      await saveSelection(token, {
+        project_order: orderedProjects.map((project) => project.id),
+      });
+      setOrderSaveStatus("saved");
+      if (orderSaveTimeoutRef.current) {
+        clearTimeout(orderSaveTimeoutRef.current);
+      }
+      orderSaveTimeoutRef.current = setTimeout(() => {
+        setOrderSaveStatus(null);
+      }, 2000);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Failed to save project order";
+      setError(errorMessage);
+      setOrderSaveStatus(null);
+    } finally {
+      setSavingOrder(false);
+    }
+  };
+
+  const handleReorder = (fromIndex: number, toIndex: number) => {
+    setProjects((prevProjects) => {
+      const nextProjects = moveItem(prevProjects, fromIndex, toIndex);
+      if (nextProjects !== prevProjects) {
+        void persistProjectOrder(nextProjects);
+      }
+      return nextProjects;
+    });
+  };
+
   if (loading) {
     return (
       <div className="p-8">
@@ -168,7 +265,7 @@ export default function ProjectsPage() {
             </div>
             <button
               onClick={handleRefresh}
-              disabled={refreshing}
+              disabled={refreshing || savingOrder}
               className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <RefreshCw size={18} className={refreshing ? "animate-spin" : ""} />
@@ -196,10 +293,17 @@ export default function ProjectsPage() {
 
         {/* Table */}
         <div className="p-8">
+          {savingOrder && (
+            <p className="mb-3 text-sm text-gray-500">Saving project order...</p>
+          )}
+          {!savingOrder && orderSaveStatus === "saved" && (
+            <p className="mb-3 text-sm text-green-700">Project order saved.</p>
+          )}
           <ProjectsTable
             projects={projects}
             onDelete={handleDelete}
             onView={handleView}
+            onReorder={handleReorder}
           />
         </div>
       </div>
