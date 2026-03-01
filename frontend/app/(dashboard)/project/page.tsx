@@ -11,6 +11,8 @@ import { DocumentAnalysisTab } from "@/components/project/document-analysis-tab"
 import { PdfAnalysisTab } from "@/components/project/pdf-analysis-tab";
 import { getStoredToken } from "@/lib/auth";
 import {CodeAnalysisTab} from "@/components/project/code-analysis-tab";
+import { GitAnalysisTab } from "@/components/project/git-analysis-tab";
+import { DuplicateFinderTab } from "@/components/project/duplicate-finder-tab";
 import {
   getProjects,
   getProjectById,
@@ -99,6 +101,16 @@ const contentSubTabs = [
   {value:"code-analysis", label: "Code Analysis", icon: FileCode2}
 ] as const;
 
+const toolsSubTabs = [
+  { value: "tools-main", label: "Overview", icon: Wrench },
+  { value: "file-browser", label: "File Browser", icon: FileText },
+  { value: "git-analysis", label: "Git Analysis", icon: GitBranch },
+  { value: "duplicate-finder", label: "Duplicate Finder", icon: Copy },
+] as const;
+
+type MainTabValue = (typeof mainTabs)[number]["value"];
+type ToolsTabValue = (typeof toolsSubTabs)[number]["value"];
+
 const LANGUAGE_COLORS = [
   "bg-gray-900",
   "bg-blue-600",
@@ -128,6 +140,9 @@ export default function ProjectPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const projectIdParam = searchParams.get("projectId");
+
+  const [activeMainTab, setActiveMainTab] = useState<MainTabValue>("overview");
+  const [activeToolsTab, setActiveToolsTab] = useState<ToolsTabValue>("tools-main");
 
   const [projectId, setProjectId] = useState<string | null>(projectIdParam);
   const [project, setProject] = useState<ProjectDetail | null>(null);
@@ -621,6 +636,59 @@ export default function ProjectPage() {
       .slice(0, 6);
   }, [skillsTimeline]);
 
+  const gitAnalysisRepos = useMemo(() => {
+    const raw = scanData.git_analysis;
+    if (!Array.isArray(raw)) return [];
+    return raw.filter(
+      (entry): entry is Record<string, unknown> =>
+        typeof entry === "object" && entry !== null && !Array.isArray(entry)
+    );
+  }, [scanData.git_analysis]);
+
+  const gitRepoTotal = gitAnalysisRepos.length;
+  const gitCommitTotal = gitAnalysisRepos.reduce((sum, repo) => {
+    const commits = repo.commit_count;
+    if (typeof commits === "number" && Number.isFinite(commits)) {
+      return sum + commits;
+    }
+    return sum;
+  }, 0);
+
+  const duplicateOverview = useMemo(() => {
+    const report = scanData.duplicate_report;
+    if (!report || typeof report !== "object" || Array.isArray(report)) {
+      return null;
+    }
+
+    const record = report as Record<string, unknown>;
+    const groups = Array.isArray(record.duplicate_groups)
+      ? record.duplicate_groups
+      : [];
+
+    const totalGroupsRaw = Number(record.total_duplicates);
+    const totalWastedBytesRaw = Number(record.total_wasted_bytes);
+
+    const totalGroups =
+      Number.isFinite(totalGroupsRaw) && totalGroupsRaw >= 0
+        ? totalGroupsRaw
+        : groups.length;
+
+    const totalWastedBytes =
+      Number.isFinite(totalWastedBytesRaw) && totalWastedBytesRaw >= 0
+        ? totalWastedBytesRaw
+        : 0;
+
+    return {
+      totalGroups,
+      totalWastedBytes,
+    };
+  }, [scanData.duplicate_report]);
+
+  const openToolsTab = useCallback((nextTab: ToolsTabValue) => {
+    setActiveMainTab("tools");
+    setActiveToolsTab(nextTab);
+  }, []);
+
   const handleGenerateSummary = async () => {
     const effectiveProjectId = projectId ?? project?.id ?? null;
     if (!effectiveProjectId) return;
@@ -689,7 +757,11 @@ export default function ProjectPage() {
       )}
 
       {hasProject && (
-        <Tabs defaultValue="overview">
+        <Tabs
+          key={activeMainTab}
+          defaultValue={activeMainTab}
+          onValueChange={(value) => setActiveMainTab(value as MainTabValue)}
+        >
           {/* Main 4 tabs */}
           <TabsList className="flex justify-start gap-2 h-auto bg-gray-100 rounded-lg p-2 mb-6">
             {mainTabs.map((tab) => {
@@ -1543,157 +1615,335 @@ export default function ProjectPage() {
               TAB 4: TOOLS & EXPORT
           ============================================ */}
           <TabsContent value="tools">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {/* File Browser */}
-              <Card className="bg-white border border-gray-200 md:col-span-2 lg:col-span-3">
-                <CardHeader className="border-b border-gray-200">
-                  <CardTitle className="text-base font-bold text-gray-900 flex items-center gap-2">
-                    <FileText size={18} />
-                    File Browser
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-6">
-                  <FileTreeView files={projectFiles} />
-                </CardContent>
-              </Card>
-
-              {/* Git Analysis */}
-              <Card className="bg-white border border-gray-200">
-                <CardHeader className="border-b border-gray-200">
-                  <CardTitle className="text-base font-bold text-gray-900 flex items-center gap-2">
-                    <GitBranch size={18} />
-                    Git Analysis
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-6">
-                  <p className="text-sm text-gray-500 mb-4">
-                    Analyze git history, branches, and commits.
-                  </p>
-                  <PlaceholderContent label="Git Analysis" />
-                </CardContent>
-              </Card>
-
-              {/* Duplicate Finder */}
-              <Card className="bg-white border border-gray-200">
-                <CardHeader className="border-b border-gray-200">
-                  <CardTitle className="text-base font-bold text-gray-900 flex items-center gap-2">
-                    <Copy size={18} />
-                    Duplicate Finder
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-6">
-                  <p className="text-sm text-gray-500 mb-4">
-                    Find and manage duplicate files across the project.
-                  </p>
-                  <PlaceholderContent label="Duplicate Finder" />
-                </CardContent>
-              </Card>
-
-              {/* Search & Filter */}
-              <Card className="bg-white border border-gray-200">
-                <CardHeader className="border-b border-gray-200">
-                  <CardTitle className="text-base font-bold text-gray-900 flex items-center gap-2">
-                    <Search size={18} />
-                    Search & Filter
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-6">
-                  <p className="text-sm text-gray-500 mb-4">
-                    Advanced search and filtering across all project files.
-                  </p>
-                  <PlaceholderContent label="Search & Filter" />
-                </CardContent>
-              </Card>
-
-              {/* Resume Generator */}
-              <Card className="bg-white border border-gray-200">
-                <CardHeader className="border-b border-gray-200">
-                  <CardTitle className="text-base font-bold text-gray-900 flex items-center gap-2">
-                    <FileEdit size={18} />
-                    Resume Generator
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-6">
-                  <p className="text-sm text-gray-500 mb-4">
-                    Generate resume items from project analysis.
-                  </p>
-                  <PlaceholderContent label="Resume Generator" />
-                </CardContent>
-              </Card>
-
-              {/* Export Options */}
-              <Card className="bg-white border border-gray-200">
-                <CardHeader className="border-b border-gray-200">
-                  <CardTitle className="text-base font-bold text-gray-900 flex items-center gap-2">
-                    <FileJson size={18} />
-                    Export Options
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-6 space-y-3">
-                  <p className="text-sm text-gray-500">
-                    Export project analysis in various formats.
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {/* Export JSON — active */}
-                    <button
-                      onClick={handleExportJson}
-                      disabled={!hasProject || exportStatus === "exporting"}
-                      className={[
-                        "px-3 py-2 text-xs font-semibold rounded-md flex items-center gap-1 transition-colors",
-                        exportStatus === "success"
-                          ? "bg-emerald-100 text-emerald-700"
-                          : exportStatus === "error"
-                            ? "bg-red-100 text-red-700"
-                            : !hasProject
-                              ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                              : "bg-gray-900 text-white hover:bg-gray-700 cursor-pointer",
-                      ].join(" ")}
+            <Tabs
+              key={activeToolsTab}
+              defaultValue={activeToolsTab}
+              onValueChange={(value) => setActiveToolsTab(value as ToolsTabValue)}
+              className="space-y-6"
+            >
+              <TabsList className="flex justify-start gap-1 h-auto bg-transparent p-0 border-b border-gray-200 rounded-none">
+                {toolsSubTabs.map((tab) => {
+                  const Icon = tab.icon;
+                  return (
+                    <TabsTrigger
+                      key={tab.value}
+                      value={tab.value}
+                      className="text-xs px-4 py-2 rounded-t-lg rounded-b-none border-b-2 border-transparent data-[state=active]:border-gray-900 data-[state=active]:bg-white"
                     >
-                      {exportStatus === "exporting" ? (
-                        <><Loader2 size={14} className="animate-spin" /> Exporting…</>
-                      ) : exportStatus === "success" ? (
-                        <><Check size={14} /> Downloaded!</>
-                      ) : exportStatus === "error" ? (
-                        <><AlertCircle size={14} /> {exportError ?? "Failed"}</>
-                      ) : (
-                        <><Download size={14} /> Export JSON</>
+                      <Icon size={14} className="mr-1.5" />
+                      {tab.label}
+                    </TabsTrigger>
+                  );
+                })}
+              </TabsList>
+
+              <TabsContent value="tools-main">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <Card className="bg-white border border-gray-200">
+                    <CardHeader className="border-b border-gray-200">
+                      <CardTitle className="text-base font-bold text-gray-900">
+                        <button
+                          type="button"
+                          onClick={() => openToolsTab("file-browser")}
+                          className="inline-flex items-center gap-2 hover:text-gray-700"
+                        >
+                          <FileText size={18} />
+                          File Browser
+                        </button>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-6 space-y-4">
+                      <p className="text-sm text-gray-500">
+                        Browse indexed project files in a dedicated full view.
+                      </p>
+                      <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                        <p className="text-xs text-gray-500">Indexed files</p>
+                        <p className="mt-1 text-lg font-semibold text-gray-900">
+                          {formatCount(projectFiles.length)}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openToolsTab("file-browser")}
+                      >
+                        Open Full View
+                      </Button>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-white border border-gray-200">
+                    <CardHeader className="border-b border-gray-200">
+                      <CardTitle className="text-base font-bold text-gray-900">
+                        <button
+                          type="button"
+                          onClick={() => openToolsTab("git-analysis")}
+                          className="inline-flex items-center gap-2 hover:text-gray-700"
+                        >
+                          <GitBranch size={18} />
+                          Git Analysis
+                        </button>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-6 space-y-4">
+                      <p className="text-sm text-gray-500">
+                        Compact view of repositories and commit activity.
+                      </p>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                          <p className="text-xs text-gray-500">Repositories</p>
+                          <p className="mt-1 text-lg font-semibold text-gray-900">
+                            {gitRepoTotal}
+                          </p>
+                        </div>
+                        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                          <p className="text-xs text-gray-500">Commits</p>
+                          <p className="mt-1 text-lg font-semibold text-gray-900">
+                            {formatCount(gitCommitTotal)}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openToolsTab("git-analysis")}
+                      >
+                        Open Full View
+                      </Button>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-white border border-gray-200">
+                    <CardHeader className="border-b border-gray-200">
+                      <CardTitle className="text-base font-bold text-gray-900">
+                        <button
+                          type="button"
+                          onClick={() => openToolsTab("duplicate-finder")}
+                          className="inline-flex items-center gap-2 hover:text-gray-700"
+                        >
+                          <Copy size={18} />
+                          Duplicate Finder
+                        </button>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-6 space-y-4">
+                      <p className="text-sm text-gray-500">
+                        Quick snapshot of duplicate groups and storage waste.
+                      </p>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                          <p className="text-xs text-gray-500">Groups</p>
+                          <p className="mt-1 text-lg font-semibold text-gray-900">
+                            {duplicateOverview?.totalGroups ?? 0}
+                          </p>
+                        </div>
+                        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                          <p className="text-xs text-gray-500">Wasted</p>
+                          <p className="mt-1 text-lg font-semibold text-gray-900">
+                            {formatBytes(duplicateOverview?.totalWastedBytes ?? 0)}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openToolsTab("duplicate-finder")}
+                      >
+                        Open Full View
+                      </Button>
+                    </CardContent>
+                  </Card>
+
+                  {/* Search & Filter */}
+                  <Card className="bg-white border border-gray-200">
+                    <CardHeader className="border-b border-gray-200">
+                      <CardTitle className="text-base font-bold text-gray-900 flex items-center gap-2">
+                        <Search size={18} />
+                        Search & Filter
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-6">
+                      <p className="text-sm text-gray-500 mb-4">
+                        Use the dedicated search workspace to query files and skills across scanned projects.
+                      </p>
+                      <Link
+                        href="/search"
+                        className="inline-flex items-center rounded-md bg-gray-900 px-3 py-2 text-xs font-semibold text-white hover:bg-gray-800"
+                      >
+                        Open Search
+                      </Link>
+                    </CardContent>
+                  </Card>
+
+                  {/* Resume Generator */}
+                  <Card className="bg-white border border-gray-200">
+                    <CardHeader className="border-b border-gray-200">
+                      <CardTitle className="text-base font-bold text-gray-900 flex items-center gap-2">
+                        <FileEdit size={18} />
+                        Resume Generator
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-6">
+                      <p className="text-sm text-gray-500 mb-4">
+                        Generate resume items from project analysis.
+                      </p>
+                      <PlaceholderContent label="Resume Generator" />
+                    </CardContent>
+                  </Card>
+
+                  {/* Export Options */}
+                  <Card className="bg-white border border-gray-200">
+                    <CardHeader className="border-b border-gray-200">
+                      <CardTitle className="text-base font-bold text-gray-900 flex items-center gap-2">
+                        <FileJson size={18} />
+                        Export Options
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-6 space-y-3">
+                      <p className="text-sm text-gray-500">
+                        Export project analysis in various formats.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {/* Export JSON — active */}
+                        <button
+                          onClick={handleExportJson}
+                          disabled={!hasProject || exportStatus === "exporting"}
+                          className={[
+                            "px-3 py-2 text-xs font-semibold rounded-md flex items-center gap-1 transition-colors",
+                            exportStatus === "success"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : exportStatus === "error"
+                                ? "bg-red-100 text-red-700"
+                                : !hasProject
+                                  ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                                  : "bg-gray-900 text-white hover:bg-gray-700 cursor-pointer",
+                          ].join(" ")}
+                        >
+                          {exportStatus === "exporting" ? (
+                            <><Loader2 size={14} className="animate-spin" /> Exporting…</>
+                          ) : exportStatus === "success" ? (
+                            <><Check size={14} /> Downloaded!</>
+                          ) : exportStatus === "error" ? (
+                            <><AlertCircle size={14} /> {exportError ?? "Failed"}</>
+                          ) : (
+                            <><Download size={14} /> Export JSON</>
+                          )}
+                        </button>
+                        <button
+                          onClick={handleExportHtml}
+                          disabled={!hasProject || htmlExportStatus === "exporting"}
+                          className={[
+                            "px-3 py-2 text-xs font-semibold rounded-md flex items-center gap-1 transition-colors",
+                            htmlExportStatus === "success"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : htmlExportStatus === "error"
+                                ? "bg-red-100 text-red-700"
+                                : !hasProject
+                                  ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                                  : "bg-gray-900 text-white hover:bg-gray-700 cursor-pointer",
+                          ].join(" ")}
+                        >
+                          {htmlExportStatus === "exporting" ? (
+                            <><Loader2 size={14} className="animate-spin" /> Exporting…</>
+                          ) : htmlExportStatus === "success" ? (
+                            <><Check size={14} /> Downloaded!</>
+                          ) : htmlExportStatus === "error" ? (
+                            <><AlertCircle size={14} /> {htmlExportError ?? "Failed"}</>
+                          ) : (
+                            <><FileCode2 size={14} /> Export HTML</>
+                          )}
+                        </button>
+                      </div>
+                      {htmlExportStatus === "error" && htmlExportError && (
+                        <p className="text-xs text-red-500 mt-1">{htmlExportError}</p>
                       )}
-                    </button>
-                    <button
-                      onClick={handleExportHtml}
-                      disabled={!hasProject || htmlExportStatus === "exporting"}
-                      className={[
-                        "px-3 py-2 text-xs font-semibold rounded-md flex items-center gap-1 transition-colors",
-                        htmlExportStatus === "success"
-                          ? "bg-emerald-100 text-emerald-700"
-                          : htmlExportStatus === "error"
-                            ? "bg-red-100 text-red-700"
-                            : !hasProject
-                              ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                              : "bg-gray-900 text-white hover:bg-gray-700 cursor-pointer",
-                      ].join(" ")}
+                      {exportStatus === "error" && exportError && (
+                        <p className="text-xs text-red-500 mt-1">{exportError}</p>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="file-browser" className="space-y-4">
+                <Card className="bg-white border border-gray-200">
+                  <CardHeader className="border-b border-gray-200 flex flex-row items-center justify-between">
+                    <CardTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                      <FileText size={18} />
+                      File Browser
+                    </CardTitle>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setActiveToolsTab("tools-main")}
                     >
-                      {htmlExportStatus === "exporting" ? (
-                        <><Loader2 size={14} className="animate-spin" /> Exporting…</>
-                      ) : htmlExportStatus === "success" ? (
-                        <><Check size={14} /> Downloaded!</>
-                      ) : htmlExportStatus === "error" ? (
-                        <><AlertCircle size={14} /> {htmlExportError ?? "Failed"}</>
-                      ) : (
-                        <><FileCode2 size={14} /> Export HTML</>
-                      )}
-                    </button>
-                    
-                  </div>
-                  {htmlExportStatus === "error" && htmlExportError && (
-                    <p className="text-xs text-red-500 mt-1">{htmlExportError}</p>
-                  )}
-                  {exportStatus === "error" && exportError && (
-                    <p className="text-xs text-red-500 mt-1">{exportError}</p>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
+                      Back to Overview
+                    </Button>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    <FileTreeView files={projectFiles} />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="git-analysis" className="space-y-4">
+                <Card className="bg-white border border-gray-200">
+                  <CardHeader className="border-b border-gray-200 flex flex-row items-center justify-between">
+                    <CardTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                      <GitBranch size={18} />
+                      Git Analysis
+                    </CardTitle>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setActiveToolsTab("tools-main")}
+                    >
+                      Back to Overview
+                    </Button>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    <GitAnalysisTab
+                      loading={projectLoading}
+                      error={projectError}
+                      gitAnalysis={scanData.git_analysis}
+                      onRetry={loadProject}
+                    />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="duplicate-finder" className="space-y-4">
+                <Card className="bg-white border border-gray-200">
+                  <CardHeader className="border-b border-gray-200 flex flex-row items-center justify-between">
+                    <CardTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                      <Copy size={18} />
+                      Duplicate Finder
+                    </CardTitle>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setActiveToolsTab("tools-main")}
+                    >
+                      Back to Overview
+                    </Button>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    <DuplicateFinderTab
+                      duplicateReport={scanData.duplicate_report}
+                      isLoading={projectLoading}
+                      errorMessage={projectError}
+                      onRetry={loadProject}
+                    />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
           </TabsContent>
         </Tabs>
       )}

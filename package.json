@@ -16,8 +16,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "install:all": "npm install && npm install -w frontend && npm install -w electron",
     "start:desktop": "npm run install:all && npm run dev:desktop",
-    "dev:desktop": "concurrently -k -n backend,frontend,electron \"cd backend && uvicorn src.main:app --reload\" \"cd frontend && npm run dev\" \"cd electron && cross-env ELECTRON_START_URL=http://localhost:3000 npm run dev\"",
-    "preview:desktop": "npm run export --workspace frontend && npm run build --workspace electron && npm run start --workspace electron"
+    "dev:desktop": "concurrently -k -n backend,frontend,electron \"cd backend && uvicorn src.main:app --reload\" \"cd frontend && npm run dev\" \"cd electron && cross-env ELECTRON_START_URL=http://localhost:3000 ELECTRON_OPEN_DEVTOOLS=0 npm run dev\"",
+    "preview:desktop": "npm run export --workspace frontend && npm run build --workspace electron && cross-env ELECTRON_OPEN_DEVTOOLS=0 npm run start --workspace electron"
   },
   "repository": {
     "type": "git",

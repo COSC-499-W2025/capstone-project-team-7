@@ -48,7 +48,7 @@ BACK_PID=$!
 FRONT_PID=$!
 
 # Start Electron
-(cd electron && ELECTRON_START_URL=http://localhost:3000 npm run dev) &
+(cd electron && ELECTRON_START_URL=http://localhost:3000 ELECTRON_OPEN_DEVTOOLS=0 npm run dev) &
 ELECTRON_PID=$!
 
 echo ""

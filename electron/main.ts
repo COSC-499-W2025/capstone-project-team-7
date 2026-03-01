@@ -5,6 +5,9 @@ import { promises as fsPromises } from "node:fs";
 import { IPC_CHANNELS } from "./ipc/channels";
 
 const isDev = process.env.NODE_ENV !== "production";
+const shouldOpenDevTools =
+  process.env.ELECTRON_OPEN_DEVTOOLS === "1" ||
+  process.env.ELECTRON_OPEN_DEVTOOLS === "true";
 
 const resolveRendererUrl = () => {
   const envUrl = process.env.ELECTRON_START_URL;
@@ -43,7 +46,7 @@ const createWindow = () => {
   }
 
   // Open DevTools in development
-  if (isDev) {
+  if (isDev && shouldOpenDevTools) {
     mainWindow.webContents.openDevTools();
   }
 

@@ -30,4 +30,4 @@ sleep 3
 # Start Electron (loads static files, no dev server needed)
 echo "Starting Electron..."
 cd electron
-npm run start
+ELECTRON_OPEN_DEVTOOLS=0 npm run start

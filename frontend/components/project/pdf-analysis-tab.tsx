@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { FileImage, FileText, Clock, Hash, Tag, TrendingUp } from "lucide-react";
+import { FileImage, FileText, Clock, Tag, TrendingUp } from "lucide-react";
 
 interface PdfKeyword {
   word: string;
@@ -17,7 +17,7 @@ interface PdfDocument {
   file_size_mb?: number;
 }
 
-type PdfAnalysisPayload = PdfDocument[] | null | undefined;
+type PdfAnalysisPayload = unknown;
 
 type PdfAnalysisTabProps = {
   pdfAnalysis?: PdfAnalysisPayload;
@@ -25,25 +25,57 @@ type PdfAnalysisTabProps = {
   errorMessage?: string | null;
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is string => typeof entry === "string");
+}
+
+function toKeywordArray(value: unknown): PdfKeyword[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.reduce<PdfKeyword[]>((acc, entry) => {
+    if (!isRecord(entry)) return acc;
+
+    const word = typeof entry.word === "string" ? entry.word : "";
+    const count = typeof entry.count === "number" ? entry.count : Number(entry.count);
+
+    if (!word || !Number.isFinite(count)) return acc;
+
+    acc.push({ word, count });
+    return acc;
+  }, []);
+}
+
 function normalizePdfAnalysis(payload: PdfAnalysisPayload): PdfDocument[] {
-  if (!payload || !Array.isArray(payload)) return [];
-  
-  return payload
-    .map((item) => {
-      if (!item || typeof item !== "object") return null;
-      
-      return {
-        file_name: item.file_name || item.file_path || "Unknown",
-        file_path: item.file_path || item.file_name || "",
-        page_count: item.page_count || 0,
-        summary: item.summary || undefined,
-        key_topics: Array.isArray(item.key_topics) ? item.key_topics : [],
-        keywords: Array.isArray(item.keywords) ? item.keywords : [],
-        reading_time: item.reading_time || 0,
-        file_size_mb: item.file_size_mb || 0,
-      };
-    })
-    .filter((item): item is PdfDocument => item !== null);
+  if (!Array.isArray(payload)) return [];
+
+  return payload.reduce<PdfDocument[]>((acc, entry) => {
+    if (!isRecord(entry)) return acc;
+
+    const fileName = typeof entry.file_name === "string" ? entry.file_name : "";
+    const filePath = typeof entry.file_path === "string" ? entry.file_path : "";
+
+    const normalized: PdfDocument = {
+      file_name: fileName || filePath || "Unknown",
+      file_path: filePath || fileName || "",
+      page_count: typeof entry.page_count === "number" ? entry.page_count : 0,
+      key_topics: toStringArray(entry.key_topics),
+      keywords: toKeywordArray(entry.keywords),
+      reading_time: typeof entry.reading_time === "number" ? entry.reading_time : 0,
+      file_size_mb: typeof entry.file_size_mb === "number" ? entry.file_size_mb : 0,
+    };
+
+    if (typeof entry.summary === "string" && entry.summary.length > 0) {
+      normalized.summary = entry.summary;
+    }
+
+    acc.push(normalized);
+    return acc;
+  }, []);
 }
 
 export function PdfAnalysisTab({
