@@ -134,6 +134,66 @@ class ProjectsService:
                 return None
 
         return self._overrides_service
+
+    @staticmethod
+    def _is_auth_storage_error(exc: Exception) -> bool:
+        text = str(exc).lower()
+        return (
+            "pgrst301" in text
+            or "jwt cryptographic operation failed" in text
+            or "invalid api key" in text
+            or "authenticated user token is required" in text
+        )
+
+    def _save_scan_local(
+        self,
+        user_id: str,
+        project_name: str,
+        project_path: str,
+        scan_data: Dict[str, Any],
+        role: Optional[str],
+    ) -> Dict[str, Any]:
+        summary = scan_data.get("summary", {}) or {}
+        code_analysis = scan_data.get("code_analysis")
+        languages = scan_data.get("languages") or summary.get("languages") or []
+        if isinstance(languages, dict):
+            languages = list(languages.keys())
+        if not isinstance(languages, list):
+            languages = []
+        total_lines = 0
+        if isinstance(code_analysis, dict):
+            total_lines = code_analysis.get("metrics", {}).get("total_lines", 0) if code_analysis.get("metrics") else code_analysis.get("total_lines", 0)
+        record = {
+            "project_path": project_path,
+            "scan_data": self._encrypt_scan_data(scan_data),
+            "scan_timestamp": datetime.now().isoformat(),
+            "total_files": summary.get("total_files", 0) or summary.get("files_processed", 0),
+            "total_lines": total_lines,
+            "languages": [str(lang) for lang in languages if lang],
+            "has_media_analysis": "media_analysis" in scan_data,
+            "has_pdf_analysis": "pdf_analysis" in scan_data,
+            "has_code_analysis": code_analysis is not None,
+            "has_skills_analysis": "skills_analysis" in scan_data and bool((scan_data.get("skills_analysis") or {}).get("success")),
+            "has_document_analysis": "document_analysis" in scan_data,
+            "has_git_analysis": "git_analysis" in scan_data,
+            "has_contribution_metrics": "contribution_metrics" in scan_data,
+            "contribution_score": (scan_data.get("contribution_ranking") or {}).get("score"),
+            "user_commit_share": (scan_data.get("contribution_ranking") or {}).get("user_commit_share"),
+            "total_commits": (scan_data.get("contribution_metrics") or {}).get("total_commits"),
+            "primary_contributor": (((scan_data.get("contribution_metrics") or {}).get("primary_contributor") or {}).get("name") if isinstance((scan_data.get("contribution_metrics") or {}).get("primary_contributor"), dict) else None),
+            "project_end_date": (scan_data.get("contribution_metrics") or {}).get("project_end_date"),
+            "has_skills_progress": bool(scan_data.get("skills_progress")),
+        }
+        saved_project = local_store.upsert_project(user_id, project_name, record)
+        project_id = saved_project.get("id")
+        if role is not None and project_id:
+            local_store.upsert_project_override(user_id, project_id, {"role": role})
+            saved_project["role"] = role
+        elif project_id:
+            existing_override = local_store.get_project_override(user_id, project_id)
+            if existing_override is not None and existing_override.get("role"):
+                saved_project["role"] = existing_override.get("role")
+        return saved_project
     
     @staticmethod
     def infer_role_from_contribution(scan_data: Dict[str, Any]) -> str:
@@ -181,47 +241,7 @@ class ProjectsService:
             Saved project record (includes 'role' field from overrides if available)
         """
         if self._use_local_store:
-            summary = scan_data.get("summary", {}) or {}
-            code_analysis = scan_data.get("code_analysis")
-            languages = scan_data.get("languages") or summary.get("languages") or []
-            if isinstance(languages, dict):
-                languages = list(languages.keys())
-            if not isinstance(languages, list):
-                languages = []
-            total_lines = 0
-            if isinstance(code_analysis, dict):
-                total_lines = code_analysis.get("metrics", {}).get("total_lines", 0) if code_analysis.get("metrics") else code_analysis.get("total_lines", 0)
-            record = {
-                "project_path": project_path,
-                "scan_data": self._encrypt_scan_data(scan_data),
-                "scan_timestamp": datetime.now().isoformat(),
-                "total_files": summary.get("total_files", 0) or summary.get("files_processed", 0),
-                "total_lines": total_lines,
-                "languages": [str(lang) for lang in languages if lang],
-                "has_media_analysis": "media_analysis" in scan_data,
-                "has_pdf_analysis": "pdf_analysis" in scan_data,
-                "has_code_analysis": code_analysis is not None,
-                "has_skills_analysis": "skills_analysis" in scan_data and bool((scan_data.get("skills_analysis") or {}).get("success")),
-                "has_document_analysis": "document_analysis" in scan_data,
-                "has_git_analysis": "git_analysis" in scan_data,
-                "has_contribution_metrics": "contribution_metrics" in scan_data,
-                "contribution_score": (scan_data.get("contribution_ranking") or {}).get("score"),
-                "user_commit_share": (scan_data.get("contribution_ranking") or {}).get("user_commit_share"),
-                "total_commits": (scan_data.get("contribution_metrics") or {}).get("total_commits"),
-                "primary_contributor": (((scan_data.get("contribution_metrics") or {}).get("primary_contributor") or {}).get("name") if isinstance((scan_data.get("contribution_metrics") or {}).get("primary_contributor"), dict) else None),
-                "project_end_date": (scan_data.get("contribution_metrics") or {}).get("project_end_date"),
-                "has_skills_progress": bool(scan_data.get("skills_progress")),
-            }
-            saved_project = local_store.upsert_project(user_id, project_name, record)
-            project_id = saved_project.get("id")
-            if role is not None and project_id:
-                local_store.upsert_project_override(user_id, project_id, {"role": role})
-                saved_project["role"] = role
-            elif project_id:
-                existing_override = local_store.get_project_override(user_id, project_id)
-                if existing_override is not None and existing_override.get("role"):
-                    saved_project["role"] = existing_override.get("role")
-            return saved_project
+            return self._save_scan_local(user_id, project_name, project_path, scan_data, role)
 
         try:
             # Extract metadata from scan_data
@@ -332,6 +352,13 @@ class ProjectsService:
             return saved_project
             
         except Exception as exc:
+            if self._is_auth_storage_error(exc):
+                logging.getLogger(__name__).warning(
+                    "Falling back to local project persistence for user %s due to Supabase auth/storage error: %s",
+                    user_id,
+                    exc,
+                )
+                return self._save_scan_local(user_id, project_name, project_path, scan_data, role)
             raise ProjectsServiceError(f"Failed to save scan: {exc}") from exc
     
     def update_project_score(
@@ -412,6 +439,16 @@ class ProjectsService:
                 projects = response.data or []
                 for project in projects:
                     project.setdefault("has_skills_progress", False)
+                    project["scan_data"] = self._decrypt_scan_data(project.get("scan_data"))
+                return projects
+            if self._is_auth_storage_error(exc):
+                logging.getLogger(__name__).warning(
+                    "Falling back to local project listing for user %s due to Supabase auth/storage error: %s",
+                    user_id,
+                    exc,
+                )
+                projects = local_store.list_projects(user_id)
+                for project in projects:
                     project["scan_data"] = self._decrypt_scan_data(project.get("scan_data"))
                 return projects
             raise ProjectsServiceError(f"Failed to get projects: {exc}") from exc
@@ -527,6 +564,20 @@ class ProjectsService:
             return record
             
         except Exception as exc:
+            if self._is_auth_storage_error(exc):
+                logging.getLogger(__name__).warning(
+                    "Falling back to local project scan retrieval for user %s, project %s due to Supabase auth/storage error: %s",
+                    user_id,
+                    project_id,
+                    exc,
+                )
+                record = local_store.get_project(user_id, project_id)
+                if not record:
+                    return None
+                record["scan_data"] = self._decrypt_scan_data(record.get("scan_data"))
+                override = local_store.get_project_override(user_id, project_id)
+                record["role"] = override.get("role") if override else None
+                return record
             raise ProjectsServiceError(f"Failed to get project scan: {exc}") from exc
     
     def delete_project(self, user_id: str, project_id: str) -> bool:
