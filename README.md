@@ -26,7 +26,7 @@ npm run preview:desktop  # static frontend build + electron preview
 
 ## API documentation
 
-- Route reference: `backend/src/api/README.md`
+- Route reference: [backend/src/api/README.md](backend/src/api/README.md)
 - Interactive FastAPI docs (when backend is running): `http://localhost:8000/docs`
 
 ## Backend only
