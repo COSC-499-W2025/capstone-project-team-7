@@ -141,7 +141,12 @@ SUPPORTED_LANGS = {
     'css': {'ext': ['.css', '.scss', '.sass'], 'mod': _language_modules.get('css')},
 }
 
-EXCLUDED_DIRS = {'node_modules', '.git', '__pycache__', 'venv', '.venv', 'build', 'dist'}
+EXCLUDED_DIRS = {
+    'node_modules', '.git', '__pycache__', 'venv', '.venv', 'build', 'dist',
+    '.next', '.nuxt', 'coverage', 'out', 'target', '.pytest_cache', '.tox',
+    'htmlcov', 'site-packages', 'vendor', 'bower_components', '.gradle',
+    '.idea', '.vscode', 'test', 'tests', '__tests__', '.cache'
+}
 
 
 def get_language(lang_name: str):
@@ -1552,10 +1557,21 @@ class CodeAnalyzer:
             if lang in self.parsers:
                 supported_exts.update(config['ext'])
         
+        max_size_bytes = self.max_file_mb * 1024 * 1024
+        
         try:
             for item in path.iterdir():
                 if item.is_file() and item.suffix.lower() in supported_exts:
-                    files.append(item)
+                    # Skip large files early to avoid processing overhead
+                    try:
+                        file_size = item.stat().st_size
+                        if file_size <= max_size_bytes:
+                            files.append(item)
+                        else:
+                            logger.debug(f"Skipping large file: {item} ({file_size / (1024*1024):.2f}MB)")
+                    except OSError:
+                        # If we can't stat the file, skip it
+                        pass
                 elif item.is_dir() and item.name not in self.excluded_dirs:
                     files.extend(self.walk_directory(item, depth + 1))
         except PermissionError:
@@ -1610,14 +1626,30 @@ class CodeAnalyzer:
                 supported_exts.update(config['ext'])
             files = [f for f in path.iterdir() if f.is_file() and f.suffix.lower() in supported_exts]
         
-        logger.info(f"Found {len(files)} files")
+        total_files = len(files)
+        logger.info(f"Found {total_files} files")
         
-        for file_path in files:
+        # Limit analysis to prevent timeouts on very large codebases
+        MAX_FILES_TO_ANALYZE = 500
+        if total_files > MAX_FILES_TO_ANALYZE:
+            logger.warning(f"Large codebase detected ({total_files} files). Limiting analysis to first {MAX_FILES_TO_ANALYZE} files.")
+            files = files[:MAX_FILES_TO_ANALYZE]
+        
+        # Analyze files with progress logging
+        for i, file_path in enumerate(files, 1):
             file_result = self.analyze_file(file_path)
             result.files.append(file_result)
+            
+            # Log progress every 50 files
+            if i % 50 == 0:
+                logger.info(f"Progress: {i}/{len(files)} files analyzed ({(i/len(files)*100):.1f}%)")
         
-        # Cross-file duplicate detection
-        result.cross_file_duplicates = self._detect_cross_file_duplicates()
+        # Cross-file duplicate detection (skip for very large codebases to prevent timeout)
+        if len(files) <= 200:
+            result.cross_file_duplicates = self._detect_cross_file_duplicates()
+        else:
+            logger.info(f"Skipping cross-file duplicate detection for large codebase ({len(files)} files)")
+            result.cross_file_duplicates = []
         
         result.summary = self._build_summary(result)
         logger.info(f"Complete: {result.successful} analyzed, {result.failed} failed")
