@@ -557,10 +557,8 @@ async def generate_portfolio_item(
                 detail={"code": "not_found", "message": f"Project with ID '{request.project_id}' not found"},
             )
         
-        # Extract scan_data — key may exist with None value, or decryption may return
-        # a non-dict type; both cases would crash .get() calls below
-        _raw = project.get("scan_data")
-        scan_data = _raw if isinstance(_raw, dict) else {}
+        # Extract scan_data
+        scan_data = project.get("scan_data", {})
         
         # Generate title from project name
         title = project.get("project_name", "Untitled Project")
