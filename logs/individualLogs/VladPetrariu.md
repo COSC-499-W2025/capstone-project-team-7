@@ -1,6 +1,6 @@
 # Week 20 & 21 & 22: February 9 - March 1
 
-  Contributions                                                                                                                                                                                                                                            
+  Contributions:                                                                                                                                                                                                                                            
   [PR #329](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/329) — Git Analysis Tab (+263/−76, merged Feb 17)
   - Implemented the Git Analysis tab on the project analysis page, displaying git contribution metrics including commit counts, contributor        
   breakdowns with percentages, monthly commit timelines, top files, languages, and branch information.                       
@@ -15,7 +15,7 @@
   contributors with multiple emails.
   - Added 62 new automated tests covering file tree logic, file tree view rendering, git email formatting, and git analysis tab updates.
 
-  Code Reviews
+  Code Reviews:
 
   - [PR #321](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/312) — Finalize CLI/TUI deletion and service-path cleanup: Reviewed cleanup of deprecated CLI/TUI code and service paths.
   - [PR #322](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/322) — Build Supabase-backed consent management page: Reviewed new consent management page backed by Supabase.
@@ -25,6 +25,8 @@
   - [PR #352](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/352) — Add incremental scan UI for appending files: Reviewed UI for incrementally appending files to existing scans.
   - [PR #353](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/353) — Add GET /api/skills endpoint: Reviewed new backend API endpoint for skills.
   - [PR #366](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/366) — Feature/portfolio: Reviewed portfolio feature implementation.
+
+<img width="1087" height="638" alt="Screenshot 2026-03-01 at 8 48 45 PM" src="https://github.com/user-attachments/assets/1698a108-52c6-44f5-8f84-1f2280f9adc6" />
 
 # Week 18 & 19: January 26 - February 8
  Code Contributions                                                                                       
