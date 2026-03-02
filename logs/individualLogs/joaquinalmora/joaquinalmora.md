@@ -46,7 +46,7 @@ Local validation was slowed by missing Supabase credentials, invalid API key err
 - Review Milestone 3 requirements and create corresponding issues  
 - Prioritize and begin implementation of Milestone 3 features  
 
-![Peer Eval](./images/w21peer.png)
+![Peer Eval](./images/w22peer.png)
 
 ## Week 20 (February 9th – 15th)
 
