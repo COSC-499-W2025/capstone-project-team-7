@@ -63,6 +63,8 @@ Issues resolved: [#340 - /api/uploads fix](https://github.com/COSC-499-W2025/cap
 
 PRs: [#341 - API Upload Scan Bug Fix](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/341) (Merged), [#342 - Project Detection Enhancement](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/342) (Merged), [#357 - Sync Milestone 2 API updates into main](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/357) (Merged), [#358 - Role Edit Option Added](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/358) (Merged), [#359 - Evidence of Success](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/359) (Merged)
 
+![Tasks Completed](./assets/Omistry_T2_Week8.png)
+
 ---
 
 ## Week 21: February 16 - February 22

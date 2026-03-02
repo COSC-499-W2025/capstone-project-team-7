@@ -84,7 +84,28 @@ Finally, I reviewed Aaron’s **PR [#373 – “Implement auto resume item”](h
 Overall, these PRs are in good shape. The main feedback focused on edge-case robustness, accessibility, and ensuring backend and frontend changes remain resilient to malformed or evolving data.
 
 **Vlad**
+
+
 **Om**
+
+During weeks 20–22 (February 9 – March 1), I delivered seven merged PRs spanning auth hardening, frontend features, and backend reliability improvements.
+
+I started by fixing critical auth issues in [PR #324](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/324) and [PR #326](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/326). PR #324 corrected the logout flow on the settings page — ensuring all token keys were cleared consistently and routing properly redirected to `/auth/login` within our Electron MemoryRouter. PR #326 resolved a session logout race condition by adding a global 401/403 error handler with logout notifications, a Sonner toast notification system, moving the consent API call to the userSession effect with proper loading/error UI, and adding E2E and backend tests for the full logout flow.
+
+I implemented the Forgot Password flow in [PR #331](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/331), adding a `/forgot-password` page, full backend password reset support via Supabase email link, frontend API methods, corrected redirect handling, and accompanying documentation and tests.
+
+I built the Resume Items page in [PR #339](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/339), delivering TypeScript types for the resume items API, a full API client, and a `/resumes` page in the Electron app with CRUD operations backed by the existing backend endpoints.
+
+I fixed API scan mode routing in [PR #341](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/341) by removing the stub `/api/uploads` route from spec_routes, forwarding the auth token to ScanService in the API scan route, restoring scan service API mode in the TUI, and adding comprehensive tests for api scan mode and routing.
+
+I delivered a major improvement to project detection in [PR #342](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/342), rewriting `ProjectDetector` to apply a git-first rule (one repo = one project) and implementing a two-tier suppression system so architectural directories like `backend`, `frontend`, and `services` are only suppressed inside detected projects rather than at the workspace top level. This fixed false multi-project detections for full-stack monorepos. I also addressed several backend reliability issues in this branch: fixing thread safety in `_get_scan_service`, surfacing parse errors and correcting `media_info` serialization in upload routes, accepting arbitrary `scan_data` dicts in `POST /api/projects` to resolve 422 errors, and stripping timezone offsets before isoformat to avoid double-offset encoding.
+
+I added Role Editing to the project detail view in [PR #358](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/358), implementing an inline role display and edit UI within `ProjectDetailModal`, an `updateProjectRole` API function calling `PATCH /api/projects/{id}/overrides`, auth token propagation and role update handlers, and regression tests for the Supabase key ordering RLS issue. I also replaced the hardcoded back link with `router.back()` for correct navigation.
+
+Finally, I implemented Evidence of Success integration in [PR #359](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/359), extending the project editing flow with an evidence of success UI, updating the `TimelineItem` Pydantic model with an `evidence: List[str]` field, returning evidence from `get_user_projects_with_roles()` alongside overrides so it flows through to portfolio output, and adding tests for override persistence and constraint handling.
+
+On the review side, I reviewed PRs across this period focusing on API contract stability, auth correctness, and consistency with established data models.
+
 **Aaron**
 **Samarth**
 
