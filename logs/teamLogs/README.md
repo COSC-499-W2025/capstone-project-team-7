@@ -104,7 +104,7 @@ Vlad Petrariu (My code contributions)
   -[PR #353](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/353)— Add GET /api/skills endpoint (+156/−0, merged Feb 28): Added a new backend API endpoint for retrieving skills.
 
   My code reviews for OM:
-  -[PR #326](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/326) — Session Logout Issues (+666/−248, merged Feb 16): Fixed session and logout handling issues.
+  - [PR #326](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/326) — Session Logout Issues (+666/−248, merged Feb 16): Fixed session and logout handling issues.
   -[PR #331](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/331)— Forgot Password Page and Functionality (+435/−10, merged Feb 16): Implemented forgot/reset password flow with a new page and
   supporting functionality.
 
