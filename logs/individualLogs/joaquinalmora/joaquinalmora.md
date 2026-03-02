@@ -1,6 +1,7 @@
 # Joaquin Almora / @joaquinalmora
 
 ### Weekly Navigation
+- [Week 21](#week-21)
 - [Week 20](#week-20)
 - [Week 19](#week-19)
 - [Week 18](#week-18)
@@ -20,6 +21,34 @@
 - [Week 5](#week-5-september-29th---october-5th)
 - [Week 4](#week-4-september-22nd---28th)
 - [Week 3](#week-3-september-15th---21st)
+
+## Week 21 (February 23rd - March 1st)
+This week focused on implementing the Electron search flow with skill filtering, adding thumbnail upload and manual project reordering with persisted selection, and hardening the local demo auth and ZIP scan pipeline. The work was delivered in [PR #352 – “Add incremental scan UI for appending files”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/352), [PR #353 – “Add GET /api/skills endpoint”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/353), [PR #355 – “feat(electron): add search page with skill filtering”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/355), [PR #356 – “feat(projects): add thumbnail upload UI to project detail modal”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/356), and [PR #369 – “feat: harden local demo auth flow and zip scan support”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/369).
+
+On the frontend, I implemented the `/search` page with scope and skill filters, loading, error, and empty states, and project navigation on `feature/349-search-page`. I added supporting API contracts and clients (`SearchResultItem`, `SearchResponse`, `SkillsListResponse`, `searchProjects()`, `getSkills()`) aligned with existing patterns and verified clean diagnostics and type safety for all search-related files. I also implemented thumbnail upload with modal UI, API integration, and parent refresh callbacks on a clean branch based on `main` to maintain PR isolation and avoid mixing unrelated commits.
+
+I also implemented manual project re-ranking on `feat/re-rank` with drag-and-drop rows, keyboard and button reorder controls, and persistence wiring using `getSelection` and `saveSelection` so `project_order` loads on page initialization and updates on reorder. I added explicit UI feedback (`Saving project order...` → `Project order saved.`) to confirm persistence and updated Vitest coverage to validate order loading and reorder persistence. The feature was synced with `origin/main`, rebased, and pushed with associated documentation updates.
+
+On the backend and Electron integration side, I added incremental append-scan UI and wired the append workflow into the scan dialog. I implemented anon-key and request-JWT local demo hardening on `feat/anon-jwt-local-demo` to reduce service-role dependency and fixed a runtime crash caused by `NoneType` selection responses by making selection handling robust for empty states. I also added ZIP picker support in the Electron scan dialog and fixed the analysis pipeline so scans run against extracted contents instead of archive file paths, resolving empty-analysis results after successful scans.
+
+During development, I coordinated a multi-PR delivery stream with clear isolation between search, skills endpoint, thumbnail upload, incremental scan, and auth hardening work. I recovered from accidental branch deletion and premature PR creation by restoring branches and reopening correct PR flows. I also updated Issue #346 to reflect Electron implementation scope and clarified reuse of existing persistence APIs. Several local validation issues required debugging, including missing Supabase credentials, API key misconfiguration, and dependency ordering between frontend and backend PRs.
+
+### Reflection
+
+**What went well:**  
+The search page, thumbnail upload, and manual project reordering features were implemented cleanly with proper isolation, persistence integration, and test coverage. The ZIP scan pipeline fix resolved a critical correctness issue where scans completed successfully but produced empty analyses. Local demo auth hardening improved tester setup reliability by reducing service-role dependency. Coordinating multiple concurrent PRs remained organized through careful branch management, rebasing, and scoped commits.
+
+**What didn’t go well:**  
+Local validation was slowed by missing Supabase credentials, invalid API key errors, and backend dependency ordering, particularly the `/api/skills` endpoint required for full search verification. Branch lifecycle mistakes, including premature PR creation and accidental deletion, required recovery and added overhead. Repository noise from unrelated modified and untracked files complicated staging and required careful branch isolation. Divergent history reconciliation and ZIP scan debugging required additional rebasing, force pushing, and runtime log analysis.
+
+### Next Steps
+
+- Review Milestone 3 requirements and create corresponding issues  
+- Prioritize and begin implementation of Milestone 3 features  
+- Monitor merged search, skills, and thumbnail flows to ensure stability  
+- Continue improving Electron scan and persistence reliability  
+
+![Peer Eval](./images/w21peer.png)
 
 ## Week 20 (February 9th – 15th)
 
