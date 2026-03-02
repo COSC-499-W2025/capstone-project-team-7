@@ -1,7 +1,7 @@
 # Capstone Team 7 Logs
 
 ## Quick Navigation
-- [Week 20-22 (February 9th - March 1st)](#week20-22)
+- [Week 20 - 22 (February 9th - March 1st)](#week-20---22-february-9th---march-1st)
 - [Week 18/19 (January 26th - February 8th)](#week-1819-january-26th---february-8th)
 - [Week 17 (January 19th - 25th)](#week-17-january-19th---25th)
 - [Week 16 (January 12th - 18th)](#week-16-january-12th---18th)
@@ -19,7 +19,7 @@
 - [Week 4 (September 22 - 28)](#week-4-september-22---28)
 - [Week 3 (September 15 - 21)](#week-3-september-15---21)
   
-## Week 20 - 22 
+## Week 20 - 22 (February 9th - March 1st)
 
 **Jacob**
 Over these last couple of weeks, I focused on reviewing and validating a large set of milestone-level feature merges to ensure architectural consistency, UI cohesion, and backend–frontend contract stability across the application. Rather than implementing a single isolated feature, my contribution centered on reviewing integration-heavy PRs that collectively strengthen the Portfolio system, project analysis pipeline, and export functionality.
@@ -60,11 +60,48 @@ Overall Impact
 This week's contribution strengthened system cohesion during a period of rapid feature expansion. By reviewing high-impact merges across authentication, scanning, portfolio generation, overrides, exports, and search functionality, I helped ensure that new capabilities integrate cleanly into a stable and scalable architecture.
 With most milestone features now merged and functioning, the project is transitioning from heavy feature development toward refinement, polish, and reliability hardening. My review work this week focused on making sure that growth does not compromise structural consistency — positioning the application for final-stage stabilization and usability improvements.
 
-**Joaquin**
+**Joaquin**:
+**Joaquin:** These weeks I reviewed several backend, frontend, and analysis pipeline PRs, focusing on correctness, UX quality, and long-term robustness.
+
+I reviewed Om’s **PR [#342 – “Project Detection Enhancement”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/342)**. This is a solid improvement to the project detection logic and documentation. Switching to a clear git-first rule (one repo = one project) addresses the common misclassification issue for full-stack repos containing `backend/` and `frontend/` directories. I also like that the behavior is formalized in a clear priority order and backed by a proper pytest suite. The main thing I flagged was the new suppression list for subdirectory scanning — hard-excluding names like `backend`, `frontend`, and especially `services` can accidentally hide legitimate multi-project workspaces that happen to use those directory names.
+
+I reviewed Om’s **PR [#358 – “Role Edit Option Added”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/358)**. The implementation looks good overall. State synchronization is handled correctly, and the UX is responsive while providing clear inline feedback during failures. The backend fix ensuring the correct service role key is used resolves an important correctness issue and improves auth reliability.
+
+I also reviewed Om’s **PR [#359 – “Evidence of Success”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/359)**. This is a clean extension of the project editing flow. The UI remains consistent with existing components, and the backend enforces Supabase credential usage properly. The feature integrates naturally without introducing architectural inconsistencies.
+
+For Vlad’s **PR [#360 – “Changes implemented”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/360)**, the file browser now feels like a complete feature, and the added tests improve safety and maintainability. Before merge, I suggested two improvements. First, make the tooltip trigger keyboard-accessible by wrapping the SVG in a proper button with an aria-label. Second, normalize `scanData.files` before rendering to prevent crashes if malformed or legacy payloads contain missing or invalid paths.
+
+I reviewed Samarth’s **PR [#361 – “Added Export JSON Report tab action”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/361)**. This is a focused and well-scoped addition. The export action fits naturally into the existing Tools & Export section, and the status feedback improves responsiveness and user clarity.
+
+I also reviewed Aaron’s **PR [#365 – “Scan analysis enabled”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/365)**. The improvements to the analysis pipeline are well implemented, with significantly better logging, error handling, and progress visibility. Expanding the scan data payload to include all analysis stages improves completeness and downstream usability.
+
+I reviewed Jacob’s **PR [#366 – “Feature/portfolio”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/366)**. This delivers a complete portfolio experience and strengthens backend handling for edge cases. The structure is clean, and test coverage is comprehensive. The implementation aligns well with the intended feature scope.
+
+For Aaron’s **PR [#374 – “Pdf tab”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/374)**, the backend introduces a clean parse-then-summarize flow and extracts useful metadata like reading time and topics. The frontend integrates the new `PdfAnalysisTab` cleanly into the project page, and the test suite provides strong coverage.
+
+Finally, I reviewed Aaron’s **PR [#373 – “Implement auto resume item”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/373)**. The new `generate_resume_content_from_project` helper encapsulates resume generation cleanly, includes appropriate defensive checks, and produces structured output while keeping persistence optional.
+
+Overall, these PRs are in good shape. The main feedback focused on edge-case robustness, accessibility, and ensuring backend and frontend changes remain resilient to malformed or evolving data.
+
 **Vlad**
 **Om**
 **Aaron**
 **Samarth**
+
+## Reflection
+
+### What went well
+- The team successfully delivered several major user-facing features across the Electron app and backend, including portfolio generation, PDF analysis, JSON export, resume auto-generation, project detection improvements, and role/evidence editing, with strong test coverage and consistent integration across components.
+
+### Challenges
+- Many changes required careful coordination between frontend, backend, and Supabase integration, and several PRs exposed edge cases around auth correctness, data normalization, and handling of malformed or legacy scan data, which increased review and validation effort.
+
+### **Next Steps**
+- Continue building out Milestone 3 features while refining existing functionality, improving robustness for edge cases, and ensuring all new analysis and portfolio features integrate cleanly into the end-to-end project workflow.
+
+<p align="center">
+  <img src="./charts/w22burnup.png" alt="Week 22 Burnup Chart width="400"/>
+</p>
 
 ## Week 18/19 (Jaunary 26th - Febuary 8th)
 
