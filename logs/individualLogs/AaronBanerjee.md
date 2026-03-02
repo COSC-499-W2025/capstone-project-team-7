@@ -68,6 +68,9 @@ Transformed PDF Analysis from completely broken (nothing displayed despite PDFs 
 - https://github.com/COSC-499-W2025/capstone-project-team-7/pull/373
 - https://github.com/COSC-499-W2025/capstone-project-team-7/pull/374
 
+- <img width="1076" height="640" alt="image" src="https://github.com/user-attachments/assets/42183938-9f9a-4f14-895d-51cffe2c11b2" />
+
+
 
 
 
