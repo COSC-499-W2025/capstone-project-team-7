@@ -45,8 +45,6 @@ Local validation was slowed by missing Supabase credentials, invalid API key err
 
 - Review Milestone 3 requirements and create corresponding issues  
 - Prioritize and begin implementation of Milestone 3 features  
-- Monitor merged search, skills, and thumbnail flows to ensure stability  
-- Continue improving Electron scan and persistence reliability  
 
 ![Peer Eval](./images/w21peer.png)
 
