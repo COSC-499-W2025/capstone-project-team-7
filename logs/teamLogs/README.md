@@ -1,6 +1,7 @@
 # Capstone Team 7 Logs
 
 ## Quick Navigation
+- [Week 20-22 (February 9th - March 1st)](#week20-22)
 - [Week 18/19 (January 26th - February 8th)](#week-1819-january-26th---february-8th)
 - [Week 17 (January 19th - 25th)](#week-17-january-19th---25th)
 - [Week 16 (January 12th - 18th)](#week-16-january-12th---18th)
