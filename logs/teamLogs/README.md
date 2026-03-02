@@ -85,6 +85,33 @@ Overall, these PRs are in good shape. The main feedback focused on edge-case rob
 
 **Vlad**
 
+Vlad Petrariu (My code contributions)                                                                                                                                   
+  - [PR #329](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/329) — Git Analysis Tab (+263/−76, merged Feb 17): Implemented the Git Analysis tab on the project analysis page, displaying git            
+  contribution metrics including commit counts, contributor breakdowns with percentages, monthly commit timelines, top files, languages, and branch
+   information. Added automated tests and resolved merge conflicts.                                                                                
+  - PR #360](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/360)— UX Enhancements (+865/−10, merged Mar 1): Built an interactive file tree browser with search/filter, collapsible directories, file   
+  size display, and mime type badges. Added a tooltip on "Files Processed" explaining excluded files. Formatted GitHub noreply emails as friendly
+  usernames in the git contributors table. Added 62 new automated tests.
+  - Reviewed PRs: #321, #322, #326, #327, #331, #352, #353, #366.
+
+  My code reviews for Joaquin Almora:
+  - [PR #321](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/321) — Finalize CLI/TUI deletion and service-path cleanup (+191/−427, merged Feb 16): Removed deprecated CLI/TUI code and cleaned up service
+   paths.
+  - PR #322](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/322) — Build Supabase-backed consent management page (+1/−0, merged Feb 16): Added a new consent management page backed by Supabase.
+  - [PR #327](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/327) — Consolidate project page tabs and surface analysis data (+2592/−899, merged Feb 16): Major restructure of the project page to
+  consolidate tabs and surface analysis data.
+  - [PR #352](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/352) — Add incremental scan UI for appending files (+614/−16, merged Feb 28): Added UI for incrementally appending files to existing scans.
+  -[PR #353](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/353)— Add GET /api/skills endpoint (+156/−0, merged Feb 28): Added a new backend API endpoint for retrieving skills.
+
+  My code reviews for OM:
+  -[PR #326](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/326) — Session Logout Issues (+666/−248, merged Feb 16): Fixed session and logout handling issues.
+  -[PR #331](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/331)— Forgot Password Page and Functionality (+435/−10, merged Feb 16): Implemented forgot/reset password flow with a new page and
+  supporting functionality.
+
+  My code review for Jacob Damery:
+  - [PR #366](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/366) — Feature/portfolio (+1466/−12, merged Mar 1): Implemented the portfolio feature.
+
+
 
 **Om**
 
