@@ -17,7 +17,53 @@
 - [Week 5 (September 29 - October 5)](#week-5-september-29---october-5)
 - [Week 4 (September 22 - 28)](#week-4-september-22---28)
 - [Week 3 (September 15 - 21)](#week-3-september-15---21)
+  
+## Week 20 - 22 
 
+**Jacob**
+Over these last couple of weeks, I focused on reviewing and validating a large set of milestone-level feature merges to ensure architectural consistency, UI cohesion, and backend–frontend contract stability across the application. Rather than implementing a single isolated feature, my contribution centered on reviewing integration-heavy PRs that collectively strengthen the Portfolio system, project analysis pipeline, and export functionality.
+A major portion of my review effort involved validating cross-cutting features that impact both the Electron frontend and the FastAPI backend.
+
+This week’s [PR 366](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/366) implemented the full Portfolio page within our Electron application, replacing the previously broken sidebar link and introducing a complete end-to-end CRUD interface for portfolio items. This included building the /portfolio dashboard page, wiring all API client functions, integrating the AI-assisted “Generate from Project” flow, adding a skills summary section, and implementing a project timeline view. In addition, the PR fixed a backend issue in the portfolio generate route that caused failures when scan data was missing, improving system reliability. Beyond feature delivery, the work ensured strong frontend–backend alignment, proper loading and empty-state handling, and consistent UI behavior within the Electron environment. Rather than introducing experimental features, this PR solidified a major milestone component and prepared the application for final refinement and polish as we move toward completion.
+
+I reviewed [PR #323](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/323) (Fix project page data accuracy and empty-state handling), ensuring that hardcoded metadata was fully removed and replaced with API-backed values. I specifically validated that scan duration and project metadata were derived from real payload data and that empty/loading states remained explicit and predictable. This aligns with our broader design principle of eliminating fallback illusions and surfacing true system state.
+
+I reviewed [PR #324](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/324) (Login bug in settings page), which addressed a critical logout flow issue. My focus was on authentication lifecycle correctness — verifying that all token keys were cleared consistently, that routing properly redirected to /auth/login, and that the implementation worked cleanly within our Electron MemoryRouter environment. Ensuring authentication consistency is foundational to application stability.
+
+On the backend side, I reviewed [PR #338](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/338) (Portfolio generate route) and its subsequent integration in [PR #357](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/357) (Sync Milestone 2 API updates into main). These PRs introduced and synced the /api/portfolio/generate endpoint and related backend fixes. My review emphasized API contract stability, especially around scan payload shape assumptions, override handling, and correct import paths after CLI code exclusion. I verified that the generation flow properly bridges scanned project data into structured portfolio-ready output.
+
+I also reviewed feature expansions to the project detail system:
+
+[PR #358](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/358) (Role Edit Option Added) – Verified correct usage of PATCH /api/projects/{id}/overrides, ensured role persistence updates the UI immediately, and validated resolution of RLS-related Supabase key ordering issues.
+Evidence of Success integration (Closes [#218](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/218)) – Confirmed end-to-end wiring from ProjectDetail modal UI → overrides API → portfolio chronology output, and validated tests around override persistence and constraint handling.
+[PR #362](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/362) (Manual re-ranking) – Reviewed drag-and-drop and keyboard reordering logic for deterministic persistence, ensuring saved order correctly round-trips through backend selection endpoints.
+[PR #367](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/367) (Highlighted Skills) – Verified highlighted skill persistence through overrides without introducing new backend changes, ensuring consistency with existing data models.
+
+Additionally, I reviewed major feature additions:
+[PR #355](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/355) (Search page with skill filtering) – Validated API usage patterns, state handling (loading/error/empty), and navigation flow to project detail.
+[PR #339](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/339) (Resume Items Page) – Confirmed CRUD consistency with established API client patterns and type mirroring of backend Pydantic models.
+[PR #365](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/365) (Scan analysis enabled) – Reviewed the fix ensuring all seven analysis pipelines execute after scanning, preventing incomplete analysis states in frontend tabs.
+[PR #374](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/374) (PDF Analysis Tab) – Verified corrected pipeline method calls, path normalization fixes, and frontend tab integration consistency.
+[PR #369](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/369) (Local demo auth + ZIP scan hardening) – Evaluated improvements to anon JWT usage, ZIP scan reliability, and Electron file dialog integration for demo stability.
+Export features (JSON and HTML report generation) – Confirmed correct export payload construction, download triggers, and UI feedback states.
+
+Throughout these reviews, my primary focus areas were:
+Eliminating hardcoded or placeholder logic.
+Ensuring strict API–type alignment.
+Maintaining consistent loading/error/empty state patterns.
+Validating override persistence flows.
+Confirming Electron routing and navigation integrity.
+Protecting long-term maintainability as features scale.
+
+Overall Impact
+This week's contribution strengthened system cohesion during a period of rapid feature expansion. By reviewing high-impact merges across authentication, scanning, portfolio generation, overrides, exports, and search functionality, I helped ensure that new capabilities integrate cleanly into a stable and scalable architecture.
+With most milestone features now merged and functioning, the project is transitioning from heavy feature development toward refinement, polish, and reliability hardening. My review work this week focused on making sure that growth does not compromise structural consistency — positioning the application for final-stage stabilization and usability improvements.
+
+**Joaquin**
+**Vlad**
+**Om**
+**Aaron**
+**Samarth**
 
 ## Week 18/19 (Jaunary 26th - Febuary 8th)
 
