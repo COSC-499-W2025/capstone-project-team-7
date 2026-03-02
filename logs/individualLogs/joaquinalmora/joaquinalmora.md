@@ -1,7 +1,7 @@
 # Joaquin Almora / @joaquinalmora
 
 ### Weekly Navigation
-- [Week 21](#week-21)
+- [Week 22](#week-22)
 - [Week 20](#week-20)
 - [Week 19](#week-19)
 - [Week 18](#week-18)
@@ -22,7 +22,7 @@
 - [Week 4](#week-4-september-22nd---28th)
 - [Week 3](#week-3-september-15th---21st)
 
-## Week 21 (February 23rd - March 1st)
+## Week 22 (February 23rd - March 1st)
 This week focused on implementing the Electron search flow with skill filtering, adding thumbnail upload and manual project reordering with persisted selection, and hardening the local demo auth and ZIP scan pipeline. The work was delivered in [PR #352 – “Add incremental scan UI for appending files”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/352), [PR #353 – “Add GET /api/skills endpoint”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/353), [PR #355 – “Add search page with skill filtering”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/355), [PR #356 – “Add thumbnail upload”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/356), and [PR #369 – “feat: harden local demo auth flow and zip scan support”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/369).
 
 On the frontend, I implemented the `/search` page with scope and skill filters, loading, error, and empty states, and project navigation on `feature/349-search-page`. I added supporting API contracts and clients (`SearchResultItem`, `SearchResponse`, `SkillsListResponse`, `searchProjects()`, `getSkills()`) aligned with existing patterns and verified clean diagnostics and type safety for all search-related files. I also implemented thumbnail upload with modal UI, API integration, and parent refresh callbacks on a clean branch based on `main` to maintain PR isolation and avoid mixing unrelated commits.
