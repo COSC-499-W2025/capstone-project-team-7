@@ -1,9 +1,90 @@
 
 # Jacob Damery
 
-## Week 22: February 23 - March 1
+# Week 22: February 23 – March 1
 
+This week, I focused on implementing a fully functional Portfolio page within the Electron application and resolving a blocking backend bug in the AI generation endpoint. My primary contribution was delivering the Portfolio feature (merged PR), while also addressing code review feedback to improve consistency and robustness across the API layer.
 
+---
+
+## Key Accomplishments
+
+### Portfolio Page Implementation [PR 366](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/366)
+
+I implemented the Portfolio page at `/portfolio`, resolving a broken sidebar link that previously resulted in a 404. The page provides a complete portfolio management experience within the existing Electron dashboard.
+
+**Core Work:**
+
+- Built full CRUD interface for portfolio items (create, edit, delete, list) using a Dialog-based form with controlled state.
+- Implemented a collapsible Skills Summary section, surfacing aggregated skill badges from `GET /api/skills`.
+- Built a Project Timeline tab rendering chronological project data from `GET /api/portfolio/chronology`, including date ranges, roles, and per-project evidence bullets.
+- Implemented an AI-assisted "Generate from Project" feature using `POST /api/portfolio/generate`, allowing users to pre-fill the form from an existing scanned project.
+- Used `Promise.allSettled` for parallel data fetching with graceful degradation — skills and timeline failures surface as warnings without blocking the items list.
+- Added thumbnail rendering to portfolio item cards, with silent error fallback if the URL is broken.
+- Fixed dialog overflow on small Electron windows by constraining the modal to `max-h-[90vh]` with an independently scrollable form body.
+- Wrote **40 unit and integration tests** covering loading states, CRUD flows, error banners, skills section toggle, generate from project, timeline tab, and auth token injection.
+
+This feature resolves the last unimplemented sidebar route and brings the Portfolio section to functional parity with the Projects and Resumes pages.
+
+---
+
+### Backend Bug Fix — `POST /api/portfolio/generate` 500 Error
+
+Diagnosed and fixed a crash in the AI generation endpoint affecting any project where `scan_data` was stored as `None` in the database (unscanned projects, decryption failures, or explicit null DB values).
+
+**Root cause:** `project.get("scan_data", {})` returns `None` when the key exists with a `None` value — the default is only applied when the key is absent. All subsequent `.get()` calls on the `None` value threw `AttributeError`, caught by a bare `except Exception` and returned as a 500.
+
+**Fix:**
+
+```python
+_raw = project.get("scan_data")
+scan_data = _raw if isinstance(_raw, dict) else {}
+```
+
+This makes the generate endpoint safe for all project states, not just fully scanned ones.
+
+---
+
+### Code Review Feedback — API Layer Hardening
+
+Following a PR review, I addressed several consistency issues across the API client layer:
+
+- Aligned `NEXT_PUBLIC_API_URL` → `NEXT_PUBLIC_API_BASE_URL` in `lib/api/portfolio.ts` and `lib/api/projects.ts` to match the canonical `lib/api.ts` — prevents silent failures in non-localhost deployments.
+- Added `.catch(() => ({}))` to all `response.json()` error-path calls in `projects.ts` (11 handlers) to match the pattern already established in `portfolio.ts`.
+- Wired the unused `category` query parameter on `getSkills()` so callers can filter by skill category as the backend already supports.
+- Added `maxLength` attributes to all portfolio form inputs matching backend validation constraints (`title: 255`, `role: 255`, `summary: 1000`, `evidence: 2048`, `thumbnail: 1024`).
+- Added per-item delete loading state (`deletingId`) to prevent duplicate delete requests from double-clicks, with visual "Deleting…" feedback on the button.
+
+---
+
+## Challenges & Learning
+
+A key challenge was diagnosing the `scan_data` crash — the error was swallowed by a broad `except Exception` block and returned generically as a 500, making it appear to be an AI/LLM failure rather than a data access bug. This reinforced the value of:
+
+- Defensive null handling at data access boundaries, not just at API input validation
+- Reading full stack traces rather than trusting surface-level HTTP status codes
+- Verifying fixes on disk after every edit in a hot-reload environment
+
+Handling the detail object format from portfolio endpoints (`{"code": "...", "message": "..."}`) also highlighted the importance of consistent error response shapes across backend routes — inconsistent formats silently degrade to `[object Object]` in the UI without any obvious breakage during development.
+
+---
+
+## Next Week Priorities
+
+- Investigate and resolve remaining frontend TypeScript type duplication (`ProjectMetadata` across `types/project.ts` and `lib/api.types.ts`).
+- Expand backend test coverage to portfolio CRUD, generate, and chronology endpoints.
+- Consolidate API client error handling and token refresh logic into a shared base layer.
+- Continue reviewing and integrating teammate PRs to maintain UI consistency.
+
+---
+
+## Impact
+
+This week's work closes the last unimplemented navigation route in the application and delivers a production-ready portfolio management interface backed by real AI-assisted generation. The backend bug fix makes the generate endpoint reliable for all users regardless of their project scan state, resolving a class of 500 errors that would have affected any user attempting to use the feature on unscanned or partially scanned projects.
+
+Addressing the PR review feedback improved consistency and resilience across the entire API client layer — changes that benefit all pages consuming `lib/api/projects.ts`, not just the portfolio feature.
+
+<img width="1069" height="623" alt="image" src="https://github.com/user-attachments/assets/11f8af35-8b07-425e-b301-90b415b176fc" />
 
 ## Week 20 
 This week, I focused on implementing a fully functional Language Breakdown feature within the Project Detail page and ensuring data accuracy across the project view. My primary contribution was delivering the Language Breakdown tab (PR #328), while also reviewing and validating related fixes from teammates to maintain UI consistency and data integrity across the application.
