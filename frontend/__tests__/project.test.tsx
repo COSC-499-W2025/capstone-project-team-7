@@ -15,6 +15,9 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => ({
     get: vi.fn(() => null),
   }),
+  useRouter: () => ({
+    back: vi.fn(),
+  }),
 }));
 
 vi.mock("@/lib/auth", () => ({

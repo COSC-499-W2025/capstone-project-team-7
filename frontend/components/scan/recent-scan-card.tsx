@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { ProjectDetail } from "@/types/project";
+import type { ProjectDetail, ProjectScanData } from "@/types/project";
 import { FileCode, Clock, FolderOpen, ExternalLink } from "lucide-react";
 
 interface RecentScanCardProps {
@@ -27,18 +27,23 @@ function StatCard({ label, value }: { label: string; value: string | number }) {
 }
 
 export function RecentScanCard({ project }: RecentScanCardProps) {
-  const scanData = project.scan_data || {};
+  const scanData = (project.scan_data ?? {}) as ProjectScanData;
   const summary = scanData.summary || {};
   const rawLanguages = scanData.languages;
 
   // Extract language names from various formats
   let languages: string[] = [];
   if (Array.isArray(rawLanguages)) {
-    if (rawLanguages.length > 0 && typeof rawLanguages[0] === "object") {
-      languages = rawLanguages.map((lang: any) => lang.language || lang.name).filter(Boolean);
-    } else {
-      languages = rawLanguages;
-    }
+    languages = rawLanguages
+      .map((lang) => {
+        if (typeof lang === "string") return lang;
+        if (lang && typeof lang === "object") {
+          if (typeof lang.language === "string") return lang.language;
+          if (typeof lang.name === "string") return lang.name;
+        }
+        return null;
+      })
+      .filter((lang): lang is string => Boolean(lang));
   } else if (typeof rawLanguages === "object" && rawLanguages !== null) {
     languages = Object.keys(rawLanguages);
   } else if (project.languages) {

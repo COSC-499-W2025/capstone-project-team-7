@@ -39,8 +39,103 @@ export interface ProjectOverrides {
   highlighted_skills?: string[];
 }
 
+export interface ProjectScanLanguageEntry {
+  language?: string;
+  name?: string;
+  files?: number;
+  count?: number;
+  lines?: number;
+  bytes?: number;
+  percentage?: number;
+}
+
+export interface ProjectScanSummary extends Record<string, unknown> {
+  total_files?: number;
+  total_lines?: number;
+  bytes_processed?: number;
+  total_size_bytes?: number;
+  total_bytes?: number;
+  issues_found?: number;
+  issue_count?: number;
+  scan_duration_seconds?: number;
+  scan_duration?: number;
+  languages?: ProjectScanLanguageEntry[];
+}
+
+export interface ProjectSkillCategoryItem extends Record<string, unknown> {
+  name?: string;
+  proficiency?: string | number;
+}
+
+export type ProjectSkillCategoryEntry = string | ProjectSkillCategoryItem;
+export type ProjectSkillsByCategory = Record<string, ProjectSkillCategoryEntry[]>;
+
+export interface ProjectSkillsAnalysis extends Record<string, unknown> {
+  success?: boolean;
+  total_skills?: number;
+  skills_by_category?: ProjectSkillsByCategory;
+}
+
+export interface ProjectScanFile extends Record<string, unknown> {
+  path?: string;
+  file_path?: string;
+  size_bytes?: number;
+  mime_type?: string;
+  created_at?: string | null;
+  modified_at?: string | null;
+  file_hash?: string | null;
+}
+
+export interface ProjectContributionContributor extends Record<string, unknown> {
+  name?: string;
+  commits?: number;
+  commit_percentage?: number;
+  first_commit_date?: string;
+  last_commit_date?: string;
+  active_days?: number;
+}
+
+export interface ProjectContributionMetrics extends Record<string, unknown> {
+  project_type?: string;
+  total_commits?: number;
+  total_contributors?: number;
+  user_commit_share?: number;
+  project_start_date?: string;
+  project_end_date?: string;
+  contributors?: ProjectContributionContributor[];
+}
+
+export interface ProjectDuplicateGroup extends Record<string, unknown> {
+  hash?: string;
+  files?: string[];
+  wasted_bytes?: number;
+  count?: number;
+}
+
+export interface ProjectDuplicateReport extends Record<string, unknown> {
+  duplicate_groups?: ProjectDuplicateGroup[];
+  total_duplicates?: number;
+  total_wasted_bytes?: number;
+  total_wasted_mb?: number;
+}
+
+export interface ProjectScanData extends Record<string, unknown> {
+  summary?: ProjectScanSummary;
+  skills_analysis?: ProjectSkillsAnalysis;
+  code_analysis?: Record<string, unknown>;
+  git_analysis?: unknown;
+  contribution_metrics?: ProjectContributionMetrics;
+  media_analysis?: unknown;
+  llm_media?: unknown;
+  pdf_analysis?: unknown;
+  document_analysis?: unknown;
+  duplicate_report?: ProjectDuplicateReport;
+  files?: ProjectScanFile[];
+  languages?: string[] | ProjectScanLanguageEntry[] | Record<string, unknown>;
+}
+
 export interface ProjectDetail extends ProjectMetadata {
-  scan_data?: Record<string, any>;
+  scan_data?: ProjectScanData | null;
   user_overrides?: ProjectOverrides;
 }
 
@@ -89,7 +184,7 @@ export interface SkillProgressSummaryResponse {
 export interface CreateProjectRequest {
   project_name: string;
   project_path: string;
-  scan_data?: Record<string, any>;
+  scan_data?: ProjectScanData;
 }
 
 export interface CreateProjectResponse {

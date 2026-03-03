@@ -1,6 +1,10 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Code2, FileCode, MessageSquare, Braces, Box, TrendingUp, AlertCircle, AlertTriangle, Copy, GitBranch, Hash, XCircle, Type, Layers, ChevronDown, ChevronUp } from "lucide-react";
+import { Code2, FileCode, Braces, Box, TrendingUp, AlertCircle, AlertTriangle, Copy, GitBranch, Hash, XCircle, Type, Layers, ChevronDown, ChevronUp } from "lucide-react";
 import { useState } from "react";
+import {
+  projectPageSelectors,
+  useProjectPageStore,
+} from "@/lib/stores/project-page-store";
 
 // Example types
 interface MagicValueExample {
@@ -97,6 +101,7 @@ interface CodeAnalysisTabProps {
   codeAnalysis?: CodeAnalysisData | null;
   isLoading?: boolean;
   errorMessage?: string | null;
+  useStore?: boolean;
 }
 
 // Helper to get short filename from path
@@ -109,15 +114,26 @@ export function CodeAnalysisTab({
   codeAnalysis,
   isLoading,
   errorMessage,
+  useStore = false,
 }: CodeAnalysisTabProps) {
+  const scanData = useProjectPageStore(projectPageSelectors.scanData);
+  const storeLoading = useProjectPageStore(projectPageSelectors.projectLoading);
+  const storeError = useProjectPageStore(projectPageSelectors.projectError);
+  const useStoreFallback = useStore;
+  const resolvedCodeAnalysis =
+    codeAnalysis ??
+    (useStoreFallback ? (scanData.code_analysis as CodeAnalysisData | undefined) ?? null : null);
+  const resolvedIsLoading = isLoading ?? (useStoreFallback ? storeLoading : false);
+  const resolvedErrorMessage = errorMessage ?? (useStoreFallback ? storeError : null);
+
   // Debug logging
   console.log('CodeAnalysisTab received:', {
-    codeAnalysis,
-    hasData: !!codeAnalysis,
-    dataKeys: codeAnalysis ? Object.keys(codeAnalysis) : [],
-    keyCount: codeAnalysis ? Object.keys(codeAnalysis).length : 0,
-    isLoading,
-    errorMessage
+    codeAnalysis: resolvedCodeAnalysis,
+    hasData: !!resolvedCodeAnalysis,
+    dataKeys: resolvedCodeAnalysis ? Object.keys(resolvedCodeAnalysis) : [],
+    keyCount: resolvedCodeAnalysis ? Object.keys(resolvedCodeAnalysis).length : 0,
+    isLoading: resolvedIsLoading,
+    errorMessage: resolvedErrorMessage
   });
 
   // State for expanded sections
@@ -128,7 +144,7 @@ export function CodeAnalysisTab({
   };
 
   // Loading state
-  if (isLoading) {
+  if (resolvedIsLoading) {
     return (
       <Card className="bg-white border border-gray-200">
         <CardHeader className="border-b border-gray-200">
@@ -151,7 +167,7 @@ export function CodeAnalysisTab({
   }
 
   // Error state
-  if (errorMessage) {
+  if (resolvedErrorMessage) {
     return (
       <Card className="bg-white border border-gray-200">
         <CardHeader className="border-b border-gray-200">
@@ -166,7 +182,7 @@ export function CodeAnalysisTab({
               <p className="text-sm font-semibold text-red-700">
                 Failed to load code analysis
               </p>
-              <p className="text-xs text-red-600 mt-1">{errorMessage}</p>
+              <p className="text-xs text-red-600 mt-1">{resolvedErrorMessage}</p>
             </div>
           </div>
         </CardContent>
@@ -175,14 +191,13 @@ export function CodeAnalysisTab({
   }
 
   // No data state - check for meaningful data
-  if (!codeAnalysis || 
-      (typeof codeAnalysis === 'object' && Object.keys(codeAnalysis).length === 0) ||
-      (typeof codeAnalysis === 'object' && !codeAnalysis.total_files && !codeAnalysis.total_lines)) {
+  if (!resolvedCodeAnalysis || 
+      (typeof resolvedCodeAnalysis === 'object' && Object.keys(resolvedCodeAnalysis).length === 0)) {
     console.log('CodeAnalysisTab: No data condition triggered', {
-      codeAnalysisFalsy: !codeAnalysis,
-      codeAnalysisValue: codeAnalysis,
-      hasKeys: codeAnalysis ? Object.keys(codeAnalysis).length > 0 : false,
-      keyCount: codeAnalysis ? Object.keys(codeAnalysis).length : 0
+      codeAnalysisFalsy: !resolvedCodeAnalysis,
+      codeAnalysisValue: resolvedCodeAnalysis,
+      hasKeys: resolvedCodeAnalysis ? Object.keys(resolvedCodeAnalysis).length > 0 : false,
+      keyCount: resolvedCodeAnalysis ? Object.keys(resolvedCodeAnalysis).length : 0
     });
     
     return (
@@ -225,9 +240,8 @@ export function CodeAnalysisTab({
     nesting_issues = 0,
     call_graph_edges = 0,
     data_structures,
-    languages,
     examples,
-  } = codeAnalysis;
+  } = resolvedCodeAnalysis;
 
   // Calculate percentages
   const commentPercentage = total_lines > 0 

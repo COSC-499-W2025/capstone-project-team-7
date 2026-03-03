@@ -1,9 +1,13 @@
 "use client";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ProjectDetail } from "@/types/project";
+import type {
+  ProjectDetail,
+  ProjectScanData,
+  ProjectScanLanguageEntry,
+} from "@/types/project";
 import { useEffect, useRef, useState } from "react";
-import { updateProjectOverrides, updateProjectRole } from "@/lib/api/projects";
+import { updateProjectOverrides } from "@/lib/api/projects";
 import { api } from "@/lib/api";
 import { getStoredToken } from "@/lib/auth";
 import { 
@@ -42,7 +46,7 @@ export function ProjectDetailModal({
 
   if (!project) return null;
 
-  const scanData = project.scan_data || {};
+  const scanData = (project.scan_data ?? {}) as ProjectScanData;
   const files = Array.isArray(scanData.files)
     ? (scanData.files as any[])
         .map((f: any) => ({
@@ -53,23 +57,62 @@ export function ProjectDetailModal({
     : [];
   
   // Handle languages as either array or object
-  let languagesData: Record<string, any> = {};
+  let languagesData: Record<string, { files?: number; lines?: number; bytes?: number; percentage?: number }> = {};
   const rawLanguages = scanData.languages;
   if (rawLanguages && typeof rawLanguages === 'object') {
     if (Array.isArray(rawLanguages)) {
-      // Convert array of language names to object format
-      rawLanguages.forEach((lang: string) => {
-        languagesData[lang] = { files: 0, lines: 0 };
+      rawLanguages.forEach((lang) => {
+        if (typeof lang === "string") {
+          languagesData[lang] = { files: 0, lines: 0 };
+          return;
+        }
+
+        const languageEntry = lang as ProjectScanLanguageEntry;
+        const languageName =
+          typeof languageEntry.language === "string"
+            ? languageEntry.language
+            : typeof languageEntry.name === "string"
+              ? languageEntry.name
+              : "";
+
+        if (!languageName) return;
+
+        const files =
+          typeof languageEntry.files === "number"
+            ? languageEntry.files
+            : typeof languageEntry.count === "number"
+              ? languageEntry.count
+              : 0;
+
+        languagesData[languageName] = {
+          files,
+          lines: typeof languageEntry.lines === "number" ? languageEntry.lines : 0,
+          bytes: typeof languageEntry.bytes === "number" ? languageEntry.bytes : undefined,
+          percentage:
+            typeof languageEntry.percentage === "number"
+              ? languageEntry.percentage
+              : undefined,
+        };
       });
     } else {
-      languagesData = rawLanguages;
+      languagesData = rawLanguages as Record<
+        string,
+        { files?: number; lines?: number; bytes?: number; percentage?: number }
+      >;
     }
   }
   
-  const gitAnalysis = scanData.git_analysis || {};
-  const skillsAnalysis = scanData.skills_analysis || {};
-  const documentsAnalysis = scanData.documents_analysis || [];
-  const mediaAnalysis = scanData.media_analysis || [];
+  const gitAnalysis = scanData.git_analysis ?? {};
+  const skillsAnalysis = scanData.skills_analysis ?? {};
+  const rawDocumentAnalysis =
+    scanData.document_analysis ??
+    (scanData as Record<string, unknown>).documents_analysis;
+  const documentsAnalysis = Array.isArray(rawDocumentAnalysis)
+    ? rawDocumentAnalysis
+    : [];
+  const mediaAnalysis = Array.isArray(scanData.media_analysis)
+    ? scanData.media_analysis
+    : [];
 
   // Simplified view - just overview
   const tabs = [
@@ -112,6 +155,30 @@ export function ProjectDetailModal({
 }
 
 const ALLOWED_ROLES = ["author", "contributor", "lead", "maintainer", "reviewer"] as const;
+
+function extractLanguageNames(
+  rawLanguages: ProjectScanData["languages"],
+  fallback: string[] = []
+): string[] {
+  if (Array.isArray(rawLanguages)) {
+    return rawLanguages
+      .map((lang) => {
+        if (typeof lang === "string") return lang;
+        if (lang && typeof lang === "object") {
+          if (typeof lang.language === "string") return lang.language;
+          if (typeof lang.name === "string") return lang.name;
+        }
+        return null;
+      })
+      .filter((lang): lang is string => Boolean(lang));
+  }
+
+  if (rawLanguages && typeof rawLanguages === "object") {
+    return Object.keys(rawLanguages);
+  }
+
+  return fallback;
+}
 
 function ThumbnailSection({ project, onProjectUpdate }: { project: ProjectDetail; onProjectUpdate?: () => void }) {
   const [uploading, setUploading] = useState(false);
@@ -311,7 +378,7 @@ function OverviewTab({
     setSavingRole(true);
     setRoleError(null);
     try {
-      await updateProjectRole(token, project.id, selectedRole);
+      await updateProjectOverrides(token, project.id, { role: selectedRole });
       onRoleUpdate?.(project.id, selectedRole);
       setIsEditingRole(false);
     } catch (err) {
@@ -359,26 +426,13 @@ function OverviewTab({
     }
   };
 
-  const scanData = project.scan_data || {};
-  const summary = scanData.summary || {};
+  const scanData = (project.scan_data ?? {}) as ProjectScanData;
+  const summary =
+    scanData.summary && typeof scanData.summary === "object"
+      ? scanData.summary
+      : {};
   const rawLanguages = scanData.languages;
-  
-  // Extract language names from various formats
-  let languages: string[] = [];
-  if (Array.isArray(rawLanguages)) {
-    if (rawLanguages.length > 0 && typeof rawLanguages[0] === 'object') {
-      // Array of objects with 'language' field
-      languages = rawLanguages.map((lang: any) => lang.language || lang.name).filter(Boolean);
-    } else {
-      // Array of strings
-      languages = rawLanguages;
-    }
-  } else if (typeof rawLanguages === 'object' && rawLanguages !== null) {
-    // Object keyed by language name
-    languages = Object.keys(rawLanguages);
-  } else if (project.languages) {
-    languages = project.languages;
-  }
+  const languages = extractLanguageNames(rawLanguages, project.languages ?? []);
   
   const totalFiles = summary.total_files || project.total_files || 0;
   const totalLines = summary.total_lines || project.total_lines || 0;

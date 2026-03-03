@@ -5,6 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { GitRepoAnalysis, GitContributor, GitTimelineEntry } from "@/types/git-analysis";
 import { formatContributorEmail } from "@/lib/git-email";
+import {
+  projectPageSelectors,
+  useProjectPageStore,
+} from "@/lib/stores/project-page-store";
 
 /* ------------------------------------------------------------------ */
 /*  Normalisation — handle data shape variations                      */
@@ -71,18 +75,39 @@ export function GitAnalysisTab({
   error,
   gitAnalysis,
   onRetry,
+  useStore = false,
 }: {
-  loading: boolean;
-  error: string | null;
-  gitAnalysis: unknown;
+  loading?: boolean;
+  error?: string | null;
+  gitAnalysis?: unknown;
   onRetry?: () => void;
+  useStore?: boolean;
 }) {
-  const repos = normalizeGitAnalysis(gitAnalysis);
+  const scanData = useProjectPageStore(projectPageSelectors.scanData);
+  const storeLoading = useProjectPageStore(projectPageSelectors.projectLoading);
+  const storeError = useProjectPageStore(projectPageSelectors.projectError);
+  const storeRetryLoadProject = useProjectPageStore(
+    projectPageSelectors.retryLoadProject
+  );
+  const useStoreFallback = useStore;
+
+  const resolvedLoading = loading ?? (useStoreFallback ? storeLoading : false);
+  const resolvedError = error ?? (useStoreFallback ? storeError : null);
+  const resolvedGitAnalysis = gitAnalysis ?? (useStoreFallback ? scanData.git_analysis : null);
+  const resolvedRetry =
+    onRetry ??
+    (useStoreFallback && storeRetryLoadProject
+      ? () => {
+          void storeRetryLoadProject();
+        }
+      : undefined);
+
+  const repos = normalizeGitAnalysis(resolvedGitAnalysis);
   const [selectedIdx, setSelectedIdx] = useState(0);
 
-  if (loading) return <LoadingState />;
-  if (error) return <ErrorState message={error} onRetry={onRetry} />;
-  if (repos.length === 0) return <EmptyState onRetry={onRetry} />;
+  if (resolvedLoading) return <LoadingState />;
+  if (resolvedError) return <ErrorState message={resolvedError} onRetry={resolvedRetry} />;
+  if (repos.length === 0) return <EmptyState onRetry={resolvedRetry} />;
 
   const repo = repos[Math.min(selectedIdx, repos.length - 1)];
 

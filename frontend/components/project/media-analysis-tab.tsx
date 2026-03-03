@@ -3,6 +3,11 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FileImage, Film } from "lucide-react";
+import { resolveMediaAnalysis } from "@/lib/project-media-analysis";
+import {
+  projectPageSelectors,
+  useProjectPageStore,
+} from "@/lib/stores/project-page-store";
 
 export type MediaAnalysisSummary = {
   total_media_files?: number;
@@ -74,57 +79,83 @@ export type MediaAnalysisPayload = {
   briefingItems?: MediaListItem[];
 };
 
+type MediaAnalysisTabProps = {
+  loading?: boolean;
+  error?: string | null;
+  mediaAnalysis?: MediaAnalysisPayload | null;
+  onRetry?: () => void;
+  useStore?: boolean;
+};
+
 export function MediaAnalysisTab({
   loading,
   error,
   mediaAnalysis,
   onRetry,
-}: {
-  loading: boolean;
-  error: string | null;
-  mediaAnalysis: MediaAnalysisPayload | null;
-  onRetry?: () => void;
-}) {
-  if (loading) {
+  useStore = false,
+}: MediaAnalysisTabProps) {
+  const scanData = useProjectPageStore(projectPageSelectors.scanData);
+  const storeLoading = useProjectPageStore(projectPageSelectors.projectLoading);
+  const storeError = useProjectPageStore(projectPageSelectors.projectError);
+  const storeRetryLoadProject = useProjectPageStore(
+    projectPageSelectors.retryLoadProject
+  );
+
+  const useStoreFallback = useStore;
+
+  const resolvedLoading = loading ?? (useStoreFallback ? storeLoading : false);
+  const resolvedError = error ?? (useStoreFallback ? storeError : null);
+  const resolvedMediaAnalysis =
+    mediaAnalysis ??
+    (useStoreFallback ? resolveMediaAnalysis(scanData as Record<string, unknown>) : null);
+  const resolvedRetry =
+    onRetry ??
+    (useStoreFallback && storeRetryLoadProject
+      ? () => {
+          void storeRetryLoadProject();
+        }
+      : undefined);
+
+  if (resolvedLoading) {
     return <LoadingState />;
   }
 
-  if (error) {
-    return <ErrorState message={error} onRetry={onRetry} />;
+  if (resolvedError) {
+    return <ErrorState message={resolvedError} onRetry={resolvedRetry} />;
   }
 
-  if (!mediaAnalysis) {
-    return <EmptyState onRetry={onRetry} />;
+  if (!resolvedMediaAnalysis) {
+    return <EmptyState onRetry={resolvedRetry} />;
   }
 
   const hasSummaryData =
-    Boolean(mediaAnalysis.summary) ||
-    Boolean(mediaAnalysis.metrics) ||
-    Boolean(mediaAnalysis.insights && mediaAnalysis.insights.length > 0) ||
-    Boolean(mediaAnalysis.issues && mediaAnalysis.issues.length > 0);
+    Boolean(resolvedMediaAnalysis.summary) ||
+    Boolean(resolvedMediaAnalysis.metrics) ||
+    Boolean(resolvedMediaAnalysis.insights && resolvedMediaAnalysis.insights.length > 0) ||
+    Boolean(resolvedMediaAnalysis.issues && resolvedMediaAnalysis.issues.length > 0);
 
   const hasListItems =
-    Boolean(mediaAnalysis.assetItems && mediaAnalysis.assetItems.length > 0) ||
-    Boolean(mediaAnalysis.briefingItems && mediaAnalysis.briefingItems.length > 0);
+    Boolean(resolvedMediaAnalysis.assetItems && resolvedMediaAnalysis.assetItems.length > 0) ||
+    Boolean(resolvedMediaAnalysis.briefingItems && resolvedMediaAnalysis.briefingItems.length > 0);
 
   if (!hasSummaryData && hasListItems) {
     return (
       <div className="space-y-6">
-        {mediaAnalysis.assetItems && mediaAnalysis.assetItems.length > 0 && (
-          <MediaAnalysisListSection title="Media Assets" items={mediaAnalysis.assetItems} />
+        {resolvedMediaAnalysis.assetItems && resolvedMediaAnalysis.assetItems.length > 0 && (
+          <MediaAnalysisListSection title="Media Assets" items={resolvedMediaAnalysis.assetItems} />
         )}
-        {mediaAnalysis.briefingItems && mediaAnalysis.briefingItems.length > 0 && (
-          <MediaAnalysisListSection title="Media Briefings" items={mediaAnalysis.briefingItems} />
+        {resolvedMediaAnalysis.briefingItems && resolvedMediaAnalysis.briefingItems.length > 0 && (
+          <MediaAnalysisListSection title="Media Briefings" items={resolvedMediaAnalysis.briefingItems} />
         )}
       </div>
     );
   }
 
   if (!hasSummaryData && !hasListItems) {
-    return <EmptyState onRetry={onRetry} />;
+    return <EmptyState onRetry={resolvedRetry} />;
   }
 
-  return <MediaAnalysisSummaryView payload={mediaAnalysis} />;
+  return <MediaAnalysisSummaryView payload={resolvedMediaAnalysis} />;
 }
 
 function MediaAnalysisListSection({ title, items }: { title: string; items: MediaListItem[] }) {
