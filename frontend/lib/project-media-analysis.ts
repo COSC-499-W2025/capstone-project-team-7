@@ -31,7 +31,7 @@ function isNonEmptyMedia(value: unknown): boolean {
   return false;
 }
 
-function normalizeMediaPayload(value: unknown): MediaAnalysisPayload | null {
+export function normalizeMediaPayload(value: unknown): MediaAnalysisPayload | null {
   if (!value) return null;
 
   if (Array.isArray(value)) {
