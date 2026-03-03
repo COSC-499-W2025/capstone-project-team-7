@@ -29,16 +29,20 @@ import {
 } from "@/lib/language-stats";
 import type {
   ProjectDetail,
+  ProjectScanData,
   SkillProgressPeriod,
   SkillProgressSummary,
 } from "@/types/project";
 import {
   MediaAnalysisTab,
-  type MediaAnalysisPayload,
-  type MediaAnalysisMetrics,
-  type MediaAnalysisSummary,
-  type MediaListItem,
 } from "@/components/project/media-analysis-tab";
+import { resolveMediaAnalysis } from "@/lib/project-media-analysis";
+import {
+  projectPageSelectors,
+  useProjectPageStore,
+  type MainTabValue,
+  type ToolsTabValue,
+} from "@/lib/stores/project-page-store";
 import {
   LayoutDashboard,
   Award,
@@ -108,9 +112,6 @@ const toolsSubTabs = [
   { value: "duplicate-finder", label: "Duplicate Finder", icon: Copy },
 ] as const;
 
-type MainTabValue = (typeof mainTabs)[number]["value"];
-type ToolsTabValue = (typeof toolsSubTabs)[number]["value"];
-
 const LANGUAGE_COLORS = [
   "bg-gray-900",
   "bg-blue-600",
@@ -141,13 +142,22 @@ export default function ProjectPage() {
   const router = useRouter();
   const projectIdParam = searchParams.get("projectId");
 
-  const [activeMainTab, setActiveMainTab] = useState<MainTabValue>("overview");
-  const [activeToolsTab, setActiveToolsTab] = useState<ToolsTabValue>("tools-main");
-
-  const [projectId, setProjectId] = useState<string | null>(projectIdParam);
-  const [project, setProject] = useState<ProjectDetail | null>(null);
-  const [projectError, setProjectError] = useState<string | null>(null);
-  const [projectLoading, setProjectLoading] = useState(true);
+  const activeMainTab = useProjectPageStore(projectPageSelectors.activeMainTab);
+  const activeToolsTab = useProjectPageStore(projectPageSelectors.activeToolsTab);
+  const projectId = useProjectPageStore(projectPageSelectors.projectId);
+  const project = useProjectPageStore(projectPageSelectors.project);
+  const projectError = useProjectPageStore(projectPageSelectors.projectError);
+  const projectLoading = useProjectPageStore(projectPageSelectors.projectLoading);
+  const hasProject = useProjectPageStore(projectPageSelectors.hasProject);
+  const setActiveMainTab = useProjectPageStore(projectPageSelectors.setActiveMainTab);
+  const setActiveToolsTab = useProjectPageStore(projectPageSelectors.setActiveToolsTab);
+  const setProjectId = useProjectPageStore(projectPageSelectors.setProjectId);
+  const setProject = useProjectPageStore(projectPageSelectors.setProject);
+  const setProjectError = useProjectPageStore(projectPageSelectors.setProjectError);
+  const setProjectLoading = useProjectPageStore(projectPageSelectors.setProjectLoading);
+  const setRetryLoadProject = useProjectPageStore(
+    projectPageSelectors.setRetryLoadProject
+  );
 
   const isMountedRef = useRef(true);
 
@@ -176,7 +186,7 @@ export default function ProjectPage() {
   // Keep local projectId in sync with URL
   useEffect(() => {
     setProjectId(projectIdParam);
-  }, [projectIdParam]);
+  }, [projectIdParam, setProjectId]);
 
   const loadProject = useCallback(async () => {
     const token = getStoredToken();
@@ -216,7 +226,14 @@ export default function ProjectPage() {
     } finally {
       if (isMountedRef.current) setProjectLoading(false);
     }
-  }, [projectIdParam]);
+  }, [projectIdParam, setProject, setProjectError, setProjectLoading]);
+
+  useEffect(() => {
+    setRetryLoadProject(loadProject);
+    return () => {
+      setRetryLoadProject(null);
+    };
+  }, [loadProject, setRetryLoadProject]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -435,22 +452,28 @@ export default function ProjectPage() {
     }
   }, [project]);
 
-  const scanData = (project?.scan_data ?? {}) as any;
-  const summary = (scanData.summary ?? {}) as any;
-  const skillsAnalysis = (scanData.skills_analysis ?? {}) as any;
-  const skillsByCategory = (skillsAnalysis.skills_by_category ?? {}) as any;
-  const totalSkills = (skillsAnalysis.total_skills ?? 0) as number;
+  const scanData =
+    useProjectPageStore(projectPageSelectors.scanData) as ProjectScanData;
+  const summary = scanData.summary ?? {};
+  const skillsAnalysis = scanData.skills_analysis ?? {};
+  const skillsByCategory = skillsAnalysis.skills_by_category ?? {};
+  const totalSkills =
+    typeof skillsAnalysis.total_skills === "number" ? skillsAnalysis.total_skills : 0;
 
   // Extract all available skill names
   const allAvailableSkills = useMemo(() => {
     const skills: string[] = [];
-    Object.values(skillsByCategory).forEach((categorySkills: any) => {
+    Object.values(skillsByCategory).forEach((categorySkills) => {
       if (Array.isArray(categorySkills)) {
-        categorySkills.forEach((skill: any) => {
+        categorySkills.forEach((skill: unknown) => {
           if (typeof skill === "string") {
             skills.push(skill);
-          } else if (skill && typeof skill.name === "string") {
-            skills.push(skill.name);
+          } else if (
+            typeof skill === "object" &&
+            skill !== null &&
+            typeof (skill as { name?: unknown }).name === "string"
+          ) {
+            skills.push((skill as { name: string }).name);
           }
         });
       }
@@ -459,15 +482,45 @@ export default function ProjectPage() {
   }, [skillsByCategory]);
 
   const projectFiles: FileEntry[] = Array.isArray(scanData.files)
-    ? (scanData.files as any[])
-        .map((f: any) => ({
-          ...f,
-          path: typeof f.path === "string" ? f.path : typeof f.file_path === "string" ? f.file_path : "",
-        }))
-        .filter((f: any) => typeof f.path === "string" && f.path.length > 0)
-    : [];
+    ? scanData.files
+        .map((file: unknown): FileEntry => {
+          const scanFile =
+            typeof file === "object" && file !== null
+              ? (file as Record<string, unknown>)
+              : {};
+          const normalizedPath =
+            typeof scanFile.path === "string"
+              ? scanFile.path
+              : typeof scanFile.file_path === "string"
+                ? scanFile.file_path
+                : "";
 
-  const hasProject = Boolean(project);
+          return {
+            path: normalizedPath,
+            size_bytes:
+              typeof scanFile.size_bytes === "number" && Number.isFinite(scanFile.size_bytes)
+                ? scanFile.size_bytes
+                : 0,
+            mime_type:
+              typeof scanFile.mime_type === "string" && scanFile.mime_type.length > 0
+                ? scanFile.mime_type
+                : "application/octet-stream",
+            created_at:
+              typeof scanFile.created_at === "string" || scanFile.created_at === null
+                ? scanFile.created_at
+                : undefined,
+            modified_at:
+              typeof scanFile.modified_at === "string" || scanFile.modified_at === null
+                ? scanFile.modified_at
+                : undefined,
+            file_hash:
+              typeof scanFile.file_hash === "string" || scanFile.file_hash === null
+                ? scanFile.file_hash
+                : undefined,
+          };
+        })
+        .filter((file: FileEntry) => file.path.length > 0)
+    : [];
 
   const projectName = project?.project_name ?? "";
   const projectPath = project?.project_path ?? "";
@@ -480,10 +533,18 @@ export default function ProjectPage() {
     ? formatDurationSeconds(scanDurationRaw)
     : "Not available";
 
-  const filesProcessed = summary.total_files ?? project?.total_files ?? 0;
-  const totalSizeBytes = summary.bytes_processed;
-  const issuesFound = summary.issues_found ?? summary.issue_count ?? 0;
-  const totalLines = summary.total_lines ?? project?.total_lines ?? 0;
+  const filesProcessed =
+    typeof summary.total_files === "number" ? summary.total_files : project?.total_files ?? 0;
+  const totalSizeBytes =
+    typeof summary.bytes_processed === "number" ? summary.bytes_processed : undefined;
+  const issuesFound =
+    typeof summary.issues_found === "number"
+      ? summary.issues_found
+      : typeof summary.issue_count === "number"
+        ? summary.issue_count
+        : 0;
+  const totalLines =
+    typeof summary.total_lines === "number" ? summary.total_lines : project?.total_lines ?? 0;
 
   const filesProcessedLabel = formatCount(filesProcessed);
   const issuesFoundLabel = formatCount(issuesFound);
@@ -596,25 +657,35 @@ export default function ProjectPage() {
 
   // Backend now returns git_analysis as a flat array: [ { path, commit_count, ... }, ... ]
   // Legacy format used git_analysis.repositories; support both for backwards compat.
+  const gitAnalysisLegacy =
+    typeof scanData.git_analysis === "object" &&
+    scanData.git_analysis !== null &&
+    !Array.isArray(scanData.git_analysis)
+      ? (scanData.git_analysis as { repositories?: unknown[] })
+    : null;
   const gitRepos = Array.isArray(scanData.git_analysis)
     ? scanData.git_analysis.length
-    : scanData.git_analysis?.repositories?.length ?? 0;
+    : Array.isArray(gitAnalysisLegacy?.repositories)
+      ? gitAnalysisLegacy.repositories.length
+      : 0;
 
   const documentAnalysis = scanData.document_analysis;
+  const documentAnalysisRecord =
+    typeof documentAnalysis === "object" &&
+    documentAnalysis !== null &&
+    !Array.isArray(documentAnalysis)
+      ? (documentAnalysis as { documents?: unknown[]; items?: unknown[] })
+    : null;
   const otherDocs = Array.isArray(documentAnalysis)
     ? documentAnalysis.length
-    : Array.isArray(documentAnalysis?.documents)
-    ? documentAnalysis.documents.length
-    : Array.isArray(documentAnalysis?.items)
-    ? documentAnalysis.items.length
-    : 0;
+    : Array.isArray(documentAnalysisRecord?.documents)
+      ? documentAnalysisRecord.documents.length
+      : Array.isArray(documentAnalysisRecord?.items)
+        ? documentAnalysisRecord.items.length
+        : 0;
 
   // Media analysis (from feature/media-analysis)
-  const mediaAnalysis = useMemo<MediaAnalysisPayload | null>(() => {
-    if (!project?.scan_data) return null;
-    const data = project.scan_data as Record<string, unknown>;
-    return resolveMediaAnalysis(data);
-  }, [project]);
+  const mediaAnalysis = useMemo(() => resolveMediaAnalysis(scanData), [scanData]);
 
   const mediaFiles = Array.isArray(scanData.media_analysis)
     ? scanData.media_analysis.length
@@ -1503,14 +1574,16 @@ export default function ProjectPage() {
                               Top Contributors
                             </h4>
                             <div className="space-y-3">
-                              {scanData.contribution_metrics.contributors.slice(0, 5).map((contributor: { name: string; commits: number; commit_percentage?: number }, idx: number) => (
+                              {scanData.contribution_metrics.contributors
+                                .slice(0, 5)
+                                .map((contributor: { name?: string; commits?: number; commit_percentage?: number }, idx: number) => (
                                 <div key={idx} className="flex items-center justify-between">
                                   <div className="flex items-center gap-2">
                                     <Users size={14} className="text-gray-400" />
-                                    <span className="text-sm font-medium text-gray-900">{contributor.name}</span>
+                                    <span className="text-sm font-medium text-gray-900">{contributor.name ?? "Unknown"}</span>
                                   </div>
                                   <div className="text-sm text-gray-500">
-                                    {contributor.commits} commits
+                                    {contributor.commits ?? 0} commits
                                     {contributor.commit_percentage != null && (
                                       <span className="ml-2 text-gray-400">
                                         ({contributor.commit_percentage.toFixed(0)}%)
@@ -1584,7 +1657,7 @@ export default function ProjectPage() {
                  {/* Code Analysis */}
             <TabsContent value="code-analysis">
               <CodeAnalysisTab
-                codeAnalysis={scanData.code_analysis}
+                codeAnalysis={isPlainObject(scanData.code_analysis) ? scanData.code_analysis : null}
                 isLoading={projectLoading}
                 errorMessage={projectError}
               />
@@ -1951,155 +2024,11 @@ export default function ProjectPage() {
   );
 }
 
-/** ------------------ Media helpers (from feature/media-analysis) ------------------ */
-
-function resolveMediaAnalysis(scanData: Record<string, unknown>): MediaAnalysisPayload | null {
-  const aiPayload = (scanData as any).llm_media;
-  if (isNonEmptyMedia(aiPayload)) {
-    const normalized = normalizeMediaPayload(aiPayload);
-    if (normalized) return normalized;
-  }
-
-  const localPayload = (scanData as any).media_analysis;
-  if (isNonEmptyMedia(localPayload)) {
-    const normalized = normalizeMediaPayload(localPayload);
-    if (normalized) return normalized;
-  }
-
-  return null;
-}
-
-function isNonEmptyMedia(value: unknown): boolean {
-  if (!value) return false;
-  if (Array.isArray(value)) return value.length > 0;
-  if (typeof value === "string") return value.trim().length > 0;
-  if (typeof value === "object") return Object.keys(value).length > 0;
-  return false;
-}
-
-function normalizeMediaPayload(value: unknown): MediaAnalysisPayload | null {
-  if (!value) return null;
-
-  if (Array.isArray(value)) {
-    if (value.length === 0) return null;
-    if (isStringArray(value)) return { insights: value };
-    if (isObjectArray(value)) return { assetItems: mapMediaItems(value) };
-    return { insights: [] };
-  }
-
-  if (typeof value === "string") return { insights: [value] };
-
-  if (typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    const insights: string[] = [];
-    let assetItems: MediaListItem[] = [];
-    let briefingItems: MediaListItem[] = [];
-
-    if (isStringArray(record.insights)) insights.push(...record.insights);
-    if (isStringArray(record.media_briefings)) insights.push(...record.media_briefings);
-    else if (isObjectArray(record.media_briefings)) briefingItems = mapMediaItems(record.media_briefings);
-    else if (typeof record.media_briefings === "string") insights.push(...splitLines(record.media_briefings));
-
-    if (isStringArray(record.media_assets)) insights.push(...record.media_assets);
-    else if (isObjectArray(record.media_assets)) assetItems = mapMediaItems(record.media_assets);
-    else if (typeof record.media_assets === "string") insights.push(...splitLines(record.media_assets));
-
-    if (isObjectArray(record.assetItems)) assetItems = assetItems.concat(mapMediaItems(record.assetItems));
-    if (isObjectArray(record.briefingItems)) briefingItems = briefingItems.concat(mapMediaItems(record.briefingItems));
-
-    const payload: MediaAnalysisPayload = {
-      summary: isPlainObject(record.summary) ? (record.summary as MediaAnalysisSummary) : undefined,
-      metrics: isPlainObject(record.metrics) ? (record.metrics as MediaAnalysisMetrics) : undefined,
-      insights: insights.length > 0 ? insights : undefined,
-      issues: isStringArray(record.issues) ? record.issues : undefined,
-      assetItems: assetItems.length > 0 ? assetItems : undefined,
-      briefingItems: briefingItems.length > 0 ? briefingItems : undefined,
-    };
-
-    const hasAny =
-      payload.summary ||
-      payload.metrics ||
-      (payload.insights && payload.insights.length > 0) ||
-      (payload.issues && payload.issues.length > 0) ||
-      (payload.assetItems && payload.assetItems.length > 0) ||
-      (payload.briefingItems && payload.briefingItems.length > 0);
-
-    return hasAny ? payload : { insights: [] };
-  }
-
-  return null;
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
-}
-
-function isObjectArray(value: unknown): value is Array<Record<string, unknown>> {
-  return (
-    Array.isArray(value) &&
-    value.every((entry) => entry !== null && typeof entry === "object" && !Array.isArray(entry))
-  );
-}
+/** ------------------ Formatting helpers (from main) ------------------ */
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
-
-function splitLines(value: string): string[] {
-  return value
-    .split("\n")
-    .map((line) => line.replace(/^[•\-\s]+/, "").trim())
-    .filter(Boolean);
-}
-
-function mapMediaItems(items: Array<Record<string, unknown>>): MediaListItem[] {
-  return items.map((item) => ({
-    label: deriveItemLabel(item),
-    type: typeof item.type === "string" ? item.type : undefined,
-    analysis:
-      typeof item.analysis === "string"
-        ? item.analysis
-        : typeof item.description === "string"
-        ? item.description
-        : typeof item.summary === "string"
-        ? item.summary
-        : undefined,
-    metadata: isPlainObject(item.metadata) ? item.metadata : undefined,
-    path: typeof item.path === "string" ? item.path : undefined,
-    file_name: typeof item.file_name === "string" ? item.file_name : undefined,
-  }));
-}
-
-function deriveItemLabel(item: Record<string, unknown>): string {
-  const candidates = [
-    item.summary,
-    item.title,
-    item.path,
-    item.filename,
-    item.file_name,
-    item.source,
-    item.name,
-  ];
-
-  for (const candidate of candidates) {
-    if (typeof candidate === "string" && candidate.trim().length > 0) {
-      return truncateText(candidate.trim(), 120);
-    }
-  }
-
-  try {
-    return truncateText(JSON.stringify(item), 120);
-  } catch {
-    return "Media item";
-  }
-}
-
-function truncateText(value: string, maxLength: number): string {
-  if (value.length <= maxLength) return value;
-  return `${value.slice(0, Math.max(0, maxLength - 1)).trim()}…`;
-}
-
-/** ------------------ Formatting helpers (from main) ------------------ */
 
 function formatPeriodLabel(value: string) {
   const [year, month] = value.split("-");

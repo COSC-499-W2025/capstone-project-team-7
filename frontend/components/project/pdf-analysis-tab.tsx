@@ -1,5 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FileImage, FileText, Clock, Tag, TrendingUp } from "lucide-react";
+import {
+  projectPageSelectors,
+  useProjectPageStore,
+} from "@/lib/stores/project-page-store";
 
 interface PdfKeyword {
   word: string;
@@ -23,6 +27,7 @@ type PdfAnalysisTabProps = {
   pdfAnalysis?: PdfAnalysisPayload;
   isLoading?: boolean;
   errorMessage?: string | null;
+  useStore?: boolean;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -58,6 +63,7 @@ function normalizePdfAnalysis(payload: PdfAnalysisPayload): PdfDocument[] {
 
     const fileName = typeof entry.file_name === "string" ? entry.file_name : "";
     const filePath = typeof entry.file_path === "string" ? entry.file_path : "";
+    if (!fileName && !filePath) return acc;
 
     const normalized: PdfDocument = {
       file_name: fileName || filePath || "Unknown",
@@ -80,10 +86,19 @@ function normalizePdfAnalysis(payload: PdfAnalysisPayload): PdfDocument[] {
 
 export function PdfAnalysisTab({
   pdfAnalysis,
-  isLoading = false,
-  errorMessage = null,
+  isLoading,
+  errorMessage,
+  useStore = false,
 }: PdfAnalysisTabProps) {
-  const documents = normalizePdfAnalysis(pdfAnalysis);
+  const scanData = useProjectPageStore(projectPageSelectors.scanData);
+  const storeLoading = useProjectPageStore(projectPageSelectors.projectLoading);
+  const storeError = useProjectPageStore(projectPageSelectors.projectError);
+  const useStoreFallback = useStore;
+  const resolvedPdfAnalysis =
+    pdfAnalysis ?? (useStoreFallback ? scanData.pdf_analysis : undefined);
+  const resolvedIsLoading = isLoading ?? (useStoreFallback ? storeLoading : false);
+  const resolvedErrorMessage = errorMessage ?? (useStoreFallback ? storeError : null);
+  const documents = normalizePdfAnalysis(resolvedPdfAnalysis);
 
   // Calculate statistics
   const stats = {
@@ -136,22 +151,22 @@ export function PdfAnalysisTab({
           </CardTitle>
         </CardHeader>
         <CardContent className="p-6">
-          {isLoading && (
+          {resolvedIsLoading && (
             <div className="text-center py-8 text-gray-500">
               Loading PDF analysis…
             </div>
           )}
-          {errorMessage && !isLoading && (
+          {resolvedErrorMessage && !resolvedIsLoading && (
             <div className="text-center py-8 text-red-600">
-              {errorMessage}
+              {resolvedErrorMessage}
             </div>
           )}
           <div className="space-y-4">
-            {!isLoading && !errorMessage && documents.length === 0 ? (
+            {!resolvedIsLoading && !resolvedErrorMessage && documents.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
                 {emptyMessage}
               </div>
-            ) : (!isLoading && !errorMessage ? (
+            ) : (!resolvedIsLoading && !resolvedErrorMessage ? (
               documents.map((doc, index) => (
                 <div
                   key={index}
@@ -168,7 +183,9 @@ export function PdfAnalysisTab({
                           <h3 className="text-sm font-semibold text-gray-900 truncate">
                             {doc.file_name}
                           </h3>
-                          <p className="text-xs text-gray-500 mt-1 truncate">{doc.file_path}</p>
+                          {doc.file_path && doc.file_path !== doc.file_name && (
+                            <p className="text-xs text-gray-500 mt-1 truncate">{doc.file_path}</p>
+                          )}
                         </div>
                         <div className="flex gap-4 text-xs text-gray-600 shrink-0">
                           <div className="flex items-center gap-1">

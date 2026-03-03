@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   ChevronRight,
@@ -19,29 +18,87 @@ import {
   type FileEntry,
   type FileTreeNode,
 } from "@/lib/file-tree";
+import {
+  projectPageSelectors,
+  useProjectPageStore,
+} from "@/lib/stores/project-page-store";
 
 /* ------------------------------------------------------------------ */
 /*  Public component                                                  */
 /* ------------------------------------------------------------------ */
 
-export function FileTreeView({ files }: { files: FileEntry[] }) {
+export function FileTreeView({
+  files,
+  useStore = false,
+}: {
+  files?: FileEntry[];
+  useStore?: boolean;
+}) {
+  const scanData = useProjectPageStore(projectPageSelectors.scanData);
+  const storeFiles = useMemo<FileEntry[]>(() => {
+    if (!Array.isArray(scanData.files)) return [];
+
+    return scanData.files
+      .map((entry) => {
+        if (typeof entry !== "object" || entry === null) {
+          return null;
+        }
+
+        const file = entry as Record<string, unknown>;
+        const path =
+          typeof file.path === "string"
+            ? file.path
+            : typeof file.file_path === "string"
+              ? file.file_path
+              : "";
+
+        if (path.length === 0) return null;
+
+        return {
+          path,
+          size_bytes:
+            typeof file.size_bytes === "number" && Number.isFinite(file.size_bytes)
+              ? file.size_bytes
+              : 0,
+          mime_type:
+            typeof file.mime_type === "string" && file.mime_type.length > 0
+              ? file.mime_type
+              : "application/octet-stream",
+          created_at:
+            typeof file.created_at === "string" || file.created_at === null
+              ? file.created_at
+              : undefined,
+          modified_at:
+            typeof file.modified_at === "string" || file.modified_at === null
+              ? file.modified_at
+              : undefined,
+          file_hash:
+            typeof file.file_hash === "string" || file.file_hash === null
+              ? file.file_hash
+              : undefined,
+        } as FileEntry;
+      })
+      .filter((entry): entry is FileEntry => entry !== null);
+  }, [scanData.files]);
+
+  const sourceFiles = files ?? (useStore ? storeFiles : []);
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState<"tree" | "list">("tree");
 
   const filteredFiles = useMemo(() => {
-    if (!search.trim()) return files;
+    if (!search.trim()) return sourceFiles;
     const q = search.toLowerCase();
-    return files.filter((f) => f.path.toLowerCase().includes(q));
-  }, [files, search]);
+    return sourceFiles.filter((f) => f.path.toLowerCase().includes(q));
+  }, [sourceFiles, search]);
 
   const tree = useMemo(() => buildFileTree(filteredFiles), [filteredFiles]);
 
   const totalSize = useMemo(
-    () => files.reduce((sum, f) => sum + (f.size_bytes ?? 0), 0),
-    [files]
+    () => sourceFiles.reduce((sum, f) => sum + (f.size_bytes ?? 0), 0),
+    [sourceFiles]
   );
 
-  if (files.length === 0) {
+  if (sourceFiles.length === 0) {
     return (
       <div className="text-sm text-gray-500 text-center py-8">
         No files available.
@@ -71,8 +128,8 @@ export function FileTreeView({ files }: { files: FileEntry[] }) {
       <div className="flex items-center justify-between">
         <p className="text-xs text-gray-500">
           {filteredFiles.length} file{filteredFiles.length !== 1 ? "s" : ""}
-          {isSearching && filteredFiles.length !== files.length
-            ? ` (of ${files.length})`
+          {isSearching && filteredFiles.length !== sourceFiles.length
+            ? ` (of ${sourceFiles.length})`
             : ""}
           , {formatFileSize(totalSize)} total
         </p>

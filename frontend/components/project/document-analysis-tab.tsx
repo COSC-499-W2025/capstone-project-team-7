@@ -11,6 +11,10 @@ import {
   BookOpen,
 } from "lucide-react";
 import type { DocumentSummary, DocumentAnalysisStats } from "@/types/document";
+import {
+  projectPageSelectors,
+  useProjectPageStore,
+} from "@/lib/stores/project-page-store";
 
 // Helper function to extract file type from path
 function getFileType(path: string): string {
@@ -23,14 +27,7 @@ function getFileName(path: string): string {
   return path.split(/[\\/]/).pop() || path;
 }
 
-type DocumentAnalysisPayload =
-  | {
-      documents?: unknown[];
-      items?: unknown[];
-    }
-  | unknown[]
-  | null
-  | undefined;
+type DocumentAnalysisPayload = unknown;
 
 function getFileIcon(fileType: string) {
   switch (fileType) {
@@ -111,9 +108,12 @@ function toKeywordArray(value: unknown): string[] {
 
 function normalizeDocumentItem(item: unknown): DocumentSummary | null {
   if (!item || typeof item !== "object") return null;
-  const record = item as Record<string, any>;
+  const record = item as Record<string, unknown>;
   if (record.success === false) return null;
-  const metadata = record.metadata && typeof record.metadata === "object" ? record.metadata : {};
+  const metadata =
+    record.metadata && typeof record.metadata === "object" && !Array.isArray(record.metadata)
+      ? (record.metadata as Record<string, unknown>)
+      : {};
 
   const path =
     record.path ||
@@ -164,36 +164,49 @@ function normalizeDocumentAnalysis(payload: DocumentAnalysisPayload): DocumentSu
   }
 
   if (typeof payload === "object") {
+    const record = payload as Record<string, unknown>;
+    const documents = record.documents;
+    const listItems = record.items;
     const items =
-      Array.isArray(payload.documents)
-        ? payload.documents
-        : Array.isArray(payload.items)
-          ? payload.items
+      Array.isArray(documents)
+        ? documents
+        : Array.isArray(listItems)
+          ? listItems
           : [];
     return items
-      .map((item) => normalizeDocumentItem(item))
-      .filter((item): item is DocumentSummary => Boolean(item));
+      .map((item: unknown) => normalizeDocumentItem(item))
+      .filter((item: DocumentSummary | null): item is DocumentSummary => Boolean(item));
   }
 
   return [];
 }
 
 type DocumentAnalysisTabProps = {
-  documentAnalysis?: DocumentAnalysisPayload;
+  documentAnalysis?: unknown;
   isLoading?: boolean;
   errorMessage?: string | null;
+  useStore?: boolean;
 };
 
 export function DocumentAnalysisTab({
   documentAnalysis,
-  isLoading = false,
-  errorMessage = null,
+  isLoading,
+  errorMessage,
+  useStore = false,
 }: DocumentAnalysisTabProps) {
+  const scanData = useProjectPageStore(projectPageSelectors.scanData);
+  const storeLoading = useProjectPageStore(projectPageSelectors.projectLoading);
+  const storeError = useProjectPageStore(projectPageSelectors.projectError);
+  const useStoreFallback = useStore;
+  const resolvedDocumentAnalysis =
+    documentAnalysis ?? (useStoreFallback ? scanData.document_analysis : undefined);
+  const resolvedIsLoading = isLoading ?? (useStoreFallback ? storeLoading : false);
+  const resolvedErrorMessage = errorMessage ?? (useStoreFallback ? storeError : null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState<string>("all");
   const documents = useMemo(
-    () => normalizeDocumentAnalysis(documentAnalysis),
-    [documentAnalysis]
+    () => normalizeDocumentAnalysis(resolvedDocumentAnalysis),
+    [resolvedDocumentAnalysis]
   );
   const stats = calculateStats(documents);
 
@@ -323,22 +336,22 @@ export function DocumentAnalysisTab({
           </CardTitle>
         </CardHeader>
         <CardContent className="p-6">
-          {isLoading && (
+          {resolvedIsLoading && (
             <div className="text-center py-8 text-gray-500">
               Loading document analysis…
             </div>
           )}
-          {errorMessage && !isLoading && (
+          {resolvedErrorMessage && !resolvedIsLoading && (
             <div className="text-center py-8 text-red-600">
-              {errorMessage}
+              {resolvedErrorMessage}
             </div>
           )}
           <div className="space-y-4">
-            {!isLoading && !errorMessage && filteredDocuments.length === 0 ? (
+            {!resolvedIsLoading && !resolvedErrorMessage && filteredDocuments.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
                 {emptyMessage}
               </div>
-            ) : (!isLoading && !errorMessage ? (
+            ) : (!resolvedIsLoading && !resolvedErrorMessage ? (
               filteredDocuments.map((doc, index) => (
                 <div
                   key={index}
