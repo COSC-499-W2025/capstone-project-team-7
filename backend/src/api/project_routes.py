@@ -221,6 +221,13 @@ def _coerce_skill_summary(summary: Optional[Dict[str, Any]]) -> Optional[Dict[st
     }
 
 
+def _format_internal_error(operation: str, exc: Exception) -> str:
+    error_text = str(exc).strip()
+    if error_text:
+        return f"Failed to {operation}: {error_text}"
+    return f"Failed to {operation} due to an internal server error. Please try again."
+
+
 def _period_to_dict(period: Any) -> Dict[str, Any]:
     return {
         "period_label": period.period_label,
@@ -1184,7 +1191,7 @@ async def create_project(
         logger.exception("Unexpected error creating project")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred",
+            detail=_format_internal_error("save project", exc),
         )
 
 
@@ -1435,7 +1442,7 @@ async def list_projects(
         logger.exception("Unexpected error listing projects")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred",
+            detail=_format_internal_error("retrieve projects", exc),
         )
 
 
@@ -1555,7 +1562,7 @@ async def search_projects(
         logger.exception("Unexpected error during search")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"code": "search_error", "message": "An unexpected error occurred"},
+            detail={"code": "search_error", "message": _format_internal_error("search projects", exc)},
         ) from exc
 
 
@@ -1776,7 +1783,7 @@ async def get_project_skill_timeline(
         logger.exception("Unexpected error fetching skill progression timeline")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred",
+            detail=_format_internal_error("retrieve project skill timeline", exc),
         )
 
 
@@ -1878,7 +1885,7 @@ async def generate_project_skill_summary(
         logger.exception("Unexpected error generating skill progression summary")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred",
+            detail=_format_internal_error("generate skill summary", exc),
         )
 
 
@@ -2129,7 +2136,7 @@ async def get_project(
         logger.exception("Unexpected error retrieving project")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred",
+            detail=_format_internal_error("retrieve project details", exc),
         )
 
 
@@ -2178,7 +2185,7 @@ async def delete_project(
         logger.exception("Unexpected error deleting project")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred",
+            detail=_format_internal_error("delete project", exc),
         )
 
 
@@ -2440,7 +2447,7 @@ async def delete_project_insights(
         logger.exception("Unexpected error clearing project insights")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred",
+            detail=_format_internal_error("clear project insights", exc),
         )
 
 
@@ -2523,7 +2530,7 @@ async def upload_project_thumbnail(
         logger.exception("Unexpected error uploading thumbnail")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An unexpected error occurred: {str(exc)}",
+            detail=_format_internal_error("upload project thumbnail", exc),
         )
 
 
@@ -2582,7 +2589,7 @@ async def update_project_thumbnail_url(
         logger.exception("Unexpected error updating thumbnail URL")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An unexpected error occurred: {str(exc)}",
+            detail=_format_internal_error("update project thumbnail URL", exc),
         )
 
 
@@ -2679,7 +2686,7 @@ async def get_project_overrides(
         logger.exception("Unexpected error retrieving project overrides")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred",
+            detail=_format_internal_error("retrieve project overrides", exc),
         )
 
 
@@ -2765,7 +2772,7 @@ async def update_project_overrides(
         logger.exception("Unexpected error updating project overrides")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred",
+            detail=_format_internal_error("update project overrides", exc),
         )
 
 
@@ -2828,7 +2835,7 @@ async def delete_project_overrides(
         logger.exception("Unexpected error deleting project overrides")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred",
+            detail=_format_internal_error("delete project overrides", exc),
         )
 
 
@@ -2896,7 +2903,7 @@ async def update_project_role(
         logger.exception("Unexpected error updating project role")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An unexpected error occurred: {str(exc)}",
+            detail=_format_internal_error("update project role", exc),
         )
 
 
@@ -2955,7 +2962,7 @@ async def get_project_role(
         logger.exception("Unexpected error getting project role")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An unexpected error occurred: {str(exc)}",
+            detail=_format_internal_error("retrieve project role", exc),
         )
 # ============================================================================
 # Append Upload to Project (with Deduplication)

@@ -51,6 +51,50 @@ function moveItem<T>(items: T[], fromIndex: number, toIndex: number): T[] {
   return nextItems;
 }
 
+function parseApiErrorMessage(rawMessage: string): string | null {
+  const trimmed = rawMessage.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as { detail?: string | { message?: string } };
+    if (typeof parsed.detail === "string" && parsed.detail.trim()) {
+      return parsed.detail.trim();
+    }
+    if (
+      parsed.detail &&
+      typeof parsed.detail === "object" &&
+      typeof parsed.detail.message === "string" &&
+      parsed.detail.message.trim()
+    ) {
+      return parsed.detail.message.trim();
+    }
+  } catch {
+    return trimmed;
+  }
+
+  return null;
+}
+
+function formatActionError(action: string, error: unknown, fallback: string): string {
+  if (error instanceof Error) {
+    const parsed = parseApiErrorMessage(error.message);
+    if (parsed) {
+      return `Failed to ${action}: ${parsed}`;
+    }
+  }
+
+  if (typeof error === "string") {
+    const parsed = parseApiErrorMessage(error);
+    if (parsed) {
+      return `Failed to ${action}: ${parsed}`;
+    }
+  }
+
+  return fallback;
+}
+
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<ProjectMetadata[]>([]);
   const [loading, setLoading] = useState(true);
@@ -103,13 +147,20 @@ export default function ProjectsPage() {
       console.log("First project data:", orderedProjects[0]);
       setProjects(orderedProjects);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to load projects";
+      const errorMessage = err instanceof Error ? err.message : "";
       console.error("Error fetching projects:", err);
-      setError(errorMessage);
-      
+
       // If it's an auth error, provide helpful message
       if (errorMessage.includes("401") || errorMessage.includes("Unauthorized") || errorMessage.includes("Invalid")) {
         setError("Session expired or invalid token. Please log in again through Settings.");
+      } else {
+        setError(
+          formatActionError(
+            "load projects",
+            err,
+            "Failed to load projects. Please refresh the page or try again in a moment.",
+          ),
+        );
       }
     } finally {
       setLoading(false);
@@ -132,10 +183,11 @@ export default function ProjectsPage() {
     }
 
     try {
+      setError(null);
       const token = getAuthToken();
       
       if (!token) {
-        alert("Not authenticated. Please log in through Settings.");
+        setError("You are not authenticated. Please log in through Settings to delete projects.");
         return;
       }
       
@@ -144,15 +196,22 @@ export default function ProjectsPage() {
       // Remove from local state
       setProjects(prev => prev.filter(p => p.id !== projectId));
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete project");
+      setError(
+        formatActionError(
+          "delete project",
+          err,
+          "Failed to delete this project. Please try again.",
+        ),
+      );
       console.error("Error deleting project:", err);
     }
   };
 
   const handleView = async (projectId: string) => {
+    setError(null);
     const token = getAuthToken();
     if (!token) {
-      alert("Not authenticated. Please log in through Settings.");
+      setError("You are not authenticated. Please log in through Settings to view project details.");
       return;
     }
 
@@ -163,7 +222,13 @@ export default function ProjectsPage() {
       setIsModalOpen(true);
     } catch (err) {
       console.error("Failed to fetch project details:", err);
-      alert(err instanceof Error ? err.message : "Failed to load project details");
+      setError(
+        formatActionError(
+          "load project details",
+          err,
+          "Failed to load project details. Please try again.",
+        ),
+      );
     } finally {
       setLoadingDetail(false);
     }
@@ -218,8 +283,13 @@ export default function ProjectsPage() {
         setOrderSaveStatus(null);
       }, 2000);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to save project order";
-      setError(errorMessage);
+      setError(
+        formatActionError(
+          "save project order",
+          err,
+          "Failed to save project order. Your current order may be temporary.",
+        ),
+      );
       setOrderSaveStatus(null);
     } finally {
       setSavingOrder(false);

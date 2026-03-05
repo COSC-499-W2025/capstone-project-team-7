@@ -18,6 +18,50 @@ import { useAuth } from "@/hooks/use-auth";
 import type { AuthSessionInfo } from "@/lib/auth";
 import type { ConfigResponse, ProfilesResponse } from "@/lib/api.types";
 
+function parseApiErrorMessage(rawError?: string | null): string | null {
+  const trimmed = rawError?.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as { detail?: string | { message?: string } };
+    if (typeof parsed.detail === "string" && parsed.detail.trim()) {
+      return parsed.detail.trim();
+    }
+    if (
+      parsed.detail &&
+      typeof parsed.detail === "object" &&
+      typeof parsed.detail.message === "string" &&
+      parsed.detail.message.trim()
+    ) {
+      return parsed.detail.message.trim();
+    }
+  } catch {
+    return trimmed;
+  }
+
+  return null;
+}
+
+function formatOperationError(operation: string, error: unknown, fallback: string): string {
+  if (error instanceof Error) {
+    const parsed = parseApiErrorMessage(error.message);
+    if (parsed) {
+      return `Failed to ${operation}: ${parsed}`;
+    }
+  }
+
+  if (typeof error === "string") {
+    const parsed = parseApiErrorMessage(error);
+    if (parsed) {
+      return `Failed to ${operation}: ${parsed}`;
+    }
+  }
+
+  return fallback;
+}
+
 export default function SettingsPage() {
   const router = useRouter();
   const { logout } = useAuth();
@@ -132,14 +176,26 @@ export default function SettingsPage() {
             });
             setSettings((s) => ({ ...(s ?? {}), enableAnalytics: consentRes.data.external_services }));
           } else {
-            setConsentError(consentRes.error || "Failed to load consent data");
+            setConsentError(
+              formatOperationError(
+                "load consent data",
+                consentRes.error,
+                "Failed to load consent data. Please try again.",
+              ),
+            );
           }
           setConsentLoading(false);
         }
       } catch (err) {
         if (!cancelled) {
           setConsentLoading(false);
-          setConsentError(err instanceof Error ? err.message : "Unknown error");
+          setConsentError(
+            formatOperationError(
+              "load settings",
+              err,
+              "Failed to load settings. Check your connection and retry.",
+            ),
+          );
           console.error("Failed to load settings:", err);
         }
       }
@@ -169,7 +225,11 @@ export default function SettingsPage() {
 
   const onSave = () => {
     const ok = saveSettings(settings);
-    setSaveStatus(ok ? "Saved successfully" : "Failed to save");
+    setSaveStatus(
+      ok
+        ? "Saved successfully"
+        : "Failed to save local preferences. Check file permissions and try again.",
+    );
     setTimeout(() => setSaveStatus(null), 2500);
 
     try {
@@ -199,10 +259,22 @@ export default function SettingsPage() {
         });
         setSettings((s) => ({ ...(s ?? {}), enableAnalytics: consentRes.data.external_services }));
       } else {
-        setConsentError(consentRes.error || "Failed to load consent data");
+        setConsentError(
+          formatOperationError(
+            "load consent data",
+            consentRes.error,
+            "Failed to load consent data. Please try again.",
+          ),
+        );
       }
     } catch (err) {
-      setConsentError(err instanceof Error ? err.message : "Unknown error");
+      setConsentError(
+        formatOperationError(
+          "retry loading settings",
+          err,
+          "Failed to reload settings. Please try again.",
+        ),
+      );
       console.error("Failed to retry loading settings:", err);
     } finally {
       setConsentLoading(false);
@@ -244,14 +316,26 @@ export default function SettingsPage() {
       } else {
         // Revert on failure
         setServerConfig(serverConfig);
-        setConfigStatus("Failed to switch profile");
+        setConfigStatus(
+          formatOperationError(
+            `switch to profile \"${profileName}\"`,
+            res.error,
+            `Failed to switch to profile \"${profileName}\". Please try again.`,
+          ),
+        );
         setTimeout(() => setConfigStatus(null), 2500);
       }
     } catch (err) {
       console.error("Failed to switch profile:", err);
       // Revert on failure
       setServerConfig(serverConfig);
-      setConfigStatus("Failed to switch profile");
+      setConfigStatus(
+        formatOperationError(
+          `switch to profile \"${profileName}\"`,
+          err,
+          `Failed to switch to profile \"${profileName}\". Please try again.`,
+        ),
+      );
       setTimeout(() => setConfigStatus(null), 2500);
     } finally {
       setConfigLoading(false);
@@ -275,11 +359,23 @@ export default function SettingsPage() {
         setServerConfig(res.data);
         setConfigStatus("Configuration saved successfully");
       } else {
-        setConfigStatus("Failed to save configuration");
+        setConfigStatus(
+          formatOperationError(
+            "save scan configuration",
+            res.error,
+            "Failed to save scan configuration. Please try again.",
+          ),
+        );
       }
     } catch (err) {
       console.error("Failed to update config:", err);
-      setConfigStatus("Failed to save configuration");
+      setConfigStatus(
+        formatOperationError(
+          "save scan configuration",
+          err,
+          "Failed to save scan configuration. Please try again.",
+        ),
+      );
     } finally {
       setConfigLoading(false);
       setTimeout(() => setConfigStatus(null), 2500);
@@ -317,7 +413,8 @@ export default function SettingsPage() {
 
   const handleSaveProfile = async () => {
     if (!profileForm.name.trim()) {
-      alert("Profile name is required");
+      setConfigStatus("Profile name is required before saving.");
+      setTimeout(() => setConfigStatus(null), 2500);
       return;
     }
 
@@ -351,11 +448,25 @@ export default function SettingsPage() {
         setConfigStatus(editingProfile ? "Profile updated successfully" : "Profile created successfully");
         setTimeout(() => setConfigStatus(null), 2500);
       } else {
-        alert("Failed to save profile");
+        setConfigStatus(
+          formatOperationError(
+            `save profile \"${profileForm.name}\"`,
+            res.error,
+            `Failed to save profile \"${profileForm.name}\". Please try again.`,
+          ),
+        );
+        setTimeout(() => setConfigStatus(null), 2500);
       }
     } catch (err) {
       console.error("Failed to save profile:", err);
-      alert("Failed to save profile");
+      setConfigStatus(
+        formatOperationError(
+          `save profile \"${profileForm.name}\"`,
+          err,
+          `Failed to save profile \"${profileForm.name}\". Please try again.`,
+        ),
+      );
+      setTimeout(() => setConfigStatus(null), 2500);
     } finally {
       setConfigLoading(false);
     }

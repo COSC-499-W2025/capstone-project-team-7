@@ -237,7 +237,7 @@ async def verify_api_key(request: APIKeyRequest):
         logger.error(f"Unexpected error during API key verification: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred"
+            detail=f"Failed to verify API key: {str(e) or 'internal server error'}. Please try again."
         )
 
 
