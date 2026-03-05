@@ -31,6 +31,11 @@ export function useAuth(): UseAuthReturn {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
+  // Key used to prevent re-hydration immediately after explicit logout.
+  // Without this, navigating to /auth/login after logout can trigger
+  // hydrateAuthState() which may recover a still-valid server session
+  // and redirect the user back to the dashboard.
+  const LOGOUT_FLAG_KEY = "auth_logged_out";
   // Listen for auth:signout events — dispatched by API 401/403 handlers and logout()
   useEffect(() => {
     const handleSignout = (e: Event) => {
@@ -52,6 +57,14 @@ export function useAuth(): UseAuthReturn {
     let cancelled = false;
 
     const hydrateAuthState = async () => {
+      // Skip re-hydration if user just logged out explicitly
+      if (sessionStorage.getItem(LOGOUT_FLAG_KEY)) {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+        return;
+      }
+
       const storedUser = localStorage.getItem("user");
       const accessToken = getStoredToken();
       const refreshToken = getStoredRefreshToken();
@@ -103,6 +116,9 @@ export function useAuth(): UseAuthReturn {
     if (result.ok) {
       const { user_id, email: userEmail, access_token, refresh_token } = result.data;
 
+      // Clear logout flag on successful login
+      sessionStorage.removeItem(LOGOUT_FLAG_KEY);
+
       setStoredToken(access_token);
       if (refresh_token) {
         setStoredRefreshToken(refresh_token);
@@ -128,6 +144,9 @@ export function useAuth(): UseAuthReturn {
     if (result.ok) {
       const { user_id, email: userEmail, access_token, refresh_token } = result.data;
 
+      // Clear logout flag on successful signup
+      sessionStorage.removeItem(LOGOUT_FLAG_KEY);
+
       setStoredToken(access_token);
       if (refresh_token) {
         setStoredRefreshToken(refresh_token);
@@ -149,6 +168,11 @@ export function useAuth(): UseAuthReturn {
   };
 
   const logout = (): void => {
+    // Set flag to prevent hydrateAuthState from recovering the session
+    // after redirect to login page. Uses sessionStorage so it persists
+    // across page navigations but clears when browser tab closes.
+    sessionStorage.setItem(LOGOUT_FLAG_KEY, "1");
+
     // Clear all possible auth token keys (comprehensive cleanup from main)
     localStorage.removeItem("access_token");
     localStorage.removeItem("auth_access_token");
