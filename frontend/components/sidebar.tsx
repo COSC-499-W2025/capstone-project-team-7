@@ -8,7 +8,6 @@ import {
   Folder,
   Briefcase,
   FileText,
-  Scan,
   Settings,
   HelpCircle,
   Search,
@@ -154,11 +153,6 @@ export const Sidebar: React.FC = () => {
             href="/resumes"
             icon={<FileText size={20} />}
             label="Resumes"
-          />
-          <NavItem
-            href="/scanned-results"
-            icon={<Scan size={20} />}
-            label="Scanned Results"
           />
         </div>
       </div>
