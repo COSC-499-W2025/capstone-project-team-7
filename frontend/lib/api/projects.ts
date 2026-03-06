@@ -245,7 +245,14 @@ export async function searchProjects(
 
   if (!response.ok) {
     const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
-    throw new Error(error.detail || "Search failed");
+    const detail = error.detail;
+    const message =
+      typeof detail === "string"
+        ? detail
+        : typeof detail === "object" && detail !== null && "message" in detail
+          ? String((detail as Record<string, unknown>).message)
+          : "Search failed";
+    throw new Error(message);
   }
 
   return response.json();
