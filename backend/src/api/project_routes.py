@@ -26,6 +26,8 @@ try:
     from services.services.project_overrides_service import ProjectOverridesService, ProjectOverridesServiceError
     from auth.consent_validator import ConsentValidator
     from api.llm_routes import get_user_client
+    from api.settings_routes import get_or_hydrate_llm_client
+    from api.request_context import get_request_access_token
     from services.services.export_service import ExportService
 except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
     from backend.src.services.services.projects_service import ProjectsService, ProjectsServiceError
@@ -33,6 +35,8 @@ except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fal
     from backend.src.services.services.project_overrides_service import ProjectOverridesService, ProjectOverridesServiceError
     from backend.src.auth.consent_validator import ConsentValidator
     from backend.src.api.llm_routes import get_user_client
+    from backend.src.api.settings_routes import get_or_hydrate_llm_client
+    from backend.src.api.request_context import get_request_access_token
     from backend.src.services.services.export_service import ExportService
 
 try:
@@ -1834,7 +1838,8 @@ async def generate_project_skill_summary(
                 llm_status="skipped:consent_not_granted",
             )
 
-        client = get_user_client(user_id)
+        access_token = get_request_access_token() or ""
+        client = await get_or_hydrate_llm_client(user_id, access_token)
         if client is None:
             return SkillProgressSummaryResponse(
                 project_id=project_id,

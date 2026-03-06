@@ -17,6 +17,8 @@ from scanner.models import ParseResult, ScanPreferences
 
 from auth.consent_validator import ConsentValidator
 from api.llm_routes import get_user_client
+from api.settings_routes import get_or_hydrate_llm_client
+from api.request_context import get_request_access_token
 from local_analysis.git_repo import analyze_git_repo
 from api.upload_routes import uploads_store, verify_auth_token
 
@@ -147,16 +149,17 @@ class ErrorResponse(BaseModel):
 # Helper Functions
 # ============================================================================
 
-def _check_llm_availability(user_id: str, use_llm: bool) -> tuple[bool, str, Any]:
+async def _check_llm_availability(user_id: str, use_llm: bool) -> tuple[bool, str, Any]:
     """
     Check if LLM analysis is available for the user.
-    
+    Falls back to DB-stored key if no in-memory client exists.
+
     Returns:
         Tuple of (is_available, status_message, llm_client_or_none)
     """
     if not use_llm:
         return False, "skipped:not_requested", None
-    
+
     try:
         consent_validator = ConsentValidator()
         has_consent = consent_validator.validate_external_services_consent(user_id)
@@ -165,11 +168,12 @@ def _check_llm_availability(user_id: str, use_llm: bool) -> tuple[bool, str, Any
     except Exception as e:
         logger.warning(f"Consent check failed for user {user_id}: {e}")
         return False, f"skipped:consent_check_failed", None
-    
-    client = get_user_client(user_id)
+
+    access_token = get_request_access_token() or ""
+    client = await get_or_hydrate_llm_client(user_id, access_token)
     if client is None:
         return False, "skipped:no_api_key", None
-    
+
     return True, "used", client
 
 
@@ -566,7 +570,7 @@ async def analyze_portfolio(
             project_type = _determine_project_type(git_analysis, contribution_metrics)
             
             # === Check LLM Availability ===
-            llm_available, llm_status, llm_client = _check_llm_availability(
+            llm_available, llm_status, llm_client = await _check_llm_availability(
                 user_id, request.use_llm
             )
             
