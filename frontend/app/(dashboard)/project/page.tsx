@@ -68,6 +68,7 @@ import {
   Info,
 } from "lucide-react";
 import { FileTreeView } from "@/components/project/file-tree-view";
+import { SearchFilterTab } from "@/components/project/search-filter-tab";
 import type { FileEntry } from "@/lib/file-tree";
 import {
   Tooltip,
@@ -108,6 +109,7 @@ const contentSubTabs = [
 const toolsSubTabs = [
   { value: "tools-main", label: "Overview", icon: Wrench },
   { value: "file-browser", label: "File Browser", icon: FileText },
+  { value: "search-filter", label: "Search & Filter Files", icon: Search },
   { value: "git-analysis", label: "Git Analysis", icon: GitBranch },
   { value: "duplicate-finder", label: "Duplicate Finder", icon: Copy },
 ] as const;
@@ -1959,6 +1961,33 @@ export default function ProjectPage() {
                   </CardHeader>
                   <CardContent className="p-6">
                     <FileTreeView files={projectFiles} />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="search-filter" className="space-y-4">
+                <Card className="bg-white border border-gray-200">
+                  <CardHeader className="border-b border-gray-200 flex flex-row items-center justify-between">
+                    <CardTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                      <Search size={18} />
+                      Search &amp; Filter Files
+                    </CardTitle>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setActiveToolsTab("tools-main")}
+                    >
+                      Back to Overview
+                    </Button>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    <SearchFilterTab
+                      files={projectFiles}
+                      loading={projectLoading}
+                      error={projectError}
+                      onRetry={loadProject}
+                    />
                   </CardContent>
                 </Card>
               </TabsContent>
