@@ -41,7 +41,6 @@ const App: React.FC = () => {
           <Route path="portfolio" element={<PlaceholderPage title="Portfolio" />} />
           <Route path="projects" element={<PlaceholderPage title="Projects" />} />
           <Route path="resumes" element={<PlaceholderPage title="Resumes" />} />
-          <Route path="scanned-results" element={<PlaceholderPage title="Scanned Results" />} />
           <Route path="resume-generation" element={<PlaceholderPage title="Resume Generation" />} />
           <Route path="ai-analysis" element={<PlaceholderPage title="AI-Powered Analysis" />} />
           <Route path="skill-progression" element={<PlaceholderPage title="Skill Progression" />} />
