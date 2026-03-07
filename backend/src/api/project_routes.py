@@ -221,11 +221,8 @@ def _coerce_skill_summary(summary: Optional[Dict[str, Any]]) -> Optional[Dict[st
     }
 
 
-def _format_internal_error(operation: str, exc: Exception) -> str:
-    error_text = str(exc).strip()
-    if error_text:
-        return f"Failed to {operation}: {error_text}"
-    return f"Failed to {operation} due to an internal server error. Please try again."
+def _format_internal_error(operation: str, _exc: Exception) -> str:
+    return f"Could not {operation} due to an internal server error. Please try again."
 
 
 def _period_to_dict(period: Any) -> Dict[str, Any]:
@@ -2176,10 +2173,10 @@ async def delete_project(
     except HTTPException:
         raise
     except ProjectsServiceError as exc:
-        logger.error(f"Projects service error: {exc}")
+        logger.exception("Projects service error while deleting project")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete project: {str(exc)}",
+            detail=_format_internal_error("delete project", exc),
         )
     except Exception as exc:
         logger.exception("Unexpected error deleting project")

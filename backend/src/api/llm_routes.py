@@ -219,25 +219,25 @@ async def verify_api_key(request: APIKeyRequest):
         logger.warning(f"External service consent not granted for user {request.user_id}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=str(e)
+            detail="User has not consented to external services. Please grant consent first."
         )
     except InvalidAPIKeyError as e:
         logger.error(f"Invalid API key for user {request.user_id}: {e}")
         return APIKeyResponse(
             valid=False,
-            message=str(e)
+            message="Invalid API key. Please verify your OpenAI API key is correct."
         )
     except LLMError as e:
         logger.error(f"LLM error during verification: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"LLM service error: {str(e)}"
+            detail="LLM service error. Please try again later."
         )
     except Exception as e:
-        logger.error(f"Unexpected error during API key verification: {e}")
+        logger.exception("Unexpected error during API key verification")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to verify API key: {str(e) or 'internal server error'}. Please try again."
+            detail="Failed to verify API key due to an internal server error. Please try again."
         )
 
 

@@ -15,52 +15,9 @@ import { loadTheme, saveTheme, applyTheme, type Theme } from "@/lib/theme";
 import { consent as consentApi, config as configApi } from "@/lib/api";
 import { auth as authApi, getStoredToken, getStoredRefreshToken } from "@/lib/auth";
 import { useAuth } from "@/hooks/use-auth";
+import { formatOperationError } from "@/lib/error-utils";
 import type { AuthSessionInfo } from "@/lib/auth";
 import type { ConfigResponse, ProfilesResponse } from "@/lib/api.types";
-
-function parseApiErrorMessage(rawError?: string | null): string | null {
-  const trimmed = rawError?.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(trimmed) as { detail?: string | { message?: string } };
-    if (typeof parsed.detail === "string" && parsed.detail.trim()) {
-      return parsed.detail.trim();
-    }
-    if (
-      parsed.detail &&
-      typeof parsed.detail === "object" &&
-      typeof parsed.detail.message === "string" &&
-      parsed.detail.message.trim()
-    ) {
-      return parsed.detail.message.trim();
-    }
-  } catch {
-    return trimmed;
-  }
-
-  return null;
-}
-
-function formatOperationError(operation: string, error: unknown, fallback: string): string {
-  if (error instanceof Error) {
-    const parsed = parseApiErrorMessage(error.message);
-    if (parsed) {
-      return `Failed to ${operation}: ${parsed}`;
-    }
-  }
-
-  if (typeof error === "string") {
-    const parsed = parseApiErrorMessage(error);
-    if (parsed) {
-      return `Failed to ${operation}: ${parsed}`;
-    }
-  }
-
-  return fallback;
-}
 
 export default function SettingsPage() {
   const router = useRouter();

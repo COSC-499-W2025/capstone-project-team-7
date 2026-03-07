@@ -7,6 +7,7 @@ import { ProjectMetadata, ProjectDetail } from "@/types/project";
 import { Loader2, RefreshCw } from "lucide-react";
 import { getStoredToken } from "@/lib/auth";
 import { ProjectDetailModal } from "@/components/projects/project-detail-modal";
+import { formatOperationError } from "@/lib/error-utils";
 
 function applyProjectOrder(projects: ProjectMetadata[], projectOrder: string[]): ProjectMetadata[] {
   if (projectOrder.length === 0) {
@@ -49,50 +50,6 @@ function moveItem<T>(items: T[], fromIndex: number, toIndex: number): T[] {
   const [item] = nextItems.splice(fromIndex, 1);
   nextItems.splice(toIndex, 0, item);
   return nextItems;
-}
-
-function parseApiErrorMessage(rawMessage: string): string | null {
-  const trimmed = rawMessage.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(trimmed) as { detail?: string | { message?: string } };
-    if (typeof parsed.detail === "string" && parsed.detail.trim()) {
-      return parsed.detail.trim();
-    }
-    if (
-      parsed.detail &&
-      typeof parsed.detail === "object" &&
-      typeof parsed.detail.message === "string" &&
-      parsed.detail.message.trim()
-    ) {
-      return parsed.detail.message.trim();
-    }
-  } catch {
-    return trimmed;
-  }
-
-  return null;
-}
-
-function formatActionError(action: string, error: unknown, fallback: string): string {
-  if (error instanceof Error) {
-    const parsed = parseApiErrorMessage(error.message);
-    if (parsed) {
-      return `Failed to ${action}: ${parsed}`;
-    }
-  }
-
-  if (typeof error === "string") {
-    const parsed = parseApiErrorMessage(error);
-    if (parsed) {
-      return `Failed to ${action}: ${parsed}`;
-    }
-  }
-
-  return fallback;
 }
 
 export default function ProjectsPage() {
@@ -155,7 +112,7 @@ export default function ProjectsPage() {
         setError("Session expired or invalid token. Please log in again through Settings.");
       } else {
         setError(
-          formatActionError(
+          formatOperationError(
             "load projects",
             err,
             "Failed to load projects. Please refresh the page or try again in a moment.",
@@ -197,7 +154,7 @@ export default function ProjectsPage() {
       setProjects(prev => prev.filter(p => p.id !== projectId));
     } catch (err) {
       setError(
-        formatActionError(
+        formatOperationError(
           "delete project",
           err,
           "Failed to delete this project. Please try again.",
@@ -223,7 +180,7 @@ export default function ProjectsPage() {
     } catch (err) {
       console.error("Failed to fetch project details:", err);
       setError(
-        formatActionError(
+        formatOperationError(
           "load project details",
           err,
           "Failed to load project details. Please try again.",
@@ -284,7 +241,7 @@ export default function ProjectsPage() {
       }, 2000);
     } catch (err) {
       setError(
-        formatActionError(
+        formatOperationError(
           "save project order",
           err,
           "Failed to save project order. Your current order may be temporary.",
