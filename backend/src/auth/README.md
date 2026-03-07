@@ -320,6 +320,20 @@ Test persistence demo:
 python backend/test_consent_demo.py
 ```
 
+## User Secrets Integration
+
+The consent system gates access to the `user_secrets` feature (managed by `api/settings_routes.py`). Users must have `external_services` consent before they can verify or use a stored API key.
+
+**Flow:**
+1. User enables **External Services** consent via the Privacy & Consent UI
+2. User saves an OpenAI API key in Settings → encrypted and stored in `user_secrets` table
+3. When analysis routes need an LLM client, they call `get_or_hydrate_llm_client()` which:
+   - Checks the in-memory cache (fast path)
+   - On miss, fetches the encrypted key from `user_secrets`, decrypts it, creates an `LLMClient`, and caches it
+4. The `/api/settings/secrets/verify` endpoint checks consent before decrypting and validating the key
+
+**Key constraint:** Verifying or using a stored key always requires `external_services` consent to be granted. If consent is withdrawn, the in-memory client may still exist until TTL expiry, but new hydration attempts will fail the consent check in the analysis routes.
+
 ## Future Enhancements
 
 ### Enhanced Database Features

@@ -6,7 +6,7 @@ Purpose: spell out the one-time setup to stand up the Electron shell and Next.js
 - Renderer: Next.js (app router), Tailwind + shadcn/ui.
 - Shell: Electron main + preload IPC (Node disabled in renderer).
 - Backend: existing FastAPI service (`backend/src/main.py`, `backend/src/api/llm_routes.py`) + Python analyzers.
-- Data: Supabase (auth, `projects`, `scan_files`, `resume_items`, `user_configs`, `consents_v1`), local FS via IPC.
+- Data: Supabase (auth, `projects`, `scan_files`, `resume_items`, `user_configs`, `consents_v1`, `user_secrets`), local FS via IPC.
 - Packaging: electron-builder/forge (choose one) with bundled Next build and Python env or a system Python requirement.
 - Render mode decision: **static export** is the default until a concrete SSR/ISR need appears (app uses client-side fetches today).
 
@@ -82,7 +82,7 @@ Short descriptions:
 - Optional heavy deps (gate): `tree-sitter` bindings, `torch/torchvision/torchaudio`, `weasyprint`.
 
 ## Environment & Config
-- Shared `.env`: `SUPABASE_URL`, `SUPABASE_KEY` or `SUPABASE_ANON_KEY`, `OPENAI_API_KEY`, `ENCRYPTION_MASTER_KEY`, optional `FASTAPI_PORT` (default 8000), `ELECTRON_START_URL` (for dev).
+- Shared `.env`: `SUPABASE_URL`, `SUPABASE_KEY` or `SUPABASE_ANON_KEY`, `ENCRYPTION_MASTER_KEY`, optional `FASTAPI_PORT` (default 8000), `ELECTRON_START_URL` (for dev). Note: `OPENAI_API_KEY` is no longer needed in `.env` — users store their key via the Settings UI, and it is persisted encrypted in the `user_secrets` table.
 - Electron should read env via preload and pass to renderer/backend as needed; do not embed secrets in renderer bundle.
 - CORS: set `allow_origins` in `backend/src/main.py` to the Electron app origin; in dev keep `http://localhost:3000`.
 
