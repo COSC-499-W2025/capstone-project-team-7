@@ -12,6 +12,7 @@ import type {
   ProfileUpsertRequest,
   UpdateProfileRequest,
   UserProfile,
+  EncryptionStatus,
 } from "./api.types";
 import {
   clearStoredRefreshToken,
@@ -273,4 +274,9 @@ export const config = {
   listProfiles: (): Promise<ApiResult<ProfilesResponse>> => request<ProfilesResponse>("/api/config/profiles"),
   saveProfile: (payload: ProfileUpsertRequest): Promise<ApiResult<any>> =>
     request<any>("/api/config/profiles", { method: "POST", body: JSON.stringify(payload) }),
+};
+
+export const encryption = {
+  status: (): Promise<ApiResult<EncryptionStatus>> =>
+    request<EncryptionStatus>("/api/encryption/status", { cache: "no-store" }),
 };

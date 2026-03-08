@@ -21,6 +21,12 @@ export type ConsentUpdateRequest = {
   notice_acknowledged_at?: string | null;
 };
 
+export type EncryptionStatus = {
+  enabled: boolean;
+  ready: boolean;
+  error?: string | null;
+};
+
 export type ConfigResponse = {
   scan_profiles?: Record<string, Record<string, any>>;
   current_profile?: string | null;
