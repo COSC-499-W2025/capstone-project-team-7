@@ -1,6 +1,61 @@
 
 # Jacob Damery
 
+# Week 23: March 2 – March 8
+
+This week I focused on improving system reliability and developer visibility through expanded test coverage and environment validation tooling. My primary contributions included adding a comprehensive automated test suite for the project filtering system and implementing an encryption status feature that verifies backend encryption configuration and exposes it through the API and Settings UI.
+
+## Key Accomplishments
+
+### Advanced Filtering Test Suite [PR 388](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/388)
+
+I implemented a full automated test suite for the `SearchFilterTab` component, which previously had no test coverage. This component performs client-side filtering of project files within the tools panel.
+
+Key work included:
+
+- Created `search-filter-tab.test.tsx` with 35 tests across 9 describe blocks.
+- Tested loading, error, empty, and normal render states.
+- Verified debounced search behavior, case-insensitive matching, and filter combinations.
+- Tested language, file type, and directory filters along with sortable file listings.
+- Ensured correct rendering of file metadata such as file names, extension badges, paths, and file sizes.
+
+These tests ensure the filtering system behaves reliably and help prevent regressions as the component evolves.
+
+### Encryption Status Monitoring [PR 389](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/389
+
+I implemented an encryption status reporting feature across the backend and frontend Settings page.
+
+Key work included:
+
+- Added backend endpoint:
+```
+  GET /api/encryption/status
+```
+
+  which reports whether encryption is enabled, ready, or misconfigured.
+- Implemented UI indicators in Settings showing encryption readiness and configuration errors.
+- Added guidance for encryption setup.
+- Fixed `.env` loading so `ENCRYPTION_MASTER_KEY` is correctly detected when launching through Electron.
+- Added backend and frontend tests for encryption status handling.
+
+This feature improves transparency by surfacing encryption configuration issues early rather than allowing them to fail silently.
+
+## Challenges & Learning
+
+One challenge involved ensuring environment variables loaded correctly when the application was launched through Electron rather than directly in development. This required tracing how `.env` variables were initialized and ensuring `python-dotenv` executed early enough during application startup.
+
+Writing tests for the filtering system also highlighted the complexity of client-side UI logic when multiple filters and debounce behavior interact, reinforcing the importance of structured testing.
+
+## Impact
+
+This week's work improves both application stability and developer confidence. The encryption status feature prevents hidden configuration failures, while the new filtering test suite strengthens frontend reliability and reduces the risk of regressions in the project tools interface.
+
+
+<img width="1076" height="629" alt="image" src="https://github.com/user-attachments/assets/617b5bc3-7feb-4af0-a9ae-f286ef94e1a1" />
+
+
+
+
 # Week 22: February 23 – March 1
 
 This week, I focused on implementing a fully functional Portfolio page within the Electron application and resolving a blocking backend bug in the AI generation endpoint. My primary contribution was delivering the Portfolio feature (merged PR), while also addressing code review feedback to improve consistency and robustness across the API layer.
