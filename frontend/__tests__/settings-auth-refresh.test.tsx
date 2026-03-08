@@ -44,10 +44,13 @@ vi.mock("@/lib/api", () => ({
     saveProfile: vi.fn(),
     update: vi.fn(),
   },
+  encryption: {
+    status: vi.fn(),
+  },
 }));
 
 import { auth, getStoredRefreshToken, getStoredToken } from "@/lib/auth";
-import { config, consent } from "@/lib/api";
+import { config, consent, encryption } from "@/lib/api";
 
 const mockGetSession = auth.getSession as Mock;
 const mockGetStoredToken = getStoredToken as Mock;
@@ -55,6 +58,7 @@ const mockGetStoredRefreshToken = getStoredRefreshToken as Mock;
 const mockConsentGet = consent.get as Mock;
 const mockConfigGet = config.get as Mock;
 const mockListProfiles = config.listProfiles as Mock;
+const mockEncryptionStatus = encryption.status as Mock;
 
 describe("Settings page auth recovery", () => {
   beforeEach(() => {
@@ -62,6 +66,7 @@ describe("Settings page auth recovery", () => {
     mockConsentGet.mockResolvedValue({ ok: false, status: 401, error: "Unauthorized" });
     mockConfigGet.mockResolvedValue({ ok: false, status: 401, error: "Unauthorized" });
     mockListProfiles.mockResolvedValue({ ok: false, status: 401, error: "Unauthorized" });
+    mockEncryptionStatus.mockResolvedValue({ ok: true, data: { enabled: false, ready: false } });
   });
 
   it("checks session when only a refresh token exists", async () => {

@@ -12,11 +12,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { loadSettings, saveSettings, AppSettings } from "@/lib/settings";
 import { loadTheme, saveTheme, applyTheme, type Theme } from "@/lib/theme";
-import { consent as consentApi, config as configApi } from "@/lib/api";
+import { consent as consentApi, config as configApi, encryption as encryptionApi } from "@/lib/api";
 import { auth as authApi, getStoredToken, getStoredRefreshToken } from "@/lib/auth";
 import { useAuth } from "@/hooks/use-auth";
 import type { AuthSessionInfo } from "@/lib/auth";
-import type { ConfigResponse, ProfilesResponse } from "@/lib/api.types";
+import type { ConfigResponse, ProfilesResponse, EncryptionStatus } from "@/lib/api.types";
+import { AlertTriangle, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -43,6 +44,11 @@ export default function SettingsPage() {
   const [profiles, setProfiles] = useState<Record<string, any>>({});
   const [configLoading, setConfigLoading] = useState(false);
   const [configStatus, setConfigStatus] = useState<string | null>(null);
+
+  // Encryption status
+  const [encryptionStatus, setEncryptionStatus] = useState<EncryptionStatus | null>(null);
+  const [encryptionLoading, setEncryptionLoading] = useState(true);
+  const [encryptionError, setEncryptionError] = useState<string | null>(null);
 
   // Profile creation/editing
   const [showProfileDialog, setShowProfileDialog] = useState(false);
@@ -98,6 +104,26 @@ export default function SettingsPage() {
       } catch {
         const local = loadSettings();
         if (!cancelled) setSettings(local);
+      }
+
+      // Load encryption status
+      try {
+        setEncryptionLoading(true);
+        setEncryptionError(null);
+        const res = await encryptionApi.status();
+        if (!cancelled) {
+          if (res.ok) {
+            setEncryptionStatus(res.data);
+          } else {
+            setEncryptionError(res.error || "Failed to load encryption status");
+          }
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setEncryptionError(err instanceof Error ? err.message : "Failed to load encryption status");
+        }
+      } finally {
+        if (!cancelled) setEncryptionLoading(false);
       }
     })();
 
@@ -206,6 +232,23 @@ export default function SettingsPage() {
       console.error("Failed to retry loading settings:", err);
     } finally {
       setConsentLoading(false);
+    }
+  };
+
+  const handleRetryEncryptionStatus = async () => {
+    setEncryptionLoading(true);
+    setEncryptionError(null);
+    try {
+      const res = await encryptionApi.status();
+      if (res.ok) {
+        setEncryptionStatus(res.data);
+      } else {
+        setEncryptionError(res.error || "Failed to load encryption status");
+      }
+    } catch (err) {
+      setEncryptionError(err instanceof Error ? err.message : "Failed to load encryption status");
+    } finally {
+      setEncryptionLoading(false);
     }
   };
 
@@ -361,6 +404,18 @@ export default function SettingsPage() {
     }
   };
 
+  const encryptionReady = Boolean(encryptionStatus?.ready);
+  const encryptionEnabled = Boolean(encryptionStatus?.enabled);
+  const showEncryptionWarning = Boolean(encryptionStatus && !encryptionStatus.ready);
+  const encryptionStatusLabel = encryptionReady ? "Encryption ready" : "Encryption needs attention";
+  const encryptionStatusDescription = encryptionReady
+    ? "Sensitive data stored by the app will be encrypted at rest."
+    : encryptionEnabled
+      ? "Encryption is configured but failed to initialize."
+      : "Encryption is not configured. Secure storage is disabled until a key is provided.";
+  const encryptionGuidance = encryptionEnabled
+    ? "Verify ENCRYPTION_MASTER_KEY is a valid base64-encoded 32-byte key and restart the backend."
+    : "Set ENCRYPTION_MASTER_KEY in the backend environment and restart the backend.";
 
   return (
     <div className="p-8 relative">
@@ -511,6 +566,85 @@ export default function SettingsPage() {
               )}
             </div>
           </CardFooter>
+        </Card>
+
+        {/* Security */}
+        <Card className="bg-white rounded-xl shadow-sm border border-gray-200">
+          <CardHeader className="border-b border-gray-200">
+            <CardTitle className="text-xl font-bold text-gray-900">Security</CardTitle>
+            <CardDescription className="text-gray-600">Encryption status for sensitive data stored at rest</CardDescription>
+          </CardHeader>
+          <CardContent className="p-6 space-y-4">
+            {encryptionLoading ? (
+              <div className="flex items-center gap-3 text-gray-600">
+                <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-400 border-t-transparent" />
+                <p className="text-sm">Checking encryption status...</p>
+              </div>
+            ) : encryptionError ? (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <XCircle className="h-5 w-5 text-red-600" />
+                      <p className="text-sm font-medium text-red-900">Unable to fetch encryption status</p>
+                    </div>
+                    <p className="text-xs text-red-700 mt-1">{encryptionError}</p>
+                  </div>
+                  <Button
+                    onClick={handleRetryEncryptionStatus}
+                    variant="outline"
+                    size="sm"
+                    className="border-red-300 text-red-600 hover:bg-red-50"
+                  >
+                    Retry
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start gap-3">
+                    {encryptionReady ? (
+                      <CheckCircle2 className="h-6 w-6 text-green-600" />
+                    ) : (
+                      <AlertTriangle className="h-6 w-6 text-amber-600" />
+                    )}
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">{encryptionStatusLabel}</p>
+                      <p className="text-xs text-gray-500 mt-1">{encryptionStatusDescription}</p>
+                    </div>
+                  </div>
+                  <Button
+                    onClick={handleRetryEncryptionStatus}
+                    variant="outline"
+                    size="sm"
+                    className="border-gray-300 text-gray-700 hover:bg-gray-50"
+                  >
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Refresh
+                  </Button>
+                </div>
+
+                {encryptionReady ? (
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <p className="text-sm text-green-900 font-medium">Encryption is active.</p>
+                    <p className="text-xs text-green-700 mt-1">Your stored data will be encrypted using the current backend configuration.</p>
+                  </div>
+                ) : (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 space-y-2">
+                    <p className="text-sm text-yellow-900 font-medium">Action required</p>
+                    <p className="text-xs text-yellow-800">{encryptionGuidance}</p>
+                    {encryptionStatus?.error && (
+                      <p className="text-xs text-yellow-800">Details: {encryptionStatus.error}</p>
+                    )}
+                    <Link href="/settings/encryption" className="text-xs text-blue-600 hover:text-blue-700 underline">
+                      View encryption setup instructions
+                    </Link>
+                  </div>
+                )}
+              </>
+            )}
+          </CardContent>
         </Card>
 
         {/* Scan Configuration */}

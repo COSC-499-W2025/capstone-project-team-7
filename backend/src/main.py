@@ -5,20 +5,24 @@
 # - Provides root health-check endpoint
 # - Run with: uvicorn src.main:app --reload
 import os
+import sys
+from pathlib import Path
+
 try:
     from dotenv import load_dotenv
 except Exception:  # pragma: no cover - optional dependency
     load_dotenv = None  # type: ignore
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import sys
-from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 if load_dotenv:
-    env_path = Path.cwd() / ".env"
-    if env_path.exists():
-        load_dotenv(env_path, override=False)
+    backend_root = Path(__file__).resolve().parents[1]
+    project_root = backend_root.parent
+    load_dotenv(project_root / ".env", override=False)
+    load_dotenv(backend_root / ".env", override=False)
+    load_dotenv(override=False)
 from api.auth_routes import router as auth_router
 from api.analysis_routes import router as analysis_router
 from api.consent_routes import router as consent_router
@@ -30,6 +34,7 @@ from api.project_routes import router as project_router
 from api.upload_routes import router as upload_router
 from api.selection_routes import router as selection_router
 from api.profile_routes import router as profile_router
+from api.encryption_routes import router as encryption_router
 
 app = FastAPI(
     title="Capstone Backend API",
@@ -69,6 +74,7 @@ app.include_router(project_router)
 app.include_router(upload_router)
 app.include_router(selection_router)
 app.include_router(profile_router)
+app.include_router(encryption_router)
 
 if __name__ == "__main__":
     import uvicorn
