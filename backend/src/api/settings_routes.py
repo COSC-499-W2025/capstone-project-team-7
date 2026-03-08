@@ -168,7 +168,7 @@ async def save_secret(
     }
 
     rest = _supabase_rest_url()
-    url = f"{rest}/{_SECRETS_TABLE}"
+    url = f"{rest}/{_SECRETS_TABLE}?on_conflict=user_id,secret_key"
     headers = _supabase_headers(auth.access_token)
     headers["Prefer"] = "return=representation,resolution=merge-duplicates"
 
@@ -246,12 +246,13 @@ async def verify_stored_key(auth: AuthContext = Depends(get_auth_context)):
     try:
         llm_client = LLMClient(api_key=api_key)
         is_valid = llm_client.verify_api_key()
-    except InvalidAPIKeyError as exc:
-        return VerifyStoredKeyResponse(valid=False, message=str(exc))
+    except InvalidAPIKeyError:
+        return VerifyStoredKeyResponse(valid=False, message="The API key is invalid or has been revoked.")
     except LLMError as exc:
+        logger.error(f"LLM service error during key verification: {exc}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"LLM service error: {exc}",
+            detail={"code": "llm_service_error", "message": "Unable to verify key with the LLM provider. Please try again later."},
         )
 
     if is_valid:
