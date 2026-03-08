@@ -22,6 +22,38 @@
 
 
 ## Week 23 (March 2nd - 8th)
+**Jacob**:
+
+## Overview
+
+This week I focused on improving system reliability, frontend testing coverage, and configuration visibility across the application. My contributions included implementing automated testing for the project filtering system, adding encryption status reporting across the backend and Settings UI, and reviewing several integration-focused pull requests related to configuration management and error handling.
+
+## Contributions
+
+### Advanced Filtering Test Suite ([PR #388](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/388))
+
+This week's PR #388 added a comprehensive automated test suite for the `SearchFilterTab` component used within the project tools panel. This component performs client-side filtering of project files and previously had no test coverage despite supporting several interactive features such as debounced search, language and file-type filters, sortable listings, and dynamic result counts. I implemented 35 tests covering loading states, error handling, empty results, filter combinations, and correct rendering of file metadata including file names, paths, and extensions. Because this filtering system operates entirely on the client side, these tests help ensure consistent behavior and prevent regressions as the component evolves.
+
+### Encryption Status Monitoring ([PR #389](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/389))
+
+I also implemented PR #389, which introduces encryption status reporting across both the backend and the Settings interface. This feature adds a `GET /api/encryption/status` endpoint that reports whether encryption is enabled and properly configured. The Settings page now surfaces this status with clear UI indicators and guidance when configuration issues occur. I also fixed backend `.env` loading to ensure the `ENCRYPTION_MASTER_KEY` is correctly detected when the application launches through the Electron environment, preventing silent failures caused by missing encryption configuration.
+
+### Improved Error Messaging ([PR #384](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/384))
+
+In addition, I merged PR #384, which improves error messaging across frontend and backend flows by replacing generic alert-based messages with clearer inline status messages and operation-specific API error feedback. This change improves debugging and makes failures easier for users to understand.
+
+### UI Cleanup – Removed Unused Tab ([PR #386](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/386))
+
+I also merged PR #386, which removes the unused "Scanned Results" tab from the project interface. While a small change, removing the tab simplifies the UI and prevents confusion caused by interface elements that had no functionality.
+
+### Code Review – Encrypted Secrets Storage ([PR #387](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/387))
+
+Finally, I reviewed PR #387, which introduces encrypted storage for user-scoped API keys through a new `/api/settings/secrets` backend system and corresponding Settings interface. My review focused on verifying the encryption workflow and confirming correct frontend–backend integration for storing and retrieving encrypted keys.
+
+## Overall Impact
+
+This week's work strengthens system reliability and maintainability as the project approaches completion. Expanded frontend test coverage improves confidence in complex filtering behavior, while encryption status reporting and improved error messaging make configuration issues easier to detect and diagnose. Together with UI cleanup and integration review, these changes help maintain a stable and consistent architecture as features continue to be integrated.
+
 
 **Joaquin**: 
 This week I reviewed the only PR that was up by Saturday night, Vlad’s **PR [#387 – “Move user scoped env settings to settings page”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/387)**. I like the direction of the feature and the added tests pass locally, but I suggested two changes: the backend save path should include `on_conflict=user_id,secret_key` because `settings_routes.py` currently uses `resolution=merge-duplicates` without specifying conflict columns, which can cause re-saving the same key to fail instead of updating it; and the verify endpoint should avoid returning raw exception text (`detail=f"LLM service error: {exc}"`, `message=str(exc)`) so internal or provider details are not exposed to clients.
