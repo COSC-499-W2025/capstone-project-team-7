@@ -18,7 +18,30 @@
 - [Week 5 (September 29 - October 5)](#week-5-september-29---october-5)
 - [Week 4 (September 22 - 28)](#week-4-september-22---28)
 - [Week 3 (September 15 - 21)](#week-3-september-15---21)
-  
+
+
+## Week 23 (March 2nd - 8th)
+
+**Joaquin**: 
+This week I reviewed the only PR that was up by Saturday night, Vlad’s **PR [#387 – “Move user scoped env settings to settings page”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/387)**. I like the direction of the feature and the added tests pass locally, but I suggested two changes: the backend save path should include `on_conflict=user_id,secret_key` because `settings_routes.py` currently uses `resolution=merge-duplicates` without specifying conflict columns, which can cause re-saving the same key to fail instead of updating it; and the verify endpoint should avoid returning raw exception text (`detail=f"LLM service error: {exc}"`, `message=str(exc)`) so internal or provider details are not exposed to clients.
+
+## Reflection
+
+### What went well
+- Main flow is kind of finished, so we effectively delivered all of the main tickets and requirements for Milestone #2 and the app in general.
+
+### Challenges
+- Scope is kind of hard and we haven't really figure out or done any deep tests to see what we are missing.
+
+### **Next Steps**
+- Do a usability test on our program and see what issues come up, and document them for future tickets.
+- Resume feature
+- Figure out deployment.
+
+<p align="center">
+  <img src="./charts/w23burnup.png" alt="Week 22 Burnup Chart width="400"/>
+</p>
+
 ## Week 20 - 22 (February 9th - March 1st)
 
 **Jacob**
@@ -61,7 +84,7 @@ This week's contribution strengthened system cohesion during a period of rapid f
 With most milestone features now merged and functioning, the project is transitioning from heavy feature development toward refinement, polish, and reliability hardening. My review work this week focused on making sure that growth does not compromise structural consistency — positioning the application for final-stage stabilization and usability improvements.
 
 **Joaquin**:
-**Joaquin:** These weeks I reviewed several backend, frontend, and analysis pipeline PRs, focusing on correctness, UX quality, and long-term robustness.
+These weeks I reviewed several backend, frontend, and analysis pipeline PRs, focusing on correctness, UX quality, and long-term robustness.
 
 I reviewed Om’s **PR [#342 – “Project Detection Enhancement”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/342)**. This is a solid improvement to the project detection logic and documentation. Switching to a clear git-first rule (one repo = one project) addresses the common misclassification issue for full-stack repos containing `backend/` and `frontend/` directories. I also like that the behavior is formalized in a clear priority order and backed by a proper pytest suite. The main thing I flagged was the new suppression list for subdirectory scanning — hard-excluding names like `backend`, `frontend`, and especially `services` can accidentally hide legitimate multi-project workspaces that happen to use those directory names.
 
