@@ -143,7 +143,7 @@ class TestVerifyKeyEndpoint(TestLLMRoutes):
                 response = client.post("/api/llm/verify-key", json=valid_request)
                 
                 assert response.status_code == 500
-                assert "unexpected error" in response.json()["detail"].lower()
+                assert "internal server error" in response.json()["detail"].lower()
 
 
 class TestClearKeyEndpoint(TestLLMRoutes):

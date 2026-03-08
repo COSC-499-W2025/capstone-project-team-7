@@ -314,7 +314,7 @@ describe("ProjectsPage", () => {
     await userEvent.click(deleteButtons[0]);
 
     await waitFor(() => {
-      expect(alertMock).toHaveBeenCalledWith("Delete failed");
+      expect(screen.getByText("Failed to delete project: Delete failed")).toBeInTheDocument();
     });
 
     // Project should still be in the list
