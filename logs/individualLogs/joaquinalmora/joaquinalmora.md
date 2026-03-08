@@ -1,14 +1,14 @@
 # Joaquin Almora / @joaquinalmora
 
 ### Weekly Navigation
-- [Week 23](#week-23)
-- [Week 22](#week-22)
-- [Week 20](#week-20)
-- [Week 19](#week-19)
-- [Week 18](#week-18)
-- [Week 17](#week-17)
-- [Week 16](#week-16)
-- [Week 15](#week-15)
+- [Week 23](#week-23-march-2nd---8th)
+- [Week 22](#week-22-february-23rd---march-1st)
+- [Week 20](#week-20-february-9th--15th)
+- [Week 19](#week-19-february-2nd---8th)
+- [Week 18](#week-18-january-26th--february-1st)
+- [Week 17](#week-17-january-19th---25th)
+- [Week 16](#week-16-january-12th---18th)
+- [Week 15](#week-15-january-5th---11th)
 - [Winter Break](#winter-break)
 - [Week 14](#week-14-december-1st---7th)
 - [Week 13](#week-13-november-24th---30th)
