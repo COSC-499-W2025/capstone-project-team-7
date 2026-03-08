@@ -22,6 +22,35 @@
 - [Week 4](#week-4-september-22nd---28th)
 - [Week 3](#week-3-september-15th---21st)
 
+## Week 23 (March 2nd - 8th)
+
+This week focused on improving the reliability and maintainability of the project page by introducing centralized Zustand state management, strengthening TypeScript type safety across the scan data path, and improving user-facing error handling throughout the application. The work was delivered in [PR #384](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/384) along with two follow-up improvement issues: [Issue #380 – “Move user-scoped .env settings to Settings page”](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/380) and [Issue #381 – “Improve error messages: make them specific and actionable”](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/381).
+
+On the frontend, I implemented Issue #314 (Zustand project page state management) and Issue #315 (TypeScript type safety) together since both affected the same project page path. I created a centralized Zustand store for project page state (`frontend/lib/stores/project-page-store.ts`) to eliminate prop-drilling between components and simplify state coordination. I also extended shared TypeScript interfaces in `frontend/types/project.ts` with stronger definitions for scan data, removing remaining `Record<string, any>` usages. As part of this work, I removed several `as any` casts from the project page and related component paths by introducing proper type guards and normalization logic so scan payloads are handled consistently and safely.
+
+I also improved error handling across the application by replacing `alert()`-based error messages in the Projects and Settings pages with inline UI status and error messaging. I added parsing and formatting helpers so API error responses surface clearer context about the failing operation and reason. On the backend, I updated project and LLM routes to replace the generic `"An unexpected error occurred"` response with operation-specific messages, and updated the Projects page tests to align with the improved inline error UX.
+
+During verification, I discovered and fixed several pre-existing build and test blockers that prevented the branch from validating cleanly. This included exporting `normalizeMediaPayload` from the media analysis module and correcting the `Sidebar` import path in `AppLayout.tsx`. After resolving these issues, I ran full validation with `npm run test` (239 tests passed) and `npm run build` (passed).
+
+While working through the changes, the repository contained several unrelated modified and untracked files, which required careful staging and branch discipline to keep the PR isolated and clean. I also performed a repository-wide review of the project structure, tech stack, and architecture while preparing documentation notes for the README, which helped identify additional improvement opportunities that were captured in Issue #380 and Issue #381.
+
+### Reflection
+
+**What went well:**  
+Centralizing project page state with Zustand removed prop-drilling and simplified component coordination. Strengthening TypeScript types for scan data improved safety and eliminated several unsafe casts across the project page path. The new inline error handling approach provides clearer feedback to users and improves the overall UX compared to the previous alert-based behavior. The verification process also surfaced and resolved existing build blockers, allowing the branch to pass full test and build validation.
+
+**What didn’t go well:**  
+The repository had a dirty working tree with many unrelated modified and untracked files, which made staging changes more error-prone and required careful scoping to keep the PR clean. Build and test verification also surfaced pre-existing issues that needed to be fixed before validation could pass. Additionally, determining which configuration values were user-scoped versus infrastructure-level secrets required extra investigation to ensure that only appropriate settings would later be moved to the Settings page.
+
+### Next Steps
+
+- Implement Issue #319  
+- Implement Issue #383  
+
+![Peer Eval](./images/w23peer.png)
+
+Next steps will focus on implementing Issues #319 and #383.
+
 ## Week 22 (February 23rd - March 1st)
 This week focused on implementing the Electron search flow with skill filtering, adding thumbnail upload and manual project reordering with persisted selection, and hardening the local demo auth and ZIP scan pipeline. The work was delivered in [PR #352 – “Add incremental scan UI for appending files”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/352), [PR #353 – “Add GET /api/skills endpoint”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/353), [PR #355 – “Add search page with skill filtering”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/355), [PR #356 – “Add thumbnail upload”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/356), and [PR #369 – “feat: harden local demo auth flow and zip scan support”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/369).
 
