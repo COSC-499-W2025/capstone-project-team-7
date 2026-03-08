@@ -21,7 +21,7 @@ Key work included:
 
 These tests ensure the filtering system behaves reliably and help prevent regressions as the component evolves.
 
-### Encryption Status Monitoring [PR 389](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/389
+### Encryption Status Monitoring [PR 389](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/389)
 
 I implemented an encryption status reporting feature across the backend and frontend Settings page.
 
