@@ -22,6 +22,20 @@
 
 
 ## Week 23 (March 2nd - 8th)
+
+**Aaron**: 
+
+**PR's Merged:**
+
+[Portfolio Modal Styling Fix (PR #391)](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/391):
+I implemented PR #391, which fixes critical text visibility issues in the portfolio page modals when running in the Electron desktop app. The root cause was that UI components (Label, Input, Textarea, DialogTitle) relied on CSS inheritance for text color, which doesn't work reliably in Electron's embedded Chromium browser. Components using bg-transparent without explicit text colors caused text to blend into backgrounds or render completely invisible. I added explicit text-foreground and text-gray-900 classes to all affected form labels, input fields, textarea elements, and dialog titles.
+
+Impact: This restores full usability of the portfolio management interface in the desktop app, allowing users to see and interact with all form fields when creating or editing portfolio items. The fix benefits all desktop app users who previously couldn't use portfolio features due to invisible text, and establishes a best practice of always using explicit text colors for shadcn/ui components in cross-platform applications.
+
+[Scan Performance Optimization (PR #378)](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/391): This week's PR #378 implemented a comprehensive 3-phase parallel analysis pipeline that reduces scan times by approximately 60-70% for large projects. Previously, all 7 analysis pipelines (Git, Code, Skills, Contributions, Media, PDF, Document, Duplicate Detection) ran sequentially, causing scans to take 3-5 minutes for typical projects. I restructured _run_scan_background() in spec_routes.py to use concurrent.futures.ThreadPoolExecutor for parallel execution: Phase 1 runs Git, Media, PDF, and Document analyses simultaneously with 4 workers; Phase 2 runs code analysis with dynamic timeout calculation based on file count (capped at 5 minutes); Phase 3 runs Skills, Contribution Metrics, and Duplicate Detection in parallel with 3 workers. I also added batched file processing in the LLM client (batches of 5 files), asyncio.to_thread() wrappers for blocking database calls, and file metadata caching in the parser to skip unchanged files on rescans.
+
+**Impact**: This dramatically improves user experience for iterative workflows, reducing typical scan times from 3-5 minutes to under 1 minute. Large monorepos with 1000+ files now complete scans within 2-3 minutes instead of timing out. The caching layer enables near-instant rescans when only a few files change, supporting developers who scan frequently during active development.
+
 **Vlad**:
 
 PRs Merged:                                                                                                                                            
