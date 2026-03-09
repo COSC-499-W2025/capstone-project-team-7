@@ -1929,6 +1929,105 @@ async def generate_project_skill_summary(
         )
 
 
+def _extract_skill_names(scan_data: Dict[str, Any]) -> List[str]:
+    """Extract a flat list of skill names from scan_data."""
+    skills_analysis = scan_data.get("skills_analysis") or {}
+    skills_by_category = skills_analysis.get("skills_by_category") or {}
+    names: List[str] = []
+    for entries in skills_by_category.values():
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if isinstance(entry, str):
+                names.append(entry)
+            elif isinstance(entry, dict) and entry.get("name"):
+                names.append(str(entry["name"]))
+    return names
+
+
+class RoleProfileItem(BaseModel):
+    key: str
+    label: str
+    description: str
+
+
+class SkillGapAnalysisResponse(BaseModel):
+    role: str
+    role_label: str
+    matched: List[str]
+    missing: List[str]
+    extra: List[str]
+    coverage_percent: float
+
+
+@router.get(
+    "/{project_id}/skills/gaps",
+    response_model=SkillGapAnalysisResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Project not found"},
+        422: {"model": ErrorResponse, "description": "Invalid role"},
+    },
+)
+async def get_skill_gaps(
+    project_id: str,
+    role: str = Query(..., description="Role profile key (e.g. backend_developer)"),
+    user_id: str = Depends(verify_auth_token),
+) -> SkillGapAnalysisResponse:
+    """Compare project skills against a role profile to identify gaps."""
+    from analyzer.skill_gap_analyzer import analyze_gaps
+
+    try:
+        service = get_projects_service()
+        project = await asyncio.to_thread(service.get_project_scan, user_id, project_id)
+
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Project {project_id} not found",
+            )
+
+        scan_data = project.get("scan_data") or {}
+        detected_names = _extract_skill_names(scan_data)
+        result = analyze_gaps(detected_names, role)
+        return SkillGapAnalysisResponse(**result)
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        )
+    except HTTPException:
+        raise
+    except ProjectsServiceError as exc:
+        logger.error(f"Projects service error: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to analyze skill gaps: {str(exc)}",
+        )
+    except Exception as exc:
+        logger.exception("Unexpected error analyzing skill gaps")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=_format_internal_error("analyze skill gaps", exc),
+        )
+
+
+@router.get(
+    "/skills/roles",
+    response_model=List[RoleProfileItem],
+    status_code=status.HTTP_200_OK,
+)
+async def get_available_roles(
+    user_id: str = Depends(verify_auth_token),
+) -> List[RoleProfileItem]:
+    """Return the list of available role profiles for gap analysis."""
+    from analyzer.skill_gap_analyzer import get_available_roles as _get_roles
+
+    return [RoleProfileItem(**r) for r in _get_roles()]
+
+
 @router.post(
     "/{project_id}/export-html",
     responses={
