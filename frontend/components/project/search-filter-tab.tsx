@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useMemo, useState } from "react";
+import { useEffect, useRef, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -30,10 +30,6 @@ function getExtension(path: string): string {
 }
 
 function getMimeCategory(mime: string): string {
-  if (mime.startsWith("text/")) return "text";
-  if (mime.startsWith("image/")) return "image";
-  if (mime === "application/pdf") return "pdf";
-  if (mime.includes("json")) return "json";
   if (
     mime.includes("javascript") ||
     mime.includes("typescript") ||
@@ -43,6 +39,10 @@ function getMimeCategory(mime: string): string {
     mime.includes("x-java")
   )
     return "code";
+  if (mime.includes("json")) return "json";
+  if (mime.startsWith("text/")) return "text";
+  if (mime.startsWith("image/")) return "image";
+  if (mime === "application/pdf") return "pdf";
   return "other";
 }
 
@@ -66,6 +66,12 @@ export function SearchFilterTab({
   const [page, setPage] = useState(1);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
 
   function handleQueryChange(value: string) {
     setQuery(value);
