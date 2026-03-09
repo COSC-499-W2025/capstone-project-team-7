@@ -14,7 +14,7 @@ Restored full usability of the portfolio management interface in the Electron de
 
 
 **Issues Resolved:**
-[#378](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/378)
+[#390](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/390)
 
 ## Scan Performance Optimization [(PR#3)](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/391)
 Implemented comprehensive 3-phase parallel analysis pipeline reducing scan times by approximately 60-70% for large projects. Restructured _run_scan_background() in spec_routes.py to execute analyses concurrently using concurrent.futures.ThreadPoolExecutor instead of sequentially. Phase 1 runs 4 independent analyses in parallel (Git, Media, PDF, Document) using a ThreadPoolExecutor with max_workers=4, each with dedicated timeout handling (120s Git, 60s Media, 90s PDF, 60s Document). Phase 2 executes code analysis with dynamic timeout calculation based on file count: base_timeout + (total_files // 100) * 10 seconds, capped at 300 seconds (5 minutes), preventing indefinite hangs on massive codebases. Phase 3 runs dependent analyses (Skills, Contribution Metrics, Duplicate Detection) in parallel with 3 workers after code analysis completes since skills analysis requires code analysis results.
