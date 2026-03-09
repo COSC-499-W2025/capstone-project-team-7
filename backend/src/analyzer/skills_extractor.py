@@ -66,11 +66,19 @@ class SkillsExtractor:
     - Software engineering best practices
     """
     
+    # Pre-compiled patterns for commit message skill extraction
+    _COMMIT_MSG_PATTERNS = [
+        (re.compile(r'\b(test|spec|unittest|pytest)\b', re.IGNORECASE), "Automated Testing", "practices"),
+        (re.compile(r'\b(ci|cd|deploy|pipeline|github.actions|gitlab.ci|jenkins)\b', re.IGNORECASE), "CI/CD Practices", "practices"),
+        (re.compile(r'\b(docker|container|k8s|kubernetes|compose)\b', re.IGNORECASE), "Containerization", "practices"),
+        (re.compile(r'\b(refactor)\b', re.IGNORECASE), None, None),  # boost only
+    ]
+
     def __init__(self):
         self.skills: Dict[str, Skill] = {}
         self.logger = logging.getLogger(__name__)
         self.file_timestamps: Dict[str, str] = {}  # Cache for file timestamps
-        
+
         # Pattern definitions for skill detection
         self._init_patterns()
     
@@ -590,12 +598,7 @@ class SkillsExtractor:
         repo_path = git_analysis.get('path', 'repository')
 
         # Pattern definitions: (compiled_regex, skill_name, category)
-        msg_patterns = [
-            (re.compile(r'\b(test|spec|unittest|pytest)\b', re.IGNORECASE), "Automated Testing", "practices"),
-            (re.compile(r'\b(ci|cd|deploy|pipeline|github.actions|gitlab.ci|jenkins)\b', re.IGNORECASE), "CI/CD Practices", "practices"),
-            (re.compile(r'\b(docker|container|k8s|kubernetes|compose)\b', re.IGNORECASE), "Containerization", "practices"),
-            (re.compile(r'\b(refactor)\b', re.IGNORECASE), None, None),  # boost only
-        ]
+        msg_patterns = self._COMMIT_MSG_PATTERNS
 
         detected: Dict[str, int] = {}
         for msg in commit_messages:

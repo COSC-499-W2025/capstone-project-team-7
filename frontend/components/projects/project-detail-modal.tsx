@@ -6,10 +6,11 @@ import type {
   ProjectScanData,
   ProjectScanLanguageEntry,
 } from "@/types/project";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { updateProjectOverrides } from "@/lib/api/projects";
 import { api } from "@/lib/api";
 import { getStoredToken } from "@/lib/auth";
+import { getCategoryLabel, buildEvidenceMap } from "@/lib/skills-utils";
 import { 
   FileCode, 
   Code2, 
@@ -694,30 +695,24 @@ function SkillsTab({ skillsAnalysis }: { skillsAnalysis: any }) {
   const categoryLabels: Record<string, string> = skillsAnalysis?.category_labels ?? {};
   const fullSkills: any[] = Array.isArray(skillsAnalysis?.skills) ? skillsAnalysis.skills : [];
 
+  const evidenceMap = useMemo(() => buildEvidenceMap(fullSkills), [fullSkills]);
+
   if (!skillsByCategory || Object.keys(skillsByCategory).length === 0) {
     return <EmptyState message="No skills analysis available" />;
   }
-
-  const getCategoryLabel = (key: string) =>
-    categoryLabels[key] || key.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
-
-  const getEvidenceCount = (skillName: string): number => {
-    const found = fullSkills.find((s: any) => s.name === skillName);
-    return found?.evidence_count ?? (Array.isArray(found?.evidence) ? found.evidence.length : 0);
-  };
 
   return (
     <div className="space-y-4">
       {Object.entries(skillsByCategory).map(([category, skills]) => (
         <div key={category} className="p-4 bg-gray-50 rounded border border-gray-200">
-          <h3 className="font-semibold text-lg mb-3">{getCategoryLabel(category)}</h3>
+          <h3 className="font-semibold text-lg mb-3">{getCategoryLabel(category, categoryLabels)}</h3>
           <div className="flex flex-wrap gap-2">
-            {(skills as any[]).map((skill: any, idx: number) => {
+            {(skills as any[]).map((skill: any) => {
               const skillName = typeof skill === "string" ? skill : skill?.name ?? "";
-              const evidenceCount = getEvidenceCount(skillName);
+              const evidenceCount = evidenceMap.get(skillName)?.length ?? 0;
               return (
                 <span
-                  key={idx}
+                  key={`${category}-${skillName}`}
                   className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm inline-flex items-center gap-1.5"
                 >
                   {skillName}

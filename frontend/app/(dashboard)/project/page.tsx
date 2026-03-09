@@ -32,11 +32,13 @@ import type {
   ProjectDetail,
   ProjectScanData,
   ProjectSkillCategoryItem,
+  ProjectSkillsAnalysis,
   SkillEvidenceItem,
   SkillAdoptionEntry,
   SkillProgressPeriod,
   SkillProgressSummary,
 } from "@/types/project";
+import { getCategoryLabel, buildEvidenceMap } from "@/lib/skills-utils";
 import {
   MediaAnalysisTab,
 } from "@/components/project/media-analysis-tab";
@@ -468,29 +470,25 @@ export default function ProjectPage() {
   const scanData =
     useProjectPageStore(projectPageSelectors.scanData) as ProjectScanData;
   const summary = scanData.summary ?? {};
-  const skillsAnalysis = scanData.skills_analysis ?? {};
+  const skillsAnalysis: ProjectSkillsAnalysis = scanData.skills_analysis ?? {};
   const skillsByCategory = skillsAnalysis.skills_by_category ?? {};
   const totalSkills =
     typeof skillsAnalysis.total_skills === "number" ? skillsAnalysis.total_skills : 0;
 
   // Category labels from backend, with fallback
-  const categoryLabels: Record<string, string> = (skillsAnalysis.category_labels as Record<string, string>) ?? {};
-  const getCategoryLabel = (key: string) =>
-    categoryLabels[key] || key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const categoryLabels: Record<string, string> = skillsAnalysis.category_labels ?? {};
+  const categoryLabel = (key: string) => getCategoryLabel(key, categoryLabels);
 
-  // Full skills list from backend (with evidence)
-  const fullSkillsList = Array.isArray((skillsAnalysis as any).skills) ? (skillsAnalysis as any).skills : [];
-
-  // Get evidence for a skill by name
-  const getSkillEvidence = (skillName: string): SkillEvidenceItem[] => {
-    const found = fullSkillsList.find((s: any) => s.name === skillName);
-    return Array.isArray(found?.evidence) ? found.evidence : [];
-  };
+  // Pre-indexed evidence map for O(1) lookups
+  const evidenceMap = useMemo(
+    () => buildEvidenceMap(skillsAnalysis.skills ?? []),
+    [skillsAnalysis.skills],
+  );
+  const getSkillEvidence = (skillName: string): SkillEvidenceItem[] =>
+    evidenceMap.get(skillName) ?? [];
 
   // Adoption timeline
-  const skillAdoptionTimeline: SkillAdoptionEntry[] = Array.isArray((skillsAnalysis as any).skill_adoption_timeline)
-    ? (skillsAnalysis as any).skill_adoption_timeline
-    : [];
+  const skillAdoptionTimeline: SkillAdoptionEntry[] = skillsAnalysis.skill_adoption_timeline ?? [];
 
   // Filter skills by search query and category filter
   const filteredSkillsByCategory = useMemo(() => {
@@ -1247,7 +1245,7 @@ export default function ProjectPage() {
                             const avg = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
                             return (
                               <div key={`avg-${category}`} className="bg-gray-50 rounded-lg p-3">
-                                <p className="text-xs font-medium text-gray-500 truncate">{getCategoryLabel(category)}</p>
+                                <p className="text-xs font-medium text-gray-500 truncate">{categoryLabel(category)}</p>
                                 <div className="mt-1.5 w-full bg-gray-200 rounded-full h-2">
                                   <div
                                     className="bg-gray-900 h-2 rounded-full transition-all"
@@ -1275,7 +1273,7 @@ export default function ProjectPage() {
                           >
                             <option value="all">All categories</option>
                             {Object.keys(skillsByCategory).map((cat) => (
-                              <option key={cat} value={cat}>{getCategoryLabel(cat)}</option>
+                              <option key={cat} value={cat}>{categoryLabel(cat)}</option>
                             ))}
                           </select>
                         </div>
@@ -1283,7 +1281,7 @@ export default function ProjectPage() {
                         {Object.entries(filteredSkillsByCategory).map(([category, skills]) => (
                           <div key={category} className="border border-gray-200 rounded-lg p-4">
                             <p className="text-sm font-semibold text-gray-700 mb-3">
-                              {getCategoryLabel(category)}
+                              {categoryLabel(category)}
                             </p>
                             <div className="space-y-2">
                               {(skills as Array<ProjectSkillCategoryItem>).map(
@@ -1413,7 +1411,7 @@ export default function ProjectPage() {
                                 {entry.skill_name}
                               </p>
                               <p className="text-xs text-gray-500 truncate">
-                                {getCategoryLabel(entry.category ?? "")}
+                                {categoryLabel(entry.category ?? "")}
                                 {entry.file ? ` · ${entry.file}` : ""}
                               </p>
                             </div>
