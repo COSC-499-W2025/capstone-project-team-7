@@ -27,7 +27,7 @@ def override_auth_context():
 
 def test_logout_returns_200_with_valid_token(monkeypatch):
     """Test that logout endpoint returns 200 with valid token"""
-    
+
     class DummyAuth:
         def sign_out(self, access_token: str) -> None:
             # Mock successful logout
@@ -36,10 +36,7 @@ def test_logout_returns_200_with_valid_token(monkeypatch):
             return None
 
     monkeypatch.setattr(auth_routes, "SupabaseAuth", lambda: DummyAuth())
-    response = client.post(
-        "/api/auth/logout",
-        json={"access_token": "valid-token"},
-    )
+    response = client.post("/api/auth/logout", headers={"Authorization": "Bearer test-token"})
     assert response.status_code == 200
     payload = response.json()
     assert payload["ok"] is True
@@ -47,16 +44,13 @@ def test_logout_returns_200_with_valid_token(monkeypatch):
 
 def test_logout_handles_invalid_token_gracefully(monkeypatch):
     """Test that logout handles invalid/expired token gracefully"""
-    
+
     class DummyAuth:
         def sign_out(self, access_token: str) -> None:
             raise AuthError("Invalid or expired token")
 
     monkeypatch.setattr(auth_routes, "SupabaseAuth", lambda: DummyAuth())
-    response = client.post(
-        "/api/auth/logout",
-        json={"access_token": "invalid-token"},
-    )
+    response = client.post("/api/auth/logout", headers={"Authorization": "Bearer test-token"})
     # Should return 401 Unauthorized for auth errors
     assert response.status_code == 401
     payload = response.json()
@@ -65,9 +59,9 @@ def test_logout_handles_invalid_token_gracefully(monkeypatch):
 
 def test_sign_out_method_calls_supabase_logout_endpoint(monkeypatch):
     """Test that sign_out method calls Supabase logout endpoint"""
-    
+
     captured = {"method": None, "path": None, "data": None, "token": None}
-    
+
     class DummyAuth:
         def _request_with_auth(self, method, path, data, access_token):
             captured["method"] = method
@@ -75,39 +69,29 @@ def test_sign_out_method_calls_supabase_logout_endpoint(monkeypatch):
             captured["data"] = data
             captured["token"] = access_token
             return {}
-        
+
         def sign_out(self, access_token: str) -> None:
             from auth.session import AUTH_LOGOUT_PATH
+
             if not access_token:
                 raise AuthError("Access token missing. Cannot sign out.")
             self._request_with_auth("POST", AUTH_LOGOUT_PATH, {}, access_token)
 
     monkeypatch.setattr(auth_routes, "SupabaseAuth", lambda: DummyAuth())
-    response = client.post(
-        "/api/auth/logout",
-        json={"access_token": "test-token-123"},
-    )
+    response = client.post("/api/auth/logout", headers={"Authorization": "Bearer test-token"})
     assert response.status_code == 200
     assert captured["method"] == "POST"
     assert captured["path"] == "/auth/v1/logout"
     assert captured["data"] == {}
-    assert captured["token"] == "test-token-123"
+    assert captured["token"] == "test-token"
 
 
-def test_logout_with_empty_token_fails(monkeypatch):
-    """Test that logout fails when access token is empty"""
-    
-    class DummyAuth:
-        def sign_out(self, access_token: str) -> None:
-            if not access_token:
-                raise AuthError("Access token missing. Cannot sign out.")
+def test_logout_requires_authorization_header():
+    """Test that logout endpoint requires bearer auth."""
 
-    monkeypatch.setattr(auth_routes, "SupabaseAuth", lambda: DummyAuth())
-    response = client.post(
-        "/api/auth/logout",
-        json={"access_token": ""},
-    )
+    app.dependency_overrides.clear()
+    response = client.post("/api/auth/logout")
     assert response.status_code == 401
     payload = response.json()
     assert "detail" in payload
-    assert "Access token missing" in str(payload["detail"])
+    assert payload["detail"]["code"] == "unauthorized"

@@ -5,8 +5,6 @@ import {
   getStoredRefreshToken,
   setStoredToken,
   setStoredRefreshToken,
-  clearStoredToken,
-  clearStoredRefreshToken,
   refreshAccessToken,
 } from "@/lib/auth";
 
@@ -40,13 +38,12 @@ describe("logout functionality", () => {
       "http://localhost:8000/api/auth/logout",
       expect.objectContaining({
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ access_token: "test-access-token" }),
+        headers: { Authorization: "Bearer test-access-token" },
       })
     );
   });
 
-  it("clears localStorage tokens after logout", () => {
+  it("does not clear localStorage tokens directly (handled by useAuth hook)", () => {
     setStoredToken("test-access-token");
     setStoredRefreshToken("test-refresh-token");
 
@@ -61,16 +58,11 @@ describe("logout functionality", () => {
 
     logout();
 
-    // Note: logout() doesn't directly clear tokens - it's the useAuth hook that does this
-    // So we manually clear to test the full flow as it would happen in the app
-    clearStoredToken();
-    clearStoredRefreshToken();
-
-    expect(getStoredToken()).toBeNull();
-    expect(getStoredRefreshToken()).toBeNull();
+    expect(getStoredToken()).toBe("test-access-token");
+    expect(getStoredRefreshToken()).toBe("test-refresh-token");
   });
 
-  it("sets sessionStorage logout flag to prevent re-hydration", () => {
+  it("does not set logout flag directly (handled by useAuth hook)", () => {
     setStoredToken("test-access-token");
 
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
@@ -81,9 +73,8 @@ describe("logout functionality", () => {
     expect(sessionStorage.getItem("auth_logged_out")).toBeNull();
 
     logout();
-    sessionStorage.setItem("auth_logged_out", "1");
 
-    expect(sessionStorage.getItem("auth_logged_out")).toBe("1");
+    expect(sessionStorage.getItem("auth_logged_out")).toBeNull();
   });
 
   it("completes logout even if backend call fails", async () => {

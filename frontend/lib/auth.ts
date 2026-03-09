@@ -98,8 +98,7 @@ export const logout = (): void => {
     try {
       fetch(`${getApiBaseUrl()}/api/auth/logout`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ access_token: token }),
+        headers: { Authorization: `Bearer ${token}` },
       }).catch(() => {
         // Silently ignore network/server errors
       });
