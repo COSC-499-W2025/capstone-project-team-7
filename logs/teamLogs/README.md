@@ -22,6 +22,35 @@
 
 
 ## Week 23 (March 2nd - 8th)
+**Vlad**:
+
+PRs Merged:                                                                                                                                            
+  - PR #387 — Move user scoped env settings to settings page: Added persistent API key storage with a new user_secrets table using AES-GCM encryption.   
+  Built /api/settings/secrets endpoints (GET status, PUT save, DELETE remove, POST verify), automatic DB fallback to hydrate LLM clients from stored     
+  encrypted keys, and an "External Services" card in Settings UI. Includes 10 backend and 7 frontend tests. Addressed review feedback from both Jacob
+  (500 on Verify Key — added safer error handling) and Joaquin (conflict column on upsert, raw exception leaks on verify).
+  - PR #386 — Removed useless scanned results tab: Cleaned up the UI by removing the non-functional "Scanned results" tab. Verified visually with no
+  regressions.
+
+  Code Reviews:
+
+  - PR #384 (Joaquin) — Fix: improve error messaging: Identified three key issues — raw exception strings leaking to clients (security), duplicated
+  frontend error helpers needing extraction to shared utility, and double "Failed to" prefix producing redundant error messages. All requested changes
+  were implemented before merge.
+  - PR #388 (Jacob) — Feature/advanced filtering: Approved with actionable feedback — caught a memory leak from an uncleaned debounce setTimeout on
+  unmount, noted MIME category ordering issue where text/typescript and text/javascript were miscategorized as "text" instead of "code", and suggested
+  additional tests for filter selection, sort order, and combined filters.
+  - PR #389 (Jacob) — Feature/encryption status: Reviewed the encryption status endpoint and Settings UI integration including ready/misconfigured
+  states, loading, and retry handling.
+
+  Impact:
+
+  - Delivered the main security feature of the week — encrypted at-rest API key storage with full CRUD lifecycle and auto-hydration, removing the need
+  for users to re-enter keys after server restarts
+  - Drove code quality across the team through detailed reviews — caught a security vulnerability (exception string leaks in PR #384), a memory leak (PR
+  #388), and architectural issues (duplicated helpers, double prefixes) that were all resolved before merge
+  - 2 PRs merged, 3 PRs reviewed with substantive, actionable feedback
+
 **Jacob**:
 
 ## Overview
