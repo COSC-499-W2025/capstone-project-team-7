@@ -76,6 +76,18 @@ except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fal
 
 logger = logging.getLogger(__name__)
 
+# Human-friendly labels for skill categories
+CATEGORY_LABELS = {
+    "oop": "Object-Oriented Design",
+    "data_structures": "Data Structures",
+    "algorithms": "Algorithms",
+    "patterns": "Design Patterns",
+    "practices": "Software Practices",
+    "frameworks": "Frameworks",
+    "databases": "Databases",
+    "architecture": "Architecture",
+}
+
 # Create router for project endpoints
 router = APIRouter(prefix="/api/projects", tags=["Projects"])
 
@@ -374,12 +386,16 @@ def _build_skills_analysis(service: SkillsAnalysisService) -> Dict[str, Any]:
             {
                 "name": skill.get("name"),
                 "proficiency": _score_to_proficiency(float(skill.get("proficiency_score", 0.0))),
+                "description": skill.get("description", ""),
+                "proficiency_score": float(skill.get("proficiency_score", 0.0)),
+                "category_label": CATEGORY_LABELS.get(category, category.replace("_", " ").title()),
             }
         )
     return {
         "success": True,
         "total_skills": exported.get("summary", {}).get("total_skills", len(skills)),
         "skills_by_category": skills_by_category,
+        "category_labels": CATEGORY_LABELS,
         "skills": skills,
         "chronological_overview": exported.get("chronological_overview", []),
         "skill_progression": exported.get("skill_progression", {}),
