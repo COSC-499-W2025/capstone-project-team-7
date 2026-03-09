@@ -12,15 +12,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { loadSettings, saveSettings, AppSettings } from "@/lib/settings";
 import { loadTheme, saveTheme, applyTheme, type Theme } from "@/lib/theme";
-import { consent as consentApi, config as configApi, encryption as encryptionApi } from "@/lib/api";
-import { consent as consentApi, config as configApi, secrets as secretsApi } from "@/lib/api";
+import { consent as consentApi, config as configApi, encryption as encryptionApi, secrets as secretsApi } from "@/lib/api";
 import { auth as authApi, getStoredToken, getStoredRefreshToken } from "@/lib/auth";
 import { useAuth } from "@/hooks/use-auth";
 import { formatOperationError } from "@/lib/error-utils";
 import type { AuthSessionInfo } from "@/lib/auth";
-import type { ConfigResponse, ProfilesResponse, EncryptionStatus } from "@/lib/api.types";
+import type { ConfigResponse, ProfilesResponse, EncryptionStatus, SecretStatusItem } from "@/lib/api.types";
 import { AlertTriangle, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
-import type { ConfigResponse, ProfilesResponse, SecretStatusItem } from "@/lib/api.types";
 
 export default function SettingsPage() {
   const router = useRouter();
