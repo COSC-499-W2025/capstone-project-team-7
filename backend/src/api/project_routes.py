@@ -5,7 +5,7 @@
 from fastapi import APIRouter, HTTPException, status, Header, Depends, File, UploadFile, Query, Response
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any, cast
-from datetime import datetime
+from datetime import datetime, timezone
 import asyncio
 import base64
 import json
@@ -22,68 +22,29 @@ from pathlib import PurePosixPath
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-try:
-    from services.services.projects_service import ProjectsService, ProjectsServiceError
-    from services.services.encryption import EncryptionService
-    from services.services.project_overrides_service import ProjectOverridesService, ProjectOverridesServiceError
-    from auth.consent_validator import ConsentValidator
-    from api.llm_routes import get_user_client
-    from api.settings_routes import get_or_hydrate_llm_client
-    from api.request_context import get_request_access_token
-    from services.services.export_service import ExportService
-except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
-    from backend.src.services.services.projects_service import ProjectsService, ProjectsServiceError
-    from backend.src.services.services.encryption import EncryptionService
-    from backend.src.services.services.project_overrides_service import ProjectOverridesService, ProjectOverridesServiceError
-    from backend.src.auth.consent_validator import ConsentValidator
-    from backend.src.api.llm_routes import get_user_client
-    from backend.src.api.settings_routes import get_or_hydrate_llm_client
-    from backend.src.api.request_context import get_request_access_token
-    from backend.src.services.services.export_service import ExportService
-
-try:
-    from scanner.parser import parse_zip
-except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
-    from backend.src.scanner.parser import parse_zip
-
-try:
-    from scanner.parser import parse_zip
-except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
-    from backend.src.scanner.parser import parse_zip
-
-try:
-    from scanner.models import ScanPreferences
-except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
-    from backend.src.scanner.models import ScanPreferences
-
-try:
-    from services.language_stats import summarize_languages
-    from services.services.skills_analysis_service import SkillsAnalysisService
-    from services.services.contribution_analysis_service import ContributionAnalysisService
-    from local_analysis.git_repo import analyze_git_repo
-    from api.upload_routes import uploads_store
-except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
-    from backend.src.services.language_stats import summarize_languages
-    from backend.src.services.services.skills_analysis_service import SkillsAnalysisService
-    from backend.src.services.services.contribution_analysis_service import ContributionAnalysisService
-    from backend.src.local_analysis.git_repo import analyze_git_repo
-    from backend.src.api.upload_routes import uploads_store
-
-try:
-    from api.request_context import get_request_access_token, set_request_access_token
-except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
-    from backend.src.api.request_context import get_request_access_token, set_request_access_token
+from services.services.projects_service import ProjectsService, ProjectsServiceError
+from services.services.encryption import EncryptionService
+from services.services.project_overrides_service import (
+    ALLOWED_ROLES,
+    ProjectOverridesService,
+    ProjectOverridesServiceError,
+)
+from auth.consent_validator import ConsentValidator
+from api.settings_routes import get_or_hydrate_llm_client
+from api.request_context import get_request_access_token, set_request_access_token
+from services.services.export_service import ExportService
+from scanner.parser import parse_zip
+from scanner.models import ScanPreferences
+from services.language_stats import summarize_languages
+from services.services.skills_analysis_service import SkillsAnalysisService
+from services.services.contribution_analysis_service import ContributionAnalysisService
+from local_analysis.git_repo import analyze_git_repo
+from api.upload_routes import cleanup_expired_uploads, uploads_store
 
 logger = logging.getLogger(__name__)
 
 # Create router for project endpoints
 router = APIRouter(prefix="/api/projects", tags=["Projects"])
-
-# Import ALLOWED_ROLES from the service that manages roles
-try:
-    from services.services.project_overrides_service import ALLOWED_ROLES
-except ImportError:
-    from backend.src.services.services.project_overrides_service import ALLOWED_ROLES
 
 # Initialize services
 _projects_service: Optional[ProjectsService] = None
@@ -92,6 +53,14 @@ _encryption_service: Optional[EncryptionService] = None
 _overrides_service: Optional[ProjectOverridesService] = None
 _encryption_service_lock = threading.Lock()
 _overrides_service_lock = threading.Lock()
+
+
+def _to_pg_timestamptz(value: datetime) -> str:
+    if value.tzinfo is None:
+        normalized = value.replace(tzinfo=timezone.utc)
+    else:
+        normalized = value.astimezone(timezone.utc)
+    return normalized.isoformat()
 
 
 def get_projects_service() -> ProjectsService:
@@ -638,10 +607,7 @@ def _run_code_analysis_for_path(
 ) -> Optional[Dict[str, Any]]:
     logger.info(f"Starting code analysis for path: {target_path}")
     try:
-        try:
-            from services.services.code_analysis_service import CodeAnalysisService, CodeAnalysisUnavailableError
-        except ImportError:
-            from src.services.services.code_analysis_service import CodeAnalysisService, CodeAnalysisUnavailableError
+        from services.services.code_analysis_service import CodeAnalysisService
     except ImportError as e:
         logger.warning(f"Code analysis unavailable - import error: {e}")
         return None
@@ -1208,7 +1174,7 @@ async def create_project(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to save project: {str(exc)}",
         )
-    except Exception as exc:
+    except Exception:
         logger.exception("Unexpected error creating project")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1246,6 +1212,8 @@ async def create_project_from_upload(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="upload_id cannot be empty",
             )
+
+        cleanup_expired_uploads()
 
         if upload_id not in uploads_store:
             raise HTTPException(
@@ -1363,7 +1331,7 @@ async def create_project_from_upload(
                 logger.warning("⚠️  No code analysis data to save")
             
             if media_analysis:
-                logger.info(f"💾 Saving media analysis to scan_data")
+                logger.info("💾 Saving media analysis to scan_data")
                 scan_data["media_analysis"] = media_analysis
             else:
                 logger.warning("⚠️  No media analysis data to save")
@@ -1459,7 +1427,7 @@ async def list_projects(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve projects: {str(exc)}",
         )
-    except Exception as exc:
+    except Exception:
         logger.exception("Unexpected error listing projects")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1802,7 +1770,7 @@ async def get_project_skill_timeline(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve skill progression: {str(exc)}",
         )
-    except Exception as exc:
+    except Exception:
         logger.exception("Unexpected error fetching skill progression timeline")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1905,7 +1873,7 @@ async def generate_project_skill_summary(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate skill summary: {str(exc)}",
         )
-    except Exception as exc:
+    except Exception:
         logger.exception("Unexpected error generating skill progression summary")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2156,7 +2124,7 @@ async def get_project(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve project: {str(exc)}",
         )
-    except Exception as exc:
+    except Exception:
         logger.exception("Unexpected error retrieving project")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2205,7 +2173,7 @@ async def delete_project(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=_format_internal_error("delete project", exc),
         )
-    except Exception as exc:
+    except Exception:
         logger.exception("Unexpected error deleting project")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2248,7 +2216,6 @@ async def rank_project(
             ActivityBreakdown,
         )
         from services.services.contribution_analysis_service import ContributionAnalysisService
-        from datetime import datetime, timezone
         
         service = get_projects_service()
         
@@ -2467,7 +2434,7 @@ async def delete_project_insights(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to clear insights: {str(exc)}",
         )
-    except Exception as exc:
+    except Exception:
         logger.exception("Unexpected error clearing project insights")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2706,7 +2673,7 @@ async def get_project_overrides(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve overrides: {str(exc)}",
         )
-    except Exception as exc:
+    except Exception:
         logger.exception("Unexpected error retrieving project overrides")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2792,7 +2759,7 @@ async def update_project_overrides(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update overrides: {str(exc)}",
         )
-    except Exception as exc:
+    except Exception:
         logger.exception("Unexpected error updating project overrides")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2855,7 +2822,7 @@ async def delete_project_overrides(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to delete overrides: {str(exc)}",
         )
-    except Exception as exc:
+    except Exception:
         logger.exception("Unexpected error deleting project overrides")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -3053,8 +3020,10 @@ async def append_upload_to_project(
     Returns:
         Detailed status for each file in the upload
     """
-    # Import uploads_store lazily to avoid circular imports
-    from .upload_routes import uploads_store
+    # Import upload helpers lazily to avoid circular imports
+    from .upload_routes import cleanup_expired_uploads, uploads_store
+
+    cleanup_expired_uploads()
 
     # Verify upload exists and user owns it
     if upload_id not in uploads_store:
@@ -3164,8 +3133,8 @@ async def append_upload_to_project(
                     "mime_type": mime_type,
                     "sha256": sha256,
                     "metadata": {},
-                    "last_seen_modified_at": file_meta.modified_at.isoformat() + "Z",
-                    "last_scanned_at": datetime.now().isoformat() + "Z",
+                    "last_seen_modified_at": _to_pg_timestamptz(file_meta.modified_at),
+                    "last_scanned_at": _to_pg_timestamptz(datetime.now(timezone.utc)),
                 })
         else:
             # New file
@@ -3177,8 +3146,8 @@ async def append_upload_to_project(
                 "mime_type": mime_type,
                 "sha256": sha256,
                 "metadata": {},
-                "last_seen_modified_at": file_meta.modified_at.isoformat() + "Z",
-                "last_scanned_at": datetime.now().isoformat() + "Z",
+                "last_seen_modified_at": _to_pg_timestamptz(file_meta.modified_at),
+                "last_scanned_at": _to_pg_timestamptz(datetime.now(timezone.utc)),
             })
 
         file_statuses.append(AppendFileStatus(

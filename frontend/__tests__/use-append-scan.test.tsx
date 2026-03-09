@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vite
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { useAppendScan } from "@/hooks/use-append-scan";
 
-vi.mock("@/lib/api/scans", () => ({
-  startScan: vi.fn(),
-  getScanStatus: vi.fn(),
+vi.mock("@/lib/api/uploads", () => ({
+  uploadFromPath: vi.fn(),
+  parseUpload: vi.fn(),
 }));
 
 vi.mock("@/lib/api/projects", () => ({
@@ -17,10 +17,10 @@ vi.mock("@/lib/auth", () => ({
 
 import { appendUploadToProject } from "@/lib/api/projects";
 import { getStoredToken } from "@/lib/auth";
-import { getScanStatus, startScan } from "@/lib/api/scans";
+import { parseUpload, uploadFromPath } from "@/lib/api/uploads";
 
-const mockStartScan = startScan as Mock;
-const mockGetScanStatus = getScanStatus as Mock;
+const mockUploadFromPath = uploadFromPath as Mock;
+const mockParseUpload = parseUpload as Mock;
 const mockAppendUploadToProject = appendUploadToProject as Mock;
 const mockGetStoredToken = getStoredToken as Mock;
 
@@ -37,12 +37,15 @@ describe("useAppendScan", () => {
   it("transitions from queued to succeeded and stores append result", async () => {
     const onScanComplete = vi.fn();
 
-    mockStartScan.mockResolvedValue({ scan_id: "scan-123" });
-    mockGetScanStatus.mockResolvedValue({
-      scan_id: "scan-123",
-      user_id: "user-1",
-      state: "succeeded",
+    mockUploadFromPath.mockResolvedValue({
       upload_id: "upload-1",
+      status: "stored",
+      filename: "project.zip",
+      size_bytes: 100,
+    });
+    mockParseUpload.mockResolvedValue({
+      upload_id: "upload-1",
+      status: "parsed",
     });
     mockAppendUploadToProject.mockResolvedValue({
       project_id: "project-1",
@@ -60,23 +63,14 @@ describe("useAppendScan", () => {
       await result.current.start("/tmp/repo", "project-1");
     });
 
-    expect(result.current.scanId).toBe("scan-123");
-    expect(result.current.state).toBe("queued");
-    expect(result.current.isScanning).toBe(true);
-
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 550));
-    });
-
     await waitFor(() => {
-      expect(mockGetScanStatus).toHaveBeenCalledWith("test-token", "scan-123", expect.any(AbortSignal));
-    });
-
-    await waitFor(() => {
+      expect(mockUploadFromPath).toHaveBeenCalledWith("test-token", "/tmp/repo");
+      expect(mockParseUpload).toHaveBeenCalledWith("test-token", "upload-1");
       expect(mockAppendUploadToProject).toHaveBeenCalledWith("test-token", "project-1", "upload-1");
     });
 
     await waitFor(() => {
+      expect(result.current.scanId).toBe("upload-1");
       expect(result.current.state).toBe("succeeded");
       expect(result.current.isScanning).toBe(false);
       expect(result.current.appendResult).toEqual({
@@ -92,12 +86,15 @@ describe("useAppendScan", () => {
   });
 
   it("resets state after completion", async () => {
-    mockStartScan.mockResolvedValue({ scan_id: "scan-456" });
-    mockGetScanStatus.mockResolvedValue({
-      scan_id: "scan-456",
-      user_id: "user-1",
-      state: "succeeded",
+    mockUploadFromPath.mockResolvedValue({
       upload_id: "upload-2",
+      status: "stored",
+      filename: "project.zip",
+      size_bytes: 100,
+    });
+    mockParseUpload.mockResolvedValue({
+      upload_id: "upload-2",
+      status: "parsed",
     });
     mockAppendUploadToProject.mockResolvedValue({
       project_id: "project-2",
@@ -113,10 +110,6 @@ describe("useAppendScan", () => {
 
     await act(async () => {
       await result.current.start("/tmp/repo", "project-2");
-    });
-
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 550));
     });
 
     await waitFor(() => {

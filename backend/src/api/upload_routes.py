@@ -17,8 +17,9 @@ from datetime import datetime
 from fastapi import APIRouter, UploadFile, File, HTTPException, status, Body, Header, Depends
 from pydantic import BaseModel, Field
 
+from services.archive_utils import ensure_zip
 from scanner.parser import parse_zip
-from scanner.models import ParseResult, ScanPreferences, FileMetadata as ScanFileMetadata, ParseIssue as ScanParseIssue
+from scanner.models import ParseResult, ScanPreferences
 from api.request_context import set_request_access_token
 
 logger = logging.getLogger(__name__)
@@ -147,10 +148,15 @@ class ParseResponse(BaseModel):
     duplicate_count: int = 0
 
 
+class UploadFromPathRequest(BaseModel):
+    source_path: str = Field(..., description="Absolute or relative path to a directory or .zip file")
+
+
 # Configuration
 UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "data/uploads"))
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 MAX_UPLOAD_SIZE = int(os.getenv("MAX_UPLOAD_SIZE_MB", "200")) * 1024 * 1024
+UPLOAD_TTL_SECONDS = int(os.getenv("UPLOAD_TTL_SECONDS", "86400"))
 ALLOWED_MIME_TYPES = [
     "application/zip",
     "application/x-zip-compressed",
@@ -159,8 +165,63 @@ ALLOWED_MIME_TYPES = [
 
 # In-memory storage for upload metadata (will be replaced with DB)
 # TODO: Replace with Supabase database persistence for production
-# TODO: Implement file cleanup endpoint or TTL-based cleanup to prevent disk accumulation
-uploads_store = {}
+uploads_store: Dict[str, Dict[str, Any]] = {}
+
+
+def _parse_created_at_epoch(upload_data: Dict[str, Any]) -> Optional[float]:
+    created_at_epoch = upload_data.get("created_at_epoch")
+    if isinstance(created_at_epoch, (int, float)):
+        return float(created_at_epoch)
+
+    created_at_raw = upload_data.get("created_at")
+    if not isinstance(created_at_raw, str):
+        return None
+
+    try:
+        return datetime.fromisoformat(created_at_raw.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def _delete_upload_file(upload_data: Dict[str, Any]) -> None:
+    storage_path_value = upload_data.get("storage_path")
+    if not isinstance(storage_path_value, str) or not storage_path_value:
+        return
+
+    storage_path = Path(storage_path_value)
+    if not storage_path.exists():
+        return
+
+    try:
+        storage_path.unlink()
+    except OSError as exc:
+        logger.warning("Failed to delete expired upload file %s: %s", storage_path, exc)
+
+
+def cleanup_expired_uploads() -> int:
+    if UPLOAD_TTL_SECONDS <= 0:
+        return 0
+
+    cutoff_epoch = datetime.utcnow().timestamp() - UPLOAD_TTL_SECONDS
+    expired_ids: List[str] = []
+
+    for upload_id, upload_data in list(uploads_store.items()):
+        created_at_epoch = _parse_created_at_epoch(upload_data)
+        if created_at_epoch is None:
+            continue
+        if created_at_epoch <= cutoff_epoch:
+            expired_ids.append(upload_id)
+
+    for upload_id in expired_ids:
+        upload_data = uploads_store.pop(upload_id, None)
+        if upload_data is None:
+            continue
+        _delete_upload_file(upload_data)
+
+    if expired_ids:
+        logger.info("Cleaned up %d expired uploads", len(expired_ids))
+
+    return len(expired_ids)
 
 
 def validate_zip_file(file_content: bytes, filename: str) -> tuple[bool, Optional[str]]:
@@ -199,6 +260,117 @@ def compute_file_hash(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
 
+def _validate_source_path(source_path: str) -> Path:
+    blocked_prefixes = [
+        "/etc", "/var", "/usr", "/bin", "/sbin", "/lib", "/boot",
+        "/root", "/proc", "/sys", "/dev", "/private/etc", "/private/var",
+    ]
+
+    input_path = Path(source_path)
+    try:
+        if not input_path.is_absolute():
+            input_path = Path.cwd() / input_path
+        input_str = str(input_path)
+    except (OSError, ValueError):
+        input_str = source_path
+
+    for blocked in blocked_prefixes:
+        if input_str.startswith(blocked) or source_path.startswith(blocked):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"error": "path_not_allowed", "message": f"Access to {blocked} is not allowed"},
+            )
+
+    try:
+        target = Path(source_path).resolve()
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "invalid_path", "message": f"Invalid path: {exc}"},
+        )
+
+    resolved_str = str(target)
+    for blocked in blocked_prefixes:
+        if resolved_str.startswith(blocked):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"error": "path_not_allowed", "message": f"Access to {blocked} is not allowed"},
+            )
+
+    if not target.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "path_not_found", "message": f"Path does not exist: {source_path}"},
+        )
+
+    return target
+
+
+def _store_upload_content(
+    *,
+    content: bytes,
+    filename: str,
+    content_type: Optional[str],
+    user_id: str,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> UploadResponse:
+    file_size = len(content)
+    if file_size > MAX_UPLOAD_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail={
+                "error": "file_too_large",
+                "message": f"File size ({file_size} bytes) exceeds maximum allowed size ({MAX_UPLOAD_SIZE} bytes)",
+                "max_size_bytes": MAX_UPLOAD_SIZE,
+            },
+        )
+
+    is_valid, error_msg = validate_zip_file(content, filename)
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "invalid_format",
+                "message": error_msg,
+                "expected": ".zip",
+            },
+        )
+
+    upload_id = f"upl_{uuid.uuid4().hex[:12]}"
+    file_hash = compute_file_hash(content)
+    upload_path = UPLOAD_DIR / f"{upload_id}.zip"
+    upload_path.write_bytes(content)
+
+    created_at = datetime.utcnow()
+    merged_metadata: Dict[str, Any] = {
+        "original_filename": filename,
+        "content_type": content_type,
+    }
+    if metadata:
+        merged_metadata.update(metadata)
+
+    upload_metadata = {
+        "upload_id": upload_id,
+        "user_id": user_id,
+        "status": "stored",
+        "filename": filename,
+        "size_bytes": file_size,
+        "file_hash": file_hash,
+        "storage_path": str(upload_path),
+        "created_at": created_at.isoformat() + "Z",
+        "created_at_epoch": created_at.timestamp(),
+        "metadata": merged_metadata,
+    }
+    uploads_store[upload_id] = upload_metadata
+
+    return UploadResponse(
+        upload_id=upload_id,
+        status="stored",
+        filename=filename,
+        size_bytes=file_size,
+    )
+
+
 @router.post("", response_model=UploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload_file(
     file: UploadFile = File(..., description="ZIP archive to upload"),
@@ -214,68 +386,14 @@ async def upload_file(
     - Requires authentication
     """
     try:
+        cleanup_expired_uploads()
         filename = file.filename or "upload.zip"
-        # Read file content
         content = await file.read()
-        file_size = len(content)
-        
-        # Validate size
-        if file_size > MAX_UPLOAD_SIZE:
-            raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail={
-                    "error": "file_too_large",
-                    "message": f"File size ({file_size} bytes) exceeds maximum allowed size ({MAX_UPLOAD_SIZE} bytes)",
-                    "max_size_bytes": MAX_UPLOAD_SIZE
-                }
-            )
-        
-        # Validate ZIP format
-        is_valid, error_msg = validate_zip_file(content, filename)
-        if not is_valid:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={
-                    "error": "invalid_format",
-                    "message": error_msg,
-                    "expected": ".zip"
-                }
-            )
-        
-        # Generate unique upload ID
-        upload_id = f"upl_{uuid.uuid4().hex[:12]}"
-        
-        # Compute file hash for deduplication
-        file_hash = compute_file_hash(content)
-        
-        # Save file to disk
-        upload_path = UPLOAD_DIR / f"{upload_id}.zip"
-        upload_path.write_bytes(content)
-        
-        # Store metadata
-        from datetime import datetime
-        upload_metadata = {
-            "upload_id": upload_id,
-            "user_id": user_id,
-            "status": "stored",
-            "filename": filename,
-            "size_bytes": file_size,
-            "file_hash": file_hash,
-            "storage_path": str(upload_path),
-            "created_at": datetime.utcnow().isoformat() + "Z",
-            "metadata": {
-                "original_filename": filename,
-                "content_type": file.content_type,
-            }
-        }
-        
-        uploads_store[upload_id] = upload_metadata
-        
-        return UploadResponse(
-            upload_id=upload_id,
-            status="stored",
+        return _store_upload_content(
+            content=content,
             filename=filename,
-            size_bytes=file_size
+            content_type=file.content_type,
+            user_id=user_id,
         )
         
     except HTTPException:
@@ -290,6 +408,43 @@ async def upload_file(
         )
 
 
+@router.post("/from-path", response_model=UploadResponse, status_code=status.HTTP_201_CREATED)
+async def upload_from_path(
+    payload: UploadFromPathRequest,
+    user_id: str = Depends(verify_auth_token),
+):
+    try:
+        cleanup_expired_uploads()
+
+        source = _validate_source_path(payload.source_path)
+        archive_path = ensure_zip(source)
+        content = archive_path.read_bytes()
+
+        filename = archive_path.name if archive_path.suffix.lower() == ".zip" else f"{archive_path.name}.zip"
+        metadata = {
+            "source_path": str(source),
+            "source_kind": "directory" if source.is_dir() else "zip",
+        }
+
+        return _store_upload_content(
+            content=content,
+            filename=filename,
+            content_type="application/zip",
+            user_id=user_id,
+            metadata=metadata,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "upload_failed",
+                "message": f"Failed to process source path upload: {str(exc)}",
+            },
+        )
+
+
 @router.get("/{upload_id}", response_model=UploadStatus)
 async def get_upload_status(
     upload_id: str,
@@ -301,6 +456,8 @@ async def get_upload_status(
     Returns stored metadata for the upload to allow polling without filesystem access.
     Only returns uploads owned by the authenticated user.
     """
+    cleanup_expired_uploads()
+
     if upload_id not in uploads_store:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -349,6 +506,8 @@ async def parse_upload(
     - Returns file list, issues, and summary statistics
     - Requires authentication and upload ownership
     """
+    cleanup_expired_uploads()
+
     # Verify upload exists
     if upload_id not in uploads_store:
         raise HTTPException(

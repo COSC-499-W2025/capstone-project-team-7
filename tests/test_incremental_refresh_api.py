@@ -16,7 +16,7 @@ import hashlib
 import sys
 import types
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import patch, MagicMock
 
 # Stub python-magic for environments without the optional dependency.
@@ -38,6 +38,7 @@ sys.modules["cli"].__path__ = [str(BACKEND_SRC / "cli")]
 from backend.src.main import app
 from api.dependencies import AuthContext, get_auth_context
 from api.portfolio_routes import get_projects_service
+from api.project_routes import _to_pg_timestamptz
 
 client = TestClient(app)
 
@@ -308,6 +309,25 @@ class TestAppendUpload:
         # Note: The endpoint may return 404 first if upload doesn't exist
         # depending on the order of checks, so accept either
         assert response.status_code in [401, 404]
+
+
+class TestAppendTimestampFormatting:
+    """Regression tests for scan_files timestamptz formatting in append flow."""
+
+    def test_to_pg_timestamptz_aware_datetime_has_single_offset(self):
+        aware = datetime(2025, 10, 23, 19, 0, 44, tzinfo=timezone.utc)
+
+        result = _to_pg_timestamptz(aware)
+
+        assert result == "2025-10-23T19:00:44+00:00"
+        assert not result.endswith("Z")
+
+    def test_to_pg_timestamptz_naive_datetime_assumes_utc(self):
+        naive = datetime(2025, 10, 23, 19, 0, 44)
+
+        result = _to_pg_timestamptz(naive)
+
+        assert result == "2025-10-23T19:00:44+00:00"
 
 
 # ============================================================================

@@ -19,41 +19,22 @@ from pathlib import Path
 import uuid
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, File, Header, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
 from api.dependencies import AuthContext, get_auth_context
-
-try:
-    from services.services.projects_service import ProjectsService, ProjectsServiceError
-except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
-    from backend.src.services.services.projects_service import ProjectsService, ProjectsServiceError
-
-# Import analysis helper functions
-try:
-    from api.project_routes import (
-        _run_git_analysis_for_path,
-        _run_code_analysis_for_path,
-        _build_skills_analysis,
-        _serialize_contribution_metrics,
-        _run_media_analysis,
-        _run_pdf_analysis,
-        _run_document_analysis,
-        _run_duplicate_detection,
-        _extract_archive_for_analysis,
-    )
-except (ModuleNotFoundError, ImportError):  # pragma: no cover
-    from backend.src.api.project_routes import (
-        _run_git_analysis_for_path,
-        _run_code_analysis_for_path,
-        _build_skills_analysis,
-        _serialize_contribution_metrics,
-        _run_media_analysis,
-        _run_pdf_analysis,
-        _run_document_analysis,
-        _run_duplicate_detection,
-        _extract_archive_for_analysis,
-    )
+from services.services.projects_service import ProjectsService, ProjectsServiceError
+from api.project_routes import (
+    _run_git_analysis_for_path,
+    _run_code_analysis_for_path,
+    _build_skills_analysis,
+    _serialize_contribution_metrics,
+    _run_media_analysis,
+    _run_pdf_analysis,
+    _run_document_analysis,
+    _run_duplicate_detection,
+    _extract_archive_for_analysis,
+)
 
 # Add parent directory to path for absolute imports (needed for lazy imports in background tasks)
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -832,7 +813,7 @@ def _run_scan_background(
             file_based_timeout = max(base_timeout, base_timeout + (total_files // 100) * 10)
             timeout_seconds = min(file_based_timeout, 300)  # Cap at 5 minutes
             
-            logger.info(f"🔄 Phase 2: Code analysis starting...")
+            logger.info("🔄 Phase 2: Code analysis starting...")
             logger.info(f"   Target: {analysis_target}")
             logger.info(f"   Timeout: {timeout_seconds}s for {total_files} files")
             
@@ -842,9 +823,9 @@ def _run_scan_background(
             
             def run_with_exception_handling():
                 try:
-                    logger.info(f"   Starting code analysis thread...")
+                    logger.info("   Starting code analysis thread...")
                     result_container[0] = _run_code_analysis_for_path(analysis_target, preferences)
-                    logger.info(f"   Code analysis thread completed")
+                    logger.info("   Code analysis thread completed")
                 except Exception as e:
                     logger.error(f"   Code analysis thread error: {e}")
                     exception_container[0] = e
@@ -1010,25 +991,25 @@ def _run_scan_background(
             result_payload["git_analysis"] = git_analysis
         
         if code_analysis:
-            logger.info(f"💾 Saving code analysis to scan_data")
+            logger.info("💾 Saving code analysis to scan_data")
             result_payload["code_analysis"] = code_analysis
         else:
             logger.warning("⚠️  No code analysis data to save")
         
         if skills_analysis:
-            logger.info(f"💾 Saving skills analysis to scan_data")
+            logger.info("💾 Saving skills analysis to scan_data")
             result_payload["skills_analysis"] = skills_analysis
         
         if contribution_metrics_payload:
-            logger.info(f"💾 Saving contribution metrics to scan_data")
+            logger.info("💾 Saving contribution metrics to scan_data")
             result_payload["contribution_metrics"] = contribution_metrics_payload
         
         if skills_progress:
-            logger.info(f"💾 Saving skills progress to scan_data")
+            logger.info("💾 Saving skills progress to scan_data")
             result_payload["skills_progress"] = skills_progress
         
         if media_analysis:
-            logger.info(f"💾 Saving media analysis to scan_data")
+            logger.info("💾 Saving media analysis to scan_data")
             result_payload["media_analysis"] = media_analysis
         
         if pdf_analysis:
@@ -1040,7 +1021,7 @@ def _run_scan_background(
             result_payload["document_analysis"] = document_analysis
         
         if duplicate_report:
-            logger.info(f"💾 Saving duplicate report to scan_data")
+            logger.info("💾 Saving duplicate report to scan_data")
             result_payload["duplicate_report"] = duplicate_report
 
         if temp_analysis_dir is not None:
@@ -1141,9 +1122,9 @@ def _run_scan_background(
                 logger.error(f"❌ Failed to persist scan to database: {persist_err}", exc_info=True)
                 result_payload["persist_warning"] = str(persist_err)
         elif not persist_project:
-            logger.warning(f"⚠️  Project NOT saved: persist_project=False")
+            logger.warning("⚠️  Project NOT saved: persist_project=False")
         elif not profile_id:
-            logger.warning(f"⚠️  Project NOT saved: profile_id is None")
+            logger.warning("⚠️  Project NOT saved: profile_id is None")
 
         _update_scan_status(
             scan_id,
@@ -1399,15 +1380,6 @@ def delete_insights(project_id: str):
         project.analysis = AnalysisSummary()
         _project_store[project_id] = project
     return
-
-
-@router.post("/api/projects/{project_id}/append-upload/{upload_id}", status_code=status.HTTP_202_ACCEPTED)
-def append_upload(project_id: str, upload_id: str):
-    if project_id not in _project_store:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-    if upload_id not in _upload_store:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found")
-    return {"project_id": project_id, "upload_id": upload_id, "state": JobState.succeeded}
 
 
 # Commented out - Real implementations now in project_routes.py

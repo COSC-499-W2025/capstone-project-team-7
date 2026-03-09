@@ -65,6 +65,7 @@ Do not modify; managed by Supabase:
 - `20251124000000_drop_unused_tables.sql`: Drops `consents` and `uploads` (legacy/unused).
 - `20260115000000_add_user_selections.sql`: Adds `user_selections` table for portfolio/skill ordering and showcase preferences.
 - `20260120000000_add_project_overrides.sql`: Adds `project_overrides` table for user-defined chronology corrections, role/evidence, highlighted skills, and comparison attributes.
+- `20260309000000_add_scan_files.sql`: Adds `scan_files` table and owner-scoped RLS policies for incremental scan metadata.
 - `20260130000000_extend_profiles.sql`: Adds `education`, `career_title`, `avatar_url`, `schema_url`, `drive_url`, `updated_at` columns to `profiles`.
 - `20260131000000_create_avatars_bucket.sql`: Creates the `avatars` storage bucket (public) with RLS policies restricting uploads to the user's own folder.
 
