@@ -277,3 +277,36 @@ export interface User {
   id: string;
   email: string;
 }
+
+// ---------- User secrets ----------
+
+export interface SecretStatusItem {
+  secret_key: string;
+  has_value: boolean;
+  provider?: string | null;
+  metadata?: Record<string, any> | null;
+  updated_at?: string | null;
+}
+
+export interface SecretStatusResponse {
+  secrets: SecretStatusItem[];
+}
+
+export interface SaveSecretRequest {
+  secret_key: string;
+  value: string;
+  provider?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface SaveSecretResponse {
+  secret_key: string;
+  has_value: boolean;
+  provider?: string | null;
+  updated_at?: string | null;
+}
+
+export interface VerifyStoredKeyResponse {
+  valid: boolean;
+  message: string;
+}

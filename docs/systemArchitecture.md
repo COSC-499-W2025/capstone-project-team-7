@@ -19,3 +19,17 @@ The architecture is composed of distinct layers: the **Frontend (Data Layer)**, 
 
 ### Optional LLM Media Analysis
 An opt-in **LLMRemoteMediaAnalyzer** can send images/audio/video to an external LLM (GPT-4o family) for semantic summaries when explicitly enabled (e.g., `--llm-media`). Results are stored in `project_data.llm_media` without altering the local metadata pipeline. Usage: `python -m backend.src.cli.parse_zip <target> --json --llm-media` (or `./venv/bin/python -m …`) to include remote summaries alongside local metadata.
+
+### User Secrets & API Key Persistence
+User-scoped secrets (e.g. OpenAI API keys) are stored encrypted at rest in the `user_secrets` table and managed through the Settings UI.
+
+**Data flow:**
+1. **Save**: User enters key in Settings UI → frontend calls `PUT /api/settings/secrets` → backend encrypts via `EncryptionService` (AES-256-GCM) → stored as `{v, iv, ct}` envelope in `user_secrets.encrypted_value` (jsonb)
+2. **Verify**: `POST /api/settings/secrets/verify` → decrypt from DB → validate with OpenAI → cache `LLMClient` in memory
+3. **Auto-hydrate**: When analysis or skill-summary routes need an LLM client and none is cached in memory, `get_or_hydrate_llm_client()` fetches the encrypted key from DB, decrypts it, creates a client, and caches it — so keys survive server restarts without user re-entry
+4. **Delete**: `DELETE /api/settings/secrets` → removes DB row + evicts in-memory client
+
+**Security:**
+- Raw values are **never** returned by any API endpoint; GET only returns metadata (`has_value`, `provider`, `updated_at`)
+- Row-Level Security ensures users can only access their own secrets (`auth.uid() = user_id`)
+- Encryption key is `ENCRYPTION_MASTER_KEY` (base64-encoded 32-byte AES key, set in `.env`)

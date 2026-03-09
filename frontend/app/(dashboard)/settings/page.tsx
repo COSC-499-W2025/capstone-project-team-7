@@ -12,12 +12,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { loadSettings, saveSettings, AppSettings } from "@/lib/settings";
 import { loadTheme, saveTheme, applyTheme, type Theme } from "@/lib/theme";
-import { consent as consentApi, config as configApi } from "@/lib/api";
+import { consent as consentApi, config as configApi, secrets as secretsApi } from "@/lib/api";
 import { auth as authApi, getStoredToken, getStoredRefreshToken } from "@/lib/auth";
 import { useAuth } from "@/hooks/use-auth";
 import { formatOperationError } from "@/lib/error-utils";
 import type { AuthSessionInfo } from "@/lib/auth";
-import type { ConfigResponse, ProfilesResponse } from "@/lib/api.types";
+import type { ConfigResponse, ProfilesResponse, SecretStatusItem } from "@/lib/api.types";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -44,6 +44,15 @@ export default function SettingsPage() {
   const [profiles, setProfiles] = useState<Record<string, any>>({});
   const [configLoading, setConfigLoading] = useState(false);
   const [configStatus, setConfigStatus] = useState<string | null>(null);
+
+  // External services / secrets
+  const [secretsStatus, setSecretsStatus] = useState<SecretStatusItem[]>([]);
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [apiKeySaving, setApiKeySaving] = useState(false);
+  const [apiKeyStatus, setApiKeyStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [apiKeyVerifying, setApiKeyVerifying] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
 
   // Profile creation/editing
   const [showProfileDialog, setShowProfileDialog] = useState(false);
@@ -117,15 +126,17 @@ export default function SettingsPage() {
         setConsentLoading(true);
         setConsentError(null);
 
-        const [configRes, profilesRes, consentRes] = await Promise.all([
+        const [configRes, profilesRes, consentRes, secretsRes] = await Promise.all([
           configApi.get(),
           configApi.listProfiles(),
-          consentApi.get() // ← Now called after session is validated
+          consentApi.get(), // ← Now called after session is validated
+          secretsApi.getStatus(),
         ]);
 
         if (!cancelled) {
           if (configRes.ok) setServerConfig(configRes.data);
           if (profilesRes.ok) setProfiles(profilesRes.data.profiles || {});
+          if (secretsRes.ok) setSecretsStatus(secretsRes.data.secrets || []);
           if (consentRes.ok) {
             setConsentData({
               data_access: consentRes.data.data_access,
@@ -201,14 +212,16 @@ export default function SettingsPage() {
     setConsentError(null);
 
     try {
-      const [configRes, profilesRes, consentRes] = await Promise.all([
+      const [configRes, profilesRes, consentRes, secretsRes] = await Promise.all([
         configApi.get(),
         configApi.listProfiles(),
-        consentApi.get()
+        consentApi.get(),
+        secretsApi.getStatus(),
       ]);
 
       if (configRes.ok) setServerConfig(configRes.data);
       if (profilesRes.ok) setProfiles(profilesRes.data.profiles || {});
+      if (secretsRes.ok) setSecretsStatus(secretsRes.data.secrets || []);
       if (consentRes.ok) {
         setConsentData({
           data_access: consentRes.data.data_access,
@@ -429,6 +442,75 @@ export default function SettingsPage() {
     }
   };
 
+
+  const openaiSecret = secretsStatus.find((s) => s.secret_key === "openai_api_key");
+
+  const handleSaveApiKey = async () => {
+    if (!apiKeyInput.trim()) return;
+    setApiKeySaving(true);
+    setApiKeyStatus(null);
+    try {
+      const res = await secretsApi.save({
+        secret_key: "openai_api_key",
+        value: apiKeyInput.trim(),
+        provider: "openai",
+      });
+      if (res.ok) {
+        setApiKeyInput("");
+        setShowApiKey(false);
+        setApiKeyStatus({ type: "success", message: "API key saved successfully" });
+        const refreshed = await secretsApi.getStatus();
+        if (refreshed.ok) setSecretsStatus(refreshed.data.secrets || []);
+      } else {
+        setApiKeyStatus({ type: "error", message: res.error || "Failed to save API key" });
+      }
+    } catch {
+      setApiKeyStatus({ type: "error", message: "Network error" });
+    } finally {
+      setApiKeySaving(false);
+      setTimeout(() => setApiKeyStatus(null), 4000);
+    }
+  };
+
+  const handleVerifyApiKey = async () => {
+    setApiKeyVerifying(true);
+    setApiKeyStatus(null);
+    try {
+      const res = await secretsApi.verify();
+      if (res.ok) {
+        setApiKeyStatus({
+          type: res.data.valid ? "success" : "error",
+          message: res.data.message,
+        });
+      } else {
+        setApiKeyStatus({ type: "error", message: res.error || "Verification failed" });
+      }
+    } catch {
+      setApiKeyStatus({ type: "error", message: "Network error" });
+    } finally {
+      setApiKeyVerifying(false);
+      setTimeout(() => setApiKeyStatus(null), 4000);
+    }
+  };
+
+  const handleClearApiKey = async () => {
+    setShowClearConfirm(false);
+    setApiKeyStatus(null);
+    try {
+      const res = await secretsApi.remove("openai_api_key");
+      if (res.ok) {
+        setApiKeyStatus({ type: "success", message: "API key removed" });
+        const refreshed = await secretsApi.getStatus();
+        if (refreshed.ok) setSecretsStatus(refreshed.data.secrets || []);
+      } else {
+        setApiKeyStatus({ type: "error", message: res.error || "Failed to remove key" });
+      }
+    } catch {
+      setApiKeyStatus({ type: "error", message: "Network error" });
+    } finally {
+      setTimeout(() => setApiKeyStatus(null), 4000);
+    }
+  };
 
   return (
     <div className="p-8 relative">
@@ -713,6 +795,110 @@ export default function SettingsPage() {
           </Card>
         )}
 
+        {/* External Services */}
+        {userSession && (
+          <Card className="bg-white rounded-xl shadow-sm border border-gray-200">
+            <CardHeader className="border-b border-gray-200">
+              <CardTitle className="text-xl font-bold text-gray-900">External Services</CardTitle>
+              <CardDescription className="text-gray-600">Manage API keys for AI-powered features</CardDescription>
+            </CardHeader>
+            <CardContent className="p-6 space-y-4">
+              {!consentData.external_services ? (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <p className="text-sm text-blue-800">
+                    Enable external services in Privacy & Consent below to configure API keys.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm font-medium text-gray-900">OpenAI API Key</Label>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`inline-block h-2 w-2 rounded-full ${
+                            openaiSecret ? "bg-green-500" : "bg-gray-300"
+                          }`}
+                        />
+                        <span className="text-sm text-gray-600">
+                          {openaiSecret ? "Configured" : "Not configured"}
+                        </span>
+                        {openaiSecret?.updated_at && (
+                          <span className="text-xs text-gray-400 ml-2">
+                            Updated {new Date(openaiSecret.updated_at).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <Input
+                          type={showApiKey ? "text" : "password"}
+                          className="border-gray-300 text-gray-900 pr-10"
+                          value={apiKeyInput}
+                          onChange={(e) => setApiKeyInput(e.target.value)}
+                          placeholder="sk-..."
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowApiKey(!showApiKey)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
+                        >
+                          {showApiKey ? "Hide" : "Show"}
+                        </button>
+                      </div>
+                      <Button
+                        onClick={handleSaveApiKey}
+                        disabled={!apiKeyInput.trim() || apiKeySaving}
+                        className="bg-gray-900 text-white hover:bg-gray-800 shadow-sm"
+                      >
+                        {apiKeySaving ? "Saving..." : "Save Key"}
+                      </Button>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleVerifyApiKey}
+                        disabled={!openaiSecret || apiKeyVerifying}
+                        className="border-gray-300 hover:bg-gray-50 text-gray-900"
+                      >
+                        {apiKeyVerifying ? "Verifying..." : "Verify Key"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowClearConfirm(true)}
+                        disabled={!openaiSecret}
+                        className="border-red-300 text-red-600 hover:bg-red-50"
+                      >
+                        Clear Key
+                      </Button>
+                    </div>
+
+                    {apiKeyStatus && (
+                      <p
+                        className={`text-sm font-medium ${
+                          apiKeyStatus.type === "success" ? "text-green-600" : "text-red-600"
+                        }`}
+                      >
+                        {apiKeyStatus.message}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+            <CardFooter className="bg-gray-50 border-t border-gray-200 p-6">
+              <p className="text-xs text-gray-500">
+                API keys are encrypted at rest and never returned after saving.
+              </p>
+            </CardFooter>
+          </Card>
+        )}
+
         {/* Privacy & Consent */}
         <Card className="bg-white rounded-xl shadow-sm border border-gray-200">
           <CardHeader className="border-b border-gray-200">
@@ -749,6 +935,26 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Clear API Key Confirmation Dialog */}
+      <Dialog open={showClearConfirm} onOpenChange={setShowClearConfirm}>
+        <DialogContent className="bg-white max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-gray-900">Clear API Key</DialogTitle>
+            <DialogDescription className="text-gray-600">
+              This will permanently remove your stored OpenAI API key. You will need to re-enter it to use AI features.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowClearConfirm(false)} className="border-gray-300 text-gray-900">
+              Cancel
+            </Button>
+            <Button onClick={handleClearApiKey} className="bg-red-600 text-white hover:bg-red-700">
+              Remove Key
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialogs */}
       <Dialog open={showProfileDialog} onOpenChange={setShowProfileDialog}>
