@@ -22,19 +22,34 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
-from api.dependencies import AuthContext, get_auth_context
-from services.services.projects_service import ProjectsService, ProjectsServiceError
-from api.project_routes import (
-    _run_git_analysis_for_path,
-    _run_code_analysis_for_path,
-    _build_skills_analysis,
-    _serialize_contribution_metrics,
-    _run_media_analysis,
-    _run_pdf_analysis,
-    _run_document_analysis,
-    _run_duplicate_detection,
-    _extract_archive_for_analysis,
-)
+try:
+    from api.dependencies import AuthContext, get_auth_context
+    from services.services.projects_service import ProjectsService, ProjectsServiceError
+    from api.project_routes import (
+        _run_git_analysis_for_path,
+        _run_code_analysis_for_path,
+        _build_skills_analysis,
+        _serialize_contribution_metrics,
+        _run_media_analysis,
+        _run_pdf_analysis,
+        _run_document_analysis,
+        _run_duplicate_detection,
+        _extract_archive_for_analysis,
+    )
+except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
+    from backend.src.api.dependencies import AuthContext, get_auth_context
+    from backend.src.services.services.projects_service import ProjectsService, ProjectsServiceError
+    from backend.src.api.project_routes import (
+        _run_git_analysis_for_path,
+        _run_code_analysis_for_path,
+        _build_skills_analysis,
+        _serialize_contribution_metrics,
+        _run_media_analysis,
+        _run_pdf_analysis,
+        _run_document_analysis,
+        _run_duplicate_detection,
+        _extract_archive_for_analysis,
+    )
 
 # Add parent directory to path for absolute imports (needed for lazy imports in background tasks)
 sys.path.insert(0, str(Path(__file__).parent.parent))

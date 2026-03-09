@@ -58,13 +58,13 @@ try:
     from services.services.skills_analysis_service import SkillsAnalysisService
     from services.services.contribution_analysis_service import ContributionAnalysisService
     from local_analysis.git_repo import analyze_git_repo
-    from api.upload_routes import cleanup_expired_uploads, uploads_store
+    from api.upload_routes import uploads_store, uploads_store_lock
 except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
     from backend.src.services.language_stats import summarize_languages
     from backend.src.services.services.skills_analysis_service import SkillsAnalysisService
     from backend.src.services.services.contribution_analysis_service import ContributionAnalysisService
     from backend.src.local_analysis.git_repo import analyze_git_repo
-    from backend.src.api.upload_routes import cleanup_expired_uploads, uploads_store
+    from backend.src.api.upload_routes import uploads_store, uploads_store_lock
 
 try:
     from api.request_context import get_request_access_token, set_request_access_token
@@ -1217,15 +1217,15 @@ async def create_project_from_upload(
                 detail="upload_id cannot be empty",
             )
 
-        cleanup_expired_uploads()
+        with uploads_store_lock:
+            upload_data = uploads_store.get(upload_id)
 
-        if upload_id not in uploads_store:
+        if upload_data is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Upload with ID '{upload_id}' not found",
             )
 
-        upload_data = uploads_store[upload_id]
         if upload_data.get("user_id") != user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -3042,18 +3042,18 @@ async def append_upload_to_project(
         Detailed status for each file in the upload
     """
     # Import upload helpers lazily to avoid circular imports
-    from .upload_routes import cleanup_expired_uploads, uploads_store
-
-    cleanup_expired_uploads()
+    from .upload_routes import uploads_store, uploads_store_lock
 
     # Verify upload exists and user owns it
-    if upload_id not in uploads_store:
+    with uploads_store_lock:
+        upload_data = uploads_store.get(upload_id)
+
+    if upload_data is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Upload {upload_id} not found",
         )
 
-    upload_data = uploads_store[upload_id]
     if upload_data.get("user_id") != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

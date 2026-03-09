@@ -18,8 +18,8 @@ from scanner.models import ParseResult, ScanPreferences
 from auth.consent_validator import ConsentValidator
 from api.llm_routes import get_user_client
 from local_analysis.git_repo import analyze_git_repo
-from api.upload_routes import cleanup_expired_uploads, uploads_store, verify_auth_token
-from services.services.projects_service import ProjectsService, ProjectsServiceError
+from api.upload_routes import uploads_store, uploads_store_lock, verify_auth_token
+from services.services.projects_service import ProjectsServiceError
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
@@ -636,8 +636,6 @@ async def analyze_portfolio(
     explaining why LLM was skipped.
     """
     analysis_started = datetime.utcnow()
-    cleanup_expired_uploads()
-    
     # Validate request - must have upload_id or project_id
     if not request.upload_id and not request.project_id:
         raise HTTPException(
@@ -650,7 +648,12 @@ async def analyze_portfolio(
     
     if request.project_id:
         try:
-            project_service = ProjectsService()
+            try:
+                from api.project_routes import get_projects_service
+            except (ModuleNotFoundError, ImportError):
+                from backend.src.api.project_routes import get_projects_service
+
+            project_service = get_projects_service()
             project = project_service.get_project_scan(user_id, request.project_id)
         except ProjectsServiceError as exc:
             logger.error("Failed to load project %s for analysis: %s", request.project_id, exc)
@@ -674,16 +677,27 @@ async def analyze_portfolio(
         return _analysis_response_from_project(project, request, analysis_started)
     
     # Verify upload exists and user owns it
-    if request.upload_id not in uploads_store:
+    upload_id = request.upload_id
+    if not upload_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "validation_error",
+                "message": "upload_id is required when project_id is not provided",
+            },
+        )
+
+    with uploads_store_lock:
+        upload_data = uploads_store.get(upload_id)
+
+    if upload_data is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
                 "error": "not_found",
-                "message": f"Upload with ID '{request.upload_id}' not found",
+                "message": f"Upload with ID '{upload_id}' not found",
             }
         )
-    
-    upload_data = uploads_store[request.upload_id]
     
     if upload_data.get("user_id") != user_id:
         raise HTTPException(

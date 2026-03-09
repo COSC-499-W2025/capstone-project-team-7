@@ -5,6 +5,7 @@ Implements /api/uploads endpoints per api-plan.md
 
 import logging
 import os
+import threading
 import uuid
 import hashlib
 import magic
@@ -141,6 +142,7 @@ ALLOWED_MIME_TYPES = [
 # In-memory storage for upload metadata (will be replaced with DB)
 # TODO: Replace with Supabase database persistence for production
 uploads_store: Dict[str, Dict[str, Any]] = {}
+uploads_store_lock = threading.Lock()
 
 
 def _parse_created_at_epoch(upload_data: Dict[str, Any]) -> Optional[float]:
@@ -179,24 +181,29 @@ def cleanup_expired_uploads() -> int:
 
     cutoff_epoch = datetime.utcnow().timestamp() - UPLOAD_TTL_SECONDS
     expired_ids: List[str] = []
+    expired_entries: List[Dict[str, Any]] = []
 
-    for upload_id, upload_data in list(uploads_store.items()):
-        created_at_epoch = _parse_created_at_epoch(upload_data)
-        if created_at_epoch is None:
-            continue
-        if created_at_epoch <= cutoff_epoch:
-            expired_ids.append(upload_id)
+    with uploads_store_lock:
+        for upload_id, upload_data in list(uploads_store.items()):
+            created_at_epoch = _parse_created_at_epoch(upload_data)
+            if created_at_epoch is None:
+                continue
+            if created_at_epoch <= cutoff_epoch:
+                expired_ids.append(upload_id)
 
-    for upload_id in expired_ids:
-        upload_data = uploads_store.pop(upload_id, None)
-        if upload_data is None:
-            continue
+        for upload_id in expired_ids:
+            upload_data = uploads_store.pop(upload_id, None)
+            if upload_data is None:
+                continue
+            expired_entries.append(upload_data)
+
+    for upload_data in expired_entries:
         _delete_upload_file(upload_data)
 
-    if expired_ids:
-        logger.info("Cleaned up %d expired uploads", len(expired_ids))
+    if expired_entries:
+        logger.info("Cleaned up %d expired uploads", len(expired_entries))
 
-    return len(expired_ids)
+    return len(expired_entries)
 
 
 def validate_zip_file(file_content: bytes, filename: str) -> tuple[bool, Optional[str]]:
@@ -307,7 +314,8 @@ async def upload_file(
             }
         }
         
-        uploads_store[upload_id] = upload_metadata
+        with uploads_store_lock:
+            uploads_store[upload_id] = upload_metadata
         
         return UploadResponse(
             upload_id=upload_id,
@@ -339,9 +347,10 @@ async def get_upload_status(
     Returns stored metadata for the upload to allow polling without filesystem access.
     Only returns uploads owned by the authenticated user.
     """
-    cleanup_expired_uploads()
+    with uploads_store_lock:
+        upload_data = uploads_store.get(upload_id)
 
-    if upload_id not in uploads_store:
+    if upload_data is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
@@ -349,8 +358,6 @@ async def get_upload_status(
                 "message": f"Upload with ID '{upload_id}' not found"
             }
         )
-    
-    upload_data = uploads_store[upload_id]
     
     # Verify ownership
     if upload_data.get("user_id") != user_id:
@@ -389,10 +396,11 @@ async def parse_upload(
     - Returns file list, issues, and summary statistics
     - Requires authentication and upload ownership
     """
-    cleanup_expired_uploads()
+    with uploads_store_lock:
+        upload_data = uploads_store.get(upload_id)
 
     # Verify upload exists
-    if upload_id not in uploads_store:
+    if upload_data is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
@@ -400,8 +408,6 @@ async def parse_upload(
                 "message": f"Upload with ID '{upload_id}' not found"
             }
         )
-    
-    upload_data = uploads_store[upload_id]
     
     # Verify ownership
     if upload_data.get("user_id") != user_id:
@@ -494,10 +500,13 @@ async def parse_upload(
         ]
         
         # Update upload status
-        upload_data["status"] = "parsed"
-        upload_data["parse_completed_at"] = parse_completed.isoformat() + "Z"
-        upload_data["file_count"] = len(files)
-        upload_data["duplicate_count"] = duplicate_count
+        with uploads_store_lock:
+            current_upload_data = uploads_store.get(upload_id)
+            if current_upload_data is not None:
+                current_upload_data["status"] = "parsed"
+                current_upload_data["parse_completed_at"] = parse_completed.isoformat() + "Z"
+                current_upload_data["file_count"] = len(files)
+                current_upload_data["duplicate_count"] = duplicate_count
         
         return ParseResponse(
             upload_id=upload_id,
@@ -512,8 +521,11 @@ async def parse_upload(
         
     except Exception as e:
         logger.exception("parse_upload failed for upload_id=%s", upload_id)
-        upload_data["status"] = "parse_failed"
-        upload_data["error"] = str(e)
+        with uploads_store_lock:
+            current_upload_data = uploads_store.get(upload_id)
+            if current_upload_data is not None:
+                current_upload_data["status"] = "parse_failed"
+                current_upload_data["error"] = str(e)
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
