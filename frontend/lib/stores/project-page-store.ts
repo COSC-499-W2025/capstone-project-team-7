@@ -7,6 +7,7 @@ export type MainTabValue = "overview" | "skills" | "content" | "tools";
 export type ToolsTabValue =
   | "tools-main"
   | "file-browser"
+  | "search-filter"
   | "git-analysis"
   | "duplicate-finder";
 

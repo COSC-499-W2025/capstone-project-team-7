@@ -10,9 +10,13 @@ import type {
   ConsentRequest,
   ProfilesResponse,
   ProfileUpsertRequest,
+  SaveSecretRequest,
+  SaveSecretResponse,
+  SecretStatusResponse,
   UpdateProfileRequest,
   UserProfile,
   EncryptionStatus,
+  VerifyStoredKeyResponse,
 } from "./api.types";
 import {
   clearStoredRefreshToken,
@@ -279,4 +283,21 @@ export const config = {
 export const encryption = {
   status: (): Promise<ApiResult<EncryptionStatus>> =>
     request<EncryptionStatus>("/api/encryption/status", { cache: "no-store" }),
+export const secrets = {
+  getStatus: (): Promise<ApiResult<SecretStatusResponse>> =>
+    request<SecretStatusResponse>("/api/settings/secrets"),
+  save: (payload: SaveSecretRequest): Promise<ApiResult<SaveSecretResponse>> =>
+    request<SaveSecretResponse>("/api/settings/secrets", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  remove: (secretKey: string): Promise<ApiResult<{ ok: boolean; message: string }>> =>
+    request<{ ok: boolean; message: string }>("/api/settings/secrets", {
+      method: "DELETE",
+      body: JSON.stringify({ secret_key: secretKey }),
+    }),
+  verify: (): Promise<ApiResult<VerifyStoredKeyResponse>> =>
+    request<VerifyStoredKeyResponse>("/api/settings/secrets/verify", {
+      method: "POST",
+    }),
 };
