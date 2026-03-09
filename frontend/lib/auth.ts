@@ -53,6 +53,9 @@ export const clearStoredToken = (): void => {
 };
 
 export const refreshAccessToken = async (): Promise<string | null> => {
+  // Check if user explicitly logged out — prevent auto-refresh
+  if (sessionStorage.getItem("auth_logged_out")) return null;
+
   const refreshToken = getStoredRefreshToken();
   if (!refreshToken) return null;
 
@@ -84,6 +87,25 @@ export const refreshAccessToken = async (): Promise<string | null> => {
     return payload.access_token;
   } catch {
     return null;
+  }
+};
+
+export const logout = (): void => {
+  const token = getStoredToken();
+  if (token) {
+    // Fire-and-forget: notify backend to invalidate refresh token
+    // Don't block on this - logout completes locally even if backend fails
+    try {
+      fetch(`${getApiBaseUrl()}/api/auth/logout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ access_token: token }),
+      }).catch(() => {
+        // Silently ignore network/server errors
+      });
+    } catch {
+      // Catch any synchronous errors (shouldn't happen with fetch)
+    }
   }
 };
 
@@ -148,7 +170,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T
       !result.ok &&
       result.status === 401 &&
       !hasExplicitAuthorization &&
-      path !== "/api/auth/refresh";
+      path !== "/api/auth/refresh" &&
+      !sessionStorage.getItem("auth_logged_out");
 
     if (canRetryWithRefresh) {
       const refreshedToken = await refreshAccessToken();
