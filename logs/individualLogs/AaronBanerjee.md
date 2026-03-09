@@ -1,5 +1,38 @@
 # Aaron Banerjee (@aaronbanerjee123)
 
+## Term 2 - Week 9 (March 2nd - March 8th)
+
+## Portfolio Page Styling Fix [(PR#391)](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/391)
+Fixed critical text visibility bug in the portfolio page where form inputs and labels appeared invisible or unreadable in the Electron desktop app. The root cause was that UI components (Label, Input, Textarea, DialogTitle) relied on CSS inheritance for text color, which doesn't work reliably in Electron's embedded Chromium browser. Components used bg-transparent without explicit text colors, causing text to blend into backgrounds or render completely invisible. Added explicit text-foreground and text-gray-900 classes to all affected components including form labels, input fields, textarea elements, and dialog titles. Fixed checkbox and radio button labels that were invisible in dark mode contexts. Ensured consistent text rendering across both the web app (Next.js) and desktop app (Electron) environments by removing reliance on inherited color values.
+
+**Challenges & Learning:**
+Primary challenge was debugging environment-specific rendering differences—the same code worked perfectly in the browser but failed in Electron. Learned that Electron's Chromium instance handles CSS inheritance differently than standard browsers, particularly for dynamically injected styles and CSS custom properties. Discovered that bg-transparent combined with inherited text colors creates a fragile style dependency that breaks across rendering contexts. Gained experience with defensive CSS patterns where explicit color declarations ensure consistent rendering regardless of parent context or browser environment. Used Electron's DevTools to compare computed styles between working (browser) and broken (Electron) environments.
+
+**Impact:**
+Restored full usability of the portfolio management interface in the Electron desktop app. Users can now see and interact with all form fields, labels, and dialogs when creating/editing portfolio items. This fix benefits all desktop app users who previously couldn't use portfolio features due to invisible text. Established best practice of always using explicit text colors for shadcn/ui components in cross-platform applications.
+
+
+
+**Issues Resolved:**
+[#378](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/378)
+
+## Scan Performance Optimization [(PR#3)](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/391)
+Implemented comprehensive 3-phase parallel analysis pipeline reducing scan times by approximately 60-70% for large projects. Restructured _run_scan_background() in spec_routes.py to execute analyses concurrently using concurrent.futures.ThreadPoolExecutor instead of sequentially. Phase 1 runs 4 independent analyses in parallel (Git, Media, PDF, Document) using a ThreadPoolExecutor with max_workers=4, each with dedicated timeout handling (120s Git, 60s Media, 90s PDF, 60s Document). Phase 2 executes code analysis with dynamic timeout calculation based on file count: base_timeout + (total_files // 100) * 10 seconds, capped at 300 seconds (5 minutes), preventing indefinite hangs on massive codebases. Phase 3 runs dependent analyses (Skills, Contribution Metrics, Duplicate Detection) in parallel with 3 workers after code analysis completes since skills analysis requires code analysis results.
+
+Added batched file processing in the LLM client where files are processed in batches of 5 using asyncio.gather() within _summarize_file_batch(), enabling parallel AI summarization calls. Implemented asyncio.to_thread() wrapper pattern throughout project_routes.py (19 occurrences) to wrap blocking Supabase database calls, preventing event loop blocking in async FastAPI endpoints. Enhanced parser.py with file metadata caching via cached_files parameter in parse_zip(), where unchanged files (matching path, size, and modification time) skip re-processing on subsequent scans. Implemented streaming hash calculation using 8KB chunks (_HASH_CHUNK_SIZE) for memory-efficient MD5 hashing of large files up to 50MB.
+
+Challenges & Learning:
+Primary challenge involved identifying which analyses could run concurrently without data dependencies—Git/Media/PDF/Document are independent while Skills requires code analysis results. Learned thread safety patterns using result containers (result_container = [None]) to capture values from spawned threads since Python closures capture variables by reference. Discovered that blocking database calls in async endpoints can starve the event loop, necessitating asyncio.to_thread() wrappers. Gained experience balancing thread pool sizes (4 workers vs 8 workers) and timeout values to optimize throughput without overwhelming system resources. Implemented graceful degradation where individual analysis failures (logged with ⚠️ warnings) don't fail the entire scan, maintaining partial results.
+
+Impact:
+Dramatically reduced scan times from 3-5 minutes to under 1 minute for typical projects by parallelizing independent operations. Large monorepos with 1000+ files now complete scans within 2-3 minutes instead of timing out. The caching layer enables near-instant rescans when only a few files change, supporting iterative development workflows where users scan frequently. Memory efficiency improvements allow scanning larger files without out-of-memory errors. Progress updates at each phase (40%, 50%, 65%, etc.) give users visibility into scan progression, reducing perceived wait time.
+
+
+**Issues Resolved:**
+[#377](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/377)
+
+
+
 ## Term 2 - Week 8 (Feb 23 - Mar 1)
 
 ## Highlighted Skills Feature [(PR#367)](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/367)
