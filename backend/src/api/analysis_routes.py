@@ -82,6 +82,8 @@ class SkillInfo(BaseModel):
     name: str
     category: str
     confidence: float
+    proficiency_score: float = 0.0
+    description: str = ""
     evidence_count: int
 
 
@@ -260,7 +262,9 @@ def _run_skills_extraction(
             {
                 "name": skill.name,
                 "category": skill.category,
-                "confidence": skill.confidence,
+                "confidence": skill.proficiency_score,
+                "proficiency_score": skill.proficiency_score,
+                "description": skill.description if hasattr(skill, 'description') else "",
                 "evidence_count": len(skill.evidence) if hasattr(skill, 'evidence') else 0,
             }
             for skill in skills
