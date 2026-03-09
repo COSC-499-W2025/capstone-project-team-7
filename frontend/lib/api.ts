@@ -283,6 +283,8 @@ export const config = {
 export const encryption = {
   status: (): Promise<ApiResult<EncryptionStatus>> =>
     request<EncryptionStatus>("/api/encryption/status", { cache: "no-store" }),
+};
+
 export const secrets = {
   getStatus: (): Promise<ApiResult<SecretStatusResponse>> =>
     request<SecretStatusResponse>("/api/settings/secrets"),
