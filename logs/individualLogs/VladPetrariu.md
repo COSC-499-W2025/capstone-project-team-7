@@ -1,15 +1,15 @@
 # Week 23: March 2 - March 8
 
 PRs Merged:                                                                                                                                                                                   
-- PR #387 — Move user scoped env settings to settings page: Merged a feature that adds persistent API key storage via a new user_secrets table with AES-GCM encryption. Includes new /api/settings/secrets endpoints (GET, PUT, DELETE, POST verify), automatic DB fallback for hydrating LLM clients, and an "External Services" card in the Settings UI. Includes 10 backend and 7 frontend tests.
-- PR #386 — Removed useless scanned results tab: Merged a UI cleanup that removed the non-functional "Scanned results" tab from the interface. Verified visually that removal was clean with no regressions.
+- [PR #387](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/387) — Move user scoped env settings to settings page: Merged a feature that adds persistent API key storage via a new user_secrets table with AES-GCM encryption. Includes new /api/settings/secrets endpoints (GET, PUT, DELETE, POST verify), automatic DB fallback for hydrating LLM clients, and an "External Services" card in the Settings UI. Includes 10 backend and 7 frontend tests.
+- [PR #386](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/386) — Removed useless scanned results tab: Merged a UI cleanup that removed the non-functional "Scanned results" tab from the interface. Verified visually that removal was clean with no regressions.
 
 PRs Reviewed:
 
-- PR #384 — Fix: improve error messaging across frontend and backend: Reviewed improvements replacing vague alert()-based errors with specific, inline UI error messages. Covers both frontend (Projects, Settings) and backend (project/LLM routes) with updated tests.
-- PR #388 — Feature/advanced filtering: Reviewed a comprehensive test suite (35 tests across 9 describe blocks) for the SearchFilterTab component,
+- PR [PR #384](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/384) — Fix: improve error messaging across frontend and backend: Reviewed improvements replacing vague alert()-based errors with specific, inline UI error messages. Covers both frontend (Projects, Settings) and backend (project/LLM routes) with updated tests.
+- [PR #388](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/388) — Feature/advanced filtering: Reviewed a comprehensive test suite (35 tests across 9 describe blocks) for the SearchFilterTab component,
 covering loading/error/empty states, debounced search, filter controls, reset, and pagination.
-- PR #389 — Feature/encryption status: Reviewed the addition of encryption status reporting — a new GET /api/encryption/status endpoint, Settings UI
+- [PR #389](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/389) — Feature/encryption status: Reviewed the addition of encryption status reporting — a new GET /api/encryption/status endpoint, Settings UI
 status indicators (ready/misconfigured with guidance), a help page for encryption setup, and backend + frontend tests.
 
 <img width="1089" height="643" alt="Screenshot 2026-03-08 at 10 37 45 PM" src="https://github.com/user-attachments/assets/e5020bb2-1fb4-421e-ba79-ae73192de14f" />
