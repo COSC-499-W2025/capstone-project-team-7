@@ -21,6 +21,8 @@ import {
   generateProjectSkillSummary,
   exportProjectHtml,
   updateProjectOverrides,
+  getAvailableRoles,
+  getSkillGaps,
 } from "@/lib/api/projects";
 import {
   detectLanguageMetric,
@@ -36,6 +38,8 @@ import type {
   SkillAdoptionEntry,
   SkillProgressPeriod,
   SkillProgressSummary,
+  RoleProfile,
+  SkillGapAnalysis,
 } from "@/types/project";
 import {
   MediaAnalysisTab,
@@ -196,6 +200,13 @@ export default function ProjectPage() {
   const [skillsCategoryFilter, setSkillsCategoryFilter] = useState<string>("all");
   const [expandedSkill, setExpandedSkill] = useState<string | null>(null);
 
+  // Gap analysis state
+  const [gapRoles, setGapRoles] = useState<RoleProfile[]>([]);
+  const [selectedGapRole, setSelectedGapRole] = useState<string>("");
+  const [gapResult, setGapResult] = useState<SkillGapAnalysis | null>(null);
+  const [gapLoading, setGapLoading] = useState(false);
+  const [gapError, setGapError] = useState<string | null>(null);
+
   // Keep local projectId in sync with URL
   useEffect(() => {
     setProjectId(projectIdParam);
@@ -306,6 +317,40 @@ export default function ProjectPage() {
         : [...prev, skillName];
       return newHighlights;
     });
+  };
+
+  // Load available role profiles when skills tab is active
+  useEffect(() => {
+    if (activeMainTab !== "skills" || gapRoles.length > 0) return;
+    const token = getStoredToken();
+    if (!token) return;
+    getAvailableRoles(token)
+      .then((roles) => { if (isMountedRef.current) setGapRoles(roles); })
+      .catch(() => { /* roles are optional, ignore errors */ });
+  }, [activeMainTab, gapRoles.length]);
+
+  // Run gap analysis when role is selected
+  const runGapAnalysis = async (role: string) => {
+    setSelectedGapRole(role);
+    setGapResult(null);
+    setGapError(null);
+    if (!role) return;
+
+    const token = getStoredToken();
+    const pid = project?.id;
+    if (!token || !pid) return;
+
+    try {
+      setGapLoading(true);
+      const result = await getSkillGaps(token, pid, role);
+      if (isMountedRef.current) setGapResult(result);
+    } catch (err) {
+      if (isMountedRef.current) {
+        setGapError(err instanceof Error ? err.message : "Gap analysis failed");
+      }
+    } finally {
+      if (isMountedRef.current) setGapLoading(false);
+    }
   };
 
   // Fetch skills timeline/summary when we have a projectId
@@ -1433,6 +1478,99 @@ export default function ProjectPage() {
                     </CardContent>
                   </Card>
                 )}
+
+                {/* Gap Analysis */}
+                <Card className="bg-white border border-gray-200">
+                  <CardHeader className="border-b border-gray-200">
+                    <CardTitle className="text-xl font-bold text-gray-900">
+                      Skill Gap Analysis
+                    </CardTitle>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Compare detected skills against a target role profile
+                    </p>
+                  </CardHeader>
+                  <CardContent className="p-6 space-y-4">
+                    <div className="flex items-center gap-3">
+                      <select
+                        className="border border-gray-300 rounded-md px-3 py-2 text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"
+                        value={selectedGapRole}
+                        onChange={(e) => runGapAnalysis(e.target.value)}
+                      >
+                        <option value="">Select a role...</option>
+                        {gapRoles.map((r) => (
+                          <option key={r.key} value={r.key}>
+                            {r.label}
+                          </option>
+                        ))}
+                      </select>
+                      {gapLoading && (
+                        <Loader2 size={16} className="animate-spin text-gray-400" />
+                      )}
+                    </div>
+
+                    {gapError && (
+                      <p className="text-sm text-red-600">{gapError}</p>
+                    )}
+
+                    {gapResult && (
+                      <div className="space-y-4">
+                        {/* Coverage bar */}
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-sm">
+                            <span className="font-medium text-gray-900">
+                              Coverage for {gapResult.role_label}
+                            </span>
+                            <span className="text-gray-500">
+                              {gapResult.coverage_percent}%
+                            </span>
+                          </div>
+                          <div className="w-full bg-gray-100 rounded-full h-3">
+                            <div
+                              className={`h-3 rounded-full transition-all ${
+                                gapResult.coverage_percent >= 75
+                                  ? "bg-emerald-600"
+                                  : gapResult.coverage_percent >= 40
+                                    ? "bg-amber-500"
+                                    : "bg-red-500"
+                              }`}
+                              style={{ width: `${gapResult.coverage_percent}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        {([
+                          { label: "Matched", items: gapResult.matched, bg: "bg-emerald-100", text: "text-emerald-800" },
+                          { label: "Missing", items: gapResult.missing, bg: "bg-amber-100", text: "text-amber-800" },
+                          { label: "Additional Skills", items: gapResult.extra, bg: "bg-gray-100", text: "text-gray-700" },
+                        ] as const).map(({ label, items, bg, text }) =>
+                          items.length > 0 && (
+                            <div key={label}>
+                              <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                                {label} ({items.length})
+                              </p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {items.map((s) => (
+                                  <span
+                                    key={s}
+                                    className={`px-2.5 py-1 rounded-full ${bg} ${text} text-xs font-medium`}
+                                  >
+                                    {s}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          ),
+                        )}
+                      </div>
+                    )}
+
+                    {!selectedGapRole && !gapResult && (
+                      <p className="text-sm text-gray-400">
+                        Select a role above to see how your project skills compare.
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
               </TabsContent>
 
               {/* Skills Progress */}
