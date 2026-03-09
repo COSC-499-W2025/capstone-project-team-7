@@ -3,6 +3,8 @@ Upload and Parse API routes
 Implements /api/uploads endpoints per api-plan.md
 """
 
+import base64
+import json
 import logging
 import os
 import uuid
@@ -23,6 +25,33 @@ logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/api/uploads", tags=["uploads"])
+
+def _extract_user_id_from_token(token: str) -> Optional[str]:
+    try:
+        import jwt
+
+        payload = jwt.decode(token, options={"verify_signature": False})
+        user_id = payload.get("sub")
+        if user_id:
+            return user_id
+    except Exception:
+        pass
+
+    try:
+        parts = token.split(".")
+        if len(parts) < 2:
+            return None
+        payload_b64 = parts[1]
+        padding = "=" * (-len(payload_b64) % 4)
+        decoded = base64.urlsafe_b64decode(payload_b64 + padding)
+        payload = json.loads(decoded.decode("utf-8"))
+        user_id = payload.get("sub")
+        if user_id:
+            return user_id
+    except Exception:
+        return None
+
+    return None
 
 
 # Authentication helper
@@ -49,22 +78,13 @@ async def verify_auth_token(authorization: Optional[str] = Header(None)) -> str:
     token = parts[1]
     set_request_access_token(token)
 
-    try:
-        import jwt
-
-        payload = jwt.decode(token, options={"verify_signature": False})
-        user_id = payload.get("sub")
-        if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token: missing user ID",
-            )
-        return user_id
-    except Exception:
+    user_id = _extract_user_id_from_token(token)
+    if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
         )
+    return user_id
 
 
 # Pydantic models

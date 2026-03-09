@@ -22,7 +22,6 @@ if load_dotenv:
     project_root = backend_root.parent
     load_dotenv(backend_root / ".env", override=False)
     load_dotenv(project_root / ".env", override=False)
-    load_dotenv(override=False)
 from api.auth_routes import router as auth_router
 from api.analysis_routes import router as analysis_router
 from api.consent_routes import router as consent_router
