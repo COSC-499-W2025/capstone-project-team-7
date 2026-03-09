@@ -194,7 +194,7 @@ export default function ProjectPage() {
   // Skills search, filter, and evidence expansion state
   const [skillsSearchQuery, setSkillsSearchQuery] = useState("");
   const [skillsCategoryFilter, setSkillsCategoryFilter] = useState<string>("all");
-  const [expandedSkill, setExpandedSkill] = useState<string | null>(null);
+  const [expandedSkillKey, setExpandedSkillKey] = useState<string | null>(null);
 
   // Keep local projectId in sync with URL
   useEffect(() => {
@@ -1293,7 +1293,8 @@ export default function ProjectPage() {
                                   const description = typeof skill === "object" ? skill.description : undefined;
                                   const profScore = typeof skill === "object" ? skill.proficiency_score ?? 0 : 0;
                                   const evidence = getSkillEvidence(skillName);
-                                  const isExpanded = expandedSkill === skillName;
+                                  const skillKey = `${category}::${skillName}`;
+                                  const isExpanded = expandedSkillKey === skillKey;
 
                                   return (
                                     <div
@@ -1311,7 +1312,7 @@ export default function ProjectPage() {
                                         />
                                         <button
                                           type="button"
-                                          onClick={() => setExpandedSkill(isExpanded ? null : skillName)}
+                                          onClick={() => setExpandedSkillKey(isExpanded ? null : skillKey)}
                                           className="flex-1 text-left"
                                         >
                                           <span className="text-sm font-medium text-gray-900">
@@ -1355,7 +1356,7 @@ export default function ProjectPage() {
                                       {isExpanded && evidence.length > 0 && (
                                         <div className="px-10 pb-3 space-y-1.5">
                                           {evidence.slice(0, 5).map((ev, idx) => (
-                                            <div key={idx} className="text-xs text-gray-600 flex items-start gap-2">
+                                            <div key={`${ev.file ?? ""}:${ev.line ?? ""}:${idx}`} className="text-xs text-gray-600 flex items-start gap-2">
                                               <span className="text-gray-300 mt-0.5">-</span>
                                               <div>
                                                 <span>{ev.description || ev.type || "Evidence"}</span>
@@ -1399,9 +1400,9 @@ export default function ProjectPage() {
                     </CardHeader>
                     <CardContent className="p-6">
                       <div className="space-y-3">
-                        {skillAdoptionTimeline.map((entry, idx) => (
+                        {skillAdoptionTimeline.map((entry) => (
                           <div
-                            key={idx}
+                            key={`${entry.skill_name}::${entry.first_used_period ?? ""}`}
                             className="flex items-center gap-4 py-2 border-b border-gray-100 last:border-0"
                           >
                             <span className="text-xs font-mono text-gray-400 w-20 shrink-0">
@@ -1769,8 +1770,8 @@ export default function ProjectPage() {
                             <div className="space-y-3">
                               {scanData.contribution_metrics.contributors
                                 .slice(0, 5)
-                                .map((contributor: { name?: string; commits?: number; commit_percentage?: number }, idx: number) => (
-                                <div key={idx} className="flex items-center justify-between">
+                                .map((contributor: { name?: string; commits?: number; commit_percentage?: number }) => (
+                                <div key={contributor.name ?? "unknown"} className="flex items-center justify-between">
                                   <div className="flex items-center gap-2">
                                     <Users size={14} className="text-gray-400" />
                                     <span className="text-sm font-medium text-gray-900">{contributor.name ?? "Unknown"}</span>
