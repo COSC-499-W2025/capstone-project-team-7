@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any, cast
 from datetime import datetime
 import asyncio
+import base64
+import json
 import logging
 import sys
 import os
@@ -783,23 +785,41 @@ async def verify_auth_token(authorization: Optional[str] = Header(None)) -> str:
     token = parts[1]
     set_request_access_token(token)
 
-    try:
-        import jwt
+    def _extract_user_id(payload_token: str) -> Optional[str]:
+        try:
+            import jwt
 
-        payload = jwt.decode(token, options={"verify_signature": False})
-        user_id = payload.get("sub")
-        if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token: missing user ID",
-            )
-        return user_id
-    except Exception as exc:
-        logger.error(f"Token verification failed: {exc}")
+            payload = jwt.decode(payload_token, options={"verify_signature": False})
+            user_id = payload.get("sub")
+            if user_id:
+                return user_id
+        except Exception:
+            pass
+
+        try:
+            parts = payload_token.split(".")
+            if len(parts) < 2:
+                return None
+            payload_b64 = parts[1]
+            padding = "=" * (-len(payload_b64) % 4)
+            decoded = base64.urlsafe_b64decode(payload_b64 + padding)
+            payload = json.loads(decoded.decode("utf-8"))
+            user_id = payload.get("sub")
+            if user_id:
+                return user_id
+        except Exception:
+            return None
+
+        return None
+
+    user_id = _extract_user_id(token)
+    if not user_id:
+        logger.error("Token verification failed: missing user ID")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
         )
+    return user_id
 
 
 # ============================================================================

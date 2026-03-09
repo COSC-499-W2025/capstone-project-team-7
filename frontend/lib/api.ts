@@ -15,6 +15,7 @@ import type {
   SecretStatusResponse,
   UpdateProfileRequest,
   UserProfile,
+  EncryptionStatus,
   VerifyStoredKeyResponse,
 } from "./api.types";
 import {
@@ -279,6 +280,9 @@ export const config = {
     request<any>("/api/config/profiles", { method: "POST", body: JSON.stringify(payload) }),
 };
 
+export const encryption = {
+  status: (): Promise<ApiResult<EncryptionStatus>> =>
+    request<EncryptionStatus>("/api/encryption/status", { cache: "no-store" }),
 export const secrets = {
   getStatus: (): Promise<ApiResult<SecretStatusResponse>> =>
     request<SecretStatusResponse>("/api/settings/secrets"),
