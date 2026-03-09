@@ -82,6 +82,13 @@ export function SearchFilterTab({
     }, 250);
   }
 
+  function applyQueryImmediate(value: string) {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setQuery(value);
+    setDebouncedQuery(value);
+    setPage(1);
+  }
+
   // Derive available extensions from files
   const languages = useMemo(() => {
     const exts = new Set<string>();
@@ -151,7 +158,7 @@ export function SearchFilterTab({
     pathFilter !== "all";
 
   function reset() {
-    handleQueryChange("");
+    applyQueryImmediate("");
     setLangFilter("all");
     setTypeFilter("all");
     setPathFilter("all");
@@ -189,7 +196,7 @@ export function SearchFilterTab({
         {query && (
           <button
             type="button"
-            onClick={() => handleQueryChange("")}
+            onClick={() => applyQueryImmediate("")}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
             aria-label="Clear search"
           >
