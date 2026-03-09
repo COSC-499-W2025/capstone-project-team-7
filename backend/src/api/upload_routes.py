@@ -131,6 +131,7 @@ class ParseResponse(BaseModel):
 UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "data/uploads"))
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 MAX_UPLOAD_SIZE = int(os.getenv("MAX_UPLOAD_SIZE_MB", "200")) * 1024 * 1024
+UPLOAD_TTL_SECONDS = int(os.getenv("UPLOAD_TTL_SECONDS", "86400"))
 ALLOWED_MIME_TYPES = [
     "application/zip",
     "application/x-zip-compressed",
@@ -139,8 +140,63 @@ ALLOWED_MIME_TYPES = [
 
 # In-memory storage for upload metadata (will be replaced with DB)
 # TODO: Replace with Supabase database persistence for production
-# TODO: Implement file cleanup endpoint or TTL-based cleanup to prevent disk accumulation
-uploads_store = {}
+uploads_store: Dict[str, Dict[str, Any]] = {}
+
+
+def _parse_created_at_epoch(upload_data: Dict[str, Any]) -> Optional[float]:
+    created_at_epoch = upload_data.get("created_at_epoch")
+    if isinstance(created_at_epoch, (int, float)):
+        return float(created_at_epoch)
+
+    created_at_raw = upload_data.get("created_at")
+    if not isinstance(created_at_raw, str):
+        return None
+
+    try:
+        return datetime.fromisoformat(created_at_raw.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def _delete_upload_file(upload_data: Dict[str, Any]) -> None:
+    storage_path_value = upload_data.get("storage_path")
+    if not isinstance(storage_path_value, str) or not storage_path_value:
+        return
+
+    storage_path = Path(storage_path_value)
+    if not storage_path.exists():
+        return
+
+    try:
+        storage_path.unlink()
+    except OSError as exc:
+        logger.warning("Failed to delete expired upload file %s: %s", storage_path, exc)
+
+
+def cleanup_expired_uploads() -> int:
+    if UPLOAD_TTL_SECONDS <= 0:
+        return 0
+
+    cutoff_epoch = datetime.utcnow().timestamp() - UPLOAD_TTL_SECONDS
+    expired_ids: List[str] = []
+
+    for upload_id, upload_data in list(uploads_store.items()):
+        created_at_epoch = _parse_created_at_epoch(upload_data)
+        if created_at_epoch is None:
+            continue
+        if created_at_epoch <= cutoff_epoch:
+            expired_ids.append(upload_id)
+
+    for upload_id in expired_ids:
+        upload_data = uploads_store.pop(upload_id, None)
+        if upload_data is None:
+            continue
+        _delete_upload_file(upload_data)
+
+    if expired_ids:
+        logger.info("Cleaned up %d expired uploads", len(expired_ids))
+
+    return len(expired_ids)
 
 
 def validate_zip_file(file_content: bytes, filename: str) -> tuple[bool, Optional[str]]:
@@ -194,6 +250,7 @@ async def upload_file(
     - Requires authentication
     """
     try:
+        cleanup_expired_uploads()
         filename = file.filename or "upload.zip"
         # Read file content
         content = await file.read()
@@ -233,7 +290,7 @@ async def upload_file(
         upload_path.write_bytes(content)
         
         # Store metadata
-        from datetime import datetime
+        created_at = datetime.utcnow()
         upload_metadata = {
             "upload_id": upload_id,
             "user_id": user_id,
@@ -242,7 +299,8 @@ async def upload_file(
             "size_bytes": file_size,
             "file_hash": file_hash,
             "storage_path": str(upload_path),
-            "created_at": datetime.utcnow().isoformat() + "Z",
+            "created_at": created_at.isoformat() + "Z",
+            "created_at_epoch": created_at.timestamp(),
             "metadata": {
                 "original_filename": filename,
                 "content_type": file.content_type,
@@ -281,6 +339,8 @@ async def get_upload_status(
     Returns stored metadata for the upload to allow polling without filesystem access.
     Only returns uploads owned by the authenticated user.
     """
+    cleanup_expired_uploads()
+
     if upload_id not in uploads_store:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -329,6 +389,8 @@ async def parse_upload(
     - Returns file list, issues, and summary statistics
     - Requires authentication and upload ownership
     """
+    cleanup_expired_uploads()
+
     # Verify upload exists
     if upload_id not in uploads_store:
         raise HTTPException(

@@ -23,22 +23,25 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 try:
     from services.services.projects_service import ProjectsService, ProjectsServiceError
     from services.services.encryption import EncryptionService
-    from services.services.project_overrides_service import ProjectOverridesService, ProjectOverridesServiceError
+    from services.services.project_overrides_service import (
+        ALLOWED_ROLES,
+        ProjectOverridesService,
+        ProjectOverridesServiceError,
+    )
     from auth.consent_validator import ConsentValidator
     from api.llm_routes import get_user_client
     from services.services.export_service import ExportService
 except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
     from backend.src.services.services.projects_service import ProjectsService, ProjectsServiceError
     from backend.src.services.services.encryption import EncryptionService
-    from backend.src.services.services.project_overrides_service import ProjectOverridesService, ProjectOverridesServiceError
+    from backend.src.services.services.project_overrides_service import (
+        ALLOWED_ROLES,
+        ProjectOverridesService,
+        ProjectOverridesServiceError,
+    )
     from backend.src.auth.consent_validator import ConsentValidator
     from backend.src.api.llm_routes import get_user_client
     from backend.src.services.services.export_service import ExportService
-
-try:
-    from scanner.parser import parse_zip
-except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
-    from backend.src.scanner.parser import parse_zip
 
 try:
     from scanner.parser import parse_zip
@@ -55,13 +58,13 @@ try:
     from services.services.skills_analysis_service import SkillsAnalysisService
     from services.services.contribution_analysis_service import ContributionAnalysisService
     from local_analysis.git_repo import analyze_git_repo
-    from api.upload_routes import uploads_store
+    from api.upload_routes import cleanup_expired_uploads, uploads_store
 except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
     from backend.src.services.language_stats import summarize_languages
     from backend.src.services.services.skills_analysis_service import SkillsAnalysisService
     from backend.src.services.services.contribution_analysis_service import ContributionAnalysisService
     from backend.src.local_analysis.git_repo import analyze_git_repo
-    from backend.src.api.upload_routes import uploads_store
+    from backend.src.api.upload_routes import cleanup_expired_uploads, uploads_store
 
 try:
     from api.request_context import get_request_access_token, set_request_access_token
@@ -72,12 +75,6 @@ logger = logging.getLogger(__name__)
 
 # Create router for project endpoints
 router = APIRouter(prefix="/api/projects", tags=["Projects"])
-
-# Import ALLOWED_ROLES from the service that manages roles
-try:
-    from services.services.project_overrides_service import ALLOWED_ROLES
-except ImportError:
-    from backend.src.services.services.project_overrides_service import ALLOWED_ROLES
 
 # Initialize services
 _projects_service: Optional[ProjectsService] = None
@@ -1218,6 +1215,8 @@ async def create_project_from_upload(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="upload_id cannot be empty",
             )
+
+        cleanup_expired_uploads()
 
         if upload_id not in uploads_store:
             raise HTTPException(
@@ -3022,8 +3021,10 @@ async def append_upload_to_project(
     Returns:
         Detailed status for each file in the upload
     """
-    # Import uploads_store lazily to avoid circular imports
-    from .upload_routes import uploads_store
+    # Import upload helpers lazily to avoid circular imports
+    from .upload_routes import cleanup_expired_uploads, uploads_store
+
+    cleanup_expired_uploads()
 
     # Verify upload exists and user owns it
     if upload_id not in uploads_store:
