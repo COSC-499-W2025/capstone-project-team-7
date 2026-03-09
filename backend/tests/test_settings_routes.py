@@ -259,3 +259,56 @@ class TestVerifyStoredKey:
 
         assert resp.status_code == 200
         assert resp.json()["valid"] is False
+
+    def test_verify_llm_error_returns_user_friendly_message(self, client):
+        from services.services.encryption import EncryptionService
+        from analyzer.llm.client import LLMError
+        enc = EncryptionService()
+        envelope = enc.encrypt_json("sk-some-key")
+
+        fake_resp = httpx.Response(
+            200,
+            json=[{"encrypted_value": envelope.to_dict()}],
+            request=httpx.Request("GET", "https://test.supabase.co/rest/v1/user_secrets"),
+        )
+        instance = AsyncMock()
+        instance.get.return_value = fake_resp
+
+        with patch.object(settings_mod.httpx, "AsyncClient") as MC, \
+             patch.object(settings_mod, "ConsentValidator") as MockCV, \
+             patch.object(settings_mod, "LLMClient") as MockLLM:
+            _mock_httpx(MC, instance)
+            MockCV.return_value.validate_external_services_consent.return_value = True
+            MockLLM.return_value.verify_api_key.side_effect = LLMError("Rate limit exceeded")
+            resp = client.post("/api/settings/secrets/verify", headers={"Authorization": "Bearer tok-abc"})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["valid"] is False
+        assert "Rate limit exceeded" in data["message"]
+
+    def test_verify_unexpected_error_returns_user_friendly_message(self, client):
+        from services.services.encryption import EncryptionService
+        enc = EncryptionService()
+        envelope = enc.encrypt_json("sk-some-key")
+
+        fake_resp = httpx.Response(
+            200,
+            json=[{"encrypted_value": envelope.to_dict()}],
+            request=httpx.Request("GET", "https://test.supabase.co/rest/v1/user_secrets"),
+        )
+        instance = AsyncMock()
+        instance.get.return_value = fake_resp
+
+        with patch.object(settings_mod.httpx, "AsyncClient") as MC, \
+             patch.object(settings_mod, "ConsentValidator") as MockCV, \
+             patch.object(settings_mod, "LLMClient") as MockLLM:
+            _mock_httpx(MC, instance)
+            MockCV.return_value.validate_external_services_consent.return_value = True
+            MockLLM.return_value.verify_api_key.side_effect = RuntimeError("something broke")
+            resp = client.post("/api/settings/secrets/verify", headers={"Authorization": "Bearer tok-abc"})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["valid"] is False
+        assert "unexpected error" in data["message"].lower()

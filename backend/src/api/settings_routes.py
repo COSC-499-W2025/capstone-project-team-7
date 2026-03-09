@@ -246,14 +246,15 @@ async def verify_stored_key(auth: AuthContext = Depends(get_auth_context)):
     try:
         llm_client = LLMClient(api_key=api_key)
         is_valid = llm_client.verify_api_key()
-    except InvalidAPIKeyError:
+    except InvalidAPIKeyError as exc:
+        logger.info(f"Invalid API key for user {auth.user_id}: {exc}")
         return VerifyStoredKeyResponse(valid=False, message="The API key is invalid or has been revoked.")
     except LLMError as exc:
-        logger.error(f"LLM service error during key verification: {exc}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"code": "llm_service_error", "message": "Unable to verify key with the LLM provider. Please try again later."},
-        )
+        logger.warning(f"LLM service error during key verification for user {auth.user_id}: {exc}")
+        return VerifyStoredKeyResponse(valid=False, message=f"Could not verify key: {exc}")
+    except Exception as exc:
+        logger.error(f"Unexpected error during key verification for user {auth.user_id}: {exc}", exc_info=True)
+        return VerifyStoredKeyResponse(valid=False, message="An unexpected error occurred while verifying the key. Please try again.")
 
     if is_valid:
         set_user_client(auth.user_id, llm_client)
@@ -289,7 +290,10 @@ async def _fetch_and_decrypt_secret(
         resp = await client.get(url, headers=_supabase_headers(access_token))
 
     if resp.status_code >= 400:
-        logger.warning(f"Failed to fetch secret {secret_key} for user {user_id}")
+        logger.warning(
+            f"Supabase error fetching secret {secret_key} for user {user_id}: "
+            f"status={resp.status_code}, body={resp.text}"
+        )
         return None
 
     rows = resp.json()
