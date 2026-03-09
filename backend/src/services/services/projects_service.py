@@ -145,6 +145,15 @@ class ProjectsService:
             or "authenticated user token is required" in text
         )
 
+    @staticmethod
+    def _is_missing_scan_files_error(exc: Exception) -> bool:
+        text = str(exc).lower()
+        return (
+            ("pgrst205" in text and "scan_files" in text)
+            or "could not find the table 'public.scan_files'" in text
+            or "relation \"scan_files\" does not exist" in text
+        )
+
     def _save_scan_local(
         self,
         user_id: str,
@@ -757,6 +766,9 @@ class ProjectsService:
                 .execute()
             )
         except Exception as exc:
+            if self._is_missing_scan_files_error(exc):
+                logging.warning("scan_files table unavailable; returning empty cached metadata: %s", exc)
+                return {}
             raise ProjectsServiceError(f"Failed to load cached files: {exc}") from exc
 
         cached: Dict[str, Dict[str, Any]] = {}
@@ -829,6 +841,9 @@ class ProjectsService:
                 on_conflict="project_id,relative_path",
             ).execute()
         except Exception as exc:
+            if self._is_missing_scan_files_error(exc):
+                logging.warning("scan_files table unavailable; skipping cached metadata upsert: %s", exc)
+                return
             raise ProjectsServiceError(f"Failed to upsert cached files: {exc}") from exc
 
     def delete_cached_files(
@@ -850,6 +865,9 @@ class ProjectsService:
                 .execute()
             )
         except Exception as exc:
+            if self._is_missing_scan_files_error(exc):
+                logging.warning("scan_files table unavailable; skipping cached metadata delete: %s", exc)
+                return
             raise ProjectsServiceError(f"Failed to delete cached files: {exc}") from exc
 
     def backfill_cached_file_hashes(
@@ -903,6 +921,9 @@ class ProjectsService:
                 .execute()
             )
         except Exception as exc:
+            if self._is_missing_scan_files_error(exc):
+                logging.warning("scan_files table unavailable; skipping hash backfill query: %s", exc)
+                return 0
             raise ProjectsServiceError(f"Failed to query cached files for backfill: {exc}") from exc
 
         files_to_update = response.data or []

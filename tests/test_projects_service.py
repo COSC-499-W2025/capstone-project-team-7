@@ -447,6 +447,40 @@ def test_4_delete_project_insights_only(projects_service, mock_supabase_client, 
     print("✓ Test 4 passed: Insights deleted without touching shared files")
 
 
+def test_4b_get_cached_files_ignores_missing_scan_files_table(projects_service, mock_supabase_client, sample_user_id):
+    error = Exception(
+        "{'code': 'PGRST205', 'message': \"Could not find the table 'public.scan_files' in the schema cache\"}"
+    )
+    mock_supabase_client.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.side_effect = error
+
+    cached = projects_service.get_cached_files(sample_user_id, "project-id")
+
+    assert cached == {}
+
+
+def test_4c_upsert_cached_files_ignores_missing_scan_files_table(projects_service, mock_supabase_client, sample_user_id):
+    error = Exception(
+        "{'code': 'PGRST205', 'message': \"Could not find the table 'public.scan_files' in the schema cache\"}"
+    )
+    mock_supabase_client.table.return_value.upsert.return_value.execute.side_effect = error
+
+    projects_service.upsert_cached_files(
+        sample_user_id,
+        "project-id",
+        [
+            {
+                "relative_path": "src/main.py",
+                "size_bytes": 100,
+                "mime_type": "text/x-python",
+                "sha256": "abc",
+                "metadata": {},
+                "last_seen_modified_at": datetime.now().isoformat() + "Z",
+                "last_scanned_at": datetime.now().isoformat() + "Z",
+            }
+        ],
+    )
+
+
 def test_5_data_integrity_validation(projects_service, mock_supabase_client, sample_user_id, sample_scan_data):
     """
     Test 4: Validate data integrity and completeness.

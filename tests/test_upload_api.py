@@ -5,12 +5,12 @@ Tests POST /api/uploads, GET /api/uploads/{upload_id}, POST /api/uploads/{upload
 
 import io
 import zipfile
+import tempfile
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 import sys
-from pathlib import Path
 
 # Add backend/src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend" / "src"))
@@ -54,7 +54,7 @@ def valid_zip_bytes():
 def empty_zip_bytes():
     """Create an empty ZIP file"""
     zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED):
         pass  # Empty ZIP
     zip_buffer.seek(0)
     return zip_buffer.getvalue()
@@ -161,6 +161,59 @@ class TestUploadEndpoint:
         
         # Restore auth override
         app.dependency_overrides[verify_auth_token] = mock_verify_auth_token
+
+    def test_upload_from_path_directory(self, cleanup_uploads):
+        with tempfile.TemporaryDirectory(prefix="upload-from-path-", dir=str(Path.cwd())) as temp_dir:
+            project_dir = Path(temp_dir) / "project"
+            project_dir.mkdir()
+            (project_dir / "main.py").write_text("print('hi')\n", encoding="utf-8")
+
+            response = client.post(
+                "/api/uploads/from-path",
+                json={"source_path": str(project_dir)},
+            )
+
+            assert response.status_code == 201
+            data = response.json()
+            assert data["upload_id"].startswith("upl_")
+            assert data["status"] == "stored"
+            assert data["filename"].endswith(".zip")
+
+            status_response = client.get(f"/api/uploads/{data['upload_id']}")
+            assert status_response.status_code == 200
+            status_payload = status_response.json()
+            assert status_payload["metadata"]["source_kind"] == "directory"
+            assert status_payload["metadata"]["source_path"] == str(project_dir.resolve())
+
+    def test_upload_from_path_zip(self, valid_zip_bytes, cleanup_uploads):
+        with tempfile.TemporaryDirectory(prefix="upload-from-path-", dir=str(Path.cwd())) as temp_dir:
+            archive_path = Path(temp_dir) / "source.zip"
+            archive_path.write_bytes(valid_zip_bytes)
+
+            response = client.post(
+                "/api/uploads/from-path",
+                json={"source_path": str(archive_path)},
+            )
+
+            assert response.status_code == 201
+            data = response.json()
+            assert data["upload_id"].startswith("upl_")
+
+            status_response = client.get(f"/api/uploads/{data['upload_id']}")
+            assert status_response.status_code == 200
+            status_payload = status_response.json()
+            assert status_payload["metadata"]["source_kind"] == "zip"
+
+    def test_upload_from_path_missing_source(self):
+        missing = Path("/tmp/this-path-should-not-exist-capstone")
+        response = client.post(
+            "/api/uploads/from-path",
+            json={"source_path": str(missing)},
+        )
+
+        assert response.status_code == 404
+        data = response.json()
+        assert data["detail"]["error"] == "path_not_found"
 
 
 class TestGetUploadStatus:

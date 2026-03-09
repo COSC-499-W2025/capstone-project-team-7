@@ -7,6 +7,7 @@ import { ProjectMetadata, ProjectDetail } from "@/types/project";
 import { Loader2, RefreshCw } from "lucide-react";
 import { getStoredToken } from "@/lib/auth";
 import { ProjectDetailModal } from "@/components/projects/project-detail-modal";
+import { formatOperationError } from "@/lib/error-utils";
 
 function applyProjectOrder(projects: ProjectMetadata[], projectOrder: string[]): ProjectMetadata[] {
   if (projectOrder.length === 0) {
@@ -103,13 +104,20 @@ export default function ProjectsPage() {
       console.log("First project data:", orderedProjects[0]);
       setProjects(orderedProjects);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to load projects";
+      const errorMessage = err instanceof Error ? err.message : "";
       console.error("Error fetching projects:", err);
-      setError(errorMessage);
-      
+
       // If it's an auth error, provide helpful message
       if (errorMessage.includes("401") || errorMessage.includes("Unauthorized") || errorMessage.includes("Invalid")) {
         setError("Session expired or invalid token. Please log in again through Settings.");
+      } else {
+        setError(
+          formatOperationError(
+            "load projects",
+            err,
+            "Failed to load projects. Please refresh the page or try again in a moment.",
+          ),
+        );
       }
     } finally {
       setLoading(false);
@@ -132,10 +140,11 @@ export default function ProjectsPage() {
     }
 
     try {
+      setError(null);
       const token = getAuthToken();
       
       if (!token) {
-        alert("Not authenticated. Please log in through Settings.");
+        setError("You are not authenticated. Please log in through Settings to delete projects.");
         return;
       }
       
@@ -144,15 +153,22 @@ export default function ProjectsPage() {
       // Remove from local state
       setProjects(prev => prev.filter(p => p.id !== projectId));
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete project");
+      setError(
+        formatOperationError(
+          "delete project",
+          err,
+          "Failed to delete this project. Please try again.",
+        ),
+      );
       console.error("Error deleting project:", err);
     }
   };
 
   const handleView = async (projectId: string) => {
+    setError(null);
     const token = getAuthToken();
     if (!token) {
-      alert("Not authenticated. Please log in through Settings.");
+      setError("You are not authenticated. Please log in through Settings to view project details.");
       return;
     }
 
@@ -163,7 +179,13 @@ export default function ProjectsPage() {
       setIsModalOpen(true);
     } catch (err) {
       console.error("Failed to fetch project details:", err);
-      alert(err instanceof Error ? err.message : "Failed to load project details");
+      setError(
+        formatOperationError(
+          "load project details",
+          err,
+          "Failed to load project details. Please try again.",
+        ),
+      );
     } finally {
       setLoadingDetail(false);
     }
@@ -218,8 +240,13 @@ export default function ProjectsPage() {
         setOrderSaveStatus(null);
       }, 2000);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to save project order";
-      setError(errorMessage);
+      setError(
+        formatOperationError(
+          "save project order",
+          err,
+          "Failed to save project order. Your current order may be temporary.",
+        ),
+      );
       setOrderSaveStatus(null);
     } finally {
       setSavingOrder(false);

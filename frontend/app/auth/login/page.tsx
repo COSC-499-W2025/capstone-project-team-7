@@ -50,7 +50,7 @@ function getLoginErrorMessage(error?: string | null): string {
     }
   }
 
-  return "Unable to sign in. Please try again.";
+  return "Unable to sign in right now. Verify your credentials and network connection, then try again.";
 }
 
 export default function LoginPage() {
