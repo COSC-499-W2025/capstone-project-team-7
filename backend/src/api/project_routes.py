@@ -1524,6 +1524,8 @@ async def search_projects(
                 skills_data = scan_data.get("skills_analysis", {}) or {}
                 if skills_data and skills_data.get("success"):
                     skills = skills_data.get("skills", {}) or {}
+                    if not isinstance(skills, dict):
+                        skills = {}
                     for category, skill_list in skills.items():
                         if isinstance(skill_list, list):
                             for skill in skill_list:

@@ -14,6 +14,63 @@ import {
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
+function firstNonEmptyString(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) return value;
+  return null;
+}
+
+function extractErrorMessage(detail: unknown, fallback: string): string {
+  const direct = firstNonEmptyString(detail);
+  if (direct) return direct;
+
+  if (Array.isArray(detail)) {
+    for (const item of detail) {
+      const itemString = firstNonEmptyString(item);
+      if (itemString) return itemString;
+      if (item && typeof item === "object") {
+        const message = firstNonEmptyString(
+          (item as Record<string, unknown>).message
+        );
+        if (message) return message;
+      }
+    }
+  }
+
+  if (detail && typeof detail === "object") {
+    const record = detail as Record<string, unknown>;
+    const message =
+      firstNonEmptyString(record.message) ||
+      firstNonEmptyString(record.error) ||
+      firstNonEmptyString(record.detail);
+    if (message) return message;
+
+    if (Array.isArray(record.errors)) {
+      for (const item of record.errors) {
+        const itemString = firstNonEmptyString(item);
+        if (itemString) return itemString;
+        if (item && typeof item === "object") {
+          const itemMessage = firstNonEmptyString(
+            (item as Record<string, unknown>).message
+          );
+          if (itemMessage) return itemMessage;
+        }
+      }
+    }
+  }
+
+  return fallback;
+}
+
+function extractErrorFromResponse(error: unknown, fallback: string): string {
+  if (error && typeof error === "object" && "detail" in (error as Record<string, unknown>)) {
+    return extractErrorMessage(
+      (error as Record<string, unknown>).detail,
+      fallback
+    );
+  }
+  return fallback;
+}
+
 export interface SelectionResponse {
   user_id: string;
   project_order: string[];
@@ -45,7 +102,7 @@ export async function getProjects(token: string): Promise<ProjectListResponse> {
 
   if (!response.ok) {
     const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
-    throw new Error(error.detail || "Failed to fetch projects");
+    throw new Error(extractErrorFromResponse(error, "Failed to fetch projects"));
   }
 
   return response.json();
@@ -65,7 +122,9 @@ export async function getProjectById(token: string, projectId: string): Promise<
 
   if (!response.ok) {
     const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
-    throw new Error(error.detail || "Failed to fetch project details");
+    throw new Error(
+      extractErrorFromResponse(error, "Failed to fetch project details")
+    );
   }
 
   return response.json();
@@ -85,7 +144,7 @@ export async function deleteProject(token: string, projectId: string): Promise<v
 
   if (!response.ok) {
     const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
-    throw new Error(error.detail || "Failed to delete project");
+    throw new Error(extractErrorFromResponse(error, "Failed to delete project"));
   }
 }
 
@@ -111,7 +170,9 @@ export async function getProjectSkillTimeline(
 
   if (!response.ok) {
     const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
-    throw new Error(error.detail || "Failed to fetch skills timeline");
+    throw new Error(
+      extractErrorFromResponse(error, "Failed to fetch skills timeline")
+    );
   }
 
   return response.json();
@@ -136,7 +197,7 @@ export async function updateProjectRole(
 
   if (!response.ok) {
     const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
-    throw new Error(error.detail || "Failed to update role");
+    throw new Error(extractErrorFromResponse(error, "Failed to update role"));
   }
 }
 
@@ -159,7 +220,9 @@ export async function updateProjectOverrides(
 
   if (!response.ok) {
     const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
-    throw new Error(error.detail || "Failed to update project overrides");
+    throw new Error(
+      extractErrorFromResponse(error, "Failed to update project overrides")
+    );
   }
 }
 
@@ -180,7 +243,9 @@ export async function generateProjectSkillSummary(
 
   if (!response.ok) {
     const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
-    throw new Error(error.detail || "Failed to generate skills summary");
+    throw new Error(
+      extractErrorFromResponse(error, "Failed to generate skills summary")
+    );
   }
 
   return response.json();
@@ -209,7 +274,9 @@ export async function appendUploadToProject(
 
   if (!response.ok) {
     const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
-    throw new Error(error.detail || "Failed to append files to project");
+    throw new Error(
+      extractErrorFromResponse(error, "Failed to append files to project")
+    );
   }
 
   return response.json();
@@ -245,7 +312,7 @@ export async function searchProjects(
 
   if (!response.ok) {
     const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
-    throw new Error(error.detail || "Search failed");
+    throw new Error(extractErrorFromResponse(error, "Search failed"));
   }
 
   return response.json();
