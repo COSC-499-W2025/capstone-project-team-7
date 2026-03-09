@@ -4,6 +4,9 @@ export type AppSettings = {
   defaultSavePath?: string | null;
   enableHighContrast?: boolean;
   enableAnalytics?: boolean;
+  contributionUserName?: string;
+  contributionUserEmail?: string;
+  contributionEmailAliases?: string;
 };
 
 const STORAGE_KEY = "app:settings:v1";
