@@ -1,0 +1,16 @@
+## Verification: Backend Logout Endpoint Call
+
+Confirmed: /api/auth/logout endpoint is called from frontend.
+
+```
+$ grep -n "/api/auth/logout" frontend/hooks/use-auth.ts frontend/lib/auth.ts
+frontend/lib/auth.ts:99:      fetch(`${getApiBaseUrl()}/api/auth/logout`, {
+```
+
+Location: frontend/lib/auth.ts line 99 (inside logout export)
+- Sends POST request with access_token in body
+- Called from logout() hook via callBackendLogout()
+
+Evidence:
+- frontend/lib/auth.ts: Added "export const logout" function with fetch to /api/auth/logout
+- frontend/hooks/use-auth.ts: Updated logout() to import and call callBackendLogout()

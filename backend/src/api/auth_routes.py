@@ -45,6 +45,10 @@ class PasswordResetConfirm(BaseModel):
     new_password: str = Field(..., description="New user password")
 
 
+class LogoutRequest(BaseModel):
+    access_token: str = Field(..., description="User access token to invalidate")
+
+
 def _to_session_response(session: Session) -> AuthSessionResponse:
     return AuthSessionResponse(
         user_id=session.user_id,
@@ -113,6 +117,15 @@ def reset_password(payload: PasswordResetConfirm) -> dict:
     try:
         SupabaseAuth().reset_password(payload.token, payload.new_password)
         return {"ok": True, "message": "Password has been reset."}
+    except AuthError as exc:
+        raise _raise_auth_error(exc)
+
+
+@router.post("/logout", status_code=status.HTTP_200_OK)
+def logout(payload: LogoutRequest) -> dict:
+    try:
+        SupabaseAuth().sign_out(payload.access_token)
+        return {"ok": True}
     except AuthError as exc:
         raise _raise_auth_error(exc)
 

@@ -1,0 +1,2 @@
+57:  if (sessionStorage.getItem("auth_logged_out")) return null;
+155:      !sessionStorage.getItem("auth_logged_out");
