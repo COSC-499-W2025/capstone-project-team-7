@@ -2,7 +2,7 @@
 # Provides models, services, and utilities for project scan CRUD operations
 # Endpoints are registered in this module's router
 
-from fastapi import APIRouter, HTTPException, status, Header, Depends, File, UploadFile, Query, Response
+from fastapi import APIRouter, HTTPException, status, Header, Depends, File, UploadFile, Query, Response, Request
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any, cast
 from datetime import datetime
@@ -947,6 +947,7 @@ class RoleUpdateResponse(BaseModel):
 class RankProjectRequest(BaseModel):
     """Request to compute ranking for a specific project."""
     user_email: Optional[str] = Field(None, description="User's email for contribution matching")
+    user_emails: Optional[List[str]] = Field(None, description="User email aliases for contribution matching")
     user_name: Optional[str] = Field(None, description="User's name for contribution matching")
 
 
@@ -2188,7 +2189,8 @@ async def delete_project(
 @router.post("/{project_id}/rank", response_model=RankProjectResponse, status_code=200)
 async def rank_project(
     project_id: str,
-    request: RankProjectRequest,
+    ranking_request: RankProjectRequest,
+    http_request: Request,
     user_id: str = Depends(verify_auth_token),
 ) -> RankProjectResponse:
     """
@@ -2197,6 +2199,7 @@ async def rank_project(
     - **project_id**: UUID of the project to rank
     - **user_email**: Optional email to match against contributors
     - **user_name**: Optional name to match against contributors
+    - **user_emails**: Optional email aliases to match against contributors
     
     Returns a score (0-100) with detailed component breakdown and human-readable reasons.
     
@@ -2297,11 +2300,28 @@ async def rank_project(
         # Use the CLI service to compute the score (single source of truth)
         # Run in thread pool since this is CPU-intensive computation
         analysis_service = ContributionAnalysisService()
+        header_email = http_request.headers.get("X-Contribution-User-Email")
+        header_name = http_request.headers.get("X-Contribution-User-Name")
+        header_aliases_raw = http_request.headers.get("X-Contribution-User-Email-Aliases", "")
+        header_aliases = [email.strip() for email in header_aliases_raw.split(",") if email.strip()]
+
+        requested_emails: List[str] = []
+        if ranking_request.user_emails:
+            requested_emails.extend(email.strip() for email in ranking_request.user_emails if email and email.strip())
+        if ranking_request.user_email and ranking_request.user_email.strip():
+            requested_emails.append(ranking_request.user_email.strip())
+        if header_email and header_email.strip():
+            requested_emails.append(header_email.strip())
+        requested_emails.extend(header_aliases)
+
+        deduped_emails = list(dict.fromkeys(requested_emails))
+
         ranking = await asyncio.to_thread(
             analysis_service.compute_contribution_score,
             metrics,
-            user_email=request.user_email,
-            user_name=request.user_name,
+            user_email=ranking_request.user_email or header_email,
+            user_emails=deduped_emails,
+            user_name=ranking_request.user_name or header_name,
         )
         
         # Log the computed score
