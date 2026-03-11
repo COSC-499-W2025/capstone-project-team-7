@@ -5,6 +5,7 @@ import type {
   PortfolioGenerateRequest,
   PortfolioGenerateResponse,
   PortfolioChronology,
+  PortfolioRefreshResponse,
 } from "@/types/portfolio";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
@@ -108,6 +109,22 @@ export async function generatePortfolioItem(
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(extractError(error, "Failed to generate portfolio item"));
+  }
+  return response.json();
+}
+
+export async function refreshPortfolio(
+  token: string,
+  includeDuplicates = true
+): Promise<PortfolioRefreshResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/portfolio/refresh`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ include_duplicates: includeDuplicates }),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(extractError(error, "Failed to refresh portfolio"));
   }
   return response.json();
 }

@@ -62,3 +62,34 @@ export interface PortfolioChronology {
   projects: TimelineItem[];
   skills: SkillsTimelineItem[];
 }
+
+export interface DuplicateFileInfo {
+  path: string;
+  project_id: string;
+  project_name: string;
+}
+
+export interface DuplicateGroup {
+  sha256: string;
+  file_count: number;
+  wasted_bytes: number;
+  files: DuplicateFileInfo[];
+}
+
+export interface DedupSummary {
+  duplicate_groups_count: number;
+  total_wasted_bytes: number;
+}
+
+export interface DedupReport {
+  summary: DedupSummary;
+  duplicate_groups: DuplicateGroup[];
+}
+
+export interface PortfolioRefreshResponse {
+  status: string;
+  projects_scanned: number;
+  total_files: number;
+  total_size_bytes: number;
+  dedup_report?: DedupReport | null;
+}

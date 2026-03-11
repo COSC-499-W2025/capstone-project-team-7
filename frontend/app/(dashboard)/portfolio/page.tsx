@@ -41,9 +41,10 @@ import {
   deletePortfolioItem,
   generatePortfolioItem,
   getPortfolioChronology,
+  refreshPortfolio,
 } from "@/lib/api/portfolio";
 import { getProjects, getSkills } from "@/lib/api/projects";
-import type { PortfolioItem, TimelineItem } from "@/types/portfolio";
+import type { PortfolioItem, PortfolioRefreshResponse, TimelineItem } from "@/types/portfolio";
 import type { ProjectMetadata } from "@/types/project";
 
 interface FormState {
@@ -108,6 +109,9 @@ export default function PortfolioPage() {
   // Skills section toggle
   const [skillsExpanded, setSkillsExpanded] = useState(true);
 
+  // Portfolio refresh result
+  const [refreshResult, setRefreshResult] = useState<PortfolioRefreshResponse | null>(null);
+
   const fetchAll = useCallback(async () => {
     const token = getStoredToken();
     if (!token) {
@@ -156,8 +160,18 @@ export default function PortfolioPage() {
     fetchProjects();
   }, [fetchAll, fetchProjects]);
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
+    const token = getStoredToken();
+    if (!token) return;
     setRefreshing(true);
+    setRefreshResult(null);
+    setError(null);
+    try {
+      const result = await refreshPortfolio(token);
+      setRefreshResult(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Portfolio refresh failed");
+    }
     fetchAll();
   };
 
@@ -305,7 +319,7 @@ export default function PortfolioPage() {
                 className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <RefreshCw size={18} className={refreshing ? "animate-spin" : ""} />
-                <span className="font-medium">Refresh</span>
+                <span className="font-medium">{refreshing ? "Refreshing…" : "Refresh"}</span>
               </button>
               <button
                 onClick={openCreateDialog}
@@ -333,6 +347,46 @@ export default function PortfolioPage() {
                 <h3 className="text-sm font-medium text-red-800">Error</h3>
                 <p className="mt-1 text-sm text-red-700">{error}</p>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Refresh result banner */}
+        {refreshResult && (
+          <div className="mx-8 mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex gap-3">
+                <svg className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                <div>
+                  <h3 className="text-sm font-medium text-green-800">Portfolio refreshed</h3>
+                  <p className="mt-0.5 text-sm text-green-700">
+                    {refreshResult.projects_scanned} project{refreshResult.projects_scanned !== 1 ? "s" : ""} scanned
+                    {" · "}{refreshResult.total_files} file{refreshResult.total_files !== 1 ? "s" : ""} indexed
+                  </p>
+                  {refreshResult.dedup_report && refreshResult.dedup_report.summary.duplicate_groups_count > 0 && (
+                    <p className="mt-1 text-sm text-green-700">
+                      {refreshResult.dedup_report.summary.duplicate_groups_count} duplicate group{refreshResult.dedup_report.summary.duplicate_groups_count !== 1 ? "s" : ""} found across projects
+                      {" ("}
+                      {(refreshResult.dedup_report.summary.total_wasted_bytes / 1024).toFixed(1)} KB wasted
+                      {")"}
+                    </p>
+                  )}
+                  {refreshResult.dedup_report && refreshResult.dedup_report.summary.duplicate_groups_count === 0 && (
+                    <p className="mt-1 text-sm text-green-700">No cross-project duplicates detected.</p>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={() => setRefreshResult(null)}
+                className="text-green-500 hover:text-green-700 flex-shrink-0"
+                aria-label="Dismiss"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
             </div>
           </div>
         )}
