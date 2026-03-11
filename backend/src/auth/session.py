@@ -25,6 +25,7 @@ AUTH_REFRESH_PATH = "/auth/v1/token?grant_type=refresh_token"
 AUTH_RECOVER_PATH = "/auth/v1/recover"
 AUTH_VERIFY_PATH = "/auth/v1/verify"
 AUTH_USER_PATH = "/auth/v1/user"
+AUTH_LOGOUT_PATH = "/auth/v1/logout"
 
 load_dotenv()
 
@@ -122,6 +123,12 @@ class SupabaseAuth:
             raise AuthError("Unable to verify recovery token.")
 
         self._request_with_auth("PUT", AUTH_USER_PATH, {"password": new_password}, access_token)
+
+    def sign_out(self, access_token: str) -> None:
+        """Invalidate a session and refresh token."""
+        if not access_token:
+            raise AuthError("Access token missing. Cannot sign out.")
+        self._request_with_auth("POST", AUTH_LOGOUT_PATH, {}, access_token)
 
     def _post(self, path: str, data: Dict[str, Any]) -> Dict[str, Any]:
         if requests is None:

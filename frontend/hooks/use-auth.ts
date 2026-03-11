@@ -9,6 +9,7 @@ import {
   clearStoredToken,
   getStoredRefreshToken,
   getStoredToken,
+  logout as callBackendLogout,
   setStoredRefreshToken,
   setStoredToken,
 } from "@/lib/auth";
@@ -168,6 +169,9 @@ export function useAuth(): UseAuthReturn {
   };
 
   const logout = (): void => {
+    // Call backend to invalidate refresh token (fire-and-forget)
+    callBackendLogout();
+
     // Set flag to prevent hydrateAuthState from recovering the session
     // after redirect to login page. Uses sessionStorage so it persists
     // across page navigations but clears when browser tab closes.
