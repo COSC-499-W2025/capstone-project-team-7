@@ -166,13 +166,15 @@ export default function PortfolioPage() {
     setRefreshing(true);
     setRefreshResult(null);
     setError(null);
+    let refreshErr: string | null = null;
     try {
       const result = await refreshPortfolio(token);
       setRefreshResult(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Portfolio refresh failed");
+      refreshErr = err instanceof Error ? err.message : "Portfolio refresh failed";
     }
-    fetchAll();
+    await fetchAll();
+    if (refreshErr) setError(refreshErr);
   };
 
   const openCreateDialog = () => {
