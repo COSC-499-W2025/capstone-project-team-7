@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { DocumentAnalysisTab } from "@/components/project/document-analysis-tab";
+import { OverviewTab } from "@/components/project/overview-tab";
 import { PdfAnalysisTab } from "@/components/project/pdf-analysis-tab";
 import { getStoredToken } from "@/lib/auth";
 import { consent as consentApi, secrets as secretsApi } from "@/lib/api";
@@ -1064,162 +1065,22 @@ export default function ProjectPage() {
               </TabsList>
 
               {/* Overview Main - Project Info & Stats */}
-              <TabsContent value="overview-main" className="space-y-6">
-                <Card className="bg-white border border-gray-200">
-                  <CardHeader className="border-b border-gray-200">
-                    <CardTitle className="text-xl font-bold text-gray-900">
-                      Project Information
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Project Name
-                        </p>
-                        <p className="text-sm font-semibold text-gray-900 mt-1">
-                          {projectName}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Path
-                        </p>
-                        <p className="text-sm font-mono text-gray-900 mt-1">
-                          {projectPath}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Scan Timestamp
-                        </p>
-                        <p className="text-sm text-gray-900 mt-1">{scanTimestamp}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Scan Duration
-                        </p>
-                        <p className="text-sm text-gray-900 mt-1">{scanDurationLabel}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="bg-white border border-gray-200">
-                  <CardHeader className="border-b border-gray-200">
-                    <CardTitle className="text-xl font-bold text-gray-900">
-                      Summary Statistics
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-6">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                      <div className="bg-gray-50 rounded-lg p-4 text-center">
-                        <p className="text-2xl font-bold text-gray-900">
-                          {filesProcessedLabel}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1 inline-flex items-center gap-1">
-                          Files Processed
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <button
-                                  type="button"
-                                  aria-label="Files processed info"
-                                  className="inline-flex items-center"
-                                >
-                                  <Info size={12} className="text-gray-400 cursor-help" />
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent side="top" className="max-w-xs text-xs">
-                                Only relevant files are counted. Files in excluded
-                                directories (node_modules, .git, __pycache__, etc.)
-                                and unsupported file types are filtered out during
-                                scanning.
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        </p>
-                      </div>
-                      <div className="bg-gray-50 rounded-lg p-4 text-center">
-                        <p className="text-2xl font-bold text-gray-900">
-                          {totalSizeLabel}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">Total Size</p>
-                      </div>
-                      <div className="bg-gray-50 rounded-lg p-4 text-center">
-                        <p className="text-2xl font-bold text-gray-900">
-                          {issuesFoundLabel}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">Issues Found</p>
-                      </div>
-                      <div className="bg-gray-50 rounded-lg p-4 text-center">
-                        <p className="text-2xl font-bold text-gray-900">
-                          {totalLinesLabel}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">Lines of Code</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <Card className="bg-white border border-gray-200">
-                    <CardHeader className="border-b border-gray-200">
-                      <CardTitle className="text-base font-bold text-gray-900 flex items-center gap-2">
-                        <GitBranch size={16} />
-                        Git Repositories
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-6">
-                      <p className="text-3xl font-bold text-gray-900">{gitRepos}</p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {gitRepos === 1 ? "Repository" : "Repositories"} detected
-                      </p>
-                      {scanData.contribution_metrics?.total_commits != null && (
-                        <div className="mt-3 pt-3 border-t border-gray-100 text-sm text-gray-600">
-                          <span className="font-medium">{scanData.contribution_metrics.total_commits}</span> commits
-                          {scanData.contribution_metrics.total_contributors != null && (
-                            <span> · <span className="font-medium">{scanData.contribution_metrics.total_contributors}</span> {scanData.contribution_metrics.total_contributors === 1 ? "contributor" : "contributors"}</span>
-                          )}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-
-                  <Card className="bg-white border border-gray-200">
-                    <CardHeader className="border-b border-gray-200">
-                      <CardTitle className="text-base font-bold text-gray-900">
-                        Media Files
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-6">
-                      <p className="text-3xl font-bold text-gray-900">{mediaFiles}</p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        Images, videos, and audio
-                      </p>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="bg-white border border-gray-200">
-                    <CardHeader className="border-b border-gray-200">
-                      <CardTitle className="text-base font-bold text-gray-900">
-                        Documents
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-6">
-                      <div className="flex gap-6">
-                        <div>
-                          <p className="text-3xl font-bold text-gray-900">{pdfDocs}</p>
-                          <p className="text-xs text-gray-500 mt-1">PDF files</p>
-                        </div>
-                        <div>
-                          <p className="text-3xl font-bold text-gray-900">{otherDocs}</p>
-                          <p className="text-xs text-gray-500 mt-1">Other docs</p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
+              <TabsContent value="overview-main">
+                <OverviewTab
+                  projectName={projectName}
+                  projectPath={projectPath}
+                  scanTimestamp={scanTimestamp}
+                  scanDurationLabel={scanDurationLabel}
+                  filesProcessedLabel={filesProcessedLabel}
+                  totalSizeLabel={totalSizeLabel}
+                  issuesFoundLabel={issuesFoundLabel}
+                  totalLinesLabel={totalLinesLabel}
+                  gitRepos={gitRepos}
+                  mediaFiles={mediaFiles}
+                  pdfDocs={pdfDocs}
+                  otherDocs={otherDocs}
+                  contributionMetrics={scanData.contribution_metrics as { total_commits?: number | null; total_contributors?: number | null } | undefined}
+                />
               </TabsContent>
 
               {/* Languages Breakdown */}
