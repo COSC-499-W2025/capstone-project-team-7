@@ -447,10 +447,10 @@ function OverviewTab({
       <ThumbnailSection project={project} onProjectUpdate={onProjectUpdate} />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="Total Files" value={totalFiles.toLocaleString()} />
-        <StatCard label="Total Lines" value={totalLines.toLocaleString()} />
-        <StatCard label="Languages" value={languages.length} />
-        <StatCard label="Size" value={formatBytes(bytesProcessed)} />
+        <StatCard variant="plain" label="Total Files" value={totalFiles.toLocaleString()} />
+        <StatCard variant="plain" label="Total Lines" value={totalLines.toLocaleString()} />
+        <StatCard variant="plain" label="Languages" value={languages.length} />
+        <StatCard variant="plain" label="Size" value={formatBytes(bytesProcessed)} />
       </div>
 
       {/* Role section */}
@@ -586,7 +586,7 @@ function OverviewTab({
 // Files Tab
 function FilesTab({ files }: { files: any[] }) {
   if (files.length === 0) {
-    return <EmptyState title="No files found" />;
+    return <EmptyState variant="plain" title="No files found" />;
   }
 
   return (
@@ -626,7 +626,7 @@ function LanguagesTab({ languages }: { languages: Record<string, any> }) {
   const entries = Object.entries(languages);
   
   if (entries.length === 0) {
-    return <EmptyState title="No language data available" />;
+    return <EmptyState variant="plain" title="No language data available" />;
   }
 
   return (
@@ -635,10 +635,10 @@ function LanguagesTab({ languages }: { languages: Record<string, any> }) {
         <div key={lang} className="p-4 bg-gray-50 rounded border border-gray-200">
           <h3 className="font-semibold text-lg mb-2">{lang}</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {data.files && <StatCard label="Files" value={data.files} />}
-            {data.lines && <StatCard label="Lines" value={data.lines.toLocaleString()} />}
-            {data.bytes && <StatCard label="Size" value={formatBytes(data.bytes)} />}
-            {data.percentage && <StatCard label="Percentage" value={`${data.percentage.toFixed(1)}%`} />}
+            {data.files && <StatCard variant="plain" label="Files" value={data.files} />}
+            {data.lines && <StatCard variant="plain" label="Lines" value={data.lines.toLocaleString()} />}
+            {data.bytes && <StatCard variant="plain" label="Size" value={formatBytes(data.bytes)} />}
+            {data.percentage && <StatCard variant="plain" label="Percentage" value={`${data.percentage.toFixed(1)}%`} />}
           </div>
         </div>
       ))}
@@ -649,7 +649,7 @@ function LanguagesTab({ languages }: { languages: Record<string, any> }) {
 // Git Tab
 function GitTab({ gitAnalysis }: { gitAnalysis: any }) {
   if (!gitAnalysis || Object.keys(gitAnalysis).length === 0) {
-    return <EmptyState title="No git analysis available" />;
+    return <EmptyState variant="plain" title="No git analysis available" />;
   }
 
   const commits = gitAnalysis.commits || [];
@@ -701,7 +701,7 @@ function SkillsTab({ skillsAnalysis }: { skillsAnalysis: any }) {
   const evidenceMap = useMemo(() => buildEvidenceMap(fullSkills), [fullSkills]);
 
   if (!skillsByCategory || Object.keys(skillsByCategory).length === 0) {
-    return <EmptyState title="No skills analysis available" />;
+    return <EmptyState variant="plain" title="No skills analysis available" />;
   }
 
   return (
@@ -737,7 +737,7 @@ function SkillsTab({ skillsAnalysis }: { skillsAnalysis: any }) {
 // Documents Tab
 function DocumentsTab({ documents }: { documents: any[] }) {
   if (documents.length === 0) {
-    return <EmptyState title="No documents analyzed" />;
+    return <EmptyState variant="plain" title="No documents analyzed" />;
   }
 
   return (
@@ -758,7 +758,7 @@ function DocumentsTab({ documents }: { documents: any[] }) {
 // Media Tab
 function MediaTab({ media }: { media: any[] }) {
   if (media.length === 0) {
-    return <EmptyState title="No media files analyzed" />;
+    return <EmptyState variant="plain" title="No media files analyzed" />;
   }
 
   return (

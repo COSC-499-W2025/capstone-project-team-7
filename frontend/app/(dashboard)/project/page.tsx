@@ -121,19 +121,6 @@ const toolsSubTabs = [
   { value: "duplicate-finder", label: "Duplicate Finder", icon: Copy },
 ] as const;
 
-const LANGUAGE_COLORS = [
-  "bg-gray-900",
-  "bg-blue-600",
-  "bg-emerald-600",
-  "bg-amber-500",
-  "bg-indigo-600",
-  "bg-rose-600",
-  "bg-teal-600",
-  "bg-slate-500",
-  "bg-orange-500",
-  "bg-purple-600",
-] as const;
-
 export default function ProjectPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -1059,7 +1046,7 @@ export default function ProjectPage() {
                   mediaFiles={mediaFiles}
                   pdfDocs={pdfDocs}
                   otherDocs={otherDocs}
-                  contributionMetrics={scanData.contribution_metrics as { total_commits?: number | null; total_contributors?: number | null } | undefined}
+                  contributionMetrics={scanData.contribution_metrics}
                 />
               </TabsContent>
 

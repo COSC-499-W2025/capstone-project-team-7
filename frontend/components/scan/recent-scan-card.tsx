@@ -72,10 +72,10 @@ export function RecentScanCard({ project }: RecentScanCardProps) {
       {/* Stats */}
       <div className="p-6">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <StatCard label="Total Files" value={totalFiles.toLocaleString()} />
-          <StatCard label="Total Lines" value={totalLines.toLocaleString()} />
-          <StatCard label="Languages" value={languages.length} />
-          <StatCard label="Size" value={formatBytes(bytesProcessed)} />
+          <StatCard variant="plain" className="bg-gray-50 rounded-lg" label="Total Files" value={totalFiles.toLocaleString()} />
+          <StatCard variant="plain" className="bg-gray-50 rounded-lg" label="Total Lines" value={totalLines.toLocaleString()} />
+          <StatCard variant="plain" className="bg-gray-50 rounded-lg" label="Languages" value={languages.length} />
+          <StatCard variant="plain" className="bg-gray-50 rounded-lg" label="Size" value={formatBytes(bytesProcessed)} />
         </div>
 
         {/* Languages */}

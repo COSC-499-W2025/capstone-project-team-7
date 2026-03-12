@@ -8,11 +8,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-
-interface ContributionMetrics {
-  total_commits?: number | null;
-  total_contributors?: number | null;
-}
+import type { ProjectContributionMetrics } from "@/types/project";
 
 interface OverviewTabProps {
   projectName: string;
@@ -27,7 +23,7 @@ interface OverviewTabProps {
   mediaFiles: number;
   pdfDocs: number;
   otherDocs: number;
-  contributionMetrics?: ContributionMetrics | null;
+  contributionMetrics?: Pick<ProjectContributionMetrics, "total_commits" | "total_contributors"> | null;
 }
 
 export function OverviewTab({

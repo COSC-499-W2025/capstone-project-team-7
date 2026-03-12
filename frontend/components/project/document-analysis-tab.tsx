@@ -305,7 +305,7 @@ export function DocumentAnalysisTab({
               value={searchQuery}
               onChange={setSearchQuery}
               placeholder="Search documents by name, title, or topic..."
-              className="flex-1 relative"
+              className="flex-1"
             />
             <div className="flex gap-2">
               <select

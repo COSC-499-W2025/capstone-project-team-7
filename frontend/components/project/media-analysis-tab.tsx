@@ -6,6 +6,7 @@ import { StatCard } from "@/components/ui/stat-card";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
+import { formatBytes } from "@/lib/format-utils";
 import { FileImage, Film } from "lucide-react";
 import { resolveMediaAnalysis } from "@/lib/project-media-analysis";
 import {
@@ -435,13 +436,3 @@ function formatDuration(seconds: number): string {
   const remainder = seconds % 60;
   return `${minutes}m ${remainder.toFixed(0)}s`;
 }
-
-function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
-}
-
-

@@ -2,25 +2,10 @@
 
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Users } from "lucide-react";
-
-interface Contributor {
-  name?: string;
-  commits?: number;
-  commit_percentage?: number;
-}
-
-interface ContributionMetrics {
-  project_type?: string | null;
-  total_commits?: number | null;
-  total_contributors?: number | null;
-  user_commit_share?: number | null;
-  contributors?: Contributor[];
-  project_start_date?: string | null;
-  project_end_date?: string | null;
-}
+import type { ProjectContributionMetrics } from "@/types/project";
 
 interface ContributionsTabProps {
-  contributionMetrics?: ContributionMetrics | null;
+  contributionMetrics?: ProjectContributionMetrics | null;
 }
 
 export function ContributionsTab({ contributionMetrics }: ContributionsTabProps) {

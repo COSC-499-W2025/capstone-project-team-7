@@ -1,5 +1,6 @@
 import { Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
 interface SearchInputProps {
   value: string;
@@ -19,7 +20,7 @@ export function SearchInput({
   const showClear = onClear && value.length > 0;
 
   return (
-    <div className={className ?? "relative"}>
+    <div className={cn("relative", className)}>
       <Search
         className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
         size={16}

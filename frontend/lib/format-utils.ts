@@ -2,7 +2,7 @@ export function isPlainObject(value: unknown): value is Record<string, unknown> 
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-export function formatPeriodLabel(value: string) {
+export function formatPeriodLabel(value: string): string {
   const [year, month] = value.split("-");
   if (!year || !month) return value;
   const date = new Date(Number(year), Number(month) - 1, 1);
@@ -29,12 +29,4 @@ export function formatCount(value: number | string): string {
   const numeric = Number(value);
   if (Number.isNaN(numeric)) return String(value);
   return numeric.toLocaleString();
-}
-
-export function formatConfidence(value: number | string): string {
-  const numeric = Number(value);
-  if (Number.isNaN(numeric)) return String(value);
-  if (numeric <= 1) return `${(numeric * 100).toFixed(0)}%`;
-  if (numeric <= 100) return `${numeric.toFixed(0)}%`;
-  return numeric.toFixed(2);
 }
