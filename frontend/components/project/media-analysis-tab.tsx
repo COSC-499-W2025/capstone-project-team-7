@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatCard } from "@/components/ui/stat-card";
 import { FileImage, Film } from "lucide-react";
 import { resolveMediaAnalysis } from "@/lib/project-media-analysis";
 import {
@@ -440,16 +441,6 @@ function formatBytes(bytes: number): string {
   return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
 }
 
-function StatCard({ label, value }: { label: string; value: string | number }) {
-  return (
-    <Card className="bg-white border border-gray-200">
-      <CardContent className="p-4">
-        <p className="text-xs text-gray-500">{label}</p>
-        <p className="text-lg font-semibold text-gray-900 mt-1">{value}</p>
-      </CardContent>
-    </Card>
-  );
-}
 
 function LoadingState() {
   return (

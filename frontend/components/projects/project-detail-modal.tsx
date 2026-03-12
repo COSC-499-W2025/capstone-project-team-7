@@ -11,6 +11,7 @@ import { updateProjectOverrides } from "@/lib/api/projects";
 import { api } from "@/lib/api";
 import { getStoredToken } from "@/lib/auth";
 import { getCategoryLabel, buildEvidenceMap } from "@/lib/skills-utils";
+import { StatCard } from "@/components/ui/stat-card";
 import { 
   FileCode, 
   Code2, 
@@ -782,15 +783,6 @@ function MediaTab({ media }: { media: any[] }) {
 }
 
 // Helper Components
-function StatCard({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="p-3 bg-white border border-gray-200 rounded">
-      <p className="text-xs text-gray-500 mb-1">{label}</p>
-      <p className="text-lg font-semibold">{value}</p>
-    </div>
-  );
-}
-
 function EmptyState({ message }: { message: string }) {
   return (
     <div className="text-center py-12">

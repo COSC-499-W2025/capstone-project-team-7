@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 import type { ProjectDetail, ProjectScanData } from "@/types/project";
 import { FileCode, Clock, FolderOpen, ExternalLink } from "lucide-react";
+import { StatCard } from "@/components/ui/stat-card";
 
 interface RecentScanCardProps {
   project: ProjectDetail;
@@ -17,14 +18,6 @@ function formatBytes(bytes: number): string {
   return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
 }
 
-function StatCard({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
-      <p className="text-xs text-gray-500 mb-1">{label}</p>
-      <p className="text-lg font-semibold text-gray-900">{value}</p>
-    </div>
-  );
-}
 
 export function RecentScanCard({ project }: RecentScanCardProps) {
   const scanData = (project.scan_data ?? {}) as ProjectScanData;
