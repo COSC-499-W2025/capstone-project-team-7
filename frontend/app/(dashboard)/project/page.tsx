@@ -12,6 +12,7 @@ import { DocumentAnalysisTab } from "@/components/project/document-analysis-tab"
 import { OverviewTab } from "@/components/project/overview-tab";
 import { LanguagesTab } from "@/components/project/languages-tab";
 import { SkillsTab } from "@/components/project/skills-tab";
+import { ProgressTab } from "@/components/project/progress-tab";
 import { PdfAnalysisTab } from "@/components/project/pdf-analysis-tab";
 import { getStoredToken } from "@/lib/auth";
 import { consent as consentApi, secrets as secretsApi } from "@/lib/api";
@@ -47,6 +48,12 @@ import type {
   SkillGapAnalysis,
 } from "@/types/project";
 import { getCategoryLabel, buildEvidenceMap } from "@/lib/skills-utils";
+import {
+  isPlainObject,
+  formatDurationSeconds,
+  formatBytes,
+  formatCount,
+} from "@/lib/format-utils";
 import {
   MediaAnalysisTab,
 } from "@/components/project/media-analysis-tab";
@@ -1146,193 +1153,16 @@ export default function ProjectPage() {
               </TabsContent>
 
               {/* Skills Progress */}
-              <TabsContent value="progress" className="space-y-6">
-                <Card className="bg-white border border-gray-200">
-                  <CardHeader className="border-b border-gray-200">
-                    <CardTitle className="text-xl font-bold text-gray-900">
-                      Skill Progression Timeline
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-6 space-y-4">
-                    {skillsLoading && (
-                      <p className="text-sm text-gray-500">
-                        Loading skill progression…
-                      </p>
-                    )}
-                    {!skillsLoading && skillsTimeline.length === 0 && (
-                      <p className="text-sm text-gray-500">
-                        {skillsNote || "No skill progression timeline available yet."}
-                      </p>
-                    )}
-
-                    {skillsTimeline.length > 0 && (
-                      <div className="space-y-4">
-                        <div className="flex flex-wrap gap-2">
-                          {topSkills.length > 0 ? (
-                            topSkills.map(([skill, count]) => (
-                              <span
-                                key={skill}
-                                className="px-3 py-1 rounded-full bg-gray-900 text-white text-xs font-semibold"
-                              >
-                                {skill} · {count}
-                              </span>
-                            ))
-                          ) : (
-                            <span className="text-xs text-gray-400">
-                              No top skills yet.
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="grid gap-4">
-                          {skillsTimeline.map((period) => (
-                            <div
-                              key={period.period_label}
-                              className="rounded-xl border border-gray-200 p-4"
-                            >
-                              <div className="flex flex-wrap items-center justify-between gap-3">
-                                <div>
-                                  <h4 className="text-base font-semibold text-gray-900">
-                                    {formatPeriodLabel(period.period_label)}
-                                  </h4>
-                                  <p className="text-xs text-gray-500">
-                                    {period.period_label}
-                                  </p>
-                                </div>
-                                <div className="flex flex-wrap gap-2 text-xs font-semibold">
-                                  <span className="px-2.5 py-1 rounded-full bg-gray-900 text-white">
-                                    {period.commits} commits
-                                  </span>
-                                  <span className="px-2.5 py-1 rounded-full bg-gray-100 text-gray-700">
-                                    {period.skill_count} skills
-                                  </span>
-                                  <span className="px-2.5 py-1 rounded-full bg-gray-100 text-gray-700">
-                                    {period.tests_changed} tests
-                                  </span>
-                                  <span className="px-2.5 py-1 rounded-full bg-gray-100 text-gray-700">
-                                    {period.contributors} contributors
-                                  </span>
-                                </div>
-                              </div>
-
-                              <div className="mt-3 flex flex-wrap gap-2">
-                                {period.activity_types.length > 0 ? (
-                                  period.activity_types.map((type) => (
-                                    <span
-                                      key={type}
-                                      className="px-2.5 py-1 rounded-full bg-gray-50 text-gray-600 text-xs font-semibold border border-gray-200"
-                                    >
-                                      {type}
-                                    </span>
-                                  ))
-                                ) : (
-                                  <span className="text-xs text-gray-400">
-                                    No activity labels
-                                  </span>
-                                )}
-                              </div>
-
-                              <div className="mt-4 grid gap-4 md:grid-cols-2">
-                                <div>
-                                  <p className="text-xs font-semibold text-gray-500 uppercase">
-                                    Top skills
-                                  </p>
-                                  <div className="mt-2 flex flex-wrap gap-2">
-                                    {period.top_skills.length > 0 ? (
-                                      period.top_skills.map((skill) => (
-                                        <span
-                                          key={skill}
-                                          className="px-2.5 py-1 rounded-full bg-gray-900 text-white text-xs"
-                                        >
-                                          {skill}
-                                        </span>
-                                      ))
-                                    ) : (
-                                      <span className="text-xs text-gray-400">
-                                        No skills recorded
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-
-                                <div>
-                                  <p className="text-xs font-semibold text-gray-500 uppercase">
-                                    Languages
-                                  </p>
-                                  <div className="mt-2 flex flex-wrap gap-2">
-                                    {Object.keys(period.period_languages).length > 0 ? (
-                                      Object.entries(period.period_languages).map(
-                                        ([lang, count]) => (
-                                          <span
-                                            key={lang}
-                                            className="px-2.5 py-1 rounded-full bg-gray-100 text-gray-700 text-xs"
-                                          >
-                                            {lang} · {count}
-                                          </span>
-                                        )
-                                      )
-                                    ) : (
-                                      <span className="text-xs text-gray-400">
-                                        No language data
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="mt-4 grid gap-4 md:grid-cols-2">
-                                <div>
-                                  <p className="text-xs font-semibold text-gray-500 uppercase">
-                                    Recent commits
-                                  </p>
-                                  <ul className="mt-2 space-y-1 text-sm text-gray-700">
-                                    {period.commit_messages
-                                      .slice(0, 4)
-                                      .map((msg, index) => (
-                                        <li
-                                          key={`${period.period_label}-commit-${index}`}
-                                          className="truncate"
-                                        >
-                                          {msg}
-                                        </li>
-                                      ))}
-                                    {period.commit_messages.length === 0 && (
-                                      <li className="text-xs text-gray-400">
-                                        No commit messages recorded.
-                                      </li>
-                                    )}
-                                  </ul>
-                                </div>
-
-                                <div>
-                                  <p className="text-xs font-semibold text-gray-500 uppercase">
-                                    Files touched
-                                  </p>
-                                  <ul className="mt-2 space-y-1 text-sm text-gray-700">
-                                    {period.top_files.slice(0, 4).map((file, index) => (
-                                      <li
-                                        key={`${period.period_label}-file-${index}`}
-                                        className="truncate"
-                                      >
-                                        {file}
-                                      </li>
-                                    ))}
-                                    {period.top_files.length === 0 && (
-                                      <li className="text-xs text-gray-400">
-                                        No file highlights recorded.
-                                      </li>
-                                    )}
-                                  </ul>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
+              <TabsContent value="progress">
+                <ProgressTab
+                  skillsTimeline={skillsTimeline}
+                  topSkills={topSkills}
+                  skillsLoading={skillsLoading}
+                  skillsNote={skillsNote}
+                  skillsSummary={skillsSummary}
+                  summaryLoading={summaryLoading}
+                  handleGenerateSummary={handleGenerateSummary}
+                />
               </TabsContent>
 
               {/* Contributions */}
@@ -2016,45 +1846,3 @@ export default function ProjectPage() {
   );
 }
 
-/** ------------------ Formatting helpers (from main) ------------------ */
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function formatPeriodLabel(value: string) {
-  const [year, month] = value.split("-");
-  if (!year || !month) return value;
-  const date = new Date(Number(year), Number(month) - 1, 1);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString(undefined, { year: "numeric", month: "short" });
-}
-
-function formatDurationSeconds(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds < 0) return "Not available";
-  if (seconds >= 10) return `${seconds.toFixed(0)} seconds`;
-  return `${seconds.toFixed(1)} seconds`;
-}
-
-function formatBytes(bytes: number): string {
-  if (!bytes || Number.isNaN(bytes)) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  const value = bytes / Math.pow(k, i);
-  return `${value.toFixed(1)} ${sizes[i]}`;
-}
-
-function formatCount(value: number | string): string {
-  const numeric = Number(value);
-  if (Number.isNaN(numeric)) return String(value);
-  return numeric.toLocaleString();
-}
-
-function formatConfidence(value: number | string): string {
-  const numeric = Number(value);
-  if (Number.isNaN(numeric)) return String(value);
-  if (numeric <= 1) return `${(numeric * 100).toFixed(0)}%`;
-  if (numeric <= 100) return `${numeric.toFixed(0)}%`;
-  return numeric.toFixed(2);
-}
