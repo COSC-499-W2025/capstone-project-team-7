@@ -106,20 +106,38 @@ class UserResumeService:
             return response
         raise UserResumeServiceError("Supabase operation returned None")
 
-    def list_resumes(self, user_id: str) -> List[Dict[str, Any]]:
-        """List all resumes for a user (metadata only)."""
+    def list_resumes(
+        self, user_id: str, *, limit: int = 20, offset: int = 0
+    ) -> tuple[List[Dict[str, Any]], int]:
+        """List resumes for a user with pagination.
+        
+        Returns:
+            Tuple of (records, total_count) for the requested page.
+        """
         if not user_id:
-            return []
+            return [], 0
 
         try:
+            # Get total count first
+            count_response = (
+                self.client.table("user_resumes")
+                .select("id", count="exact")
+                .eq("user_id", user_id)
+                .execute()
+            )
+            total = count_response.count if hasattr(count_response, 'count') and count_response.count is not None else 0
+
+            # Get paginated records
             response = (
                 self.client.table("user_resumes")
                 .select("id, name, template, is_latex_mode, metadata, created_at, updated_at")
                 .eq("user_id", user_id)
                 .order("updated_at", desc=True)
+                .range(offset, offset + limit - 1)
                 .execute()
             )
-            return self._handle_response(response.data)
+            records = self._handle_response(response.data)
+            return records, total
         except Exception as exc:
             raise UserResumeServiceError(f"Failed to list resumes: {exc}") from exc
 
