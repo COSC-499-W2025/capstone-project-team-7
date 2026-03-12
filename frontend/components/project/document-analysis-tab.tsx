@@ -2,11 +2,10 @@
 
 import React, { useMemo, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/search-input";
 import {
   FileText,
   FileType,
-  Search,
   FileIcon,
   BookOpen,
 } from "lucide-react";
@@ -302,16 +301,12 @@ export function DocumentAnalysisTab({
       <Card className="bg-white border border-gray-200">
         <CardContent className="p-4">
           <div className="flex flex-col sm:flex-row gap-3">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                type="text"
-                placeholder="Search documents by name, title, or topic..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
+            <SearchInput
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder="Search documents by name, title, or topic..."
+              className="flex-1 relative"
+            />
             <div className="flex gap-2">
               <select
                 value={selectedType}

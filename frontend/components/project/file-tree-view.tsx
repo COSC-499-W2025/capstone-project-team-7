@@ -1,14 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Input } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/search-input";
 import {
   ChevronRight,
   ChevronDown,
   Folder,
   FolderOpen,
   File,
-  Search,
   List,
   GitBranch,
 } from "lucide-react";
@@ -111,18 +110,11 @@ export function FileTreeView({
   return (
     <div className="space-y-3">
       {/* Search */}
-      <div className="relative">
-        <Search
-          className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-          size={16}
-        />
-        <Input
-          placeholder="Filter files…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-9 h-9 text-sm border-gray-300"
-        />
-      </div>
+      <SearchInput
+        value={search}
+        onChange={setSearch}
+        placeholder="Filter files…"
+      />
 
       {/* Summary + View Toggle */}
       <div className="flex items-center justify-between">
