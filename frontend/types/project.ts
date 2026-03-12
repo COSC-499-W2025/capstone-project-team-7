@@ -65,6 +65,9 @@ export interface ProjectScanSummary extends Record<string, unknown> {
 export interface ProjectSkillCategoryItem extends Record<string, unknown> {
   name?: string;
   proficiency?: string | number;
+  description?: string;
+  proficiency_score?: number;
+  category_label?: string;
 }
 
 export type ProjectSkillCategoryEntry = string | ProjectSkillCategoryItem;
@@ -74,6 +77,16 @@ export interface ProjectSkillsAnalysis extends Record<string, unknown> {
   success?: boolean;
   total_skills?: number;
   skills_by_category?: ProjectSkillsByCategory;
+  category_labels?: Record<string, string>;
+  skills?: Array<{
+    name?: string;
+    category?: string;
+    description?: string;
+    proficiency_score?: number;
+    evidence_count?: number;
+    evidence?: SkillEvidenceItem[];
+  }>;
+  skill_adoption_timeline?: SkillAdoptionEntry[];
 }
 
 export interface ProjectScanFile extends Record<string, unknown> {
@@ -240,4 +253,22 @@ export interface SearchResponse {
 
 export interface SkillsListResponse {
   skills: string[];
+}
+
+export interface SkillEvidenceItem {
+  type?: string;
+  description?: string;
+  file?: string;
+  line?: number | null;
+  confidence?: number;
+  timestamp?: string | null;
+}
+
+export interface SkillAdoptionEntry {
+  skill_name?: string;
+  category?: string;
+  first_used_period?: string;
+  file?: string;
+  current_proficiency?: number;
+  total_usage?: number;
 }
