@@ -61,6 +61,7 @@ vi.mock("@/lib/api/portfolio", () => ({
   deletePortfolioItem: vi.fn(),
   generatePortfolioItem: vi.fn(),
   getPortfolioChronology: vi.fn(),
+  refreshPortfolio: vi.fn(),
 }));
 
 vi.mock("@/lib/api/projects", () => ({
@@ -79,6 +80,7 @@ import {
   deletePortfolioItem,
   generatePortfolioItem,
   getPortfolioChronology,
+  refreshPortfolio,
 } from "@/lib/api/portfolio";
 import { getProjects, getSkills } from "@/lib/api/projects";
 import { getStoredToken } from "@/lib/auth";
@@ -92,6 +94,7 @@ const mockGetPortfolioChronology = getPortfolioChronology as Mock;
 const mockGetProjects = getProjects as Mock;
 const mockGetSkills = getSkills as Mock;
 const mockGetStoredToken = getStoredToken as Mock;
+const mockRefreshPortfolio = refreshPortfolio as Mock;
 
 const confirmMock = vi.fn();
 Object.defineProperty(window, "confirm", { value: confirmMock, writable: true });
@@ -134,6 +137,16 @@ beforeEach(() => {
     summary: "Generated summary.",
     evidence: "Generated evidence.",
     persisted: false,
+  });
+  mockRefreshPortfolio.mockResolvedValue({
+    status: "completed",
+    projects_scanned: 3,
+    total_files: 42,
+    total_size_bytes: 102400,
+    dedup_report: {
+      summary: { duplicate_groups_count: 0, total_wasted_bytes: 0 },
+      duplicate_groups: [],
+    },
   });
 });
 
@@ -261,7 +274,15 @@ describe("PortfolioPage", () => {
 
   // --- Refresh ---
 
-  it("re-fetches data when Refresh is clicked", async () => {
+  it("calls refreshPortfolio when Refresh is clicked", async () => {
+    await renderAndWait();
+    await userEvent.click(screen.getByText("Refresh"));
+    await waitFor(() => {
+      expect(mockRefreshPortfolio).toHaveBeenCalledWith("test-token");
+    });
+  });
+
+  it("re-fetches portfolio data after refresh completes", async () => {
     await renderAndWait();
     expect(mockListPortfolioItems).toHaveBeenCalledTimes(1);
 
@@ -270,6 +291,179 @@ describe("PortfolioPage", () => {
     await waitFor(() => {
       expect(mockListPortfolioItems).toHaveBeenCalledTimes(2);
     });
+  });
+
+  it("shows 'Refreshing…' label while refresh is in progress", async () => {
+    let resolveRefresh!: (v: unknown) => void;
+    mockRefreshPortfolio.mockReturnValue(new Promise((res) => { resolveRefresh = res; }));
+
+    await renderAndWait();
+    await userEvent.click(screen.getByText("Refresh"));
+
+    expect(screen.getByText("Refreshing…")).toBeInTheDocument();
+
+    resolveRefresh({
+      status: "completed",
+      projects_scanned: 1,
+      total_files: 5,
+      total_size_bytes: 1024,
+      dedup_report: null,
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("Refreshing…")).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows success banner with project and file counts after refresh", async () => {
+    await renderAndWait();
+    await userEvent.click(screen.getByText("Refresh"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Portfolio refreshed")).toBeInTheDocument();
+      expect(screen.getByText(/3 projects scanned/)).toBeInTheDocument();
+      expect(screen.getByText(/42 files indexed/)).toBeInTheDocument();
+    });
+  });
+
+  it("shows 'no duplicates' message when dedup report has 0 groups", async () => {
+    await renderAndWait();
+    await userEvent.click(screen.getByText("Refresh"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/No cross-project duplicates detected/i)).toBeInTheDocument();
+    });
+  });
+
+  it("shows duplicate summary when duplicates are found", async () => {
+    mockRefreshPortfolio.mockResolvedValue({
+      status: "completed",
+      projects_scanned: 2,
+      total_files: 20,
+      total_size_bytes: 204800,
+      dedup_report: {
+        summary: { duplicate_groups_count: 3, total_wasted_bytes: 30720 },
+        duplicate_groups: [],
+      },
+    });
+
+    await renderAndWait();
+    await userEvent.click(screen.getByText("Refresh"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/3 duplicate groups? found across projects/i)).toBeInTheDocument();
+      expect(screen.getByText(/30\.0 KB wasted/i)).toBeInTheDocument();
+    });
+  });
+
+  it("does not show dedup section when dedup_report is null", async () => {
+    mockRefreshPortfolio.mockResolvedValue({
+      status: "completed",
+      projects_scanned: 1,
+      total_files: 5,
+      total_size_bytes: 512,
+      dedup_report: null,
+    });
+
+    await renderAndWait();
+    await userEvent.click(screen.getByText("Refresh"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Portfolio refreshed")).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/duplicate/i)).not.toBeInTheDocument();
+  });
+
+  it("dismisses refresh result banner when X is clicked", async () => {
+    await renderAndWait();
+    await userEvent.click(screen.getByText("Refresh"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Portfolio refreshed")).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: /Dismiss/i }));
+
+    expect(screen.queryByText("Portfolio refreshed")).not.toBeInTheDocument();
+  });
+
+  it("clears previous refresh result when a new refresh starts", async () => {
+    await renderAndWait();
+    await userEvent.click(screen.getByText("Refresh"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Portfolio refreshed")).toBeInTheDocument();
+    });
+
+    // Trigger a second refresh that hangs so we can observe mid-flight state
+    let resolveSecond!: (v: unknown) => void;
+    mockRefreshPortfolio.mockReturnValue(new Promise((res) => { resolveSecond = res; }));
+    await userEvent.click(screen.getByText("Refresh"));
+
+    // Banner should be cleared while the second refresh is running
+    expect(screen.queryByText("Portfolio refreshed")).not.toBeInTheDocument();
+
+    resolveSecond({ status: "completed", projects_scanned: 0, total_files: 0, total_size_bytes: 0, dedup_report: null });
+  });
+
+  it("shows error banner when refreshPortfolio fails", async () => {
+    mockRefreshPortfolio.mockRejectedValue(new Error("Refresh failed"));
+
+    await renderAndWait();
+    await userEvent.click(screen.getByText("Refresh"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Refresh failed")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Portfolio refreshed")).not.toBeInTheDocument();
+  });
+
+  it("still re-fetches data even when refreshPortfolio fails", async () => {
+    mockRefreshPortfolio.mockRejectedValue(new Error("Network error"));
+
+    await renderAndWait();
+    expect(mockListPortfolioItems).toHaveBeenCalledTimes(1);
+
+    await userEvent.click(screen.getByText("Refresh"));
+
+    await waitFor(() => {
+      expect(mockListPortfolioItems).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("uses singular 'project' when only 1 project scanned", async () => {
+    mockRefreshPortfolio.mockResolvedValue({
+      status: "completed",
+      projects_scanned: 1,
+      total_files: 10,
+      total_size_bytes: 1024,
+      dedup_report: { summary: { duplicate_groups_count: 0, total_wasted_bytes: 0 }, duplicate_groups: [] },
+    });
+
+    await renderAndWait();
+    await userEvent.click(screen.getByText("Refresh"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/1 project scanned/)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/1 projects/)).not.toBeInTheDocument();
+  });
+
+  it("uses singular 'file' when only 1 file indexed", async () => {
+    mockRefreshPortfolio.mockResolvedValue({
+      status: "completed",
+      projects_scanned: 2,
+      total_files: 1,
+      total_size_bytes: 512,
+      dedup_report: { summary: { duplicate_groups_count: 0, total_wasted_bytes: 0 }, duplicate_groups: [] },
+    });
+
+    await renderAndWait();
+    await userEvent.click(screen.getByText("Refresh"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/1 file indexed/)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/1 files/)).not.toBeInTheDocument();
   });
 
   // --- Create dialog ---
