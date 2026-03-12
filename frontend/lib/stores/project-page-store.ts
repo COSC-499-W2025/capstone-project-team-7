@@ -3,7 +3,7 @@
 import { create } from "zustand";
 import type { ProjectDetail } from "@/types/project";
 
-export type MainTabValue = "overview" | "skills" | "content" | "tools";
+export type MainTabValue = "overview" | "skills" | "content" | "ai-analysis" | "tools";
 export type ToolsTabValue =
   | "tools-main"
   | "file-browser"

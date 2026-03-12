@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { DocumentAnalysisTab } from "@/components/project/document-analysis-tab";
 import { PdfAnalysisTab } from "@/components/project/pdf-analysis-tab";
 import { getStoredToken } from "@/lib/auth";
+import { consent as consentApi, secrets as secretsApi } from "@/lib/api";
 import {CodeAnalysisTab} from "@/components/project/code-analysis-tab";
 import { GitAnalysisTab } from "@/components/project/git-analysis-tab";
 import { DuplicateFinderTab } from "@/components/project/duplicate-finder-tab";
@@ -76,6 +77,7 @@ import {
   AlertCircle,
   Download,
   Info,
+  Sparkles,
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
@@ -89,11 +91,11 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-// Main section tabs (4 sections)
 const mainTabs = [
   { value: "overview", label: "Overview & Analysis", icon: LayoutDashboard },
   { value: "skills", label: "Skills & Progress", icon: Award },
   { value: "content", label: "Content Analysis", icon: BookOpen },
+  { value: "ai-analysis", label: "AI Analysis", icon: Sparkles },
   { value: "tools", label: "Tools & Export", icon: Wrench },
 ] as const;
 
@@ -191,6 +193,11 @@ export default function ProjectPage() {
   const [skillsNote, setSkillsNote] = useState<string | null>(null);
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [summaryLoading, setSummaryLoading] = useState(false);
+  const [aiEligibilityChecked, setAiEligibilityChecked] = useState(false);
+  const [aiEligibilityLoading, setAiEligibilityLoading] = useState(false);
+  const [externalServicesConsentEnabled, setExternalServicesConsentEnabled] = useState(false);
+  const [openAiKeyValid, setOpenAiKeyValid] = useState(false);
+  const [aiEligibilityMessage, setAiEligibilityMessage] = useState<string | null>(null);
 
   // Highlighted skills state
   const [highlightedSkills, setHighlightedSkills] = useState<string[]>([]);
@@ -321,6 +328,84 @@ export default function ProjectPage() {
     });
   };
 
+  const checkAiEligibility = useCallback(async (): Promise<boolean> => {
+    const token = getStoredToken();
+    if (!token) {
+      setExternalServicesConsentEnabled(false);
+      setOpenAiKeyValid(false);
+      setAiEligibilityMessage(
+        "AI analysis is unavailable because you are not logged in. Sign in from Settings and try again."
+      );
+      setAiEligibilityChecked(true);
+      return false;
+    }
+
+    setAiEligibilityLoading(true);
+    setAiEligibilityMessage(null);
+
+    try {
+      const consentResult = await consentApi.get();
+      if (!consentResult.ok) {
+        const authFailure = consentResult.status === 401 || consentResult.status === 403;
+        setExternalServicesConsentEnabled(false);
+        setOpenAiKeyValid(false);
+        setAiEligibilityMessage(
+          authFailure
+            ? "AI analysis is unavailable because your session expired. Log in again from Settings."
+            : consentResult.error ||
+                "Unable to load consent status. Open Settings and verify your consent preferences."
+        );
+        return false;
+      }
+
+      const externalConsent = Boolean(consentResult.data.external_services);
+      setExternalServicesConsentEnabled(externalConsent);
+
+      if (!externalConsent) {
+        setOpenAiKeyValid(false);
+        setAiEligibilityMessage(
+          "AI analysis is disabled because External Data consent is not enabled. Enable it in Settings > Consent."
+        );
+        return false;
+      }
+
+      const verifyResult = await secretsApi.verify();
+      if (!verifyResult.ok) {
+        setOpenAiKeyValid(false);
+        setAiEligibilityMessage(
+          verifyResult.error ||
+            "Unable to verify your OpenAI API key. Open Settings and verify the key before running AI analysis."
+        );
+        return false;
+      }
+
+      if (!verifyResult.data.valid) {
+        setOpenAiKeyValid(false);
+        setAiEligibilityMessage(
+          verifyResult.data.message ||
+            "Your OpenAI API key is not valid. Update it in Settings before running AI analysis."
+        );
+        return false;
+      }
+
+      setOpenAiKeyValid(true);
+      setAiEligibilityMessage(null);
+      return true;
+    } catch (err) {
+      setExternalServicesConsentEnabled(false);
+      setOpenAiKeyValid(false);
+      setAiEligibilityMessage(
+        err instanceof Error
+          ? err.message
+          : "Unable to validate AI analysis prerequisites. Try again from the AI Analysis tab."
+      );
+      return false;
+    } finally {
+      setAiEligibilityLoading(false);
+      setAiEligibilityChecked(true);
+    }
+  }, []);
+
   // Load available role profiles when skills tab is active
   useEffect(() => {
     if (activeMainTab !== "skills" || gapRoles.length > 0) return;
@@ -388,6 +473,12 @@ export default function ProjectPage() {
       cancelled = true;
     };
   }, [projectId, project?.id]);
+
+  useEffect(() => {
+    if (activeMainTab === "ai-analysis") {
+      void checkAiEligibility();
+    }
+  }, [activeMainTab, checkAiEligibility]);
 
   /** Build and trigger an HTML report download for the current project. */
   const handleExportHtml = useCallback(async () => {
@@ -849,6 +940,9 @@ export default function ProjectPage() {
     setActiveToolsTab(nextTab);
   }, []);
 
+  const aiEligibilityReady =
+    externalServicesConsentEnabled && openAiKeyValid;
+
   const handleGenerateSummary = async () => {
     const effectiveProjectId = projectId ?? project?.id ?? null;
     if (!effectiveProjectId) return;
@@ -856,6 +950,15 @@ export default function ProjectPage() {
     const token = getStoredToken();
     if (!token) {
       setSkillsNote("Not authenticated. Please log in through Settings.");
+      return;
+    }
+
+    const eligible = await checkAiEligibility();
+    if (!eligible) {
+      setSkillsNote(
+        aiEligibilityMessage ||
+          "AI analysis could not run because consent or key requirements are not met."
+      );
       return;
     }
 
@@ -1760,97 +1863,6 @@ export default function ProjectPage() {
                   </CardContent>
                 </Card>
 
-                <Card className="bg-white border border-gray-200">
-                  <CardHeader className="border-b border-gray-200 flex flex-row items-center justify-between">
-                    <div>
-                      <CardTitle className="text-xl font-bold text-gray-900">
-                        AI Summary
-                      </CardTitle>
-                      <p className="text-xs text-gray-500 mt-1">
-                        Summarize skill growth from the timeline.
-                      </p>
-                    </div>
-                    <button
-                      onClick={handleGenerateSummary}
-                      disabled={summaryLoading}
-                      className="px-3 py-2 text-xs font-semibold rounded-md bg-gray-900 text-white disabled:opacity-60"
-                    >
-                      {summaryLoading
-                        ? "Generating…"
-                        : skillsSummary
-                        ? "Regenerate"
-                        : "Generate"}
-                    </button>
-                  </CardHeader>
-                  <CardContent className="p-6 space-y-4">
-                    {skillsNote && <p className="text-sm text-gray-500">{skillsNote}</p>}
-                    {skillsSummary && (
-                      <div className="space-y-4">
-                        <div>
-                          <p className="text-sm font-semibold text-gray-700">Overview</p>
-                          <p className="text-sm text-gray-700 mt-1">
-                            {skillsSummary.overview}
-                          </p>
-                          {skillsSummary.validation_warning && (
-                            <p className="text-xs text-amber-600 mt-2">
-                              {skillsSummary.validation_warning}
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="grid gap-4 md:grid-cols-2">
-                          <div>
-                            <p className="text-sm font-semibold text-gray-700">
-                              Timeline highlights
-                            </p>
-                            <ul className="mt-2 space-y-1 text-sm text-gray-700 list-disc list-inside">
-                              {skillsSummary.timeline.map((item, index) => (
-                                <li key={`timeline-${index}`}>{item}</li>
-                              ))}
-                              {skillsSummary.timeline.length === 0 && (
-                                <li className="text-xs text-gray-400">
-                                  No timeline highlights.
-                                </li>
-                              )}
-                            </ul>
-                          </div>
-
-                          <div>
-                            <p className="text-sm font-semibold text-gray-700">
-                              Skills focus
-                            </p>
-                            <ul className="mt-2 space-y-1 text-sm text-gray-700 list-disc list-inside">
-                              {skillsSummary.skills_focus.map((item, index) => (
-                                <li key={`skills-${index}`}>{item}</li>
-                              ))}
-                              {skillsSummary.skills_focus.length === 0 && (
-                                <li className="text-xs text-gray-400">
-                                  No skill focus notes.
-                                </li>
-                              )}
-                            </ul>
-                          </div>
-                        </div>
-
-                        <div>
-                          <p className="text-sm font-semibold text-gray-700">
-                            Suggested next steps
-                          </p>
-                          <ul className="mt-2 space-y-1 text-sm text-gray-700 list-disc list-inside">
-                            {skillsSummary.suggested_next_steps.map((item, index) => (
-                              <li key={`steps-${index}`}>{item}</li>
-                            ))}
-                            {skillsSummary.suggested_next_steps.length === 0 && (
-                              <li className="text-xs text-gray-400">
-                                No suggestions yet.
-                              </li>
-                            )}
-                          </ul>
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
               </TabsContent>
 
               {/* Contributions */}
@@ -1952,6 +1964,159 @@ export default function ProjectPage() {
                 </Card>
               </TabsContent>
             </Tabs>
+          </TabsContent>
+
+          <TabsContent value="ai-analysis" className="space-y-6">
+            <Card className="bg-white border border-gray-200">
+              <CardHeader className="border-b border-gray-200">
+                <CardTitle className="text-xl font-bold text-gray-900">
+                  AI Analysis Status
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                    <p className="text-xs font-semibold text-gray-500 uppercase">External Data Consent</p>
+                    <p className={`mt-2 text-sm font-medium ${externalServicesConsentEnabled ? "text-green-700" : "text-gray-600"}`}>
+                      {externalServicesConsentEnabled ? "Enabled" : "Not enabled"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                    <p className="text-xs font-semibold text-gray-500 uppercase">OpenAI API Key</p>
+                    <p className={`mt-2 text-sm font-medium ${openAiKeyValid ? "text-green-700" : "text-gray-600"}`}>
+                      {openAiKeyValid ? "Verified" : "Missing or invalid"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void checkAiEligibility()}
+                    disabled={aiEligibilityLoading}
+                    className="border-gray-300"
+                  >
+                    {aiEligibilityLoading ? "Checking..." : "Re-check requirements"}
+                  </Button>
+                  <Link href="/settings" className="text-sm text-gray-700 underline">
+                    Open Settings
+                  </Link>
+                </div>
+
+                {!aiEligibilityChecked && (
+                  <p className="text-sm text-gray-500">
+                    Open this tab to validate consent and API key requirements.
+                  </p>
+                )}
+
+                {aiEligibilityChecked && !aiEligibilityReady && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                    <p className="text-sm text-amber-800">
+                      {aiEligibilityMessage ||
+                        "AI analysis is currently blocked. Enable External Data consent and verify your OpenAI API key in Settings."}
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="bg-white border border-gray-200">
+              <CardHeader className="border-b border-gray-200 flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-xl font-bold text-gray-900">
+                    AI Summary
+                  </CardTitle>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Summarize skill growth from the timeline.
+                  </p>
+                </div>
+                <button
+                  onClick={handleGenerateSummary}
+                  disabled={summaryLoading || aiEligibilityLoading || !aiEligibilityReady}
+                  className="px-3 py-2 text-xs font-semibold rounded-md bg-gray-900 text-white disabled:opacity-60"
+                >
+                  {summaryLoading
+                    ? "Generating..."
+                    : skillsSummary
+                    ? "Regenerate"
+                    : "Generate"}
+                </button>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4">
+                {skillsNote && <p className="text-sm text-gray-500">{skillsNote}</p>}
+                {!aiEligibilityReady && (
+                  <p className="text-sm text-gray-500">
+                    AI summary generation stays disabled until External Data consent is enabled and a valid OpenAI API key is verified in Settings.
+                  </p>
+                )}
+                {skillsSummary && (
+                  <div className="space-y-4">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-700">Overview</p>
+                      <p className="text-sm text-gray-700 mt-1">
+                        {skillsSummary.overview}
+                      </p>
+                      {skillsSummary.validation_warning && (
+                        <p className="text-xs text-amber-600 mt-2">
+                          {skillsSummary.validation_warning}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-700">
+                          Timeline highlights
+                        </p>
+                        <ul className="mt-2 space-y-1 text-sm text-gray-700 list-disc list-inside">
+                          {skillsSummary.timeline.map((item, index) => (
+                            <li key={`timeline-${index}`}>{item}</li>
+                          ))}
+                          {skillsSummary.timeline.length === 0 && (
+                            <li className="text-xs text-gray-400">
+                              No timeline highlights.
+                            </li>
+                          )}
+                        </ul>
+                      </div>
+
+                      <div>
+                        <p className="text-sm font-semibold text-gray-700">
+                          Skills focus
+                        </p>
+                        <ul className="mt-2 space-y-1 text-sm text-gray-700 list-disc list-inside">
+                          {skillsSummary.skills_focus.map((item, index) => (
+                            <li key={`skills-${index}`}>{item}</li>
+                          ))}
+                          {skillsSummary.skills_focus.length === 0 && (
+                            <li className="text-xs text-gray-400">
+                              No skill focus notes.
+                            </li>
+                          )}
+                        </ul>
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-sm font-semibold text-gray-700">
+                        Suggested next steps
+                      </p>
+                      <ul className="mt-2 space-y-1 text-sm text-gray-700 list-disc list-inside">
+                        {skillsSummary.suggested_next_steps.map((item, index) => (
+                          <li key={`steps-${index}`}>{item}</li>
+                        ))}
+                        {skillsSummary.suggested_next_steps.length === 0 && (
+                          <li className="text-xs text-gray-400">
+                            No suggestions yet.
+                          </li>
+                        )}
+                      </ul>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* ============================================
