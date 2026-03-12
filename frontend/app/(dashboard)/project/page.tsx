@@ -13,6 +13,7 @@ import { OverviewTab } from "@/components/project/overview-tab";
 import { LanguagesTab } from "@/components/project/languages-tab";
 import { SkillsTab } from "@/components/project/skills-tab";
 import { ProgressTab } from "@/components/project/progress-tab";
+import { ContributionsTab } from "@/components/project/contributions-tab";
 import { PdfAnalysisTab } from "@/components/project/pdf-analysis-tab";
 import { getStoredToken } from "@/lib/auth";
 import { consent as consentApi, secrets as secretsApi } from "@/lib/api";
@@ -1167,101 +1168,7 @@ export default function ProjectPage() {
 
               {/* Contributions */}
               <TabsContent value="contributions">
-                <Card className="bg-white border border-gray-200">
-                  <CardHeader className="border-b border-gray-200">
-                    <CardTitle className="text-xl font-bold text-gray-900">
-                      Contribution Metrics
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-6">
-                    {!scanData.contribution_metrics ? (
-                      <p className="text-sm text-gray-500">
-                        No contribution data available for this project.
-                      </p>
-                    ) : (
-                      <div className="space-y-6">
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                          <div className="bg-gray-50 rounded-lg p-4 text-center">
-                            <p className="text-2xl font-bold text-gray-900 capitalize">
-                              {scanData.contribution_metrics.project_type ?? "Unknown"}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-1">Project Type</p>
-                          </div>
-                          <div className="bg-gray-50 rounded-lg p-4 text-center">
-                            <p className="text-2xl font-bold text-gray-900">
-                              {scanData.contribution_metrics.total_commits ?? 0}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-1">Total Commits</p>
-                          </div>
-                          <div className="bg-gray-50 rounded-lg p-4 text-center">
-                            <p className="text-2xl font-bold text-gray-900">
-                              {scanData.contribution_metrics.total_contributors ?? 1}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-1">Contributors</p>
-                          </div>
-                          <div className="bg-gray-50 rounded-lg p-4 text-center">
-                            <p className="text-2xl font-bold text-gray-900">
-                              {scanData.contribution_metrics.user_commit_share != null
-                                ? `${(scanData.contribution_metrics.user_commit_share * 100).toFixed(0)}%`
-                                : "—"}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-1">Your Share</p>
-                          </div>
-                        </div>
-
-                        {scanData.contribution_metrics.contributors && 
-                         scanData.contribution_metrics.contributors.length > 0 && (
-                          <div>
-                            <h4 className="text-sm font-semibold text-gray-900 mb-3">
-                              Top Contributors
-                            </h4>
-                            <div className="space-y-3">
-                              {scanData.contribution_metrics.contributors
-                                .slice(0, 5)
-                                .map((contributor: { name?: string; commits?: number; commit_percentage?: number }) => (
-                                <div key={contributor.name ?? "unknown"} className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <Users size={14} className="text-gray-400" />
-                                    <span className="text-sm font-medium text-gray-900">{contributor.name ?? "Unknown"}</span>
-                                  </div>
-                                  <div className="text-sm text-gray-500">
-                                    {contributor.commits ?? 0} commits
-                                    {contributor.commit_percentage != null && (
-                                      <span className="ml-2 text-gray-400">
-                                        ({contributor.commit_percentage.toFixed(0)}%)
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {scanData.contribution_metrics.project_start_date && (
-                          <div className="pt-4 border-t border-gray-200">
-                            <div className="flex gap-8 text-sm">
-                              <div>
-                                <span className="text-gray-500">Started:</span>{" "}
-                                <span className="text-gray-900">
-                                  {new Date(scanData.contribution_metrics.project_start_date).toLocaleDateString()}
-                                </span>
-                              </div>
-                              {scanData.contribution_metrics.project_end_date && (
-                                <div>
-                                  <span className="text-gray-500">Last activity:</span>{" "}
-                                  <span className="text-gray-900">
-                                    {new Date(scanData.contribution_metrics.project_end_date).toLocaleDateString()}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                <ContributionsTab contributionMetrics={scanData.contribution_metrics} />
               </TabsContent>
             </Tabs>
           </TabsContent>
