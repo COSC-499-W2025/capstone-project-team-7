@@ -143,6 +143,38 @@ AVAILABLE_TEMPLATES: List[ResumeTemplateMeta] = [
 
 
 # ============================================================================
+# Helper Functions
+# ============================================================================
+
+def _build_resume_record(record: Dict[str, Any]) -> UserResumeRecord:
+    """Build a UserResumeRecord from a database record dict."""
+    return UserResumeRecord(
+        id=record["id"],
+        name=record.get("name") or "Untitled Resume",
+        template=record.get("template") or "jake",
+        is_latex_mode=record.get("is_latex_mode", True),
+        metadata=record.get("metadata") or {},
+        created_at=record.get("created_at"),
+        updated_at=record.get("updated_at"),
+        latex_content=record.get("latex_content"),
+        structured_data=record.get("structured_data") or {},
+    )
+
+
+def _build_resume_summary(record: Dict[str, Any]) -> UserResumeSummary:
+    """Build a UserResumeSummary from a database record dict."""
+    return UserResumeSummary(
+        id=record["id"],
+        name=record.get("name") or "Untitled Resume",
+        template=record.get("template") or "jake",
+        is_latex_mode=record.get("is_latex_mode", True),
+        metadata=record.get("metadata") or {},
+        created_at=record.get("created_at"),
+        updated_at=record.get("updated_at"),
+    )
+
+
+# ============================================================================
 # Routes
 # ============================================================================
 
@@ -177,7 +209,7 @@ def list_user_resumes(
     """List all resumes for the authenticated user."""
     try:
         service.apply_access_token(auth.access_token)
-        records = service.list_resumes(auth.user_id)
+        records, total = service.list_resumes(auth.user_id, limit=limit, offset=offset)
     except UserResumeServiceError as exc:
         logger.exception("Failed to list user resumes")
         raise HTTPException(
@@ -185,20 +217,7 @@ def list_user_resumes(
             detail={"code": "resume_list_error", "message": str(exc)},
         ) from exc
 
-    total = len(records)
-    items = records[offset : offset + limit]
-    summaries = [
-        UserResumeSummary(
-            id=item["id"],
-            name=item.get("name") or "Untitled Resume",
-            template=item.get("template") or "jake",
-            is_latex_mode=item.get("is_latex_mode", True),
-            metadata=item.get("metadata") or {},
-            created_at=item.get("created_at"),
-            updated_at=item.get("updated_at"),
-        )
-        for item in items
-    ]
+    summaries = [_build_resume_summary(item) for item in records]
     return UserResumeListResponse(
         items=summaries,
         page=Pagination(limit=limit, offset=offset, total=total),
@@ -244,17 +263,7 @@ def create_user_resume(
             detail={"code": "resume_create_error", "message": str(exc)},
         ) from exc
 
-    return UserResumeRecord(
-        id=record["id"],
-        name=record.get("name") or "Untitled Resume",
-        template=record.get("template") or "jake",
-        is_latex_mode=record.get("is_latex_mode", True),
-        metadata=record.get("metadata") or {},
-        created_at=record.get("created_at"),
-        updated_at=record.get("updated_at"),
-        latex_content=record.get("latex_content"),
-        structured_data=record.get("structured_data") or {},
-    )
+    return _build_resume_record(record)
 
 
 @router.get(
@@ -288,17 +297,7 @@ def get_user_resume(
             detail={"code": "resume_not_found", "message": "Resume not found."},
         )
 
-    return UserResumeRecord(
-        id=record["id"],
-        name=record.get("name") or "Untitled Resume",
-        template=record.get("template") or "jake",
-        is_latex_mode=record.get("is_latex_mode", True),
-        metadata=record.get("metadata") or {},
-        created_at=record.get("created_at"),
-        updated_at=record.get("updated_at"),
-        latex_content=record.get("latex_content"),
-        structured_data=record.get("structured_data") or {},
-    )
+    return _build_resume_record(record)
 
 
 @router.patch(
@@ -365,17 +364,7 @@ def update_user_resume(
             detail={"code": "resume_not_found", "message": "Resume not found."},
         )
 
-    return UserResumeRecord(
-        id=record["id"],
-        name=record.get("name") or "Untitled Resume",
-        template=record.get("template") or "jake",
-        is_latex_mode=record.get("is_latex_mode", True),
-        metadata=record.get("metadata") or {},
-        created_at=record.get("created_at"),
-        updated_at=record.get("updated_at"),
-        latex_content=record.get("latex_content"),
-        structured_data=record.get("structured_data") or {},
-    )
+    return _build_resume_record(record)
 
 
 @router.delete(
@@ -443,14 +432,4 @@ def duplicate_user_resume(
             detail={"code": "resume_duplicate_error", "message": str(exc)},
         ) from exc
 
-    return UserResumeRecord(
-        id=record["id"],
-        name=record.get("name") or "Untitled Resume",
-        template=record.get("template") or "jake",
-        is_latex_mode=record.get("is_latex_mode", True),
-        metadata=record.get("metadata") or {},
-        created_at=record.get("created_at"),
-        updated_at=record.get("updated_at"),
-        latex_content=record.get("latex_content"),
-        structured_data=record.get("structured_data") or {},
-    )
+    return _build_resume_record(record)
