@@ -9,11 +9,11 @@ export type AppSettings = {
   contributionEmailAliases?: string;
 };
 
-const STORAGE_KEY = "app:settings:v1";
+export const SETTINGS_STORAGE_KEY = "app:settings:v1";
 
-export const loadSettings = (): AppSettings => {
+export const getSettings = (): AppSettings => {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
     if (!raw) return {};
     return JSON.parse(raw) as AppSettings;
   } catch {
@@ -21,9 +21,41 @@ export const loadSettings = (): AppSettings => {
   }
 };
 
+export const getContributionHeaders = (): Record<string, string> => {
+  if (typeof window === "undefined") {
+    return {};
+  }
+
+  const settings = getSettings();
+  const headers: Record<string, string> = {};
+  const userName = settings.contributionUserName?.trim();
+  const userEmail = settings.contributionUserEmail?.trim();
+  const aliases = settings.contributionEmailAliases
+    ?.split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .join(",");
+
+  if (userName) {
+    headers["X-Contribution-User-Name"] = userName;
+  }
+  if (userEmail) {
+    headers["X-Contribution-User-Email"] = userEmail;
+  }
+  if (aliases) {
+    headers["X-Contribution-User-Email-Aliases"] = aliases;
+  }
+
+  return headers;
+};
+
+export const loadSettings = (): AppSettings => {
+  return getSettings();
+};
+
 export const saveSettings = (s: AppSettings) => {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(s));
     return true;
   } catch {
     return false;

@@ -25,54 +25,12 @@ import {
   refreshAccessToken,
   setStoredToken,
 } from "./auth";
+import { getContributionHeaders } from "./settings";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
-const SETTINGS_STORAGE_KEY = "app:settings:v1";
 
 const getApiBaseUrl = () => {
   return process.env.NEXT_PUBLIC_API_BASE_URL || DEFAULT_API_BASE_URL;
-};
-
-const getContributionHeaders = (): Record<string, string> => {
-  if (typeof window === "undefined") {
-    return {};
-  }
-
-  try {
-    const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
-    if (!raw) {
-      return {};
-    }
-
-    const parsed = JSON.parse(raw) as {
-      contributionUserName?: string;
-      contributionUserEmail?: string;
-      contributionEmailAliases?: string;
-    };
-
-    const headers: Record<string, string> = {};
-    const userName = parsed.contributionUserName?.trim();
-    const userEmail = parsed.contributionUserEmail?.trim();
-    const aliases = parsed.contributionEmailAliases
-      ?.split(",")
-      .map((item) => item.trim())
-      .filter(Boolean)
-      .join(",");
-
-    if (userName) {
-      headers["X-Contribution-User-Name"] = userName;
-    }
-    if (userEmail) {
-      headers["X-Contribution-User-Email"] = userEmail;
-    }
-    if (aliases) {
-      headers["X-Contribution-User-Email-Aliases"] = aliases;
-    }
-
-    return headers;
-  } catch {
-    return {};
-  }
 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> {
