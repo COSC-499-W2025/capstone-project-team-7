@@ -3,6 +3,9 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "@/components/ui/stat-card";
+import { LoadingState } from "@/components/ui/loading-state";
+import { ErrorState } from "@/components/ui/error-state";
+import { EmptyState } from "@/components/ui/empty-state";
 import { FileImage, Film } from "lucide-react";
 import { resolveMediaAnalysis } from "@/lib/project-media-analysis";
 import {
@@ -118,7 +121,7 @@ export function MediaAnalysisTab({
       : undefined);
 
   if (resolvedLoading) {
-    return <LoadingState />;
+    return <LoadingState message="Analyzing media…" />;
   }
 
   if (resolvedError) {
@@ -126,7 +129,7 @@ export function MediaAnalysisTab({
   }
 
   if (!resolvedMediaAnalysis) {
-    return <EmptyState onRetry={resolvedRetry} />;
+    return <EmptyState title="No media analysis available yet." description="Run analysis or add media assets to generate results." onRetry={resolvedRetry} />;
   }
 
   const hasSummaryData =
@@ -153,7 +156,7 @@ export function MediaAnalysisTab({
   }
 
   if (!hasSummaryData && !hasListItems) {
-    return <EmptyState onRetry={resolvedRetry} />;
+    return <EmptyState title="No media analysis available yet." description="Run analysis or add media assets to generate results." onRetry={resolvedRetry} />;
   }
 
   return <MediaAnalysisSummaryView payload={resolvedMediaAnalysis} />;
@@ -442,50 +445,3 @@ function formatBytes(bytes: number): string {
 }
 
 
-function LoadingState() {
-  return (
-    <Card className="bg-white border border-gray-200">
-      <CardContent className="p-10 text-center text-sm text-gray-500 space-y-3">
-        <div className="flex justify-center">
-          <div className="h-8 w-8 rounded-full border-2 border-gray-300 border-t-gray-700 animate-spin" />
-        </div>
-        <p>Analyzing media…</p>
-      </CardContent>
-    </Card>
-  );
-}
-
-function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
-  return (
-    <Card className="bg-white border border-gray-200">
-      <CardContent className="p-10 text-center text-sm text-red-600 space-y-3">
-        <p>{message}</p>
-        {onRetry && (
-          <div>
-            <Button variant="outline" onClick={onRetry}>
-              Retry
-            </Button>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function EmptyState({ onRetry }: { onRetry?: () => void }) {
-  return (
-    <Card className="bg-white border border-gray-200">
-      <CardContent className="p-10 text-center space-y-3">
-        <p className="text-sm text-gray-600">No media analysis available yet.</p>
-        <p className="text-xs text-gray-400">Run analysis or add media assets to generate results.</p>
-        {onRetry && (
-          <div>
-            <Button variant="outline" onClick={onRetry}>
-              Retry
-            </Button>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
