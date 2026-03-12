@@ -6,8 +6,6 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
 import { DocumentAnalysisTab } from "@/components/project/document-analysis-tab";
 import { OverviewTab } from "@/components/project/overview-tab";
 import { LanguagesTab } from "@/components/project/languages-tab";
@@ -72,7 +70,6 @@ import {
   BookOpen,
   Wrench,
   BarChart3,
-  Code2,
   Users,
   FileText,
   Film,
@@ -80,28 +77,12 @@ import {
   GitBranch,
   Copy,
   Search,
-  FileEdit,
-  FileJson,
   FileCode2,
-  Printer,
-  Loader2,
-  Check,
-  AlertCircle,
-  Download,
-  Info,
   Sparkles,
-  ChevronDown,
-  ChevronUp,
 } from "lucide-react";
 import { FileTreeView } from "@/components/project/file-tree-view";
 import { SearchFilterTab } from "@/components/project/search-filter-tab";
 import type { FileEntry } from "@/lib/file-tree";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 
 const mainTabs = [
   { value: "overview", label: "Overview & Analysis", icon: LayoutDashboard },
@@ -152,18 +133,6 @@ const LANGUAGE_COLORS = [
   "bg-orange-500",
   "bg-purple-600",
 ] as const;
-
-function PlaceholderContent({ label }: { label: string }) {
-  return (
-    <Card className="bg-white border border-gray-200">
-      <CardContent className="p-12 text-center">
-        <p className="text-gray-500 text-sm">
-          {label} — This section will be available soon.
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
 
 export default function ProjectPage() {
   const searchParams = useSearchParams();
@@ -1539,4 +1508,3 @@ export default function ProjectPage() {
     </div>
   );
 }
-
