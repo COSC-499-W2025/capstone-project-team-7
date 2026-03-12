@@ -13,6 +13,7 @@ import { getStoredToken } from "@/lib/auth";
 import { getCategoryLabel, buildEvidenceMap } from "@/lib/skills-utils";
 import { StatCard } from "@/components/ui/stat-card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { formatBytes } from "@/lib/format-utils";
 import { 
   FileCode, 
   Code2, 
@@ -784,10 +785,3 @@ function MediaTab({ media }: { media: any[] }) {
 }
 
 
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
-}

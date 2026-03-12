@@ -5,17 +5,10 @@ import Link from "next/link";
 import type { ProjectDetail, ProjectScanData } from "@/types/project";
 import { FileCode, Clock, FolderOpen, ExternalLink } from "lucide-react";
 import { StatCard } from "@/components/ui/stat-card";
+import { formatBytes } from "@/lib/format-utils";
 
 interface RecentScanCardProps {
   project: ProjectDetail;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
 }
 
 
