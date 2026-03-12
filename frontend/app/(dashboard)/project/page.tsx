@@ -1083,30 +1083,36 @@ export default function ProjectPage() {
               {/* Skills Main */}
               <TabsContent value="skills-main">
                 <SkillsTab
-                  highlightedSkills={highlightedSkills}
-                  highlightSaveStatus={highlightSaveStatus}
-                  isSavingHighlights={isSavingHighlights}
-                  saveHighlightedSkills={saveHighlightedSkills}
-                  toggleSkillHighlight={toggleSkillHighlight}
+                  highlight={{
+                    skills: highlightedSkills,
+                    saveStatus: highlightSaveStatus,
+                    isSaving: isSavingHighlights,
+                    save: saveHighlightedSkills,
+                    toggle: toggleSkillHighlight,
+                  }}
+                  filter={{
+                    searchQuery: skillsSearchQuery,
+                    setSearchQuery: setSkillsSearchQuery,
+                    categoryFilter: skillsCategoryFilter,
+                    setCategoryFilter: setSkillsCategoryFilter,
+                    filteredByCategory: filteredSkillsByCategory,
+                    expandedSkillKey,
+                    setExpandedSkillKey,
+                  }}
+                  gapAnalysis={{
+                    roles: gapRoles,
+                    selectedRole: selectedGapRole,
+                    result: gapResult,
+                    loading: gapLoading,
+                    error: gapError,
+                    run: runGapAnalysis,
+                  }}
                   skillsAnalysis={skillsAnalysis}
                   skillsByCategory={skillsByCategory}
                   totalSkills={totalSkills}
                   categoryLabel={categoryLabel}
-                  skillsSearchQuery={skillsSearchQuery}
-                  setSkillsSearchQuery={setSkillsSearchQuery}
-                  skillsCategoryFilter={skillsCategoryFilter}
-                  setSkillsCategoryFilter={setSkillsCategoryFilter}
-                  filteredSkillsByCategory={filteredSkillsByCategory}
-                  expandedSkillKey={expandedSkillKey}
-                  setExpandedSkillKey={setExpandedSkillKey}
                   getSkillEvidence={getSkillEvidence}
                   skillAdoptionTimeline={skillAdoptionTimeline}
-                  gapRoles={gapRoles}
-                  selectedGapRole={selectedGapRole}
-                  gapResult={gapResult}
-                  gapLoading={gapLoading}
-                  gapError={gapError}
-                  runGapAnalysis={runGapAnalysis}
                 />
               </TabsContent>
 
