@@ -10,6 +10,8 @@ import {
   AppendUploadRequest,
   SearchResponse,
   SkillsListResponse,
+  RoleProfile,
+  SkillGapAnalysis,
 } from "@/types/project";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
@@ -407,6 +409,54 @@ export async function saveSelection(
   if (!response.ok) {
     const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
     throw new Error(error.detail || "Failed to save selection preferences");
+  }
+
+  return response.json();
+}
+
+/**
+ * Fetch available role profiles for gap analysis
+ */
+export async function getAvailableRoles(token: string): Promise<RoleProfile[]> {
+  const response = await fetch(`${API_BASE_URL}/api/projects/skills/roles`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
+    throw new Error(extractErrorFromResponse(error, "Failed to fetch roles"));
+  }
+
+  return response.json();
+}
+
+/**
+ * Analyse skill gaps for a project against a role profile
+ */
+export async function getSkillGaps(
+  token: string,
+  projectId: string,
+  role: string,
+): Promise<SkillGapAnalysis> {
+  const params = new URLSearchParams({ role });
+  const response = await fetch(
+    `${API_BASE_URL}/api/projects/${projectId}/skills/gaps?${params}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    },
+  );
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
+    throw new Error(extractErrorFromResponse(error, "Failed to analyse skill gaps"));
   }
 
   return response.json();

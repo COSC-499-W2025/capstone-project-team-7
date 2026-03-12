@@ -272,3 +272,18 @@ export interface SkillAdoptionEntry {
   current_proficiency?: number;
   total_usage?: number;
 }
+
+export interface RoleProfile {
+  key: string;
+  label: string;
+  description: string;
+}
+
+export interface SkillGapAnalysis {
+  role: string;
+  role_label: string;
+  matched: string[];
+  missing: string[];
+  extra: string[];
+  coverage_percent: number;
+}
