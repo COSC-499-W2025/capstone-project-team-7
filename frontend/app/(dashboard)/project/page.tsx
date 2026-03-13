@@ -621,7 +621,7 @@ export default function ProjectPage() {
     [skillsAnalysis.skills],
   );
   const getSkillEvidence = (skillName: string): SkillEvidenceItem[] =>
-    evidenceMap.get(skillName) ?? [];
+    evidenceMap[skillName] ?? [];
 
   // Adoption timeline
   const skillAdoptionTimeline: SkillAdoptionEntry[] = skillsAnalysis.skill_adoption_timeline ?? [];
