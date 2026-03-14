@@ -144,7 +144,7 @@ export default function ResumeBuilderPage() {
       });
       setCreateDialogOpen(false);
       // Navigate to the editor
-      router.push(`/resume-builder/${created.id}` as Parameters<typeof router.push>[0]);
+      router.push(`/resume-builder/editor?id=${created.id}` as Parameters<typeof router.push>[0]);
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "Failed to create resume");
     } finally {
@@ -176,7 +176,7 @@ export default function ResumeBuilderPage() {
   };
 
   const handleOpen = (id: string) => {
-    router.push(`/resume-builder/${id}` as Parameters<typeof router.push>[0]);
+    router.push(`/resume-builder/editor?id=${id}` as Parameters<typeof router.push>[0]);
   };
 
   const formatDate = (dateStr?: string | null) => {
