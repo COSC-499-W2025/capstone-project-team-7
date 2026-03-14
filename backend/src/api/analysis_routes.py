@@ -258,6 +258,8 @@ def _run_skills_extraction(
                 "name": skill.name,
                 "category": skill.category,
                 "confidence": float(getattr(skill, "confidence", getattr(skill, "proficiency_score", 0.0)) or 0.0),
+                "proficiency_score": skill.proficiency_score,
+                "description": skill.description if hasattr(skill, 'description') else "",
                 "evidence_count": len(skill.evidence) if hasattr(skill, 'evidence') else 0,
             }
             for skill in skills

@@ -7,9 +7,11 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { DocumentAnalysisTab } from "@/components/project/document-analysis-tab";
 import { PdfAnalysisTab } from "@/components/project/pdf-analysis-tab";
 import { getStoredToken } from "@/lib/auth";
+import { consent as consentApi, secrets as secretsApi } from "@/lib/api";
 import {CodeAnalysisTab} from "@/components/project/code-analysis-tab";
 import { GitAnalysisTab } from "@/components/project/git-analysis-tab";
 import { DuplicateFinderTab } from "@/components/project/duplicate-finder-tab";
@@ -20,6 +22,8 @@ import {
   generateProjectSkillSummary,
   exportProjectHtml,
   updateProjectOverrides,
+  getAvailableRoles,
+  getSkillGaps,
 } from "@/lib/api/projects";
 import {
   detectLanguageMetric,
@@ -30,9 +34,16 @@ import {
 import type {
   ProjectDetail,
   ProjectScanData,
+  ProjectSkillCategoryItem,
+  ProjectSkillsAnalysis,
+  SkillEvidenceItem,
+  SkillAdoptionEntry,
   SkillProgressPeriod,
   SkillProgressSummary,
+  RoleProfile,
+  SkillGapAnalysis,
 } from "@/types/project";
+import { getCategoryLabel, buildEvidenceMap } from "@/lib/skills-utils";
 import {
   MediaAnalysisTab,
 } from "@/components/project/media-analysis-tab";
@@ -66,6 +77,9 @@ import {
   AlertCircle,
   Download,
   Info,
+  Sparkles,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { FileTreeView } from "@/components/project/file-tree-view";
 import { SearchFilterTab } from "@/components/project/search-filter-tab";
@@ -77,11 +91,11 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-// Main section tabs (4 sections)
 const mainTabs = [
   { value: "overview", label: "Overview & Analysis", icon: LayoutDashboard },
   { value: "skills", label: "Skills & Progress", icon: Award },
   { value: "content", label: "Content Analysis", icon: BookOpen },
+  { value: "ai-analysis", label: "AI Analysis", icon: Sparkles },
   { value: "tools", label: "Tools & Export", icon: Wrench },
 ] as const;
 
@@ -179,11 +193,28 @@ export default function ProjectPage() {
   const [skillsNote, setSkillsNote] = useState<string | null>(null);
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [summaryLoading, setSummaryLoading] = useState(false);
+  const [aiEligibilityChecked, setAiEligibilityChecked] = useState(false);
+  const [aiEligibilityLoading, setAiEligibilityLoading] = useState(false);
+  const [externalServicesConsentEnabled, setExternalServicesConsentEnabled] = useState(false);
+  const [openAiKeyValid, setOpenAiKeyValid] = useState(false);
+  const [aiEligibilityMessage, setAiEligibilityMessage] = useState<string | null>(null);
 
   // Highlighted skills state
   const [highlightedSkills, setHighlightedSkills] = useState<string[]>([]);
   const [isSavingHighlights, setIsSavingHighlights] = useState(false);
   const [highlightSaveStatus, setHighlightSaveStatus] = useState<"idle" | "success" | "error">("idle");
+
+  // Skills search, filter, and evidence expansion state
+  const [skillsSearchQuery, setSkillsSearchQuery] = useState("");
+  const [skillsCategoryFilter, setSkillsCategoryFilter] = useState<string>("all");
+  const [expandedSkillKey, setExpandedSkillKey] = useState<string | null>(null);
+
+  // Gap analysis state
+  const [gapRoles, setGapRoles] = useState<RoleProfile[]>([]);
+  const [selectedGapRole, setSelectedGapRole] = useState<string>("");
+  const [gapResult, setGapResult] = useState<SkillGapAnalysis | null>(null);
+  const [gapLoading, setGapLoading] = useState(false);
+  const [gapError, setGapError] = useState<string | null>(null);
 
   // Keep local projectId in sync with URL
   useEffect(() => {
@@ -297,6 +328,118 @@ export default function ProjectPage() {
     });
   };
 
+  const checkAiEligibility = useCallback(async (): Promise<boolean> => {
+    const token = getStoredToken();
+    if (!token) {
+      setExternalServicesConsentEnabled(false);
+      setOpenAiKeyValid(false);
+      setAiEligibilityMessage(
+        "AI analysis is unavailable because you are not logged in. Sign in from Settings and try again."
+      );
+      setAiEligibilityChecked(true);
+      return false;
+    }
+
+    setAiEligibilityLoading(true);
+    setAiEligibilityMessage(null);
+
+    try {
+      const consentResult = await consentApi.get();
+      if (!consentResult.ok) {
+        const authFailure = consentResult.status === 401 || consentResult.status === 403;
+        setExternalServicesConsentEnabled(false);
+        setOpenAiKeyValid(false);
+        setAiEligibilityMessage(
+          authFailure
+            ? "AI analysis is unavailable because your session expired. Log in again from Settings."
+            : consentResult.error ||
+                "Unable to load consent status. Open Settings and verify your consent preferences."
+        );
+        return false;
+      }
+
+      const externalConsent = Boolean(consentResult.data.external_services);
+      setExternalServicesConsentEnabled(externalConsent);
+
+      if (!externalConsent) {
+        setOpenAiKeyValid(false);
+        setAiEligibilityMessage(
+          "AI analysis is disabled because External Data consent is not enabled. Enable it in Settings > Consent."
+        );
+        return false;
+      }
+
+      const verifyResult = await secretsApi.verify();
+      if (!verifyResult.ok) {
+        setOpenAiKeyValid(false);
+        setAiEligibilityMessage(
+          verifyResult.error ||
+            "Unable to verify your OpenAI API key. Open Settings and verify the key before running AI analysis."
+        );
+        return false;
+      }
+
+      if (!verifyResult.data.valid) {
+        setOpenAiKeyValid(false);
+        setAiEligibilityMessage(
+          verifyResult.data.message ||
+            "Your OpenAI API key is not valid. Update it in Settings before running AI analysis."
+        );
+        return false;
+      }
+
+      setOpenAiKeyValid(true);
+      setAiEligibilityMessage(null);
+      return true;
+    } catch (err) {
+      setExternalServicesConsentEnabled(false);
+      setOpenAiKeyValid(false);
+      setAiEligibilityMessage(
+        err instanceof Error
+          ? err.message
+          : "Unable to validate AI analysis prerequisites. Try again from the AI Analysis tab."
+      );
+      return false;
+    } finally {
+      setAiEligibilityLoading(false);
+      setAiEligibilityChecked(true);
+    }
+  }, []);
+
+  // Load available role profiles when skills tab is active
+  useEffect(() => {
+    if (activeMainTab !== "skills" || gapRoles.length > 0) return;
+    const token = getStoredToken();
+    if (!token) return;
+    getAvailableRoles(token)
+      .then((roles) => { if (isMountedRef.current) setGapRoles(roles); })
+      .catch(() => { /* roles are optional, ignore errors */ });
+  }, [activeMainTab, gapRoles.length]);
+
+  // Run gap analysis when role is selected
+  const runGapAnalysis = async (role: string) => {
+    setSelectedGapRole(role);
+    setGapResult(null);
+    setGapError(null);
+    if (!role) return;
+
+    const token = getStoredToken();
+    const pid = project?.id;
+    if (!token || !pid) return;
+
+    try {
+      setGapLoading(true);
+      const result = await getSkillGaps(token, pid, role);
+      if (isMountedRef.current) setGapResult(result);
+    } catch (err) {
+      if (isMountedRef.current) {
+        setGapError(err instanceof Error ? err.message : "Gap analysis failed");
+      }
+    } finally {
+      if (isMountedRef.current) setGapLoading(false);
+    }
+  };
+
   // Fetch skills timeline/summary when we have a projectId
   useEffect(() => {
     const effectiveProjectId = projectId ?? project?.id ?? null;
@@ -330,6 +473,12 @@ export default function ProjectPage() {
       cancelled = true;
     };
   }, [projectId, project?.id]);
+
+  useEffect(() => {
+    if (activeMainTab === "ai-analysis") {
+      void checkAiEligibility();
+    }
+  }, [activeMainTab, checkAiEligibility]);
 
   /** Build and trigger an HTML report download for the current project. */
   const handleExportHtml = useCallback(async () => {
@@ -457,10 +606,39 @@ export default function ProjectPage() {
   const scanData =
     useProjectPageStore(projectPageSelectors.scanData) as ProjectScanData;
   const summary = scanData.summary ?? {};
-  const skillsAnalysis = scanData.skills_analysis ?? {};
+  const skillsAnalysis: ProjectSkillsAnalysis = scanData.skills_analysis ?? {};
   const skillsByCategory = skillsAnalysis.skills_by_category ?? {};
   const totalSkills =
     typeof skillsAnalysis.total_skills === "number" ? skillsAnalysis.total_skills : 0;
+
+  // Category labels from backend, with fallback
+  const categoryLabels: Record<string, string> = skillsAnalysis.category_labels ?? {};
+  const categoryLabel = (key: string) => getCategoryLabel(key, categoryLabels);
+
+  // Pre-indexed evidence map for O(1) lookups
+  const evidenceMap = useMemo(
+    () => buildEvidenceMap(skillsAnalysis.skills ?? []),
+    [skillsAnalysis.skills],
+  );
+  const getSkillEvidence = (skillName: string): SkillEvidenceItem[] =>
+    evidenceMap[skillName] ?? [];
+
+  // Adoption timeline
+  const skillAdoptionTimeline: SkillAdoptionEntry[] = skillsAnalysis.skill_adoption_timeline ?? [];
+
+  // Filter skills by search query and category filter
+  const filteredSkillsByCategory = useMemo(() => {
+    const result: Record<string, Array<ProjectSkillCategoryItem>> = {};
+    for (const [category, skills] of Object.entries(skillsByCategory)) {
+      if (skillsCategoryFilter !== "all" && category !== skillsCategoryFilter) continue;
+      const filtered = (skills as Array<ProjectSkillCategoryItem>).filter((skill) => {
+        const name = typeof skill === "string" ? skill : skill.name ?? "";
+        return name.toLowerCase().includes(skillsSearchQuery.toLowerCase());
+      });
+      if (filtered.length > 0) result[category] = filtered;
+    }
+    return result;
+  }, [skillsByCategory, skillsSearchQuery, skillsCategoryFilter]);
 
   // Extract all available skill names
   const allAvailableSkills = useMemo(() => {
@@ -762,6 +940,9 @@ export default function ProjectPage() {
     setActiveToolsTab(nextTab);
   }, []);
 
+  const aiEligibilityReady =
+    externalServicesConsentEnabled && openAiKeyValid;
+
   const handleGenerateSummary = async () => {
     const effectiveProjectId = projectId ?? project?.id ?? null;
     if (!effectiveProjectId) return;
@@ -769,6 +950,15 @@ export default function ProjectPage() {
     const token = getStoredToken();
     if (!token) {
       setSkillsNote("Not authenticated. Please log in through Settings.");
+      return;
+    }
+
+    const eligible = await checkAiEligibility();
+    if (!eligible) {
+      setSkillsNote(
+        aiEligibilityMessage ||
+          "AI analysis could not run because consent or key requirements are not met."
+      );
       return;
     }
 
@@ -1193,43 +1383,143 @@ export default function ProjectPage() {
                           </span>
                         </div>
 
-                        {Object.entries(skillsByCategory).map(([category, skills]) => (
+                        {/* Category average proficiency bars */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                          {Object.entries(skillsByCategory).map(([category, skills]) => {
+                            const items = skills as Array<ProjectSkillCategoryItem>;
+                            const scores = items
+                              .map((s) => (typeof s === "object" ? s.proficiency_score ?? 0 : 0))
+                              .filter((v) => v > 0);
+                            const avg = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+                            return (
+                              <div key={`avg-${category}`} className="bg-gray-50 rounded-lg p-3">
+                                <p className="text-xs font-medium text-gray-500 truncate">{categoryLabel(category)}</p>
+                                <div className="mt-1.5 w-full bg-gray-200 rounded-full h-2">
+                                  <div
+                                    className="bg-gray-900 h-2 rounded-full transition-all"
+                                    style={{ width: `${Math.round(avg * 100)}%` }}
+                                  />
+                                </div>
+                                <p className="text-xs text-gray-400 mt-1">{Math.round(avg * 100)}%</p>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Search and filter */}
+                        <div className="flex flex-col sm:flex-row gap-3">
+                          <Input
+                            placeholder="Search skills..."
+                            value={skillsSearchQuery}
+                            onChange={(e) => setSkillsSearchQuery(e.target.value)}
+                            className="sm:max-w-xs text-sm"
+                          />
+                          <select
+                            value={skillsCategoryFilter}
+                            onChange={(e) => setSkillsCategoryFilter(e.target.value)}
+                            className="text-sm border border-gray-200 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900"
+                          >
+                            <option value="all">All categories</option>
+                            {Object.keys(skillsByCategory).map((cat) => (
+                              <option key={cat} value={cat}>{categoryLabel(cat)}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {Object.entries(filteredSkillsByCategory).map(([category, skills]) => (
                           <div key={category} className="border border-gray-200 rounded-lg p-4">
-                            <p className="text-xs font-semibold text-gray-500 uppercase mb-3">
-                              {category.replace(/_/g, " ")}
+                            <p className="text-sm font-semibold text-gray-700 mb-3">
+                              {categoryLabel(category)}
                             </p>
                             <div className="space-y-2">
-                              {(skills as Array<{ name: string; proficiency?: string }>).map(
+                              {(skills as Array<ProjectSkillCategoryItem>).map(
                                 (skill) => {
-                                  const skillName = skill.name;
+                                  const skillName = typeof skill === "string" ? skill : skill.name ?? "";
                                   const isHighlighted = highlightedSkills.includes(skillName);
-                                  
+                                  const description = typeof skill === "object" ? skill.description : undefined;
+                                  const profScore = typeof skill === "object" ? skill.proficiency_score ?? 0 : 0;
+                                  const evidence = getSkillEvidence(skillName);
+                                  const skillKey = `${category}::${skillName}`;
+                                  const isExpanded = expandedSkillKey === skillKey;
+
                                   return (
                                     <div
                                       key={`${category}-${skillName}`}
-                                      className={`flex items-center gap-3 p-2 rounded-md transition-colors ${
-                                        isHighlighted ? "bg-blue-50 border border-blue-200" : "hover:bg-gray-50"
+                                      className={`rounded-md transition-colors ${
+                                        isHighlighted ? "bg-blue-50 border border-blue-200" : "border border-transparent hover:bg-gray-50"
                                       }`}
                                     >
-                                      <Checkbox
-                                        id={`skill-${category}-${skillName}`}
-                                        checked={isHighlighted}
-                                        onChange={() => toggleSkillHighlight(skillName)}
-                                        className="border-gray-300"
-                                      />
-                                      <label
-                                        htmlFor={`skill-${category}-${skillName}`}
-                                        className="flex-1 text-sm font-medium text-gray-900 cursor-pointer"
-                                      >
-                                        {skillName}
-                                        {skill.proficiency && (
-                                          <span className="ml-2 text-xs text-gray-500">
-                                            · {formatConfidence(skill.proficiency)}
+                                      <div className="flex items-center gap-3 p-2">
+                                        <Checkbox
+                                          id={`skill-${category}-${skillName}`}
+                                          checked={isHighlighted}
+                                          onChange={() => toggleSkillHighlight(skillName)}
+                                          className="border-gray-300"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => setExpandedSkillKey(isExpanded ? null : skillKey)}
+                                          className="flex-1 text-left"
+                                        >
+                                          <span className="text-sm font-medium text-gray-900">
+                                            {skillName}
                                           </span>
-                                        )}
-                                      </label>
-                                      {isHighlighted && (
-                                        <Check size={16} className="text-blue-600" />
+                                          {description && (
+                                            <span className="block text-xs text-gray-500 mt-0.5">
+                                              {description}
+                                            </span>
+                                          )}
+                                        </button>
+                                        <div className="flex items-center gap-2">
+                                          {/* Proficiency bar */}
+                                          {profScore > 0 && (
+                                            <div className="flex items-center gap-1.5">
+                                              <div className="w-16 bg-gray-200 rounded-full h-1.5">
+                                                <div
+                                                  className={`h-1.5 rounded-full ${
+                                                    profScore >= 0.8 ? "bg-green-500" : profScore >= 0.6 ? "bg-blue-500" : profScore >= 0.4 ? "bg-amber-500" : "bg-gray-400"
+                                                  }`}
+                                                  style={{ width: `${Math.round(profScore * 100)}%` }}
+                                                />
+                                              </div>
+                                              <span className="text-xs text-gray-400 w-8">{Math.round(profScore * 100)}%</span>
+                                            </div>
+                                          )}
+                                          {evidence.length > 0 && (
+                                            <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+                                              {evidence.length}
+                                            </span>
+                                          )}
+                                          {isHighlighted && (
+                                            <Check size={16} className="text-blue-600" />
+                                          )}
+                                          {evidence.length > 0 && (
+                                            isExpanded ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />
+                                          )}
+                                        </div>
+                                      </div>
+                                      {/* Evidence panel */}
+                                      {isExpanded && evidence.length > 0 && (
+                                        <div className="px-10 pb-3 space-y-1.5">
+                                          {evidence.slice(0, 5).map((ev, idx) => (
+                                            <div key={`${ev.file ?? ""}:${ev.line ?? ""}:${idx}`} className="text-xs text-gray-600 flex items-start gap-2">
+                                              <span className="text-gray-300 mt-0.5">-</span>
+                                              <div>
+                                                <span>{ev.description || ev.type || "Evidence"}</span>
+                                                {ev.file && (
+                                                  <span className="ml-1 text-gray-400 font-mono">
+                                                    {ev.file}{ev.line ? `:${ev.line}` : ""}
+                                                  </span>
+                                                )}
+                                              </div>
+                                            </div>
+                                          ))}
+                                          {evidence.length > 5 && (
+                                            <p className="text-xs text-gray-400 italic">
+                                              + {evidence.length - 5} more evidence items
+                                            </p>
+                                          )}
+                                        </div>
                                       )}
                                     </div>
                                   );
@@ -1239,6 +1529,147 @@ export default function ProjectPage() {
                           </div>
                         ))}
                       </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Skill Adoption Timeline */}
+                {skillAdoptionTimeline.length > 0 && (
+                  <Card className="bg-white border border-gray-200">
+                    <CardHeader className="border-b border-gray-200">
+                      <CardTitle className="text-xl font-bold text-gray-900">
+                        Skill Adoption Timeline
+                      </CardTitle>
+                      <p className="text-sm text-gray-500 mt-1">
+                        When each skill was first detected in the codebase
+                      </p>
+                    </CardHeader>
+                    <CardContent className="p-6">
+                      <div className="space-y-3">
+                        {skillAdoptionTimeline.map((entry) => (
+                          <div
+                            key={`${entry.skill_name}::${entry.first_used_period ?? ""}`}
+                            className="flex items-center gap-4 py-2 border-b border-gray-100 last:border-0"
+                          >
+                            <span className="text-xs font-mono text-gray-400 w-20 shrink-0">
+                              {entry.first_used_period || "Unknown"}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-900 truncate">
+                                {entry.skill_name}
+                              </p>
+                              <p className="text-xs text-gray-500 truncate">
+                                {categoryLabel(entry.category ?? "")}
+                                {entry.file ? ` · ${entry.file}` : ""}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <div className="w-12 bg-gray-200 rounded-full h-1.5">
+                                <div
+                                  className="bg-gray-900 h-1.5 rounded-full"
+                                  style={{ width: `${Math.round((entry.current_proficiency ?? 0) * 100)}%` }}
+                                />
+                              </div>
+                              <span className="text-xs text-gray-400">
+                                {entry.total_usage ?? 0} uses
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Gap Analysis */}
+                <Card className="bg-white border border-gray-200">
+                  <CardHeader className="border-b border-gray-200">
+                    <CardTitle className="text-xl font-bold text-gray-900">
+                      Skill Gap Analysis
+                    </CardTitle>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Compare detected skills against a target role profile
+                    </p>
+                  </CardHeader>
+                  <CardContent className="p-6 space-y-4">
+                    <div className="flex items-center gap-3">
+                      <select
+                        className="border border-gray-300 rounded-md px-3 py-2 text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"
+                        value={selectedGapRole}
+                        onChange={(e) => runGapAnalysis(e.target.value)}
+                      >
+                        <option value="">Select a role...</option>
+                        {gapRoles.map((r) => (
+                          <option key={r.key} value={r.key}>
+                            {r.label}
+                          </option>
+                        ))}
+                      </select>
+                      {gapLoading && (
+                        <Loader2 size={16} className="animate-spin text-gray-400" />
+                      )}
+                    </div>
+
+                    {gapError && (
+                      <p className="text-sm text-red-600">{gapError}</p>
+                    )}
+
+                    {gapResult && (
+                      <div className="space-y-4">
+                        {/* Coverage bar */}
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-sm">
+                            <span className="font-medium text-gray-900">
+                              Coverage for {gapResult.role_label}
+                            </span>
+                            <span className="text-gray-500">
+                              {gapResult.coverage_percent}%
+                            </span>
+                          </div>
+                          <div className="w-full bg-gray-100 rounded-full h-3">
+                            <div
+                              className={`h-3 rounded-full transition-all ${
+                                gapResult.coverage_percent >= 75
+                                  ? "bg-emerald-600"
+                                  : gapResult.coverage_percent >= 40
+                                    ? "bg-amber-500"
+                                    : "bg-red-500"
+                              }`}
+                              style={{ width: `${gapResult.coverage_percent}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        {([
+                          { label: "Matched", items: gapResult.matched, bg: "bg-emerald-100", text: "text-emerald-800" },
+                          { label: "Missing", items: gapResult.missing, bg: "bg-amber-100", text: "text-amber-800" },
+                          { label: "Additional Skills", items: gapResult.extra, bg: "bg-gray-100", text: "text-gray-700" },
+                        ] as const).map(({ label, items, bg, text }) =>
+                          items.length > 0 && (
+                            <div key={label}>
+                              <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                                {label} ({items.length})
+                              </p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {items.map((s) => (
+                                  <span
+                                    key={s}
+                                    className={`px-2.5 py-1 rounded-full ${bg} ${text} text-xs font-medium`}
+                                  >
+                                    {s}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          ),
+                        )}
+                      </div>
+                    )}
+
+                    {!selectedGapRole && !gapResult && (
+                      <p className="text-sm text-gray-400">
+                        Select a role above to see how your project skills compare.
+                      </p>
                     )}
                   </CardContent>
                 </Card>
@@ -1432,97 +1863,6 @@ export default function ProjectPage() {
                   </CardContent>
                 </Card>
 
-                <Card className="bg-white border border-gray-200">
-                  <CardHeader className="border-b border-gray-200 flex flex-row items-center justify-between">
-                    <div>
-                      <CardTitle className="text-xl font-bold text-gray-900">
-                        AI Summary
-                      </CardTitle>
-                      <p className="text-xs text-gray-500 mt-1">
-                        Summarize skill growth from the timeline.
-                      </p>
-                    </div>
-                    <button
-                      onClick={handleGenerateSummary}
-                      disabled={summaryLoading}
-                      className="px-3 py-2 text-xs font-semibold rounded-md bg-gray-900 text-white disabled:opacity-60"
-                    >
-                      {summaryLoading
-                        ? "Generating…"
-                        : skillsSummary
-                        ? "Regenerate"
-                        : "Generate"}
-                    </button>
-                  </CardHeader>
-                  <CardContent className="p-6 space-y-4">
-                    {skillsNote && <p className="text-sm text-gray-500">{skillsNote}</p>}
-                    {skillsSummary && (
-                      <div className="space-y-4">
-                        <div>
-                          <p className="text-sm font-semibold text-gray-700">Overview</p>
-                          <p className="text-sm text-gray-700 mt-1">
-                            {skillsSummary.overview}
-                          </p>
-                          {skillsSummary.validation_warning && (
-                            <p className="text-xs text-amber-600 mt-2">
-                              {skillsSummary.validation_warning}
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="grid gap-4 md:grid-cols-2">
-                          <div>
-                            <p className="text-sm font-semibold text-gray-700">
-                              Timeline highlights
-                            </p>
-                            <ul className="mt-2 space-y-1 text-sm text-gray-700 list-disc list-inside">
-                              {skillsSummary.timeline.map((item, index) => (
-                                <li key={`timeline-${index}`}>{item}</li>
-                              ))}
-                              {skillsSummary.timeline.length === 0 && (
-                                <li className="text-xs text-gray-400">
-                                  No timeline highlights.
-                                </li>
-                              )}
-                            </ul>
-                          </div>
-
-                          <div>
-                            <p className="text-sm font-semibold text-gray-700">
-                              Skills focus
-                            </p>
-                            <ul className="mt-2 space-y-1 text-sm text-gray-700 list-disc list-inside">
-                              {skillsSummary.skills_focus.map((item, index) => (
-                                <li key={`skills-${index}`}>{item}</li>
-                              ))}
-                              {skillsSummary.skills_focus.length === 0 && (
-                                <li className="text-xs text-gray-400">
-                                  No skill focus notes.
-                                </li>
-                              )}
-                            </ul>
-                          </div>
-                        </div>
-
-                        <div>
-                          <p className="text-sm font-semibold text-gray-700">
-                            Suggested next steps
-                          </p>
-                          <ul className="mt-2 space-y-1 text-sm text-gray-700 list-disc list-inside">
-                            {skillsSummary.suggested_next_steps.map((item, index) => (
-                              <li key={`steps-${index}`}>{item}</li>
-                            ))}
-                            {skillsSummary.suggested_next_steps.length === 0 && (
-                              <li className="text-xs text-gray-400">
-                                No suggestions yet.
-                              </li>
-                            )}
-                          </ul>
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
               </TabsContent>
 
               {/* Contributions */}
@@ -1578,8 +1918,8 @@ export default function ProjectPage() {
                             <div className="space-y-3">
                               {scanData.contribution_metrics.contributors
                                 .slice(0, 5)
-                                .map((contributor: { name?: string; commits?: number; commit_percentage?: number }, idx: number) => (
-                                <div key={idx} className="flex items-center justify-between">
+                                .map((contributor: { name?: string; commits?: number; commit_percentage?: number }) => (
+                                <div key={contributor.name ?? "unknown"} className="flex items-center justify-between">
                                   <div className="flex items-center gap-2">
                                     <Users size={14} className="text-gray-400" />
                                     <span className="text-sm font-medium text-gray-900">{contributor.name ?? "Unknown"}</span>
@@ -1624,6 +1964,159 @@ export default function ProjectPage() {
                 </Card>
               </TabsContent>
             </Tabs>
+          </TabsContent>
+
+          <TabsContent value="ai-analysis" className="space-y-6">
+            <Card className="bg-white border border-gray-200">
+              <CardHeader className="border-b border-gray-200">
+                <CardTitle className="text-xl font-bold text-gray-900">
+                  AI Analysis Status
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                    <p className="text-xs font-semibold text-gray-500 uppercase">External Data Consent</p>
+                    <p className={`mt-2 text-sm font-medium ${externalServicesConsentEnabled ? "text-green-700" : "text-gray-600"}`}>
+                      {externalServicesConsentEnabled ? "Enabled" : "Not enabled"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                    <p className="text-xs font-semibold text-gray-500 uppercase">OpenAI API Key</p>
+                    <p className={`mt-2 text-sm font-medium ${openAiKeyValid ? "text-green-700" : "text-gray-600"}`}>
+                      {openAiKeyValid ? "Verified" : "Missing or invalid"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void checkAiEligibility()}
+                    disabled={aiEligibilityLoading}
+                    className="border-gray-300"
+                  >
+                    {aiEligibilityLoading ? "Checking..." : "Re-check requirements"}
+                  </Button>
+                  <Link href="/settings" className="text-sm text-gray-700 underline">
+                    Open Settings
+                  </Link>
+                </div>
+
+                {!aiEligibilityChecked && (
+                  <p className="text-sm text-gray-500">
+                    Open this tab to validate consent and API key requirements.
+                  </p>
+                )}
+
+                {aiEligibilityChecked && !aiEligibilityReady && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                    <p className="text-sm text-amber-800">
+                      {aiEligibilityMessage ||
+                        "AI analysis is currently blocked. Enable External Data consent and verify your OpenAI API key in Settings."}
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="bg-white border border-gray-200">
+              <CardHeader className="border-b border-gray-200 flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-xl font-bold text-gray-900">
+                    AI Summary
+                  </CardTitle>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Summarize skill growth from the timeline.
+                  </p>
+                </div>
+                <button
+                  onClick={handleGenerateSummary}
+                  disabled={summaryLoading || aiEligibilityLoading || !aiEligibilityReady}
+                  className="px-3 py-2 text-xs font-semibold rounded-md bg-gray-900 text-white disabled:opacity-60"
+                >
+                  {summaryLoading
+                    ? "Generating..."
+                    : skillsSummary
+                    ? "Regenerate"
+                    : "Generate"}
+                </button>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4">
+                {skillsNote && <p className="text-sm text-gray-500">{skillsNote}</p>}
+                {!aiEligibilityReady && (
+                  <p className="text-sm text-gray-500">
+                    AI summary generation stays disabled until External Data consent is enabled and a valid OpenAI API key is verified in Settings.
+                  </p>
+                )}
+                {skillsSummary && (
+                  <div className="space-y-4">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-700">Overview</p>
+                      <p className="text-sm text-gray-700 mt-1">
+                        {skillsSummary.overview}
+                      </p>
+                      {skillsSummary.validation_warning && (
+                        <p className="text-xs text-amber-600 mt-2">
+                          {skillsSummary.validation_warning}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-700">
+                          Timeline highlights
+                        </p>
+                        <ul className="mt-2 space-y-1 text-sm text-gray-700 list-disc list-inside">
+                          {skillsSummary.timeline.map((item, index) => (
+                            <li key={`timeline-${index}`}>{item}</li>
+                          ))}
+                          {skillsSummary.timeline.length === 0 && (
+                            <li className="text-xs text-gray-400">
+                              No timeline highlights.
+                            </li>
+                          )}
+                        </ul>
+                      </div>
+
+                      <div>
+                        <p className="text-sm font-semibold text-gray-700">
+                          Skills focus
+                        </p>
+                        <ul className="mt-2 space-y-1 text-sm text-gray-700 list-disc list-inside">
+                          {skillsSummary.skills_focus.map((item, index) => (
+                            <li key={`skills-${index}`}>{item}</li>
+                          ))}
+                          {skillsSummary.skills_focus.length === 0 && (
+                            <li className="text-xs text-gray-400">
+                              No skill focus notes.
+                            </li>
+                          )}
+                        </ul>
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-sm font-semibold text-gray-700">
+                        Suggested next steps
+                      </p>
+                      <ul className="mt-2 space-y-1 text-sm text-gray-700 list-disc list-inside">
+                        {skillsSummary.suggested_next_steps.map((item, index) => (
+                          <li key={`steps-${index}`}>{item}</li>
+                        ))}
+                        {skillsSummary.suggested_next_steps.length === 0 && (
+                          <li className="text-xs text-gray-400">
+                            No suggestions yet.
+                          </li>
+                        )}
+                      </ul>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* ============================================

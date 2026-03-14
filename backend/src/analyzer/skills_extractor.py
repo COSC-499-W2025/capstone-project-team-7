@@ -66,11 +66,19 @@ class SkillsExtractor:
     - Software engineering best practices
     """
     
+    # Pre-compiled patterns for commit message skill extraction
+    _COMMIT_MSG_PATTERNS = [
+        (re.compile(r'\b(test|spec|unittest|pytest)\b', re.IGNORECASE), "Automated Testing", "practices"),
+        (re.compile(r'\b(ci|cd|deploy|pipeline|github.actions|gitlab.ci|jenkins)\b', re.IGNORECASE), "CI/CD Practices", "practices"),
+        (re.compile(r'\b(docker|container|k8s|kubernetes|compose)\b', re.IGNORECASE), "Containerization", "practices"),
+        (re.compile(r'\b(refactor)\b', re.IGNORECASE), None, None),  # boost only
+    ]
+
     def __init__(self):
         self.skills: Dict[str, Skill] = {}
         self.logger = logging.getLogger(__name__)
         self.file_timestamps: Dict[str, str] = {}  # Cache for file timestamps
-        
+
         # Pattern definitions for skill detection
         self._init_patterns()
     
@@ -109,12 +117,10 @@ class SkillsExtractor:
             'hash_map': {
                 'python': [
                     r'\bdict\(',           # dict() constructor
-                    r'=\s*\{\}',           # Empty dict initialization
                     r'\{[^}]*:[^}]*\}',   # Dict literals with key:value
                     r'collections\.defaultdict',
                     r'collections\.Counter',
                     r'\.get\(',            # Dict.get() method
-                    r'\[[^\]]+\]\s*=',    # Dict assignment like dict[key] = value
                 ],
                 'java': [r'HashMap<', r'HashSet<', r'Hashtable<'],
                 'javascript': [r'new\s+Map\(', r'new\s+Set\('],
@@ -128,11 +134,11 @@ class SkillsExtractor:
                 'java': [r'Graph\s+\w+', r'adjacency'],
             },
             'queue': {
-                'python': [r'from\s+queue\s+import', r'Queue\(', r'collections\.deque', r'\.append\(', r'\.popleft\('],
+                'python': [r'from\s+queue\s+import', r'Queue\(', r'collections\.deque', r'\.popleft\('],
                 'java': [r'Queue<', r'LinkedList<.*>.*queue', r'PriorityQueue<'],
             },
             'stack': {
-                'python': [r'\.append\(', r'\.pop\(\)', r'stack\s*=\s*\[\]'],
+                'python': [r'\.pop\(\)', r'stack\s*=\s*\[\]'],
                 'java': [r'Stack<'],
             },
             'heap': {
@@ -176,7 +182,7 @@ class SkillsExtractor:
                 'java': [r'Observable', r'Observer', r'addObserver'],
             },
             'decorator': {
-                'python': [r'@\w+', r'def\s+decorator', r'functools\.wraps'],
+                'python': [r'def\s+decorator', r'functools\.wraps', r'@wraps'],
                 'java': [r'@interface'],
             },
             'strategy': {
@@ -556,7 +562,80 @@ class SkillsExtractor:
                     "Demonstrates sustained and regular contribution patterns",
                     evidence
                 )
-    
+
+        # Extract skills from commit messages
+        self._extract_from_commit_messages(git_analysis)
+
+    def _extract_from_commit_messages(self, git_analysis: Dict):
+        """Extract skills from git commit messages.
+
+        Scans commit messages for patterns indicating CI/CD, containerization,
+        testing, and refactoring practices.
+        """
+        timeline = git_analysis.get('timeline', [])
+
+        # Collect commit messages from timeline if available
+        commit_messages: List[str] = []
+        for period in timeline:
+            msgs = period.get('commit_messages', [])
+            if isinstance(msgs, list):
+                commit_messages.extend(msgs)
+
+        # Also check top-level commit_messages if present
+        top_level_msgs = git_analysis.get('commit_messages', [])
+        if isinstance(top_level_msgs, list):
+            commit_messages.extend(top_level_msgs)
+
+        if not commit_messages:
+            return
+
+        latest_timestamp = None
+        if timeline:
+            latest_month = timeline[-1].get('month', timeline[-1].get('period', ''))
+            if latest_month:
+                latest_timestamp = f"{latest_month}-01T00:00:00Z"
+
+        repo_path = git_analysis.get('path', 'repository')
+
+        # Pattern definitions: (compiled_regex, skill_name, category)
+        msg_patterns = self._COMMIT_MSG_PATTERNS
+
+        detected: Dict[str, int] = {}
+        for msg in commit_messages:
+            if not isinstance(msg, str):
+                continue
+            for pattern, skill_name, category in msg_patterns:
+                if pattern.search(msg):
+                    key = skill_name or "refactor"
+                    detected[key] = detected.get(key, 0) + 1
+
+        for skill_name, count in detected.items():
+            if skill_name == "refactor":
+                # Boost existing Refactoring skill if it exists
+                if "Refactoring" in self.skills:
+                    evidence = SkillEvidence(
+                        skill_name="Refactoring",
+                        evidence_type="commit_message",
+                        description=f"Found {count} refactoring-related commits",
+                        file_path=repo_path,
+                        confidence=min(1.0, count * 0.2 + 0.3),
+                        timestamp=latest_timestamp,
+                    )
+                    self.skills["Refactoring"].add_evidence(evidence)
+                continue
+
+            category = "practices"
+            evidence = SkillEvidence(
+                skill_name=skill_name,
+                evidence_type="commit_message",
+                description=f"Found {count} commit messages related to {skill_name.lower()}",
+                file_path=repo_path,
+                confidence=min(1.0, count * 0.15 + 0.3),
+                timestamp=latest_timestamp,
+            )
+            description = self._get_skill_description(skill_name, category, skill_name.lower())
+            self._add_skill(skill_name, category, description, evidence)
+
     def _extract_from_source_code(self, file_contents: Dict[str, str]):
         """Extract skills by analyzing actual source code."""
         
@@ -831,6 +910,9 @@ class SkillsExtractor:
             "Authentication & Authorization": "Implements secure authentication systems",
             "Input Validation": "Validates and sanitizes user input for security",
             "Middleware Pattern": "Uses middleware for request/response processing",
+            # CI/CD and DevOps
+            "CI/CD Practices": "Implements continuous integration and deployment workflows",
+            "Containerization": "Uses container technologies for application packaging and deployment",
         }
         
         return descriptions.get(skill_name, f"Demonstrates {skill_name.lower()}")

@@ -697,5 +697,187 @@ logger = logging.getLogger(__name__)
             assert git_skill.evidence[0].timestamp is not None
 
 
+class TestTightenedPatterns:
+    """Regression tests for tightened regex patterns to reduce false positives."""
+
+    @pytest.fixture
+    def extractor(self):
+        return SkillsExtractor()
+
+    def test_empty_dict_does_not_trigger_hash_map(self, extractor):
+        """Empty dict init `x = {}` should NOT trigger Hash-based Data Structures."""
+        code = """
+x = {}
+config = {}
+"""
+        skills = extractor.extract_skills(file_contents={"simple.py": code})
+        assert "Hash-based Data Structures" not in skills
+
+    def test_dict_literal_with_values_triggers_hash_map(self, extractor):
+        """Dict literal with key:value pairs SHOULD trigger Hash-based Data Structures."""
+        code = """
+mapping = {"a": 1, "b": 2}
+"""
+        skills = extractor.extract_skills(file_contents={"mapping.py": code})
+        assert "Hash-based Data Structures" in skills
+
+    def test_property_does_not_trigger_decorator_pattern(self, extractor):
+        """@property alone should NOT trigger Decorator Pattern."""
+        code = """
+class Foo:
+    @property
+    def bar(self):
+        return self._bar
+"""
+        skills = extractor.extract_skills(file_contents={"props.py": code})
+        assert "Decorator Pattern" not in skills
+
+    def test_functools_wraps_triggers_decorator_pattern(self, extractor):
+        """functools.wraps SHOULD trigger Decorator Pattern."""
+        code = """
+import functools
+
+def my_decorator(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        return func(*args, **kwargs)
+    return wrapper
+"""
+        skills = extractor.extract_skills(file_contents={"deco.py": code})
+        assert "Decorator Pattern" in skills
+
+    def test_append_alone_does_not_trigger_queue(self, extractor):
+        """list.append() alone should NOT trigger Queue Data Structure."""
+        code = """
+items = []
+items.append(1)
+items.append(2)
+"""
+        skills = extractor.extract_skills(file_contents={"list_use.py": code})
+        assert "Queue Data Structure" not in skills
+
+    def test_append_alone_does_not_trigger_stack(self, extractor):
+        """list.append() alone should NOT trigger Stack Data Structure."""
+        code = """
+items = []
+items.append(1)
+items.append(2)
+"""
+        skills = extractor.extract_skills(file_contents={"list_use.py": code})
+        assert "Stack Data Structure" not in skills
+
+    def test_deque_triggers_queue(self, extractor):
+        """collections.deque SHOULD trigger Queue Data Structure."""
+        code = """
+from collections import deque
+q = collections.deque()
+q.append(1)
+q.popleft()
+"""
+        skills = extractor.extract_skills(file_contents={"queue_use.py": code})
+        assert "Queue Data Structure" in skills
+
+    def test_pop_triggers_stack(self, extractor):
+        """list.pop() SHOULD trigger Stack Data Structure."""
+        code = """
+stack = []
+stack.pop()
+"""
+        skills = extractor.extract_skills(file_contents={"stack_use.py": code})
+        assert "Stack Data Structure" in skills
+
+
+class TestCommitMessageSkills:
+    """Tests for skill extraction from commit messages."""
+
+    @pytest.fixture
+    def extractor(self):
+        return SkillsExtractor()
+
+    def test_cicd_commit_messages(self, extractor):
+        """Commit messages with CI/CD keywords should detect CI/CD Practices."""
+        git_analysis = {
+            "path": "/repo",
+            "commit_count": 10,
+            "contributors": [{"name": "Dev", "commits": 10}],
+            "timeline": [
+                {
+                    "month": "2024-03",
+                    "commits": 10,
+                    "commit_messages": [
+                        "fix CI pipeline",
+                        "update deploy script",
+                        "add CD workflow",
+                    ],
+                }
+            ],
+        }
+        skills = extractor.extract_skills(git_analysis=git_analysis)
+        assert "CI/CD Practices" in skills
+        assert skills["CI/CD Practices"].category == "practices"
+
+    def test_containerization_commit_messages(self, extractor):
+        """Commit messages with Docker keywords should detect Containerization."""
+        git_analysis = {
+            "path": "/repo",
+            "commit_count": 5,
+            "contributors": [{"name": "Dev", "commits": 5}],
+            "timeline": [
+                {
+                    "month": "2024-03",
+                    "commits": 5,
+                    "commit_messages": [
+                        "add Dockerfile",
+                        "update docker-compose config",
+                    ],
+                }
+            ],
+        }
+        skills = extractor.extract_skills(git_analysis=git_analysis)
+        assert "Containerization" in skills
+
+    def test_testing_commit_messages(self, extractor):
+        """Commit messages with test keywords should detect Automated Testing."""
+        git_analysis = {
+            "path": "/repo",
+            "commit_count": 5,
+            "contributors": [{"name": "Dev", "commits": 5}],
+            "timeline": [
+                {
+                    "month": "2024-03",
+                    "commits": 5,
+                    "commit_messages": [
+                        "add unit test for auth",
+                        "fix failing spec",
+                    ],
+                }
+            ],
+        }
+        skills = extractor.extract_skills(git_analysis=git_analysis)
+        assert "Automated Testing" in skills
+
+    def test_no_false_positive_commit_messages(self, extractor):
+        """Normal commit messages should NOT trigger CI/CD or Containerization."""
+        git_analysis = {
+            "path": "/repo",
+            "commit_count": 3,
+            "contributors": [{"name": "Dev", "commits": 3}],
+            "timeline": [
+                {
+                    "month": "2024-03",
+                    "commits": 3,
+                    "commit_messages": [
+                        "update README",
+                        "fix typo in login page",
+                        "bump version",
+                    ],
+                }
+            ],
+        }
+        skills = extractor.extract_skills(git_analysis=git_analysis)
+        assert "CI/CD Practices" not in skills
+        assert "Containerization" not in skills
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
