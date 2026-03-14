@@ -502,9 +502,11 @@ export function generateLatexFromStructuredData(data: ResumeStructuredData): str
     const c = data.contact;
     const contactParts: string[] = [];
     if (c.phone) contactParts.push(c.phone);
-    if (c.email) contactParts.push(`\\href{mailto:${escapeLatex(c.email)}}{\\underline{${escapeLatex(c.email)}}}`);
-    if (c.linkedin_url) contactParts.push(`\\href{${escapeLatex(c.linkedin_url)}}{\\underline{${extractDomain(c.linkedin_url)}}}`);
-    if (c.github_url) contactParts.push(`\\href{${escapeLatex(c.github_url)}}{\\underline{${extractDomain(c.github_url)}}}`);
+    // URLs inside \href{} should NOT be escaped - hyperref handles URL characters.
+    // Only the display text needs escaping.
+    if (c.email) contactParts.push(`\\href{mailto:${c.email}}{\\underline{${escapeLatex(c.email)}}}`);
+    if (c.linkedin_url) contactParts.push(`\\href{${c.linkedin_url}}{\\underline{${escapeLatex(extractDomain(c.linkedin_url))}}}`);
+    if (c.github_url) contactParts.push(`\\href{${c.github_url}}{\\underline{${escapeLatex(extractDomain(c.github_url))}}}`);
     
     lines.push(`\\begin{center}
     \\textbf{\\Huge \\scshape ${escapeLatex(c.full_name)}} \\\\ \\vspace{1pt}
@@ -604,20 +606,25 @@ ${skillLines.join('\n')}
 }
 
 /**
- * Escape special LaTeX characters
+ * Escape special LaTeX characters using single-pass replacement
+ * to avoid corrupting backslash sequences (e.g., \textbackslash{} → \textbackslash\{\})
  */
 function escapeLatex(text: string): string {
-  return text
-    .replace(/\\/g, '\\textbackslash{}')
-    .replace(/&/g, '\\&')
-    .replace(/%/g, '\\%')
-    .replace(/\$/g, '\\$')
-    .replace(/#/g, '\\#')
-    .replace(/_/g, '\\_')
-    .replace(/\{/g, '\\{')
-    .replace(/\}/g, '\\}')
-    .replace(/~/g, '\\textasciitilde{}')
-    .replace(/\^/g, '\\textasciicircum{}');
+  const replacements: Record<string, string> = {
+    '\\': '\\textbackslash{}',
+    '&': '\\&',
+    '%': '\\%',
+    '$': '\\$',
+    '#': '\\#',
+    '_': '\\_',
+    '{': '\\{',
+    '}': '\\}',
+    '~': '\\textasciitilde{}',
+    '^': '\\textasciicircum{}',
+  };
+  
+  // Single-pass regex avoids double-escaping braces in \textbackslash{}
+  return text.replace(/[\\&%$#_{}~^]/g, (char) => replacements[char]);
 }
 
 /**
