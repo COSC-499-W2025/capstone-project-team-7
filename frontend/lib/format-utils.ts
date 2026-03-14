@@ -30,3 +30,10 @@ export function formatCount(value: number | string): string {
   if (Number.isNaN(numeric)) return String(value);
   return numeric.toLocaleString();
 }
+
+export function formatConfidence(value: number | string | undefined | null): string {
+  if (value == null) return "Unknown";
+  if (typeof value === "string") return value.charAt(0).toUpperCase() + value.slice(1);
+  if (!Number.isFinite(value)) return "Unknown";
+  return `${(value * 100).toFixed(0)}%`;
+}

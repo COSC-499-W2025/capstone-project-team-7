@@ -61,8 +61,8 @@ export function ContributionsTab({ contributionMetrics }: ContributionsTabProps)
                 <div className="space-y-3">
                   {contributionMetrics.contributors
                     .slice(0, 5)
-                    .map((contributor) => (
-                    <div key={contributor.name ?? "unknown"} className="flex items-center justify-between">
+                    .map((contributor, index) => (
+                    <div key={`${contributor.name ?? "unknown"}-${index}`} className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Users size={14} className="text-gray-400" />
                         <span className="text-sm font-medium text-gray-900">{contributor.name ?? "Unknown"}</span>

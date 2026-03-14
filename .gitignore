@@ -55,5 +55,7 @@ C
 AGENTS.md
 .claude
 .agents
+docs/superpowers/
+*.tsbuildinfo
 .sisyphus/
 .sisyphus
