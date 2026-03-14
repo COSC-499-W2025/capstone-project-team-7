@@ -8,6 +8,7 @@ import {
   Folder,
   Briefcase,
   FileText,
+  Eye,
   Settings,
   HelpCircle,
   Search,
@@ -143,6 +144,11 @@ export const Sidebar: React.FC = () => {
             href="/portfolio"
             icon={<Folder size={20} />}
             label="Portfolio"
+          />
+          <NavItem
+            href="/portfolio/view"
+            icon={<Eye size={20} />}
+            label="Portfolio View"
           />
           <NavItem
             href="/projects"
