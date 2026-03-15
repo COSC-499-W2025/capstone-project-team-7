@@ -79,6 +79,7 @@ export interface SelectionResponse {
   skill_order: string[];
   selected_project_ids: string[];
   selected_skill_ids: string[];
+  sort_mode: "contribution" | "recency";
   created_at: string;
   updated_at: string;
 }
@@ -88,6 +89,7 @@ export interface SelectionUpdateRequest {
   skill_order?: string[];
   selected_project_ids?: string[];
   selected_skill_ids?: string[];
+  sort_mode?: "contribution" | "recency";
 }
 
 /**

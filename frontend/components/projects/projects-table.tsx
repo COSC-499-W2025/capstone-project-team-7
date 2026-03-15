@@ -1,22 +1,19 @@
 "use client";
 
-import { useState } from "react";
 import { ProjectMetadata } from "@/types/project";
 import { formatDistanceToNow } from "date-fns";
-import { Trash2, Eye, FolderOpen, GripVertical, ArrowUp, ArrowDown } from "lucide-react";
+import { Trash2, Eye, FolderOpen } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 interface ProjectsTableProps {
   projects: ProjectMetadata[];
   onDelete: (projectId: string) => void;
   onView: (projectId: string) => void;
-  onReorder: (fromIndex: number, toIndex: number) => void;
+  rankingMode: "contribution" | "recency";
 }
 
-export function ProjectsTable({ projects, onDelete, onView, onReorder }: ProjectsTableProps) {
+export function ProjectsTable({ projects, onDelete, onView, rankingMode }: ProjectsTableProps) {
   const router = useRouter();
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   const formatDate = (dateString?: string) => {
     if (!dateString) return "N/A";
@@ -30,6 +27,11 @@ export function ProjectsTable({ projects, onDelete, onView, onReorder }: Project
   const formatNumber = (num?: number) => {
     if (num === undefined || num === null) return "0";
     return num.toLocaleString();
+  };
+
+  const formatContributionScore = (score?: number) => {
+    if (score === undefined || score === null) return "Unranked";
+    return score.toFixed(1);
   };
 
   // Helper to extract data from project, checking both root and scan_data.summary
@@ -80,9 +82,6 @@ export function ProjectsTable({ projects, onDelete, onView, onReorder }: Project
       <table className="min-w-full divide-y divide-gray-200">
         <thead className="bg-gray-50">
           <tr>
-            <th scope="col" className="w-14 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              <span className="sr-only">Reorder</span>
-            </th>
             <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
               Project Name
             </th>
@@ -102,6 +101,9 @@ export function ProjectsTable({ projects, onDelete, onView, onReorder }: Project
               Role
             </th>
             <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Contribution Score
+            </th>
+            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
               Scanned
             </th>
             <th scope="col" className="relative px-6 py-3">
@@ -110,85 +112,14 @@ export function ProjectsTable({ projects, onDelete, onView, onReorder }: Project
           </tr>
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">
-          {projects.map((project, index) => {
+          {projects.map((project) => {
             const projectData = getProjectData(project);
-            const canMoveUp = index > 0;
-            const canMoveDown = index < projects.length - 1;
-            
+
             return (
             <tr
               key={project.id}
-              draggable
-              onDragStart={(event) => {
-                event.dataTransfer.setData("text/plain", project.id);
-                event.dataTransfer.effectAllowed = "move";
-                setDraggingId(project.id);
-              }}
-              onDragOver={(event) => {
-                event.preventDefault();
-                setDragOverId(project.id);
-              }}
-              onDrop={(event) => {
-                event.preventDefault();
-                const sourceId = event.dataTransfer.getData("text/plain");
-                const fromIndex = projects.findIndex((p) => p.id === sourceId);
-                const toIndex = projects.findIndex((p) => p.id === project.id);
-                if (fromIndex >= 0 && toIndex >= 0 && fromIndex !== toIndex) {
-                  onReorder(fromIndex, toIndex);
-                }
-                setDraggingId(null);
-                setDragOverId(null);
-              }}
-              onDragEnd={() => {
-                setDraggingId(null);
-                setDragOverId(null);
-              }}
-              className={`transition-colors ${dragOverId === project.id ? "bg-blue-50" : "hover:bg-gray-50"} ${draggingId === project.id ? "opacity-60" : ""}`}
+              className="transition-colors hover:bg-gray-50"
             >
-              <td className="px-3 py-4 whitespace-nowrap">
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    title="Reorder project"
-                    aria-label={`Reorder ${project.project_name}`}
-                    className="text-gray-500 hover:text-gray-700 p-1 rounded hover:bg-gray-100"
-                    onKeyDown={(event) => {
-                      if (event.key === "ArrowUp" && canMoveUp) {
-                        event.preventDefault();
-                        onReorder(index, index - 1);
-                      }
-                      if (event.key === "ArrowDown" && canMoveDown) {
-                        event.preventDefault();
-                        onReorder(index, index + 1);
-                      }
-                    }}
-                  >
-                    <GripVertical size={16} />
-                  </button>
-                  <div className="flex flex-col">
-                    <button
-                      type="button"
-                      title="Move up"
-                      aria-label={`Move ${project.project_name} up`}
-                      disabled={!canMoveUp}
-                      onClick={() => onReorder(index, index - 1)}
-                      className="text-gray-500 hover:text-gray-700 p-0.5 rounded hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      <ArrowUp size={12} />
-                    </button>
-                    <button
-                      type="button"
-                      title="Move down"
-                      aria-label={`Move ${project.project_name} down`}
-                      disabled={!canMoveDown}
-                      onClick={() => onReorder(index, index + 1)}
-                      className="text-gray-500 hover:text-gray-700 p-0.5 rounded hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      <ArrowDown size={12} />
-                    </button>
-                  </div>
-                </div>
-              </td>
               <td 
                 className="px-6 py-4 whitespace-nowrap cursor-pointer"
                 onClick={() => router.push(`/project?projectId=${project.id}`)}
@@ -237,6 +168,11 @@ export function ProjectsTable({ projects, onDelete, onView, onReorder }: Project
                 ) : (
                   <span className="text-sm text-gray-400">-</span>
                 )}
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                <span className={project.contribution_score === undefined || project.contribution_score === null ? "text-gray-400" : undefined}>
+                  {formatContributionScore(project.contribution_score)}
+                </span>
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                 {formatDate(project.created_at || project.scan_timestamp)}
