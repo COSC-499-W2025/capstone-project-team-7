@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Briefcase,
@@ -11,8 +11,14 @@ import {
   Eye,
   EyeOff,
   Trophy,
+  Globe,
+  Link as LinkIcon,
+  Check,
+  Loader2,
 } from "lucide-react";
-import type { PortfolioChronology } from "@/types/portfolio";
+import { getStoredToken } from "@/lib/auth";
+import { getPortfolioSettings, publishPortfolio } from "@/lib/api/portfolio";
+import type { PortfolioChronology, PortfolioSettings } from "@/types/portfolio";
 import type { ProjectMetadata } from "@/types/project";
 import type { UserProfile } from "@/lib/api.types";
 import { ActivityHeatmap } from "@/components/portfolio/activity-heatmap";
@@ -85,6 +91,46 @@ export function PortfolioOverview({
     allSkills: true,
   });
 
+  // Publish state
+  const [pubSettings, setPubSettings] = useState<PortfolioSettings | null>(null);
+  const [publishing, setPublishing] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    const token = getStoredToken();
+    if (!token) return;
+    getPortfolioSettings(token)
+      .then(setPubSettings)
+      .catch(() => {});
+  }, []);
+
+  const handleTogglePublish = useCallback(async () => {
+    const token = getStoredToken();
+    if (!token) return;
+    setPublishing(true);
+    try {
+      const newPublic = !pubSettings?.is_public;
+      const result = await publishPortfolio(token, newPublic);
+      setPubSettings((prev) => prev
+        ? { ...prev, is_public: result.is_public, share_token: result.share_token }
+        : null,
+      );
+    } catch {
+      // silently fail
+    } finally {
+      setPublishing(false);
+    }
+  }, [pubSettings?.is_public]);
+
+  const handleCopyLink = useCallback(() => {
+    if (!pubSettings?.share_token) return;
+    const url = `${window.location.origin}/p?token=${pubSettings.share_token}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, [pubSettings?.share_token]);
+
   const toggleSection = useCallback((key: keyof SectionVisibility) => {
     setVisibility((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
@@ -98,8 +144,36 @@ export function PortfolioOverview({
 
   return (
     <div className="space-y-6">
-      {/* Visibility toggles */}
-      <div className="flex items-center gap-1 justify-end">
+      {/* Publish bar + Visibility toggles */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleTogglePublish}
+            disabled={publishing}
+            className={`px-3 py-1.5 text-xs font-medium rounded-md flex items-center gap-1.5 transition-colors cursor-pointer ${
+              pubSettings?.is_public
+                ? "bg-green-50 text-green-700 border border-green-200"
+                : "bg-gray-100 text-gray-600 border border-gray-200"
+            }`}
+          >
+            {publishing ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : (
+              <Globe size={12} />
+            )}
+            {pubSettings?.is_public ? "Public" : "Private"}
+          </button>
+          {pubSettings?.is_public && pubSettings.share_token && (
+            <button
+              onClick={handleCopyLink}
+              className="px-3 py-1.5 text-xs font-medium rounded-md flex items-center gap-1.5 bg-indigo-50 text-indigo-600 border border-indigo-200 transition-colors cursor-pointer"
+            >
+              {copied ? <Check size={12} /> : <LinkIcon size={12} />}
+              {copied ? "Copied!" : "Copy Link"}
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-1">
         {(
           [
             ["heatmap", "Heatmap"],
@@ -121,6 +195,7 @@ export function PortfolioOverview({
             {label}
           </button>
         ))}
+        </div>
       </div>
 
       {/* Profile header */}
