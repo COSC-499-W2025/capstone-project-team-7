@@ -57,6 +57,7 @@ class TestPostSelection:
             "skill_order": ["Python", "JavaScript"],
             "selected_project_ids": ["proj-1"],
             "selected_skill_ids": ["Python"],
+            "sort_mode": "contribution",
             "created_at": datetime(2026, 1, 15, 10, 0, 0),
             "updated_at": datetime(2026, 1, 15, 10, 0, 0),
         }
@@ -68,6 +69,7 @@ class TestPostSelection:
                 "skill_order": ["Python", "JavaScript"],
                 "selected_project_ids": ["proj-1"],
                 "selected_skill_ids": ["Python"],
+                "sort_mode": "contribution",
             },
         )
         
@@ -78,6 +80,7 @@ class TestPostSelection:
         assert payload["skill_order"] == ["Python", "JavaScript"]
         assert payload["selected_project_ids"] == ["proj-1"]
         assert payload["selected_skill_ids"] == ["Python"]
+        assert payload["sort_mode"] == "contribution"
         
         # Verify service was called correctly
         mock_selection_service.save_user_selections.assert_called_once_with(
@@ -86,6 +89,7 @@ class TestPostSelection:
             skill_order=["Python", "JavaScript"],
             selected_project_ids=["proj-1"],
             selected_skill_ids=["Python"],
+            sort_mode="contribution",
         )
     
     def test_save_partial_selection(self, mock_selection_service):
@@ -96,6 +100,7 @@ class TestPostSelection:
             "skill_order": [],
             "selected_project_ids": [],
             "selected_skill_ids": [],
+            "sort_mode": "recency",
             "created_at": datetime(2026, 1, 15, 10, 0, 0),
             "updated_at": datetime(2026, 1, 15, 11, 0, 0),
         }
@@ -116,6 +121,7 @@ class TestPostSelection:
             skill_order=None,
             selected_project_ids=None,
             selected_skill_ids=None,
+            sort_mode=None,
         )
     
     def test_save_empty_arrays(self, mock_selection_service):
@@ -126,6 +132,7 @@ class TestPostSelection:
             "skill_order": [],
             "selected_project_ids": [],
             "selected_skill_ids": [],
+            "sort_mode": "recency",
             "created_at": datetime(2026, 1, 15, 10, 0, 0),
             "updated_at": datetime(2026, 1, 15, 12, 0, 0),
         }
@@ -146,6 +153,7 @@ class TestPostSelection:
         assert payload["skill_order"] == []
         assert payload["selected_project_ids"] == []
         assert payload["selected_skill_ids"] == []
+        assert payload["sort_mode"] == "recency"
     
     def test_save_selection_service_error(self, mock_selection_service):
         """Test error handling when service fails."""
@@ -187,6 +195,7 @@ class TestGetSelection:
             "skill_order": ["Python", "Go"],
             "selected_project_ids": ["proj-2"],
             "selected_skill_ids": ["Python", "Go"],
+            "sort_mode": "contribution",
             "created_at": datetime(2026, 1, 15, 10, 0, 0),
             "updated_at": datetime(2026, 1, 15, 14, 0, 0),
         }
@@ -200,6 +209,7 @@ class TestGetSelection:
         assert payload["skill_order"] == ["Python", "Go"]
         assert payload["selected_project_ids"] == ["proj-2"]
         assert payload["selected_skill_ids"] == ["Python", "Go"]
+        assert payload["sort_mode"] == "contribution"
         
         mock_selection_service.get_user_selections.assert_called_once_with("test-user-123")
     
@@ -216,6 +226,7 @@ class TestGetSelection:
         assert payload["skill_order"] == []
         assert payload["selected_project_ids"] == []
         assert payload["selected_skill_ids"] == []
+        assert payload["sort_mode"] == "recency"
     
     def test_get_selection_with_null_arrays(self, mock_selection_service):
         """Test handling of null values in database response."""
@@ -225,6 +236,7 @@ class TestGetSelection:
             "skill_order": None,
             "selected_project_ids": None,
             "selected_skill_ids": None,
+            "sort_mode": None,
             "created_at": datetime(2026, 1, 15, 10, 0, 0),
             "updated_at": datetime(2026, 1, 15, 10, 0, 0),
         }
@@ -237,6 +249,7 @@ class TestGetSelection:
         assert payload["skill_order"] == []
         assert payload["selected_project_ids"] == []
         assert payload["selected_skill_ids"] == []
+        assert payload["sort_mode"] == "recency"
     
     def test_get_selection_service_error(self, mock_selection_service):
         """Test error handling when service fails."""
@@ -318,6 +331,7 @@ class TestSelectionIntegration:
             "skill_order": ["Python"],
             "selected_project_ids": ["proj-1"],
             "selected_skill_ids": ["Python"],
+            "sort_mode": "recency",
             "created_at": datetime(2026, 1, 15, 10, 0, 0),
             "updated_at": datetime(2026, 1, 15, 10, 0, 0),
         }
