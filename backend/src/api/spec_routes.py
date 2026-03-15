@@ -1102,7 +1102,27 @@ def _run_scan_background(
                     logger.warning(f"⚠️ Failed to auto-generate portfolio item: {portfolio_err}", exc_info=True)
                     # Don't fail the scan if portfolio generation fails
                     result_payload["portfolio_generation_warning"] = str(portfolio_err)
-                
+
+                # Auto-rank project by contribution score
+                try:
+                    contribution_metrics = result_payload.get("contribution_metrics")
+                    if contribution_metrics:
+                        logger.info(f"📊 Auto-ranking project {project_id}...")
+                        from services.services.contribution_analysis_service import ContributionAnalysisService
+                        ranking_service = ContributionAnalysisService()
+                        ranking = ranking_service.compute_contribution_score(contribution_metrics)
+                        projects_service.update_project_score(
+                            user_id=profile_id,
+                            project_id=project_id,
+                            contribution_score=ranking["score"],
+                            user_commit_share=ranking.get("user_commit_share", 0),
+                            total_commits=contribution_metrics.get("total_commits", 0),
+                        )
+                        logger.info(f"✅ Project ranked! score={ranking['score']}")
+                except Exception as rank_err:
+                    logger.warning(f"⚠️ Failed to auto-rank project: {rank_err}", exc_info=True)
+                    result_payload["ranking_warning"] = str(rank_err)
+
                 # Auto-generate resume item using the shared helper function
                 try:
                     logger.info(f"📝 Auto-generating resume item for project {project_id}...")
