@@ -17,7 +17,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { getStoredToken } from "@/lib/auth";
-import { getPortfolioSettings, publishPortfolio } from "@/lib/api/portfolio";
+import { publishPortfolio } from "@/lib/api/portfolio";
 import type { PortfolioChronology, PortfolioSettings } from "@/types/portfolio";
 import type { ProjectMetadata } from "@/types/project";
 import type { UserProfile } from "@/lib/api.types";
@@ -33,6 +33,7 @@ interface PortfolioOverviewProps {
   chronology: PortfolioChronology | null;
   projects: ProjectMetadata[];
   skills: string[];
+  initialSettings?: PortfolioSettings | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -83,6 +84,7 @@ export function PortfolioOverview({
   chronology,
   projects,
   skills,
+  initialSettings,
 }: PortfolioOverviewProps) {
   const [visibility, setVisibility] = useState<SectionVisibility>({
     heatmap: true,
@@ -91,18 +93,15 @@ export function PortfolioOverview({
     allSkills: true,
   });
 
-  // Publish state
-  const [pubSettings, setPubSettings] = useState<PortfolioSettings | null>(null);
+  // Publish state — initialized from parent-fetched settings
+  const [pubSettings, setPubSettings] = useState<PortfolioSettings | null>(initialSettings ?? null);
   const [publishing, setPublishing] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  // Sync if parent re-fetches settings
   useEffect(() => {
-    const token = getStoredToken();
-    if (!token) return;
-    getPortfolioSettings(token)
-      .then(setPubSettings)
-      .catch(() => {});
-  }, []);
+    if (initialSettings) setPubSettings(initialSettings);
+  }, [initialSettings]);
 
   const handleTogglePublish = useCallback(async () => {
     const token = getStoredToken();

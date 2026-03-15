@@ -37,6 +37,7 @@ import {
   deletePortfolioItem,
   generatePortfolioItem,
   getPortfolioChronology,
+  getPortfolioSettings,
   refreshPortfolio,
 } from "@/lib/api/portfolio";
 import { getProjects, getSkills } from "@/lib/api/projects";
@@ -44,6 +45,7 @@ import type {
   PortfolioItem,
   PortfolioChronology,
   PortfolioRefreshResponse,
+  PortfolioSettings,
   TimelineItem,
 } from "@/types/portfolio";
 import type { ProjectMetadata } from "@/types/project";
@@ -104,6 +106,7 @@ export default function PortfolioPage() {
   const [skills, setSkills] = useState<string[]>([]);
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [projects, setProjects] = useState<ProjectMetadata[]>([]);
+  const [portfolioSettings, setPortfolioSettings] = useState<PortfolioSettings | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -131,13 +134,14 @@ export default function PortfolioPage() {
     }
     try {
       setError(null);
-      const [profileRes, itemsData, skillsData, chronologyData, projectsData] =
+      const [profileRes, itemsData, skillsData, chronologyData, projectsData, settingsData] =
         await Promise.allSettled([
           api.profile.get(token),
           listPortfolioItems(token),
           getSkills(token),
           getPortfolioChronology(token),
           getProjects(token),
+          getPortfolioSettings(token),
         ]);
 
       if (profileRes.status === "fulfilled" && profileRes.value.ok)
@@ -157,6 +161,8 @@ export default function PortfolioPage() {
       }
       if (projectsData.status === "fulfilled")
         setProjects(projectsData.value.projects);
+      if (settingsData.status === "fulfilled")
+        setPortfolioSettings(settingsData.value);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load portfolio data");
     } finally {
@@ -405,6 +411,7 @@ export default function PortfolioPage() {
                 chronology={chronology}
                 projects={projects}
                 skills={skills}
+                initialSettings={portfolioSettings}
               />
             </TabsContent>
 

@@ -186,26 +186,15 @@ async def get_public_portfolio(share_token: str) -> JSONResponse:
 
     # Fetch profile (display_name, avatar, career_title, education)
     profile_data: Dict[str, Any] = {}
-    try:
-        from supabase.client import create_client as _create
-        import os
-        url = os.getenv("SUPABASE_URL", "")
-        key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY", "")
-        if url and key:
-            sb = _create(url, key)
-            resp = sb.table("profiles").select("*").eq("id", user_id).limit(1).execute()
-            rows = getattr(resp, "data", None) or []
-            if rows:
-                p = rows[0]
-                profile_data = {
-                    "display_name": settings.get("display_name") or p.get("full_name") or p.get("email", ""),
-                    "career_title": p.get("career_title"),
-                    "education": p.get("education"),
-                    "avatar_url": p.get("avatar_url"),
-                    "bio": settings.get("bio"),
-                }
-    except Exception as exc:
-        logger.warning("Failed to fetch profile for public portfolio: %s", exc)
+    p = service.get_user_profile(user_id)
+    if p:
+        profile_data = {
+            "display_name": settings.get("display_name") or p.get("full_name") or p.get("email", ""),
+            "career_title": p.get("career_title"),
+            "education": p.get("education"),
+            "avatar_url": p.get("avatar_url"),
+            "bio": settings.get("bio"),
+        }
 
     # Fetch portfolio data using service-role access
     skills_timeline: List[Dict[str, Any]] = []
@@ -218,11 +207,11 @@ async def get_public_portfolio(share_token: str) -> JSONResponse:
         projects_service = _get_projects_service_for_user(user_id)
         timeline_service = PortfolioTimelineService(projects_service=projects_service)
 
-        skills_timeline = await asyncio.to_thread(
-            timeline_service.get_skills_timeline, user_id
-        )
-        projects_timeline = await asyncio.to_thread(
-            timeline_service.get_projects_timeline, user_id
+        # Fetch all data in parallel
+        skills_timeline, projects_timeline, all_projects = await asyncio.gather(
+            asyncio.to_thread(timeline_service.get_skills_timeline, user_id),
+            asyncio.to_thread(timeline_service.get_projects_timeline, user_id),
+            asyncio.to_thread(projects_service.get_user_projects, user_id),
         )
 
         # Aggregate skills
@@ -237,11 +226,6 @@ async def get_public_portfolio(share_token: str) -> JSONResponse:
             {"period": e.get("period_label", ""), "commits": e.get("commits", 0)}
             for e in skills_timeline
         ]
-
-        # Top projects by contribution score
-        all_projects = await asyncio.to_thread(
-            projects_service.get_user_projects, user_id
-        )
         if all_projects:
             showcase_count = settings.get("showcase_count", 3)
             scored = [p for p in all_projects if p.get("contribution_score")]

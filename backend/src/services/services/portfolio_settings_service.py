@@ -178,3 +178,25 @@ class PortfolioSettingsService:
             if not existing or not existing.get("share_token"):
                 kwargs["share_token"] = secrets.token_urlsafe(16)
         return self.upsert_settings(user_id, **kwargs)
+
+    # ── Profile (for public portfolio) ──────────────────────────────────
+
+    def get_user_profile(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch basic profile data for a user. Used by the public endpoint."""
+        if self._use_local_store:
+            return None
+        try:
+            resp = (
+                self.client.table("profiles")
+                .select("id,full_name,email,career_title,education,avatar_url")
+                .eq("id", user_id)
+                .limit(1)
+                .execute()
+            )
+            data = getattr(resp, "data", None)
+            if not data:
+                return None
+            return data[0] if isinstance(data, list) else data
+        except Exception as exc:
+            logger.warning("Failed to fetch profile for user %s: %s", user_id, exc)
+            return None

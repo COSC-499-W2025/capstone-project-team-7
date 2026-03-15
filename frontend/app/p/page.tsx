@@ -9,13 +9,14 @@ import {
   Award,
   Calendar,
   Trophy,
-  Loader2,
   Search,
 } from "lucide-react";
 import { getPublicPortfolio } from "@/lib/api/portfolio";
 import type { PublicPortfolioResponse } from "@/types/portfolio";
 import { ActivityHeatmap } from "@/components/portfolio/activity-heatmap";
 import { SkillsTimeline } from "@/components/portfolio/skills-timeline";
+import { LoadingState } from "@/components/ui/loading-state";
+import { EmptyState } from "@/components/ui/empty-state";
 
 export default function PublicPortfolioPage() {
   const searchParams = useSearchParams();
@@ -49,7 +50,7 @@ export default function PublicPortfolioPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+        <LoadingState message="Loading portfolio..." />
       </div>
     );
   }
@@ -57,15 +58,10 @@ export default function PublicPortfolioPage() {
   if (error || !data) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center max-w-md px-6">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-200 flex items-center justify-center">
-            <User size={28} className="text-gray-400" />
-          </div>
-          <h1 className="text-xl font-bold text-gray-900 mb-2">Portfolio Not Found</h1>
-          <p className="text-sm text-gray-500">
-            {error || "This portfolio does not exist or is no longer public."}
-          </p>
-        </div>
+        <EmptyState
+          title="Portfolio Not Found"
+          description={error || "This portfolio does not exist or is no longer public."}
+        />
       </div>
     );
   }
