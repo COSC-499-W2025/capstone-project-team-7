@@ -113,6 +113,7 @@ def upsert_selection(user_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
             "skill_order": payload.get("skill_order", existing.get("skill_order", [])),
             "selected_project_ids": payload.get("selected_project_ids", existing.get("selected_project_ids", [])),
             "selected_skill_ids": payload.get("selected_skill_ids", existing.get("selected_skill_ids", [])),
+            "sort_mode": payload.get("sort_mode", existing.get("sort_mode", "recency")),
             "created_at": existing.get("created_at", now),
             "updated_at": now,
         }
