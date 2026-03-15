@@ -3,10 +3,9 @@ Upload and Parse API routes
 Implements /api/uploads endpoints per api-plan.md
 """
 
-import base64
-import json
 import logging
 import os
+import threading
 import uuid
 import hashlib
 import magic
@@ -17,42 +16,14 @@ from datetime import datetime
 from fastapi import APIRouter, UploadFile, File, HTTPException, status, Body, Header, Depends
 from pydantic import BaseModel, Field
 
-from services.archive_utils import ensure_zip
 from scanner.parser import parse_zip
-from scanner.models import ParseResult, ScanPreferences
+from scanner.models import ParseResult, ScanPreferences, FileMetadata as ScanFileMetadata, ParseIssue as ScanParseIssue
 from api.request_context import set_request_access_token
 
 logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/api/uploads", tags=["uploads"])
-
-def _extract_user_id_from_token(token: str) -> Optional[str]:
-    try:
-        import jwt
-
-        payload = jwt.decode(token, options={"verify_signature": False})
-        user_id = payload.get("sub")
-        if user_id:
-            return user_id
-    except Exception:
-        pass
-
-    try:
-        parts = token.split(".")
-        if len(parts) < 2:
-            return None
-        payload_b64 = parts[1]
-        padding = "=" * (-len(payload_b64) % 4)
-        decoded = base64.urlsafe_b64decode(payload_b64 + padding)
-        payload = json.loads(decoded.decode("utf-8"))
-        user_id = payload.get("sub")
-        if user_id:
-            return user_id
-    except Exception:
-        return None
-
-    return None
 
 
 # Authentication helper
@@ -79,13 +50,22 @@ async def verify_auth_token(authorization: Optional[str] = Header(None)) -> str:
     token = parts[1]
     set_request_access_token(token)
 
-    user_id = _extract_user_id_from_token(token)
-    if not user_id:
+    try:
+        import jwt
+
+        payload = jwt.decode(token, options={"verify_signature": False})
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token: missing user ID",
+            )
+        return user_id
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
         )
-    return user_id
 
 
 # Pydantic models
@@ -148,10 +128,6 @@ class ParseResponse(BaseModel):
     duplicate_count: int = 0
 
 
-class UploadFromPathRequest(BaseModel):
-    source_path: str = Field(..., description="Absolute or relative path to a directory or .zip file")
-
-
 # Configuration
 UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "data/uploads"))
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -166,6 +142,7 @@ ALLOWED_MIME_TYPES = [
 # In-memory storage for upload metadata (will be replaced with DB)
 # TODO: Replace with Supabase database persistence for production
 uploads_store: Dict[str, Dict[str, Any]] = {}
+uploads_store_lock = threading.Lock()
 
 
 def _parse_created_at_epoch(upload_data: Dict[str, Any]) -> Optional[float]:
@@ -204,24 +181,29 @@ def cleanup_expired_uploads() -> int:
 
     cutoff_epoch = datetime.utcnow().timestamp() - UPLOAD_TTL_SECONDS
     expired_ids: List[str] = []
+    expired_entries: List[Dict[str, Any]] = []
 
-    for upload_id, upload_data in list(uploads_store.items()):
-        created_at_epoch = _parse_created_at_epoch(upload_data)
-        if created_at_epoch is None:
-            continue
-        if created_at_epoch <= cutoff_epoch:
-            expired_ids.append(upload_id)
+    with uploads_store_lock:
+        for upload_id, upload_data in list(uploads_store.items()):
+            created_at_epoch = _parse_created_at_epoch(upload_data)
+            if created_at_epoch is None:
+                continue
+            if created_at_epoch <= cutoff_epoch:
+                expired_ids.append(upload_id)
 
-    for upload_id in expired_ids:
-        upload_data = uploads_store.pop(upload_id, None)
-        if upload_data is None:
-            continue
+        for upload_id in expired_ids:
+            upload_data = uploads_store.pop(upload_id, None)
+            if upload_data is None:
+                continue
+            expired_entries.append(upload_data)
+
+    for upload_data in expired_entries:
         _delete_upload_file(upload_data)
 
-    if expired_ids:
-        logger.info("Cleaned up %d expired uploads", len(expired_ids))
+    if expired_entries:
+        logger.info("Cleaned up %d expired uploads", len(expired_entries))
 
-    return len(expired_ids)
+    return len(expired_entries)
 
 
 def validate_zip_file(file_content: bytes, filename: str) -> tuple[bool, Optional[str]]:
@@ -260,117 +242,6 @@ def compute_file_hash(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
 
-def _validate_source_path(source_path: str) -> Path:
-    blocked_prefixes = [
-        "/etc", "/var", "/usr", "/bin", "/sbin", "/lib", "/boot",
-        "/root", "/proc", "/sys", "/dev", "/private/etc", "/private/var",
-    ]
-
-    input_path = Path(source_path)
-    try:
-        if not input_path.is_absolute():
-            input_path = Path.cwd() / input_path
-        input_str = str(input_path)
-    except (OSError, ValueError):
-        input_str = source_path
-
-    for blocked in blocked_prefixes:
-        if input_str.startswith(blocked) or source_path.startswith(blocked):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail={"error": "path_not_allowed", "message": f"Access to {blocked} is not allowed"},
-            )
-
-    try:
-        target = Path(source_path).resolve()
-    except (OSError, ValueError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"error": "invalid_path", "message": f"Invalid path: {exc}"},
-        )
-
-    resolved_str = str(target)
-    for blocked in blocked_prefixes:
-        if resolved_str.startswith(blocked):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail={"error": "path_not_allowed", "message": f"Access to {blocked} is not allowed"},
-            )
-
-    if not target.exists():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"error": "path_not_found", "message": f"Path does not exist: {source_path}"},
-        )
-
-    return target
-
-
-def _store_upload_content(
-    *,
-    content: bytes,
-    filename: str,
-    content_type: Optional[str],
-    user_id: str,
-    metadata: Optional[Dict[str, Any]] = None,
-) -> UploadResponse:
-    file_size = len(content)
-    if file_size > MAX_UPLOAD_SIZE:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail={
-                "error": "file_too_large",
-                "message": f"File size ({file_size} bytes) exceeds maximum allowed size ({MAX_UPLOAD_SIZE} bytes)",
-                "max_size_bytes": MAX_UPLOAD_SIZE,
-            },
-        )
-
-    is_valid, error_msg = validate_zip_file(content, filename)
-    if not is_valid:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "error": "invalid_format",
-                "message": error_msg,
-                "expected": ".zip",
-            },
-        )
-
-    upload_id = f"upl_{uuid.uuid4().hex[:12]}"
-    file_hash = compute_file_hash(content)
-    upload_path = UPLOAD_DIR / f"{upload_id}.zip"
-    upload_path.write_bytes(content)
-
-    created_at = datetime.utcnow()
-    merged_metadata: Dict[str, Any] = {
-        "original_filename": filename,
-        "content_type": content_type,
-    }
-    if metadata:
-        merged_metadata.update(metadata)
-
-    upload_metadata = {
-        "upload_id": upload_id,
-        "user_id": user_id,
-        "status": "stored",
-        "filename": filename,
-        "size_bytes": file_size,
-        "file_hash": file_hash,
-        "storage_path": str(upload_path),
-        "created_at": created_at.isoformat() + "Z",
-        "created_at_epoch": created_at.timestamp(),
-        "metadata": merged_metadata,
-    }
-    uploads_store[upload_id] = upload_metadata
-
-    return UploadResponse(
-        upload_id=upload_id,
-        status="stored",
-        filename=filename,
-        size_bytes=file_size,
-    )
-
-
 @router.post("", response_model=UploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload_file(
     file: UploadFile = File(..., description="ZIP archive to upload"),
@@ -388,12 +259,69 @@ async def upload_file(
     try:
         cleanup_expired_uploads()
         filename = file.filename or "upload.zip"
+        # Read file content
         content = await file.read()
-        return _store_upload_content(
-            content=content,
+        file_size = len(content)
+        
+        # Validate size
+        if file_size > MAX_UPLOAD_SIZE:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail={
+                    "error": "file_too_large",
+                    "message": f"File size ({file_size} bytes) exceeds maximum allowed size ({MAX_UPLOAD_SIZE} bytes)",
+                    "max_size_bytes": MAX_UPLOAD_SIZE
+                }
+            )
+        
+        # Validate ZIP format
+        is_valid, error_msg = validate_zip_file(content, filename)
+        if not is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": "invalid_format",
+                    "message": error_msg,
+                    "expected": ".zip"
+                }
+            )
+        
+        # Generate unique upload ID
+        upload_id = f"upl_{uuid.uuid4().hex[:12]}"
+        
+        # Compute file hash for deduplication
+        file_hash = compute_file_hash(content)
+        
+        # Save file to disk
+        upload_path = UPLOAD_DIR / f"{upload_id}.zip"
+        upload_path.write_bytes(content)
+        
+        # Store metadata
+        created_at = datetime.utcnow()
+        upload_metadata = {
+            "upload_id": upload_id,
+            "user_id": user_id,
+            "status": "stored",
+            "filename": filename,
+            "size_bytes": file_size,
+            "file_hash": file_hash,
+            "storage_path": str(upload_path),
+            "created_at": created_at.isoformat() + "Z",
+            "created_at_epoch": created_at.timestamp(),
+            "metadata": {
+                "original_filename": filename,
+                "content_type": file.content_type,
+            }
+        }
+        
+        with uploads_store_lock:
+            uploads_store[upload_id] = upload_metadata
+        
+        return UploadResponse(
+            upload_id=upload_id,
+            status="stored",
             filename=filename,
-            content_type=file.content_type,
-            user_id=user_id,
+            size_bytes=file_size
         )
         
     except HTTPException:
@@ -408,43 +336,6 @@ async def upload_file(
         )
 
 
-@router.post("/from-path", response_model=UploadResponse, status_code=status.HTTP_201_CREATED)
-async def upload_from_path(
-    payload: UploadFromPathRequest,
-    user_id: str = Depends(verify_auth_token),
-):
-    try:
-        cleanup_expired_uploads()
-
-        source = _validate_source_path(payload.source_path)
-        archive_path = ensure_zip(source)
-        content = archive_path.read_bytes()
-
-        filename = archive_path.name if archive_path.suffix.lower() == ".zip" else f"{archive_path.name}.zip"
-        metadata = {
-            "source_path": str(source),
-            "source_kind": "directory" if source.is_dir() else "zip",
-        }
-
-        return _store_upload_content(
-            content=content,
-            filename=filename,
-            content_type="application/zip",
-            user_id=user_id,
-            metadata=metadata,
-        )
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={
-                "error": "upload_failed",
-                "message": f"Failed to process source path upload: {str(exc)}",
-            },
-        )
-
-
 @router.get("/{upload_id}", response_model=UploadStatus)
 async def get_upload_status(
     upload_id: str,
@@ -456,9 +347,10 @@ async def get_upload_status(
     Returns stored metadata for the upload to allow polling without filesystem access.
     Only returns uploads owned by the authenticated user.
     """
-    cleanup_expired_uploads()
+    with uploads_store_lock:
+        upload_data = uploads_store.get(upload_id)
 
-    if upload_id not in uploads_store:
+    if upload_data is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
@@ -466,8 +358,6 @@ async def get_upload_status(
                 "message": f"Upload with ID '{upload_id}' not found"
             }
         )
-    
-    upload_data = uploads_store[upload_id]
     
     # Verify ownership
     if upload_data.get("user_id") != user_id:
@@ -506,10 +396,11 @@ async def parse_upload(
     - Returns file list, issues, and summary statistics
     - Requires authentication and upload ownership
     """
-    cleanup_expired_uploads()
+    with uploads_store_lock:
+        upload_data = uploads_store.get(upload_id)
 
     # Verify upload exists
-    if upload_id not in uploads_store:
+    if upload_data is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
@@ -517,8 +408,6 @@ async def parse_upload(
                 "message": f"Upload with ID '{upload_id}' not found"
             }
         )
-    
-    upload_data = uploads_store[upload_id]
     
     # Verify ownership
     if upload_data.get("user_id") != user_id:
@@ -611,10 +500,13 @@ async def parse_upload(
         ]
         
         # Update upload status
-        upload_data["status"] = "parsed"
-        upload_data["parse_completed_at"] = parse_completed.isoformat() + "Z"
-        upload_data["file_count"] = len(files)
-        upload_data["duplicate_count"] = duplicate_count
+        with uploads_store_lock:
+            current_upload_data = uploads_store.get(upload_id)
+            if current_upload_data is not None:
+                current_upload_data["status"] = "parsed"
+                current_upload_data["parse_completed_at"] = parse_completed.isoformat() + "Z"
+                current_upload_data["file_count"] = len(files)
+                current_upload_data["duplicate_count"] = duplicate_count
         
         return ParseResponse(
             upload_id=upload_id,
@@ -629,8 +521,11 @@ async def parse_upload(
         
     except Exception as e:
         logger.exception("parse_upload failed for upload_id=%s", upload_id)
-        upload_data["status"] = "parse_failed"
-        upload_data["error"] = str(e)
+        with uploads_store_lock:
+            current_upload_data = uploads_store.get(upload_id)
+            if current_upload_data is not None:
+                current_upload_data["status"] = "parse_failed"
+                current_upload_data["error"] = str(e)
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

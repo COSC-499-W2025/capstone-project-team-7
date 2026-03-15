@@ -343,7 +343,7 @@ class AnalysisAPIService:
         
         Args:
             upload_id: Upload ID from upload_archive() (required if no project_id)
-            project_id: Existing project ID to re-analyze (not yet implemented)
+            project_id: Existing project ID to analyze using saved scan data
             use_llm: Enable LLM-based analysis
             llm_media: Include media analysis via LLM
             profile_id: Scan profile ID for preferences

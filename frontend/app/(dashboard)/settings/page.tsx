@@ -702,6 +702,42 @@ export default function SettingsPage() {
               </div>
               <p className="text-xs text-gray-500 mt-1">Where files will be saved by default</p>
             </div>
+
+            <div className="space-y-2 pt-2 border-t border-gray-200">
+              <Label htmlFor="contribution-user-name" className="text-sm font-medium text-gray-900">Contribution display name</Label>
+              <Input
+                id="contribution-user-name"
+                className="border-gray-300 text-gray-900"
+                value={settings.contributionUserName ?? ""}
+                onChange={(e) => update({ contributionUserName: e.target.value })}
+                placeholder="Jane Developer"
+              />
+              <p className="text-xs text-gray-500 mt-1">Optional name used when matching git contributions</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="contribution-user-email" className="text-sm font-medium text-gray-900">Primary git email</Label>
+              <Input
+                id="contribution-user-email"
+                className="border-gray-300 text-gray-900"
+                value={settings.contributionUserEmail ?? ""}
+                onChange={(e) => update({ contributionUserEmail: e.target.value })}
+                placeholder="you@users.noreply.github.com"
+              />
+              <p className="text-xs text-gray-500 mt-1">Used for contribution ranking when commit emails differ from login email</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="contribution-email-aliases" className="text-sm font-medium text-gray-900">Git email aliases</Label>
+              <Input
+                id="contribution-email-aliases"
+                className="border-gray-300 text-gray-900"
+                value={settings.contributionEmailAliases ?? ""}
+                onChange={(e) => update({ contributionEmailAliases: e.target.value })}
+                placeholder="work@example.com,personal@example.com"
+              />
+              <p className="text-xs text-gray-500 mt-1">Comma-separated emails to include in contribution matching</p>
+            </div>
           </CardContent>
           <CardFooter className="bg-gray-50 border-t border-gray-200 p-6">
             <div className="flex items-center gap-3">

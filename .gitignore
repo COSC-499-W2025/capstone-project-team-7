@@ -57,5 +57,6 @@ AGENTS.md
 .agents
 docs/superpowers/
 *.tsbuildinfo
+*skills
 .sisyphus/
 .sisyphus
