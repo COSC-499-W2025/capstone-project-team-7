@@ -9,15 +9,12 @@ import {
   Trash2,
   RefreshCw,
   Sparkles,
-  ChevronDown,
-  ChevronUp,
   Calendar,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
@@ -34,6 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { getStoredToken } from "@/lib/auth";
+import { api } from "@/lib/api";
 import {
   listPortfolioItems,
   createPortfolioItem,
@@ -41,10 +39,22 @@ import {
   deletePortfolioItem,
   generatePortfolioItem,
   getPortfolioChronology,
+  refreshPortfolio,
 } from "@/lib/api/portfolio";
 import { getProjects, getSkills } from "@/lib/api/projects";
-import type { PortfolioItem, TimelineItem } from "@/types/portfolio";
+import type {
+  PortfolioItem,
+  PortfolioChronology,
+  PortfolioRefreshResponse,
+  TimelineItem,
+} from "@/types/portfolio";
 import type { ProjectMetadata } from "@/types/project";
+import type { UserProfile } from "@/lib/api.types";
+import { PortfolioOverview } from "@/components/portfolio/portfolio-overview";
+
+// ---------------------------------------------------------------------------
+// Types & helpers
+// ---------------------------------------------------------------------------
 
 interface FormState {
   title: string;
@@ -82,7 +92,14 @@ function formatDateRange(start?: string | null, end?: string | null): string {
   return `Until ${end}`;
 }
 
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
 export default function PortfolioPage() {
+  // --- shared data ---
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [chronology, setChronology] = useState<PortfolioChronology | null>(null);
   const [items, setItems] = useState<PortfolioItem[]>([]);
   const [skills, setSkills] = useState<string[]>([]);
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
@@ -92,22 +109,18 @@ export default function PortfolioPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Dialog state
+  // --- CRUD dialog state ---
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<PortfolioItem | null>(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
-
-  // Generate from project
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [generating, setGenerating] = useState(false);
-
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [refreshResult, setRefreshResult] = useState<PortfolioRefreshResponse | null>(null);
 
-  // Skills section toggle
-  const [skillsExpanded, setSkillsExpanded] = useState(true);
-
+  // --- data fetching ---
   const fetchAll = useCallback(async () => {
     const token = getStoredToken();
     if (!token) {
@@ -118,11 +131,17 @@ export default function PortfolioPage() {
     }
     try {
       setError(null);
-      const [itemsData, skillsData, chronologyData] = await Promise.allSettled([
-        listPortfolioItems(token),
-        getSkills(token),
-        getPortfolioChronology(token),
-      ]);
+      const [profileRes, itemsData, skillsData, chronologyData, projectsData] =
+        await Promise.allSettled([
+          api.profile.get(token),
+          listPortfolioItems(token),
+          getSkills(token),
+          getPortfolioChronology(token),
+          getProjects(token),
+        ]);
+
+      if (profileRes.status === "fulfilled" && profileRes.value.ok)
+        setProfile(profileRes.value.data);
 
       if (itemsData.status === "fulfilled") {
         setItems(itemsData.value);
@@ -130,8 +149,14 @@ export default function PortfolioPage() {
         const reason = itemsData.reason;
         setError(reason instanceof Error ? reason.message : "Failed to load portfolio items");
       }
+
       if (skillsData.status === "fulfilled") setSkills(skillsData.value.skills);
-      if (chronologyData.status === "fulfilled") setTimeline(chronologyData.value.projects);
+      if (chronologyData.status === "fulfilled") {
+        setChronology(chronologyData.value);
+        setTimeline(chronologyData.value.projects);
+      }
+      if (projectsData.status === "fulfilled")
+        setProjects(projectsData.value.projects);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load portfolio data");
     } finally {
@@ -140,27 +165,29 @@ export default function PortfolioPage() {
     }
   }, []);
 
-  const fetchProjects = useCallback(async () => {
-    const token = getStoredToken();
-    if (!token) return;
-    try {
-      const res = await getProjects(token);
-      setProjects(res.projects);
-    } catch {
-      // projects list is optional; don't surface errors
-    }
-  }, []);
-
   useEffect(() => {
     fetchAll();
-    fetchProjects();
-  }, [fetchAll, fetchProjects]);
+  }, [fetchAll]);
 
-  const handleRefresh = () => {
+  // --- refresh ---
+  const handleRefresh = async () => {
+    const token = getStoredToken();
+    if (!token) return;
     setRefreshing(true);
-    fetchAll();
+    setRefreshResult(null);
+    setError(null);
+    let refreshErr: string | null = null;
+    try {
+      const result = await refreshPortfolio(token);
+      setRefreshResult(result);
+    } catch (err) {
+      refreshErr = err instanceof Error ? err.message : "Portfolio refresh failed";
+    }
+    await fetchAll();
+    if (refreshErr) setError(refreshErr);
   };
 
+  // --- CRUD handlers ---
   const openCreateDialog = () => {
     setEditing(null);
     setForm(EMPTY_FORM);
@@ -187,7 +214,6 @@ export default function PortfolioPage() {
     if (!selectedProjectId) return;
     const token = getStoredToken();
     if (!token) return;
-
     setGenerating(true);
     setFormError(null);
     try {
@@ -203,9 +229,7 @@ export default function PortfolioPage() {
         evidence: result.evidence || f.evidence,
       }));
     } catch (err) {
-      setFormError(
-        err instanceof Error ? err.message : "Failed to generate from project"
-      );
+      setFormError(err instanceof Error ? err.message : "Failed to generate from project");
     } finally {
       setGenerating(false);
     }
@@ -233,10 +257,8 @@ export default function PortfolioPage() {
     }
     const token = getStoredToken();
     if (!token) return;
-
     setSaving(true);
     setFormError(null);
-
     const payload = {
       title: form.title.trim(),
       role: form.role.trim() || null,
@@ -244,22 +266,17 @@ export default function PortfolioPage() {
       evidence: form.evidence.trim() || null,
       thumbnail: form.thumbnail.trim() || null,
     };
-
     try {
       if (editing) {
         const updated = await updatePortfolioItem(token, editing.id, payload);
-        setItems((prev) =>
-          prev.map((item) => (item.id === updated.id ? updated : item))
-        );
+        setItems((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
       } else {
         const created = await createPortfolioItem(token, payload);
         setItems((prev) => [created, ...prev]);
       }
       setDialogOpen(false);
     } catch (err) {
-      setFormError(
-        err instanceof Error ? err.message : "Failed to save portfolio item"
-      );
+      setFormError(err instanceof Error ? err.message : "Failed to save portfolio item");
     } finally {
       setSaving(false);
     }
@@ -269,6 +286,7 @@ export default function PortfolioPage() {
     if (!saving) setDialogOpen(open);
   };
 
+  // --- loading state ---
   if (loading) {
     return (
       <div className="p-8">
@@ -282,6 +300,7 @@ export default function PortfolioPage() {
     );
   }
 
+  // --- render ---
   return (
     <div className="p-8 space-y-6">
       {/* Header */}
@@ -305,7 +324,7 @@ export default function PortfolioPage() {
                 className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <RefreshCw size={18} className={refreshing ? "animate-spin" : ""} />
-                <span className="font-medium">Refresh</span>
+                <span className="font-medium">{refreshing ? "Refreshing…" : "Refresh"}</span>
               </button>
               <button
                 onClick={openCreateDialog}
@@ -337,48 +356,64 @@ export default function PortfolioPage() {
           </div>
         )}
 
-        {/* Skills summary */}
-        <div className="px-8 py-5 border-b border-gray-200">
-          <button
-            onClick={() => setSkillsExpanded((v) => !v)}
-            className="flex items-center gap-2 text-sm font-semibold text-gray-700 hover:text-gray-900 transition-colors mb-3"
-          >
-            {skillsExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-            Skills Summary
-            {skills.length > 0 && (
-              <span className="text-xs font-normal text-gray-500 ml-1">
-                ({skills.length} skills across all projects)
-              </span>
-            )}
-          </button>
-          {skillsExpanded && (
-            <>
-              {skills.length === 0 ? (
-                <p className="text-sm text-gray-500">
-                  No skills found. Scan a project to populate skills.
-                </p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {skills.map((skill) => (
-                    <Badge key={skill} variant="secondary" className="text-xs">
-                      {skill}
-                    </Badge>
-                  ))}
+        {/* Refresh result banner */}
+        {refreshResult && (
+          <div className="mx-8 mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex gap-3">
+                <svg className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                <div>
+                  <h3 className="text-sm font-medium text-green-800">Portfolio refreshed</h3>
+                  <p className="mt-0.5 text-sm text-green-700">
+                    {refreshResult.projects_scanned} project{refreshResult.projects_scanned !== 1 ? "s" : ""} scanned
+                    {" · "}{refreshResult.total_files} file{refreshResult.total_files !== 1 ? "s" : ""} indexed
+                  </p>
+                  {refreshResult.dedup_report && refreshResult.dedup_report.summary.duplicate_groups_count > 0 && (
+                    <p className="mt-1 text-sm text-green-700">
+                      {refreshResult.dedup_report.summary.duplicate_groups_count} duplicate group{refreshResult.dedup_report.summary.duplicate_groups_count !== 1 ? "s" : ""} found across projects
+                      {" ("}{(refreshResult.dedup_report.summary.total_wasted_bytes / 1024).toFixed(1)} KB wasted{")"}
+                    </p>
+                  )}
+                  {refreshResult.dedup_report && refreshResult.dedup_report.summary.duplicate_groups_count === 0 && (
+                    <p className="mt-1 text-sm text-green-700">No cross-project duplicates detected.</p>
+                  )}
                 </div>
-              )}
-            </>
-          )}
-        </div>
+              </div>
+              <button
+                onClick={() => setRefreshResult(null)}
+                className="text-green-500 hover:text-green-700 flex-shrink-0"
+                aria-label="Dismiss"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        )}
 
-        {/* Tabs */}
+        {/* Tabs: Overview | Portfolio Items | Project Timeline */}
         <div className="p-8">
-          <Tabs defaultValue="items">
+          <Tabs defaultValue="overview">
             <TabsList className="mb-6">
+              <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="items">Portfolio Items</TabsTrigger>
               <TabsTrigger value="timeline">Project Timeline</TabsTrigger>
             </TabsList>
 
-            {/* Portfolio Items tab */}
+            {/* ══════════ Overview tab ══════════ */}
+            <TabsContent value="overview">
+              <PortfolioOverview
+                profile={profile}
+                chronology={chronology}
+                projects={projects}
+                skills={skills}
+              />
+            </TabsContent>
+
+            {/* ══════════ Portfolio Items tab ══════════ */}
             <TabsContent value="items">
               {items.length === 0 ? (
                 <div className="text-center py-16">
@@ -406,6 +441,7 @@ export default function PortfolioPage() {
                     >
                       <div className="flex items-start justify-between gap-4">
                         {item.thumbnail && (
+                          // eslint-disable-next-line @next/next/no-img-element
                           <img
                             src={item.thumbnail}
                             alt={item.title}
@@ -416,25 +452,15 @@ export default function PortfolioPage() {
                           />
                         )}
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-semibold text-gray-900">
-                            {item.title}
-                          </p>
-                          {item.role && (
-                            <p className="text-xs text-gray-500 mt-0.5">{item.role}</p>
-                          )}
+                          <p className="text-sm font-semibold text-gray-900">{item.title}</p>
+                          {item.role && <p className="text-xs text-gray-500 mt-0.5">{item.role}</p>}
                           {item.summary && (
-                            <p className="text-sm text-gray-600 mt-2 line-clamp-2">
-                              {item.summary}
-                            </p>
+                            <p className="text-sm text-gray-600 mt-2 line-clamp-2">{item.summary}</p>
                           )}
                           {item.evidence && (
-                            <p className="text-xs text-gray-500 mt-1.5 line-clamp-1">
-                              {item.evidence}
-                            </p>
+                            <p className="text-xs text-gray-500 mt-1.5 line-clamp-1">{item.evidence}</p>
                           )}
-                          <p className="text-xs text-gray-400 mt-2">
-                            Added {formatDate(item.created_at)}
-                          </p>
+                          <p className="text-xs text-gray-400 mt-2">Added {formatDate(item.created_at)}</p>
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
                           <button
@@ -460,7 +486,7 @@ export default function PortfolioPage() {
               )}
             </TabsContent>
 
-            {/* Project Timeline tab */}
+            {/* ══════════ Project Timeline tab ══════════ */}
             <TabsContent value="timeline">
               {timeline.length === 0 ? (
                 <div className="text-center py-16">
@@ -481,24 +507,23 @@ export default function PortfolioPage() {
                     >
                       <div className="flex items-start justify-between gap-4">
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-semibold text-gray-900">
-                            {project.name}
-                          </p>
+                          <p className="text-sm font-semibold text-gray-900">{project.name}</p>
                           {project.role && (
                             <p className="text-xs text-gray-500 mt-0.5">{project.role}</p>
                           )}
                           <p className="text-xs text-gray-400 mt-1">
                             {formatDateRange(project.start_date, project.end_date)}
                             {project.duration_days != null && (
-                              <span className="ml-2">
-                                ({project.duration_days} days)
-                              </span>
+                              <span className="ml-2">({project.duration_days} days)</span>
                             )}
                           </p>
                           {project.evidence.length > 0 && (
                             <ul className="mt-2 space-y-0.5">
                               {project.evidence.slice(0, 3).map((point, i) => (
-                                <li key={`${project.project_id}-e${i}`} className="text-xs text-gray-600 flex gap-1.5">
+                                <li
+                                  key={`${project.project_id}-e${i}`}
+                                  className="text-xs text-gray-600 flex gap-1.5"
+                                >
                                   <span className="text-gray-400 flex-shrink-0">•</span>
                                   <span>{point}</span>
                                 </li>
@@ -525,9 +550,7 @@ export default function PortfolioPage() {
       <Dialog open={dialogOpen} onOpenChange={handleDialogClose}>
         <DialogContent className="sm:max-w-[580px] flex flex-col max-h-[90vh]">
           <DialogHeader>
-            <DialogTitle>
-              {editing ? "Edit Portfolio Item" : "New Portfolio Item"}
-            </DialogTitle>
+            <DialogTitle>{editing ? "Edit Portfolio Item" : "New Portfolio Item"}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 py-2 overflow-y-auto flex-1 pr-1">
@@ -537,17 +560,13 @@ export default function PortfolioPage() {
               </p>
             )}
 
-            {/* Generate from project (create mode only) */}
             {!editing && projects.length > 0 && (
               <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg space-y-3">
                 <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
                   Generate from Project
                 </p>
                 <div className="flex gap-2">
-                  <Select
-                    value={selectedProjectId}
-                    onValueChange={setSelectedProjectId}
-                  >
+                  <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
                     <SelectTrigger className="flex-1">
                       <SelectValue placeholder="Select a project..." />
                     </SelectTrigger>
@@ -571,9 +590,7 @@ export default function PortfolioPage() {
                     ) : (
                       <Sparkles size={14} />
                     )}
-                    <span className="ml-1.5">
-                      {generating ? "Generating..." : "Fill from Project"}
-                    </span>
+                    <span className="ml-1.5">{generating ? "Generating..." : "Fill from Project"}</span>
                   </Button>
                 </div>
                 <p className="text-xs text-gray-500">
@@ -594,7 +611,6 @@ export default function PortfolioPage() {
                 onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
               />
             </div>
-
             <div className="space-y-1.5">
               <Label htmlFor="role">Role</Label>
               <Input
@@ -605,7 +621,6 @@ export default function PortfolioPage() {
                 onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
               />
             </div>
-
             <div className="space-y-1.5">
               <Label htmlFor="summary">Summary</Label>
               <Textarea
@@ -617,7 +632,6 @@ export default function PortfolioPage() {
                 onChange={(e) => setForm((f) => ({ ...f, summary: e.target.value }))}
               />
             </div>
-
             <div className="space-y-1.5">
               <Label htmlFor="evidence">Key Achievements / Evidence</Label>
               <Textarea
@@ -629,7 +643,6 @@ export default function PortfolioPage() {
                 onChange={(e) => setForm((f) => ({ ...f, evidence: e.target.value }))}
               />
             </div>
-
             <div className="space-y-1.5">
               <Label htmlFor="thumbnail">Thumbnail URL</Label>
               <Input
@@ -643,19 +656,11 @@ export default function PortfolioPage() {
           </div>
 
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setDialogOpen(false)}
-              disabled={saving}
-            >
+            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>
               Cancel
             </Button>
             <Button onClick={handleSave} disabled={saving}>
-              {saving
-                ? "Saving..."
-                : editing
-                ? "Save Changes"
-                : "Create"}
+              {saving ? "Saving..." : editing ? "Save Changes" : "Create"}
             </Button>
           </DialogFooter>
         </DialogContent>

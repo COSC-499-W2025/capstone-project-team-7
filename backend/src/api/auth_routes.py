@@ -117,6 +117,15 @@ def reset_password(payload: PasswordResetConfirm) -> dict:
         raise _raise_auth_error(exc)
 
 
+@router.post("/logout", status_code=status.HTTP_200_OK)
+def logout(auth: AuthContext = Depends(get_auth_context)) -> dict:
+    try:
+        SupabaseAuth().sign_out(auth.access_token)
+        return {"ok": True}
+    except AuthError as exc:
+        raise _raise_auth_error(exc)
+
+
 @router.get("/session", response_model=AuthSessionInfo, status_code=status.HTTP_200_OK)
 async def get_session(auth: AuthContext = Depends(get_auth_context)) -> AuthSessionInfo:
     return AuthSessionInfo(user_id=auth.user_id, email=auth.email)

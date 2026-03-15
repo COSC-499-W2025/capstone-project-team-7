@@ -6,10 +6,11 @@ import type {
   ProjectScanData,
   ProjectScanLanguageEntry,
 } from "@/types/project";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { updateProjectOverrides } from "@/lib/api/projects";
 import { api } from "@/lib/api";
 import { getStoredToken } from "@/lib/auth";
+import { getCategoryLabel, buildEvidenceMap } from "@/lib/skills-utils";
 import { 
   FileCode, 
   Code2, 
@@ -690,27 +691,39 @@ function GitTab({ gitAnalysis }: { gitAnalysis: any }) {
 
 // Skills Tab
 function SkillsTab({ skillsAnalysis }: { skillsAnalysis: any }) {
-  if (!skillsAnalysis || !skillsAnalysis.skills) {
+  const skillsByCategory = skillsAnalysis?.skills_by_category;
+  const categoryLabels: Record<string, string> = skillsAnalysis?.category_labels ?? {};
+  const fullSkills: any[] = Array.isArray(skillsAnalysis?.skills) ? skillsAnalysis.skills : [];
+
+  const evidenceMap = useMemo(() => buildEvidenceMap(fullSkills), [fullSkills]);
+
+  if (!skillsByCategory || Object.keys(skillsByCategory).length === 0) {
     return <EmptyState message="No skills analysis available" />;
   }
 
-  const skills = skillsAnalysis.skills;
-  const categories = Object.keys(skills);
-
   return (
     <div className="space-y-4">
-      {categories.map((category) => (
+      {Object.entries(skillsByCategory).map(([category, skills]) => (
         <div key={category} className="p-4 bg-gray-50 rounded border border-gray-200">
-          <h3 className="font-semibold text-lg mb-3 capitalize">{category.replace(/_/g, " ")}</h3>
+          <h3 className="font-semibold text-lg mb-3">{getCategoryLabel(category, categoryLabels)}</h3>
           <div className="flex flex-wrap gap-2">
-            {skills[category].map((skill: string, idx: number) => (
-              <span
-                key={idx}
-                className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
-              >
-                {skill}
-              </span>
-            ))}
+            {(skills as any[]).map((skill: any) => {
+              const skillName = typeof skill === "string" ? skill : skill?.name ?? "";
+              const evidenceCount = evidenceMap.get(skillName)?.length ?? 0;
+              return (
+                <span
+                  key={`${category}-${skillName}`}
+                  className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm inline-flex items-center gap-1.5"
+                >
+                  {skillName}
+                  {evidenceCount > 0 && (
+                    <span className="bg-blue-200 text-blue-700 text-xs px-1.5 py-0.5 rounded-full leading-none">
+                      {evidenceCount}
+                    </span>
+                  )}
+                </span>
+              );
+            })}
           </div>
         </div>
       ))}
