@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import {
   Plus,
   Loader2,
@@ -9,15 +10,18 @@ import {
   Trash2,
   RefreshCw,
   Sparkles,
-  ChevronDown,
-  ChevronUp,
   Calendar,
+  User,
+  GitCommit,
+  Award,
+  Eye,
+  EyeOff,
+  Trophy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
@@ -34,6 +38,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { getStoredToken } from "@/lib/auth";
+import { api } from "@/lib/api";
 import {
   listPortfolioItems,
   createPortfolioItem,
@@ -44,8 +49,20 @@ import {
   refreshPortfolio,
 } from "@/lib/api/portfolio";
 import { getProjects, getSkills } from "@/lib/api/projects";
-import type { PortfolioItem, PortfolioRefreshResponse, TimelineItem } from "@/types/portfolio";
+import type {
+  PortfolioItem,
+  PortfolioChronology,
+  PortfolioRefreshResponse,
+  TimelineItem,
+} from "@/types/portfolio";
 import type { ProjectMetadata } from "@/types/project";
+import type { UserProfile } from "@/lib/api.types";
+import { ActivityHeatmap } from "@/components/portfolio/activity-heatmap";
+import { SkillsTimeline } from "@/components/portfolio/skills-timeline";
+
+// ---------------------------------------------------------------------------
+// Types & helpers
+// ---------------------------------------------------------------------------
 
 interface FormState {
   title: string;
@@ -62,6 +79,13 @@ const EMPTY_FORM: FormState = {
   evidence: "",
   thumbnail: "",
 };
+
+interface SectionVisibility {
+  heatmap: boolean;
+  skillsTimeline: boolean;
+  topProjects: boolean;
+  allSkills: boolean;
+}
 
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return "";
@@ -83,7 +107,42 @@ function formatDateRange(start?: string | null, end?: string | null): string {
   return `Until ${end}`;
 }
 
+function computeStats(
+  chronology: PortfolioChronology | null,
+  projectCount: number,
+  skillCount: number,
+) {
+  const totalCommits =
+    chronology?.skills.reduce((sum, s) => sum + s.commits, 0) ?? 0;
+  const activeMonths = chronology?.skills.length ?? 0;
+  return { totalCommits, activeMonths, projectCount, skillCount };
+}
+
+function getTopProjects(projects: ProjectMetadata[], limit = 3): ProjectMetadata[] {
+  const withScore = projects.filter(
+    (p) => p.contribution_score != null && p.contribution_score > 0,
+  );
+  if (withScore.length > 0) {
+    return [...withScore]
+      .sort((a, b) => (b.contribution_score ?? 0) - (a.contribution_score ?? 0))
+      .slice(0, limit);
+  }
+  return [...projects]
+    .sort(
+      (a, b) =>
+        new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime(),
+    )
+    .slice(0, limit);
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
 export default function PortfolioPage() {
+  // --- shared data ---
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [chronology, setChronology] = useState<PortfolioChronology | null>(null);
   const [items, setItems] = useState<PortfolioItem[]>([]);
   const [skills, setSkills] = useState<string[]>([]);
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
@@ -93,25 +152,30 @@ export default function PortfolioPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Dialog state
+  // --- CRUD dialog state ---
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<PortfolioItem | null>(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
-
-  // Generate from project
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [generating, setGenerating] = useState(false);
-
   const [deletingId, setDeletingId] = useState<string | null>(null);
-
-  // Skills section toggle
-  const [skillsExpanded, setSkillsExpanded] = useState(true);
-
-  // Portfolio refresh result
   const [refreshResult, setRefreshResult] = useState<PortfolioRefreshResponse | null>(null);
 
+  // --- overview visibility toggles ---
+  const [visibility, setVisibility] = useState<SectionVisibility>({
+    heatmap: true,
+    skillsTimeline: true,
+    topProjects: true,
+    allSkills: true,
+  });
+
+  const toggleSection = useCallback((key: keyof SectionVisibility) => {
+    setVisibility((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
+
+  // --- data fetching ---
   const fetchAll = useCallback(async () => {
     const token = getStoredToken();
     if (!token) {
@@ -122,11 +186,17 @@ export default function PortfolioPage() {
     }
     try {
       setError(null);
-      const [itemsData, skillsData, chronologyData] = await Promise.allSettled([
-        listPortfolioItems(token),
-        getSkills(token),
-        getPortfolioChronology(token),
-      ]);
+      const [profileRes, itemsData, skillsData, chronologyData, projectsData] =
+        await Promise.allSettled([
+          api.profile.get(token),
+          listPortfolioItems(token),
+          getSkills(token),
+          getPortfolioChronology(token),
+          getProjects(token),
+        ]);
+
+      if (profileRes.status === "fulfilled" && profileRes.value.ok)
+        setProfile(profileRes.value.data);
 
       if (itemsData.status === "fulfilled") {
         setItems(itemsData.value);
@@ -134,8 +204,14 @@ export default function PortfolioPage() {
         const reason = itemsData.reason;
         setError(reason instanceof Error ? reason.message : "Failed to load portfolio items");
       }
+
       if (skillsData.status === "fulfilled") setSkills(skillsData.value.skills);
-      if (chronologyData.status === "fulfilled") setTimeline(chronologyData.value.projects);
+      if (chronologyData.status === "fulfilled") {
+        setChronology(chronologyData.value);
+        setTimeline(chronologyData.value.projects);
+      }
+      if (projectsData.status === "fulfilled")
+        setProjects(projectsData.value.projects);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load portfolio data");
     } finally {
@@ -144,22 +220,11 @@ export default function PortfolioPage() {
     }
   }, []);
 
-  const fetchProjects = useCallback(async () => {
-    const token = getStoredToken();
-    if (!token) return;
-    try {
-      const res = await getProjects(token);
-      setProjects(res.projects);
-    } catch {
-      // projects list is optional; don't surface errors
-    }
-  }, []);
-
   useEffect(() => {
     fetchAll();
-    fetchProjects();
-  }, [fetchAll, fetchProjects]);
+  }, [fetchAll]);
 
+  // --- refresh ---
   const handleRefresh = async () => {
     const token = getStoredToken();
     if (!token) return;
@@ -177,6 +242,7 @@ export default function PortfolioPage() {
     if (refreshErr) setError(refreshErr);
   };
 
+  // --- CRUD handlers ---
   const openCreateDialog = () => {
     setEditing(null);
     setForm(EMPTY_FORM);
@@ -203,7 +269,6 @@ export default function PortfolioPage() {
     if (!selectedProjectId) return;
     const token = getStoredToken();
     if (!token) return;
-
     setGenerating(true);
     setFormError(null);
     try {
@@ -219,9 +284,7 @@ export default function PortfolioPage() {
         evidence: result.evidence || f.evidence,
       }));
     } catch (err) {
-      setFormError(
-        err instanceof Error ? err.message : "Failed to generate from project"
-      );
+      setFormError(err instanceof Error ? err.message : "Failed to generate from project");
     } finally {
       setGenerating(false);
     }
@@ -249,10 +312,8 @@ export default function PortfolioPage() {
     }
     const token = getStoredToken();
     if (!token) return;
-
     setSaving(true);
     setFormError(null);
-
     const payload = {
       title: form.title.trim(),
       role: form.role.trim() || null,
@@ -260,22 +321,17 @@ export default function PortfolioPage() {
       evidence: form.evidence.trim() || null,
       thumbnail: form.thumbnail.trim() || null,
     };
-
     try {
       if (editing) {
         const updated = await updatePortfolioItem(token, editing.id, payload);
-        setItems((prev) =>
-          prev.map((item) => (item.id === updated.id ? updated : item))
-        );
+        setItems((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
       } else {
         const created = await createPortfolioItem(token, payload);
         setItems((prev) => [created, ...prev]);
       }
       setDialogOpen(false);
     } catch (err) {
-      setFormError(
-        err instanceof Error ? err.message : "Failed to save portfolio item"
-      );
+      setFormError(err instanceof Error ? err.message : "Failed to save portfolio item");
     } finally {
       setSaving(false);
     }
@@ -285,6 +341,15 @@ export default function PortfolioPage() {
     if (!saving) setDialogOpen(open);
   };
 
+  // --- derived data for overview ---
+  const stats = computeStats(chronology, projects.length, skills.length);
+  const topProjects = getTopProjects(projects, 3);
+  const heatmapData = (chronology?.skills ?? []).map((s) => ({
+    period: s.period_label,
+    commits: s.commits,
+  }));
+
+  // --- loading state ---
   if (loading) {
     return (
       <div className="p-8">
@@ -298,6 +363,7 @@ export default function PortfolioPage() {
     );
   }
 
+  // --- render ---
   return (
     <div className="p-8 space-y-6">
       {/* Header */}
@@ -370,9 +436,7 @@ export default function PortfolioPage() {
                   {refreshResult.dedup_report && refreshResult.dedup_report.summary.duplicate_groups_count > 0 && (
                     <p className="mt-1 text-sm text-green-700">
                       {refreshResult.dedup_report.summary.duplicate_groups_count} duplicate group{refreshResult.dedup_report.summary.duplicate_groups_count !== 1 ? "s" : ""} found across projects
-                      {" ("}
-                      {(refreshResult.dedup_report.summary.total_wasted_bytes / 1024).toFixed(1)} KB wasted
-                      {")"}
+                      {" ("}{(refreshResult.dedup_report.summary.total_wasted_bytes / 1024).toFixed(1)} KB wasted{")"}
                     </p>
                   )}
                   {refreshResult.dedup_report && refreshResult.dedup_report.summary.duplicate_groups_count === 0 && (
@@ -393,48 +457,209 @@ export default function PortfolioPage() {
           </div>
         )}
 
-        {/* Skills summary */}
-        <div className="px-8 py-5 border-b border-gray-200">
-          <button
-            onClick={() => setSkillsExpanded((v) => !v)}
-            className="flex items-center gap-2 text-sm font-semibold text-gray-700 hover:text-gray-900 transition-colors mb-3"
-          >
-            {skillsExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-            Skills Summary
-            {skills.length > 0 && (
-              <span className="text-xs font-normal text-gray-500 ml-1">
-                ({skills.length} skills across all projects)
-              </span>
-            )}
-          </button>
-          {skillsExpanded && (
-            <>
-              {skills.length === 0 ? (
-                <p className="text-sm text-gray-500">
-                  No skills found. Scan a project to populate skills.
-                </p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {skills.map((skill) => (
-                    <Badge key={skill} variant="secondary" className="text-xs">
-                      {skill}
-                    </Badge>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Tabs */}
+        {/* Tabs: Overview | Portfolio Items | Project Timeline */}
         <div className="p-8">
-          <Tabs defaultValue="items">
+          <Tabs defaultValue="overview">
             <TabsList className="mb-6">
+              <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="items">Portfolio Items</TabsTrigger>
               <TabsTrigger value="timeline">Project Timeline</TabsTrigger>
             </TabsList>
 
-            {/* Portfolio Items tab */}
+            {/* ══════════ Overview tab ══════════ */}
+            <TabsContent value="overview">
+              <div className="space-y-6">
+                {/* Visibility toggles */}
+                <div className="flex items-center gap-1 justify-end">
+                  {(
+                    [
+                      ["heatmap", "Heatmap"],
+                      ["skillsTimeline", "Timeline"],
+                      ["topProjects", "Projects"],
+                      ["allSkills", "Skills"],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <button
+                      key={key}
+                      onClick={() => toggleSection(key)}
+                      className={`px-2 py-1 text-xs rounded-md flex items-center gap-1 transition-colors cursor-pointer ${
+                        visibility[key]
+                          ? "bg-indigo-50 text-indigo-600"
+                          : "bg-gray-100 text-gray-400"
+                      }`}
+                    >
+                      {visibility[key] ? <Eye size={12} /> : <EyeOff size={12} />}
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Profile header */}
+                <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl p-6 text-white">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                      {profile?.avatar_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={profile.avatar_url}
+                          alt="avatar"
+                          className="w-full h-full object-cover rounded-full"
+                        />
+                      ) : (
+                        <User size={28} className="text-white/80" />
+                      )}
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold">
+                        {profile?.display_name || profile?.email || "Portfolio"}
+                      </h2>
+                      {profile?.career_title && (
+                        <p className="text-white/80 text-sm">{profile.career_title}</p>
+                      )}
+                      {profile?.education && (
+                        <p className="text-white/70 text-xs mt-0.5">{profile.education}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Stats row */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {[
+                    { icon: <Briefcase size={18} />, value: stats.projectCount, label: "Projects" },
+                    { icon: <GitCommit size={18} />, value: stats.totalCommits, label: "Total Commits" },
+                    { icon: <Award size={18} />, value: stats.skillCount, label: "Skills" },
+                    { icon: <Calendar size={18} />, value: stats.activeMonths, label: "Active Months" },
+                  ].map((stat) => (
+                    <div
+                      key={stat.label}
+                      className="bg-gray-50 border border-gray-200 rounded-lg p-4 flex items-center gap-3"
+                    >
+                      <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center flex-shrink-0">
+                        {stat.icon}
+                      </div>
+                      <div>
+                        <div className="text-xl font-bold text-gray-900">{stat.value.toLocaleString()}</div>
+                        <div className="text-xs text-gray-500">{stat.label}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Activity Heatmap */}
+                {visibility.heatmap && (
+                  <section className="bg-gray-50 border border-gray-200 rounded-xl p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                      <Calendar size={18} className="text-indigo-600" />
+                      Activity Heatmap
+                    </h3>
+                    <ActivityHeatmap data={heatmapData} />
+                  </section>
+                )}
+
+                {/* Skills Timeline */}
+                {visibility.skillsTimeline && (
+                  <section className="bg-gray-50 border border-gray-200 rounded-xl p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                      <Award size={18} className="text-indigo-600" />
+                      Skills Timeline
+                    </h3>
+                    <SkillsTimeline data={chronology?.skills ?? []} />
+                  </section>
+                )}
+
+                {/* Top Projects */}
+                {visibility.topProjects && (
+                  <section className="bg-gray-50 border border-gray-200 rounded-xl p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                      <Trophy size={18} className="text-indigo-600" />
+                      Top Projects
+                    </h3>
+                    {topProjects.length === 0 ? (
+                      <p className="text-sm text-gray-400 italic">
+                        No projects available yet. Scan and rank your projects to see the top showcase.
+                      </p>
+                    ) : (
+                      <div className="grid gap-4 md:grid-cols-3">
+                        {topProjects.map((project, idx) => (
+                          <div
+                            key={project.id}
+                            className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                          >
+                            <div className="flex items-start justify-between mb-2">
+                              <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
+                                #{idx + 1}
+                              </span>
+                              {project.contribution_score != null && (
+                                <span className="text-xs text-gray-400">
+                                  Score: {Math.round(project.contribution_score)}
+                                </span>
+                              )}
+                            </div>
+                            <h4 className="font-semibold text-gray-900 text-sm mb-1 truncate">
+                              {project.project_name}
+                            </h4>
+                            {project.primary_contributor && (
+                              <p className="text-xs text-gray-500 mb-2">
+                                Contributor: {project.primary_contributor}
+                              </p>
+                            )}
+                            <div className="flex flex-wrap gap-1 mt-2">
+                              {project.total_commits != null && (
+                                <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
+                                  {project.total_commits} commits
+                                </span>
+                              )}
+                              {project.user_commit_share != null && (
+                                <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
+                                  {Math.round(project.user_commit_share * 100)}% yours
+                                </span>
+                              )}
+                            </div>
+                            <div className="mt-3">
+                              <Link
+                                href={`/project?projectId=${project.id}` as any}
+                                className="text-xs text-indigo-600 hover:underline"
+                              >
+                                View details
+                              </Link>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                )}
+
+                {/* All Skills */}
+                {visibility.allSkills && (
+                  <section className="bg-gray-50 border border-gray-200 rounded-xl p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                      <Award size={18} className="text-indigo-600" />
+                      All Skills
+                    </h3>
+                    {skills.length === 0 ? (
+                      <p className="text-sm text-gray-400 italic">
+                        No skills extracted yet. Scan projects to discover skills.
+                      </p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {skills.map((skill) => (
+                          <span
+                            key={skill}
+                            className="px-2.5 py-1 text-xs font-medium bg-indigo-50 text-indigo-700 rounded-full border border-indigo-100"
+                          >
+                            {skill}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                )}
+              </div>
+            </TabsContent>
+
+            {/* ══════════ Portfolio Items tab ══════════ */}
             <TabsContent value="items">
               {items.length === 0 ? (
                 <div className="text-center py-16">
@@ -462,6 +687,7 @@ export default function PortfolioPage() {
                     >
                       <div className="flex items-start justify-between gap-4">
                         {item.thumbnail && (
+                          // eslint-disable-next-line @next/next/no-img-element
                           <img
                             src={item.thumbnail}
                             alt={item.title}
@@ -472,25 +698,15 @@ export default function PortfolioPage() {
                           />
                         )}
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-semibold text-gray-900">
-                            {item.title}
-                          </p>
-                          {item.role && (
-                            <p className="text-xs text-gray-500 mt-0.5">{item.role}</p>
-                          )}
+                          <p className="text-sm font-semibold text-gray-900">{item.title}</p>
+                          {item.role && <p className="text-xs text-gray-500 mt-0.5">{item.role}</p>}
                           {item.summary && (
-                            <p className="text-sm text-gray-600 mt-2 line-clamp-2">
-                              {item.summary}
-                            </p>
+                            <p className="text-sm text-gray-600 mt-2 line-clamp-2">{item.summary}</p>
                           )}
                           {item.evidence && (
-                            <p className="text-xs text-gray-500 mt-1.5 line-clamp-1">
-                              {item.evidence}
-                            </p>
+                            <p className="text-xs text-gray-500 mt-1.5 line-clamp-1">{item.evidence}</p>
                           )}
-                          <p className="text-xs text-gray-400 mt-2">
-                            Added {formatDate(item.created_at)}
-                          </p>
+                          <p className="text-xs text-gray-400 mt-2">Added {formatDate(item.created_at)}</p>
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
                           <button
@@ -516,7 +732,7 @@ export default function PortfolioPage() {
               )}
             </TabsContent>
 
-            {/* Project Timeline tab */}
+            {/* ══════════ Project Timeline tab ══════════ */}
             <TabsContent value="timeline">
               {timeline.length === 0 ? (
                 <div className="text-center py-16">
@@ -537,24 +753,23 @@ export default function PortfolioPage() {
                     >
                       <div className="flex items-start justify-between gap-4">
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-semibold text-gray-900">
-                            {project.name}
-                          </p>
+                          <p className="text-sm font-semibold text-gray-900">{project.name}</p>
                           {project.role && (
                             <p className="text-xs text-gray-500 mt-0.5">{project.role}</p>
                           )}
                           <p className="text-xs text-gray-400 mt-1">
                             {formatDateRange(project.start_date, project.end_date)}
                             {project.duration_days != null && (
-                              <span className="ml-2">
-                                ({project.duration_days} days)
-                              </span>
+                              <span className="ml-2">({project.duration_days} days)</span>
                             )}
                           </p>
                           {project.evidence.length > 0 && (
                             <ul className="mt-2 space-y-0.5">
                               {project.evidence.slice(0, 3).map((point, i) => (
-                                <li key={`${project.project_id}-e${i}`} className="text-xs text-gray-600 flex gap-1.5">
+                                <li
+                                  key={`${project.project_id}-e${i}`}
+                                  className="text-xs text-gray-600 flex gap-1.5"
+                                >
                                   <span className="text-gray-400 flex-shrink-0">•</span>
                                   <span>{point}</span>
                                 </li>
@@ -581,9 +796,7 @@ export default function PortfolioPage() {
       <Dialog open={dialogOpen} onOpenChange={handleDialogClose}>
         <DialogContent className="sm:max-w-[580px] flex flex-col max-h-[90vh]">
           <DialogHeader>
-            <DialogTitle>
-              {editing ? "Edit Portfolio Item" : "New Portfolio Item"}
-            </DialogTitle>
+            <DialogTitle>{editing ? "Edit Portfolio Item" : "New Portfolio Item"}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 py-2 overflow-y-auto flex-1 pr-1">
@@ -593,17 +806,13 @@ export default function PortfolioPage() {
               </p>
             )}
 
-            {/* Generate from project (create mode only) */}
             {!editing && projects.length > 0 && (
               <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg space-y-3">
                 <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
                   Generate from Project
                 </p>
                 <div className="flex gap-2">
-                  <Select
-                    value={selectedProjectId}
-                    onValueChange={setSelectedProjectId}
-                  >
+                  <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
                     <SelectTrigger className="flex-1">
                       <SelectValue placeholder="Select a project..." />
                     </SelectTrigger>
@@ -627,9 +836,7 @@ export default function PortfolioPage() {
                     ) : (
                       <Sparkles size={14} />
                     )}
-                    <span className="ml-1.5">
-                      {generating ? "Generating..." : "Fill from Project"}
-                    </span>
+                    <span className="ml-1.5">{generating ? "Generating..." : "Fill from Project"}</span>
                   </Button>
                 </div>
                 <p className="text-xs text-gray-500">
@@ -650,7 +857,6 @@ export default function PortfolioPage() {
                 onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
               />
             </div>
-
             <div className="space-y-1.5">
               <Label htmlFor="role">Role</Label>
               <Input
@@ -661,7 +867,6 @@ export default function PortfolioPage() {
                 onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
               />
             </div>
-
             <div className="space-y-1.5">
               <Label htmlFor="summary">Summary</Label>
               <Textarea
@@ -673,7 +878,6 @@ export default function PortfolioPage() {
                 onChange={(e) => setForm((f) => ({ ...f, summary: e.target.value }))}
               />
             </div>
-
             <div className="space-y-1.5">
               <Label htmlFor="evidence">Key Achievements / Evidence</Label>
               <Textarea
@@ -685,7 +889,6 @@ export default function PortfolioPage() {
                 onChange={(e) => setForm((f) => ({ ...f, evidence: e.target.value }))}
               />
             </div>
-
             <div className="space-y-1.5">
               <Label htmlFor="thumbnail">Thumbnail URL</Label>
               <Input
@@ -699,19 +902,11 @@ export default function PortfolioPage() {
           </div>
 
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setDialogOpen(false)}
-              disabled={saving}
-            >
+            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>
               Cancel
             </Button>
             <Button onClick={handleSave} disabled={saving}>
-              {saving
-                ? "Saving..."
-                : editing
-                ? "Save Changes"
-                : "Create"}
+              {saving ? "Saving..." : editing ? "Save Changes" : "Create"}
             </Button>
           </DialogFooter>
         </DialogContent>
