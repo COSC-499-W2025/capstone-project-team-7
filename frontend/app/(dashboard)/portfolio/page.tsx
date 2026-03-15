@@ -4,12 +4,10 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Plus,
   Loader2,
-  Briefcase,
   Edit2,
   Trash2,
   RefreshCw,
   Sparkles,
-  Calendar,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,6 +49,8 @@ import type {
 import type { ProjectMetadata } from "@/types/project";
 import type { UserProfile } from "@/lib/api.types";
 import { PortfolioOverview } from "@/components/portfolio/portfolio-overview";
+import { LoadingState } from "@/components/ui/loading-state";
+import { EmptyState } from "@/components/ui/empty-state";
 
 // ---------------------------------------------------------------------------
 // Types & helpers
@@ -290,12 +290,7 @@ export default function PortfolioPage() {
   if (loading) {
     return (
       <div className="p-8">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-            <span className="ml-3 text-gray-500">Loading portfolio...</span>
-          </div>
-        </div>
+        <LoadingState message="Loading portfolio..." />
       </div>
     );
   }
@@ -416,22 +411,12 @@ export default function PortfolioPage() {
             {/* ══════════ Portfolio Items tab ══════════ */}
             <TabsContent value="items">
               {items.length === 0 ? (
-                <div className="text-center py-16">
-                  <div className="inline-flex items-center justify-center w-12 h-12 bg-gray-100 rounded-full mb-4">
-                    <Briefcase className="h-6 w-6 text-gray-400" />
-                  </div>
-                  <p className="text-gray-600 mb-2">No portfolio items yet</p>
-                  <p className="text-sm text-gray-500 mb-6">
-                    Create your first portfolio item or generate one from a project.
-                  </p>
-                  <button
-                    onClick={openCreateDialog}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
-                  >
-                    <Plus size={18} />
-                    New Item
-                  </button>
-                </div>
+                <EmptyState
+                  title="No portfolio items yet"
+                  description="Create your first portfolio item or generate one from a project."
+                  onRetry={openCreateDialog}
+                  variant="plain"
+                />
               ) : (
                 <div className="space-y-3">
                   {items.map((item) => (
@@ -489,15 +474,11 @@ export default function PortfolioPage() {
             {/* ══════════ Project Timeline tab ══════════ */}
             <TabsContent value="timeline">
               {timeline.length === 0 ? (
-                <div className="text-center py-16">
-                  <div className="inline-flex items-center justify-center w-12 h-12 bg-gray-100 rounded-full mb-4">
-                    <Calendar className="h-6 w-6 text-gray-400" />
-                  </div>
-                  <p className="text-gray-600 mb-2">No project timeline data</p>
-                  <p className="text-sm text-gray-500">
-                    Scan projects to see them here in chronological order.
-                  </p>
-                </div>
+                <EmptyState
+                  title="No project timeline data"
+                  description="Scan projects to see them here in chronological order."
+                  variant="plain"
+                />
               ) : (
                 <div className="space-y-3">
                   {timeline.map((project) => (
