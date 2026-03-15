@@ -11,7 +11,7 @@ import math
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Sequence
 
 try:
     # Try absolute import first (for API context)
@@ -290,9 +290,10 @@ class ContributionAnalysisService:
         metrics: ProjectContributionMetrics,
         *,
         user_email: Optional[str] = None,
+        user_emails: Optional[Sequence[str]] = None,
         user_name: Optional[str] = None,
         now: Optional[datetime] = None,
-    ) -> Dict[str, float]:
+    ) -> Dict[str, Any]:
         """
         Compute a normalized contribution-based importance score for a project.
 
@@ -313,17 +314,26 @@ class ContributionAnalysisService:
 
         # User share of commits
         user_share = 0.0
-        # Support env override for the user's git email
-        if not user_email:
+        resolved_emails: list[str] = []
+        if user_emails:
+            resolved_emails.extend(email.strip() for email in user_emails if email and email.strip())
+        if user_email and user_email.strip():
+            resolved_emails.append(user_email.strip())
+        if not resolved_emails:
             raw_email = os.environ.get("PORTFOLIO_USER_EMAIL") or os.environ.get("TEXTUAL_SKILL_PROGRESS_EMAILS") or ""
-            user_email = raw_email.split(",")[0].strip() or None
-        normalized_email = (user_email or "").strip().lower()
+            resolved_emails.extend(email.strip() for email in raw_email.split(",") if email and email.strip())
+
+        normalized_emails = {email.lower() for email in resolved_emails}
         normalized_name = (user_name or "").strip().lower()
         if metrics.contributors:
             for contributor in metrics.contributors:
                 if contributor is None:
                     continue
-                email_match = normalized_email and contributor.email and contributor.email.lower() == normalized_email
+                email_match = bool(
+                    normalized_emails
+                    and contributor.email
+                    and contributor.email.lower() in normalized_emails
+                )
                 name_match = normalized_name and contributor.name and contributor.name.lower() == normalized_name
                 if email_match or name_match:
                     user_share = max(user_share, min(1.0, (contributor.commit_percentage or 0) / 100.0))

@@ -511,6 +511,7 @@ class ProjectsRankingAPIService:
         self,
         project_id: str,
         user_email: Optional[str] = None,
+        user_emails: Optional[List[str]] = None,
         user_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
@@ -519,6 +520,7 @@ class ProjectsRankingAPIService:
         Args:
             project_id: UUID of the project to rank
             user_email: Optional user email for contribution matching
+            user_emails: Optional user email aliases for contribution matching
             user_name: Optional user name for contribution matching
         
         Returns:
@@ -532,6 +534,8 @@ class ProjectsRankingAPIService:
         payload = {}
         if user_email:
             payload["user_email"] = user_email
+        if user_emails:
+            payload["user_emails"] = [email.strip() for email in user_emails if email and email.strip()]
         if user_name:
             payload["user_name"] = user_name
         

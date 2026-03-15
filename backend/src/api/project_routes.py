@@ -2,13 +2,11 @@
 # Provides models, services, and utilities for project scan CRUD operations
 # Endpoints are registered in this module's router
 
-from fastapi import APIRouter, HTTPException, status, Header, Depends, File, UploadFile, Query, Response
+from fastapi import APIRouter, HTTPException, status, Header, Depends, File, UploadFile, Query, Response, Request
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any, cast
-from datetime import datetime, timezone
+from datetime import datetime
 import asyncio
-import base64
-import json
 import logging
 import sys
 import os
@@ -22,24 +20,56 @@ from pathlib import PurePosixPath
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from services.services.projects_service import ProjectsService, ProjectsServiceError
-from services.services.encryption import EncryptionService
-from services.services.project_overrides_service import (
-    ALLOWED_ROLES,
-    ProjectOverridesService,
-    ProjectOverridesServiceError,
-)
-from auth.consent_validator import ConsentValidator
-from api.settings_routes import get_or_hydrate_llm_client
-from api.request_context import get_request_access_token, set_request_access_token
-from services.services.export_service import ExportService
-from scanner.parser import parse_zip
-from scanner.models import ScanPreferences
-from services.language_stats import summarize_languages
-from services.services.skills_analysis_service import SkillsAnalysisService
-from services.services.contribution_analysis_service import ContributionAnalysisService
-from local_analysis.git_repo import analyze_git_repo
-from api.upload_routes import cleanup_expired_uploads, uploads_store
+try:
+    from services.services.projects_service import ProjectsService, ProjectsServiceError
+    from services.services.encryption import EncryptionService
+    from services.services.project_overrides_service import (
+        ALLOWED_ROLES,
+        ProjectOverridesService,
+        ProjectOverridesServiceError,
+    )
+    from auth.consent_validator import ConsentValidator
+    from api.llm_routes import get_user_client
+    from services.services.export_service import ExportService
+except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
+    from backend.src.services.services.projects_service import ProjectsService, ProjectsServiceError
+    from backend.src.services.services.encryption import EncryptionService
+    from backend.src.services.services.project_overrides_service import (
+        ALLOWED_ROLES,
+        ProjectOverridesService,
+        ProjectOverridesServiceError,
+    )
+    from backend.src.auth.consent_validator import ConsentValidator
+    from backend.src.api.llm_routes import get_user_client
+    from backend.src.services.services.export_service import ExportService
+
+try:
+    from scanner.parser import parse_zip
+except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
+    from backend.src.scanner.parser import parse_zip
+
+try:
+    from scanner.models import ScanPreferences
+except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
+    from backend.src.scanner.models import ScanPreferences
+
+try:
+    from services.language_stats import summarize_languages
+    from services.services.skills_analysis_service import SkillsAnalysisService
+    from services.services.contribution_analysis_service import ContributionAnalysisService
+    from local_analysis.git_repo import analyze_git_repo
+    from api.upload_routes import uploads_store, uploads_store_lock
+except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
+    from backend.src.services.language_stats import summarize_languages
+    from backend.src.services.services.skills_analysis_service import SkillsAnalysisService
+    from backend.src.services.services.contribution_analysis_service import ContributionAnalysisService
+    from backend.src.local_analysis.git_repo import analyze_git_repo
+    from backend.src.api.upload_routes import uploads_store, uploads_store_lock
+
+try:
+    from api.request_context import get_request_access_token, set_request_access_token
+except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
+    from backend.src.api.request_context import get_request_access_token, set_request_access_token
 
 logger = logging.getLogger(__name__)
 
@@ -65,14 +95,6 @@ _encryption_service: Optional[EncryptionService] = None
 _overrides_service: Optional[ProjectOverridesService] = None
 _encryption_service_lock = threading.Lock()
 _overrides_service_lock = threading.Lock()
-
-
-def _to_pg_timestamptz(value: datetime) -> str:
-    if value.tzinfo is None:
-        normalized = value.replace(tzinfo=timezone.utc)
-    else:
-        normalized = value.astimezone(timezone.utc)
-    return normalized.isoformat()
 
 
 def get_projects_service() -> ProjectsService:
@@ -206,10 +228,6 @@ def _coerce_skill_summary(summary: Optional[Dict[str, Any]]) -> Optional[Dict[st
         "suggested_next_steps": summary.get("suggested_next_steps") or summary.get("gaps") or [],
         "validation_warning": summary.get("validation_warning"),
     }
-
-
-def _format_internal_error(operation: str, _exc: Exception) -> str:
-    return f"Could not {operation} due to an internal server error. Please try again."
 
 
 def _period_to_dict(period: Any) -> Dict[str, Any]:
@@ -623,7 +641,10 @@ def _run_code_analysis_for_path(
 ) -> Optional[Dict[str, Any]]:
     logger.info(f"Starting code analysis for path: {target_path}")
     try:
-        from services.services.code_analysis_service import CodeAnalysisService
+        try:
+            from services.services.code_analysis_service import CodeAnalysisService, CodeAnalysisUnavailableError
+        except ImportError:
+            from src.services.services.code_analysis_service import CodeAnalysisService, CodeAnalysisUnavailableError
     except ImportError as e:
         logger.warning(f"Code analysis unavailable - import error: {e}")
         return None
@@ -767,41 +788,23 @@ async def verify_auth_token(authorization: Optional[str] = Header(None)) -> str:
     token = parts[1]
     set_request_access_token(token)
 
-    def _extract_user_id(payload_token: str) -> Optional[str]:
-        try:
-            import jwt
+    try:
+        import jwt
 
-            payload = jwt.decode(payload_token, options={"verify_signature": False})
-            user_id = payload.get("sub")
-            if user_id:
-                return user_id
-        except Exception:
-            pass
-
-        try:
-            parts = payload_token.split(".")
-            if len(parts) < 2:
-                return None
-            payload_b64 = parts[1]
-            padding = "=" * (-len(payload_b64) % 4)
-            decoded = base64.urlsafe_b64decode(payload_b64 + padding)
-            payload = json.loads(decoded.decode("utf-8"))
-            user_id = payload.get("sub")
-            if user_id:
-                return user_id
-        except Exception:
-            return None
-
-        return None
-
-    user_id = _extract_user_id(token)
-    if not user_id:
-        logger.error("Token verification failed: missing user ID")
+        payload = jwt.decode(token, options={"verify_signature": False})
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token: missing user ID",
+            )
+        return user_id
+    except Exception as exc:
+        logger.error(f"Token verification failed: {exc}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
         )
-    return user_id
 
 
 # ============================================================================
@@ -960,6 +963,7 @@ class RoleUpdateResponse(BaseModel):
 class RankProjectRequest(BaseModel):
     """Request to compute ranking for a specific project."""
     user_email: Optional[str] = Field(None, description="User's email for contribution matching")
+    user_emails: Optional[List[str]] = Field(None, description="User email aliases for contribution matching")
     user_name: Optional[str] = Field(None, description="User's name for contribution matching")
 
 
@@ -1190,11 +1194,11 @@ async def create_project(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to save project: {str(exc)}",
         )
-    except Exception:
+    except Exception as exc:
         logger.exception("Unexpected error creating project")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=_format_internal_error("save project", exc),
+            detail="An unexpected error occurred",
         )
 
 
@@ -1229,15 +1233,15 @@ async def create_project_from_upload(
                 detail="upload_id cannot be empty",
             )
 
-        cleanup_expired_uploads()
+        with uploads_store_lock:
+            upload_data = uploads_store.get(upload_id)
 
-        if upload_id not in uploads_store:
+        if upload_data is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Upload with ID '{upload_id}' not found",
             )
 
-        upload_data = uploads_store[upload_id]
         if upload_data.get("user_id") != user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -1347,7 +1351,7 @@ async def create_project_from_upload(
                 logger.warning("⚠️  No code analysis data to save")
             
             if media_analysis:
-                logger.info("💾 Saving media analysis to scan_data")
+                logger.info(f"💾 Saving media analysis to scan_data")
                 scan_data["media_analysis"] = media_analysis
             else:
                 logger.warning("⚠️  No media analysis data to save")
@@ -1443,11 +1447,11 @@ async def list_projects(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve projects: {str(exc)}",
         )
-    except Exception:
+    except Exception as exc:
         logger.exception("Unexpected error listing projects")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=_format_internal_error("retrieve projects", exc),
+            detail="An unexpected error occurred",
         )
 
 
@@ -1528,8 +1532,6 @@ async def search_projects(
                 skills_data = scan_data.get("skills_analysis", {}) or {}
                 if skills_data and skills_data.get("success"):
                     skills = skills_data.get("skills", {}) or {}
-                    if not isinstance(skills, dict):
-                        skills = {}
                     for category, skill_list in skills.items():
                         if isinstance(skill_list, list):
                             for skill in skill_list:
@@ -1569,7 +1571,7 @@ async def search_projects(
         logger.exception("Unexpected error during search")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"code": "search_error", "message": _format_internal_error("search projects", exc)},
+            detail={"code": "search_error", "message": "An unexpected error occurred"},
         ) from exc
 
 
@@ -1786,11 +1788,11 @@ async def get_project_skill_timeline(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve skill progression: {str(exc)}",
         )
-    except Exception:
+    except Exception as exc:
         logger.exception("Unexpected error fetching skill progression timeline")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=_format_internal_error("retrieve project skill timeline", exc),
+            detail="An unexpected error occurred",
         )
 
 
@@ -1848,8 +1850,7 @@ async def generate_project_skill_summary(
                 llm_status="skipped:consent_not_granted",
             )
 
-        access_token = get_request_access_token() or ""
-        client = await get_or_hydrate_llm_client(user_id, access_token)
+        client = get_user_client(user_id)
         if client is None:
             return SkillProgressSummaryResponse(
                 project_id=project_id,
@@ -1889,11 +1890,11 @@ async def generate_project_skill_summary(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate skill summary: {str(exc)}",
         )
-    except Exception:
+    except Exception as exc:
         logger.exception("Unexpected error generating skill progression summary")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=_format_internal_error("generate skill summary", exc),
+            detail="An unexpected error occurred",
         )
 
 
@@ -2239,11 +2240,11 @@ async def get_project(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve project: {str(exc)}",
         )
-    except Exception:
+    except Exception as exc:
         logger.exception("Unexpected error retrieving project")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=_format_internal_error("retrieve project details", exc),
+            detail="An unexpected error occurred",
         )
 
 
@@ -2283,16 +2284,16 @@ async def delete_project(
     except HTTPException:
         raise
     except ProjectsServiceError as exc:
-        logger.exception("Projects service error while deleting project")
+        logger.error(f"Projects service error: {exc}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=_format_internal_error("delete project", exc),
+            detail=f"Failed to delete project: {str(exc)}",
         )
-    except Exception:
+    except Exception as exc:
         logger.exception("Unexpected error deleting project")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=_format_internal_error("delete project", exc),
+            detail="An unexpected error occurred",
         )
 
 
@@ -2303,7 +2304,8 @@ async def delete_project(
 @router.post("/{project_id}/rank", response_model=RankProjectResponse, status_code=200)
 async def rank_project(
     project_id: str,
-    request: RankProjectRequest,
+    ranking_request: RankProjectRequest,
+    http_request: Request,
     user_id: str = Depends(verify_auth_token),
 ) -> RankProjectResponse:
     """
@@ -2312,6 +2314,7 @@ async def rank_project(
     - **project_id**: UUID of the project to rank
     - **user_email**: Optional email to match against contributors
     - **user_name**: Optional name to match against contributors
+    - **user_emails**: Optional email aliases to match against contributors
     
     Returns a score (0-100) with detailed component breakdown and human-readable reasons.
     
@@ -2331,6 +2334,7 @@ async def rank_project(
             ActivityBreakdown,
         )
         from services.services.contribution_analysis_service import ContributionAnalysisService
+        from datetime import datetime, timezone
         
         service = get_projects_service()
         
@@ -2411,11 +2415,28 @@ async def rank_project(
         # Use the CLI service to compute the score (single source of truth)
         # Run in thread pool since this is CPU-intensive computation
         analysis_service = ContributionAnalysisService()
+        header_email = http_request.headers.get("X-Contribution-User-Email")
+        header_name = http_request.headers.get("X-Contribution-User-Name")
+        header_aliases_raw = http_request.headers.get("X-Contribution-User-Email-Aliases", "")
+        header_aliases = [email.strip() for email in header_aliases_raw.split(",") if email.strip()]
+
+        requested_emails: List[str] = []
+        if ranking_request.user_emails:
+            requested_emails.extend(email.strip() for email in ranking_request.user_emails if email and email.strip())
+        if ranking_request.user_email and ranking_request.user_email.strip():
+            requested_emails.append(ranking_request.user_email.strip())
+        if header_email and header_email.strip():
+            requested_emails.append(header_email.strip())
+        requested_emails.extend(header_aliases)
+
+        deduped_emails = list(dict.fromkeys(requested_emails))
+
         ranking = await asyncio.to_thread(
             analysis_service.compute_contribution_score,
             metrics,
-            user_email=request.user_email,
-            user_name=request.user_name,
+            user_email=ranking_request.user_email or header_email,
+            user_emails=deduped_emails,
+            user_name=ranking_request.user_name or header_name,
         )
         
         # Log the computed score
@@ -2549,11 +2570,11 @@ async def delete_project_insights(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to clear insights: {str(exc)}",
         )
-    except Exception:
+    except Exception as exc:
         logger.exception("Unexpected error clearing project insights")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=_format_internal_error("clear project insights", exc),
+            detail="An unexpected error occurred",
         )
 
 
@@ -2636,7 +2657,7 @@ async def upload_project_thumbnail(
         logger.exception("Unexpected error uploading thumbnail")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=_format_internal_error("upload project thumbnail", exc),
+            detail=f"An unexpected error occurred: {str(exc)}",
         )
 
 
@@ -2695,7 +2716,7 @@ async def update_project_thumbnail_url(
         logger.exception("Unexpected error updating thumbnail URL")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=_format_internal_error("update project thumbnail URL", exc),
+            detail=f"An unexpected error occurred: {str(exc)}",
         )
 
 
@@ -2788,11 +2809,11 @@ async def get_project_overrides(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve overrides: {str(exc)}",
         )
-    except Exception:
+    except Exception as exc:
         logger.exception("Unexpected error retrieving project overrides")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=_format_internal_error("retrieve project overrides", exc),
+            detail="An unexpected error occurred",
         )
 
 
@@ -2874,11 +2895,11 @@ async def update_project_overrides(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update overrides: {str(exc)}",
         )
-    except Exception:
+    except Exception as exc:
         logger.exception("Unexpected error updating project overrides")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=_format_internal_error("update project overrides", exc),
+            detail="An unexpected error occurred",
         )
 
 
@@ -2937,11 +2958,11 @@ async def delete_project_overrides(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to delete overrides: {str(exc)}",
         )
-    except Exception:
+    except Exception as exc:
         logger.exception("Unexpected error deleting project overrides")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=_format_internal_error("delete project overrides", exc),
+            detail="An unexpected error occurred",
         )
 
 
@@ -3009,7 +3030,7 @@ async def update_project_role(
         logger.exception("Unexpected error updating project role")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=_format_internal_error("update project role", exc),
+            detail=f"An unexpected error occurred: {str(exc)}",
         )
 
 
@@ -3068,7 +3089,7 @@ async def get_project_role(
         logger.exception("Unexpected error getting project role")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=_format_internal_error("retrieve project role", exc),
+            detail=f"An unexpected error occurred: {str(exc)}",
         )
 # ============================================================================
 # Append Upload to Project (with Deduplication)
@@ -3136,18 +3157,18 @@ async def append_upload_to_project(
         Detailed status for each file in the upload
     """
     # Import upload helpers lazily to avoid circular imports
-    from .upload_routes import cleanup_expired_uploads, uploads_store
-
-    cleanup_expired_uploads()
+    from .upload_routes import uploads_store, uploads_store_lock
 
     # Verify upload exists and user owns it
-    if upload_id not in uploads_store:
+    with uploads_store_lock:
+        upload_data = uploads_store.get(upload_id)
+
+    if upload_data is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Upload {upload_id} not found",
         )
 
-    upload_data = uploads_store[upload_id]
     if upload_data.get("user_id") != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -3248,8 +3269,8 @@ async def append_upload_to_project(
                     "mime_type": mime_type,
                     "sha256": sha256,
                     "metadata": {},
-                    "last_seen_modified_at": _to_pg_timestamptz(file_meta.modified_at),
-                    "last_scanned_at": _to_pg_timestamptz(datetime.now(timezone.utc)),
+                    "last_seen_modified_at": file_meta.modified_at.isoformat() + "Z",
+                    "last_scanned_at": datetime.now().isoformat() + "Z",
                 })
         else:
             # New file
@@ -3261,8 +3282,8 @@ async def append_upload_to_project(
                 "mime_type": mime_type,
                 "sha256": sha256,
                 "metadata": {},
-                "last_seen_modified_at": _to_pg_timestamptz(file_meta.modified_at),
-                "last_scanned_at": _to_pg_timestamptz(datetime.now(timezone.utc)),
+                "last_seen_modified_at": file_meta.modified_at.isoformat() + "Z",
+                "last_scanned_at": datetime.now().isoformat() + "Z",
             })
 
         file_statuses.append(AppendFileStatus(

@@ -25,6 +25,7 @@ import {
   refreshAccessToken,
   setStoredToken,
 } from "./auth";
+import { getContributionHeaders } from "./settings";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
 
@@ -44,6 +45,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T
   );
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    ...getContributionHeaders(),
     ...(init?.headers as Record<string, string> ?? {}),
   };
   

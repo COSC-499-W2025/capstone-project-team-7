@@ -17,10 +17,9 @@ from scanner.models import ParseResult, ScanPreferences
 
 from auth.consent_validator import ConsentValidator
 from api.llm_routes import get_user_client
-from api.settings_routes import get_or_hydrate_llm_client
-from api.request_context import get_request_access_token
 from local_analysis.git_repo import analyze_git_repo
-from api.upload_routes import uploads_store, verify_auth_token
+from api.upload_routes import uploads_store, uploads_store_lock, verify_auth_token
+from services.services.projects_service import ProjectsServiceError
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
@@ -151,17 +150,16 @@ class ErrorResponse(BaseModel):
 # Helper Functions
 # ============================================================================
 
-async def _check_llm_availability(user_id: str, use_llm: bool) -> tuple[bool, str, Any]:
+def _check_llm_availability(user_id: str, use_llm: bool) -> tuple[bool, str, Any]:
     """
     Check if LLM analysis is available for the user.
-    Falls back to DB-stored key if no in-memory client exists.
-
+    
     Returns:
         Tuple of (is_available, status_message, llm_client_or_none)
     """
     if not use_llm:
         return False, "skipped:not_requested", None
-
+    
     try:
         consent_validator = ConsentValidator()
         has_consent = consent_validator.validate_external_services_consent(user_id)
@@ -169,13 +167,12 @@ async def _check_llm_availability(user_id: str, use_llm: bool) -> tuple[bool, st
             return False, "skipped:consent_not_granted", None
     except Exception as e:
         logger.warning(f"Consent check failed for user {user_id}: {e}")
-        return False, f"skipped:consent_check_failed", None
-
-    access_token = get_request_access_token() or ""
-    client = await get_or_hydrate_llm_client(user_id, access_token)
+        return False, "skipped:consent_check_failed", None
+    
+    client = get_user_client(user_id)
     if client is None:
         return False, "skipped:no_api_key", None
-
+    
     return True, "used", client
 
 
@@ -212,7 +209,7 @@ def _extract_languages_from_parse(parse_result: ParseResult) -> List[Dict[str, A
 def _run_code_analysis(target_path: Path, preferences: Optional[ScanPreferences]) -> Optional[Dict[str, Any]]:
     """Run code analysis using tree-sitter."""
     try:
-        from services.services.code_analysis_service import CodeAnalysisService, CodeAnalysisUnavailableError
+        from services.services.code_analysis_service import CodeAnalysisService
     except ImportError:
         logger.info("Code analysis unavailable (services.services.code_analysis_service not installed)")
         return None
@@ -262,7 +259,7 @@ def _run_skills_extraction(
             {
                 "name": skill.name,
                 "category": skill.category,
-                "confidence": skill.proficiency_score,
+                "confidence": float(getattr(skill, "confidence", getattr(skill, "proficiency_score", 0.0)) or 0.0),
                 "proficiency_score": skill.proficiency_score,
                 "description": skill.description if hasattr(skill, 'description') else "",
                 "evidence_count": len(skill.evidence) if hasattr(skill, 'evidence') else 0,
@@ -383,6 +380,237 @@ def _determine_project_type(
     
     return "unknown"
 
+
+def _normalize_language_rows(raw_languages: Any) -> List[Dict[str, Any]]:
+    if isinstance(raw_languages, dict):
+        rows: List[Dict[str, Any]] = []
+        for language, value in raw_languages.items():
+            if isinstance(value, dict):
+                rows.append(
+                    {
+                        "name": str(language),
+                        "files": int(value.get("files", value.get("count", 0)) or 0),
+                        "lines": int(value.get("lines", 0) or 0),
+                        "percentage": float(value.get("percentage", 0.0) or 0.0),
+                    }
+                )
+            else:
+                rows.append(
+                    {
+                        "name": str(language),
+                        "files": 0,
+                        "lines": int(value) if isinstance(value, (int, float)) else 0,
+                        "percentage": 0.0,
+                    }
+                )
+        return rows
+
+    if not isinstance(raw_languages, list):
+        return []
+
+    rows = []
+    for entry in raw_languages:
+        if isinstance(entry, dict):
+            rows.append(
+                {
+                    "name": str(entry.get("name", entry.get("language", "Unknown"))),
+                    "files": int(entry.get("files", entry.get("count", 0)) or 0),
+                    "lines": int(entry.get("lines", 0) or 0),
+                    "percentage": float(entry.get("percentage", 0.0) or 0.0),
+                }
+            )
+        elif isinstance(entry, str):
+            rows.append(
+                {
+                    "name": entry,
+                    "files": 0,
+                    "lines": 0,
+                    "percentage": 0.0,
+                }
+            )
+    return rows
+
+
+def _normalize_skills_rows(scan_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    skills_raw = scan_data.get("skills")
+    if not isinstance(skills_raw, list):
+        skills_analysis = scan_data.get("skills_analysis")
+        if isinstance(skills_analysis, dict):
+            inner_skills = skills_analysis.get("skills")
+            if isinstance(inner_skills, list):
+                skills_raw = inner_skills
+
+    if not isinstance(skills_raw, list):
+        return []
+
+    rows: List[Dict[str, Any]] = []
+    for skill in skills_raw:
+        if isinstance(skill, str):
+            rows.append(
+                {
+                    "name": skill,
+                    "category": "other",
+                    "confidence": 0.0,
+                    "evidence_count": 0,
+                }
+            )
+            continue
+        if not isinstance(skill, dict):
+            continue
+
+        confidence_value = skill.get("confidence", skill.get("proficiency_score", 0.0))
+        evidence_value = skill.get("evidence_count")
+        if evidence_value is None:
+            evidence = skill.get("evidence")
+            evidence_value = len(evidence) if isinstance(evidence, list) else 0
+
+        rows.append(
+            {
+                "name": str(skill.get("name", "Unknown")),
+                "category": str(skill.get("category", "other")),
+                "confidence": float(confidence_value or 0.0),
+                "evidence_count": int(evidence_value or 0),
+            }
+        )
+
+    return rows
+
+
+def _normalize_duplicate_rows(scan_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    duplicates_raw = scan_data.get("duplicates")
+    if isinstance(duplicates_raw, list):
+        rows = []
+        for dup in duplicates_raw:
+            if not isinstance(dup, dict):
+                continue
+            files = dup.get("files")
+            rows.append(
+                {
+                    "hash": str(dup.get("hash", "")),
+                    "files": files if isinstance(files, list) else [],
+                    "wasted_bytes": int(dup.get("wasted_bytes", 0) or 0),
+                }
+            )
+        return rows
+
+    duplicate_report = scan_data.get("duplicate_report")
+    if not isinstance(duplicate_report, dict):
+        return []
+
+    groups = duplicate_report.get("duplicate_groups")
+    if not isinstance(groups, list):
+        return []
+
+    rows = []
+    for group in groups:
+        if not isinstance(group, dict):
+            continue
+        files = group.get("files")
+        rows.append(
+            {
+                "hash": str(group.get("hash", group.get("file_hash", ""))),
+                "files": files if isinstance(files, list) else [],
+                "wasted_bytes": int(group.get("wasted_bytes", 0) or 0),
+            }
+        )
+    return rows
+
+
+def _analysis_response_from_project(
+    project: Dict[str, Any],
+    request: AnalysisRequest,
+    analysis_started: datetime,
+) -> AnalysisResponse:
+    scan_data_raw = project.get("scan_data")
+    scan_data = scan_data_raw if isinstance(scan_data_raw, dict) else {}
+
+    languages = _normalize_language_rows(
+        scan_data.get("languages") if scan_data.get("languages") is not None else project.get("languages")
+    )
+
+    git_analysis_raw = scan_data.get("git_analysis")
+    if isinstance(git_analysis_raw, dict):
+        git_analysis_rows: List[Dict[str, Any]] = [git_analysis_raw]
+    elif isinstance(git_analysis_raw, list):
+        git_analysis_rows = [row for row in git_analysis_raw if isinstance(row, dict)]
+    else:
+        git_analysis_rows = []
+
+    contribution_metrics_raw = scan_data.get("contribution_metrics")
+    contribution_metrics = contribution_metrics_raw if isinstance(contribution_metrics_raw, dict) else None
+
+    code_metrics_raw = scan_data.get("code_metrics")
+    if not isinstance(code_metrics_raw, dict):
+        code_metrics_raw = scan_data.get("code_analysis")
+    code_metrics = code_metrics_raw if isinstance(code_metrics_raw, dict) else None
+
+    skills = _normalize_skills_rows(scan_data)
+    duplicates = _normalize_duplicate_rows(scan_data)
+
+    summary_raw = scan_data.get("summary")
+    summary = summary_raw if isinstance(summary_raw, dict) else {}
+
+    files_raw = scan_data.get("files")
+    file_rows = files_raw if isinstance(files_raw, list) else []
+    total_size_bytes = sum(
+        int(file_meta.get("size_bytes", 0) or 0)
+        for file_meta in file_rows
+        if isinstance(file_meta, dict)
+    )
+    total_files = int(project.get("total_files") or summary.get("total_files") or len(file_rows))
+
+    analysis_completed = datetime.utcnow()
+    llm_status = "skipped:not_requested"
+    if request.use_llm:
+        llm_status = "skipped:project_id_path_uses_saved_scan"
+
+    return AnalysisResponse(
+        project_id=str(project.get("id", request.project_id or "")),
+        status="completed",
+        analysis_started_at=analysis_started.isoformat() + "Z",
+        analysis_completed_at=analysis_completed.isoformat() + "Z",
+        llm_status=llm_status,
+        project_type=_determine_project_type(git_analysis_rows, contribution_metrics),
+        languages=[
+            LanguageStats(
+                name=lang.get("name", "Unknown"),
+                files=lang.get("files", 0),
+                lines=lang.get("lines", 0),
+                percentage=lang.get("percentage", 0.0),
+            )
+            for lang in languages
+        ],
+        git_analysis=[
+            GitAnalysisResult(
+                path=str(repo.get("path", "")),
+                commit_count=int(repo.get("commit_count", 0) or 0),
+                contributors=[
+                    ContributorInfo(
+                        name=str(c.get("name", "Unknown")),
+                        email=c.get("email") if isinstance(c.get("email"), str) else None,
+                        commits=int(c.get("commits", 0) or 0),
+                        percentage=float(c.get("percent", c.get("percentage", 0.0)) or 0.0),
+                    )
+                    for c in repo.get("contributors", [])
+                    if isinstance(c, dict)
+                ],
+                project_type=str(repo.get("project_type", "unknown")),
+                date_range=repo.get("date_range") if isinstance(repo.get("date_range"), dict) else None,
+                branches=[str(branch) for branch in repo.get("branches", [])]
+                if isinstance(repo.get("branches"), list)
+                else [],
+            )
+            for repo in git_analysis_rows
+        ] if git_analysis_rows else None,
+        code_metrics=CodeMetrics(**code_metrics) if code_metrics else None,
+        skills=[SkillInfo(**skill) for skill in skills],
+        contribution_metrics=ContributionMetrics(**contribution_metrics) if contribution_metrics else None,
+        duplicates=[DuplicateInfo(**dup) for dup in duplicates],
+        total_files=total_files,
+        total_size_bytes=total_size_bytes,
+        llm_analysis=None,
+    )
+
 # ============================================================================
 # API Endpoints
 # ============================================================================
@@ -412,7 +640,6 @@ async def analyze_portfolio(
     explaining why LLM was skipped.
     """
     analysis_started = datetime.utcnow()
-    
     # Validate request - must have upload_id or project_id
     if not request.upload_id and not request.project_id:
         raise HTTPException(
@@ -423,28 +650,58 @@ async def analyze_portfolio(
             }
         )
     
-    # Get the upload data
-    # TODO: Support project_id lookup from Supabase
     if request.project_id:
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail={
-                "error": "not_implemented",
-                "message": "Analysis by project_id not yet implemented. Use upload_id.",
-            }
-        )
+        try:
+            try:
+                from api.project_routes import get_projects_service
+            except (ModuleNotFoundError, ImportError):
+                from backend.src.api.project_routes import get_projects_service
+
+            project_service = get_projects_service()
+            project = project_service.get_project_scan(user_id, request.project_id)
+        except ProjectsServiceError as exc:
+            logger.error("Failed to load project %s for analysis: %s", request.project_id, exc)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={
+                    "error": "project_lookup_failed",
+                    "message": f"Failed to load project '{request.project_id}'",
+                },
+            )
+
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error": "not_found",
+                    "message": f"Project with ID '{request.project_id}' not found",
+                },
+            )
+
+        return _analysis_response_from_project(project, request, analysis_started)
     
     # Verify upload exists and user owns it
-    if request.upload_id not in uploads_store:
+    upload_id = request.upload_id
+    if not upload_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "validation_error",
+                "message": "upload_id is required when project_id is not provided",
+            },
+        )
+
+    with uploads_store_lock:
+        upload_data = uploads_store.get(upload_id)
+
+    if upload_data is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
                 "error": "not_found",
-                "message": f"Upload with ID '{request.upload_id}' not found",
+                "message": f"Upload with ID '{upload_id}' not found",
             }
         )
-    
-    upload_data = uploads_store[request.upload_id]
     
     if upload_data.get("user_id") != user_id:
         raise HTTPException(
@@ -574,7 +831,7 @@ async def analyze_portfolio(
             project_type = _determine_project_type(git_analysis, contribution_metrics)
             
             # === Check LLM Availability ===
-            llm_available, llm_status, llm_client = await _check_llm_availability(
+            llm_available, llm_status, llm_client = _check_llm_availability(
                 user_id, request.use_llm
             )
             
