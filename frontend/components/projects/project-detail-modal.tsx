@@ -11,6 +11,9 @@ import { updateProjectOverrides } from "@/lib/api/projects";
 import { api } from "@/lib/api";
 import { getStoredToken } from "@/lib/auth";
 import { getCategoryLabel, buildEvidenceMap } from "@/lib/skills-utils";
+import { StatCard } from "@/components/ui/stat-card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { formatBytes } from "@/lib/format-utils";
 import { 
   FileCode, 
   Code2, 
@@ -444,10 +447,10 @@ function OverviewTab({
       <ThumbnailSection project={project} onProjectUpdate={onProjectUpdate} />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="Total Files" value={totalFiles.toLocaleString()} />
-        <StatCard label="Total Lines" value={totalLines.toLocaleString()} />
-        <StatCard label="Languages" value={languages.length} />
-        <StatCard label="Size" value={formatBytes(bytesProcessed)} />
+        <StatCard variant="plain" label="Total Files" value={totalFiles.toLocaleString()} />
+        <StatCard variant="plain" label="Total Lines" value={totalLines.toLocaleString()} />
+        <StatCard variant="plain" label="Languages" value={languages.length} />
+        <StatCard variant="plain" label="Size" value={formatBytes(bytesProcessed)} />
       </div>
 
       {/* Role section */}
@@ -583,7 +586,7 @@ function OverviewTab({
 // Files Tab
 function FilesTab({ files }: { files: any[] }) {
   if (files.length === 0) {
-    return <EmptyState message="No files found" />;
+    return <EmptyState variant="plain" title="No files found" />;
   }
 
   return (
@@ -623,7 +626,7 @@ function LanguagesTab({ languages }: { languages: Record<string, any> }) {
   const entries = Object.entries(languages);
   
   if (entries.length === 0) {
-    return <EmptyState message="No language data available" />;
+    return <EmptyState variant="plain" title="No language data available" />;
   }
 
   return (
@@ -632,10 +635,10 @@ function LanguagesTab({ languages }: { languages: Record<string, any> }) {
         <div key={lang} className="p-4 bg-gray-50 rounded border border-gray-200">
           <h3 className="font-semibold text-lg mb-2">{lang}</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {data.files && <StatCard label="Files" value={data.files} />}
-            {data.lines && <StatCard label="Lines" value={data.lines.toLocaleString()} />}
-            {data.bytes && <StatCard label="Size" value={formatBytes(data.bytes)} />}
-            {data.percentage && <StatCard label="Percentage" value={`${data.percentage.toFixed(1)}%`} />}
+            {data.files && <StatCard variant="plain" label="Files" value={data.files} />}
+            {data.lines && <StatCard variant="plain" label="Lines" value={data.lines.toLocaleString()} />}
+            {data.bytes && <StatCard variant="plain" label="Size" value={formatBytes(data.bytes)} />}
+            {data.percentage && <StatCard variant="plain" label="Percentage" value={`${data.percentage.toFixed(1)}%`} />}
           </div>
         </div>
       ))}
@@ -646,7 +649,7 @@ function LanguagesTab({ languages }: { languages: Record<string, any> }) {
 // Git Tab
 function GitTab({ gitAnalysis }: { gitAnalysis: any }) {
   if (!gitAnalysis || Object.keys(gitAnalysis).length === 0) {
-    return <EmptyState message="No git analysis available" />;
+    return <EmptyState variant="plain" title="No git analysis available" />;
   }
 
   const commits = gitAnalysis.commits || [];
@@ -698,7 +701,7 @@ function SkillsTab({ skillsAnalysis }: { skillsAnalysis: any }) {
   const evidenceMap = useMemo(() => buildEvidenceMap(fullSkills), [fullSkills]);
 
   if (!skillsByCategory || Object.keys(skillsByCategory).length === 0) {
-    return <EmptyState message="No skills analysis available" />;
+    return <EmptyState variant="plain" title="No skills analysis available" />;
   }
 
   return (
@@ -734,7 +737,7 @@ function SkillsTab({ skillsAnalysis }: { skillsAnalysis: any }) {
 // Documents Tab
 function DocumentsTab({ documents }: { documents: any[] }) {
   if (documents.length === 0) {
-    return <EmptyState message="No documents analyzed" />;
+    return <EmptyState variant="plain" title="No documents analyzed" />;
   }
 
   return (
@@ -755,7 +758,7 @@ function DocumentsTab({ documents }: { documents: any[] }) {
 // Media Tab
 function MediaTab({ media }: { media: any[] }) {
   if (media.length === 0) {
-    return <EmptyState message="No media files analyzed" />;
+    return <EmptyState variant="plain" title="No media files analyzed" />;
   }
 
   return (
@@ -781,28 +784,4 @@ function MediaTab({ media }: { media: any[] }) {
   );
 }
 
-// Helper Components
-function StatCard({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="p-3 bg-white border border-gray-200 rounded">
-      <p className="text-xs text-gray-500 mb-1">{label}</p>
-      <p className="text-lg font-semibold">{value}</p>
-    </div>
-  );
-}
 
-function EmptyState({ message }: { message: string }) {
-  return (
-    <div className="text-center py-12">
-      <p className="text-gray-500">{message}</p>
-    </div>
-  );
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
-}

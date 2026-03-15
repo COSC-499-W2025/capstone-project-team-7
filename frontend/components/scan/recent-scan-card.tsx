@@ -4,27 +4,13 @@ import React from "react";
 import Link from "next/link";
 import type { ProjectDetail, ProjectScanData } from "@/types/project";
 import { FileCode, Clock, FolderOpen, ExternalLink } from "lucide-react";
+import { StatCard } from "@/components/ui/stat-card";
+import { formatBytes } from "@/lib/format-utils";
 
 interface RecentScanCardProps {
   project: ProjectDetail;
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
-}
-
-function StatCard({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
-      <p className="text-xs text-gray-500 mb-1">{label}</p>
-      <p className="text-lg font-semibold text-gray-900">{value}</p>
-    </div>
-  );
-}
 
 export function RecentScanCard({ project }: RecentScanCardProps) {
   const scanData = (project.scan_data ?? {}) as ProjectScanData;
@@ -86,10 +72,10 @@ export function RecentScanCard({ project }: RecentScanCardProps) {
       {/* Stats */}
       <div className="p-6">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <StatCard label="Total Files" value={totalFiles.toLocaleString()} />
-          <StatCard label="Total Lines" value={totalLines.toLocaleString()} />
-          <StatCard label="Languages" value={languages.length} />
-          <StatCard label="Size" value={formatBytes(bytesProcessed)} />
+          <StatCard variant="plain" className="bg-gray-50 rounded-lg" label="Total Files" value={totalFiles.toLocaleString()} />
+          <StatCard variant="plain" className="bg-gray-50 rounded-lg" label="Total Lines" value={totalLines.toLocaleString()} />
+          <StatCard variant="plain" className="bg-gray-50 rounded-lg" label="Languages" value={languages.length} />
+          <StatCard variant="plain" className="bg-gray-50 rounded-lg" label="Size" value={formatBytes(bytesProcessed)} />
         </div>
 
         {/* Languages */}

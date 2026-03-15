@@ -3,6 +3,10 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatCard } from "@/components/ui/stat-card";
+import { LoadingState } from "@/components/ui/loading-state";
+import { ErrorState } from "@/components/ui/error-state";
+import { EmptyState } from "@/components/ui/empty-state";
 import type { GitRepoAnalysis, GitContributor, GitTimelineEntry } from "@/types/git-analysis";
 import { formatContributorEmail } from "@/lib/git-email";
 import {
@@ -105,9 +109,9 @@ export function GitAnalysisTab({
   const repos = normalizeGitAnalysis(resolvedGitAnalysis);
   const [selectedIdx, setSelectedIdx] = useState(0);
 
-  if (resolvedLoading) return <LoadingState />;
+  if (resolvedLoading) return <LoadingState message="Analyzing git repositories…" />;
   if (resolvedError) return <ErrorState message={resolvedError} onRetry={resolvedRetry} />;
-  if (repos.length === 0) return <EmptyState onRetry={resolvedRetry} />;
+  if (repos.length === 0) return <EmptyState title="No git analysis available yet." description="Scan a project that contains git repositories to see analysis results." onRetry={resolvedRetry} />;
 
   const repo = repos[Math.min(selectedIdx, repos.length - 1)];
 
@@ -193,16 +197,6 @@ function SummaryStats({ repo }: { repo: GitRepoAnalysis }) {
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <Card className="bg-white border border-gray-200">
-      <CardContent className="p-4">
-        <p className="text-xs text-gray-500">{label}</p>
-        <p className="text-lg font-semibold text-gray-900 mt-1">{value}</p>
-      </CardContent>
-    </Card>
-  );
-}
 
 function ContributorsTable({ contributors }: { contributors: GitContributor[] }) {
   return (
@@ -398,59 +392,6 @@ function ActivityTimeline({ timeline }: { timeline: GitTimelineEntry[] }) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Loading / Error / Empty states                                    */
-/* ------------------------------------------------------------------ */
-
-function LoadingState() {
-  return (
-    <Card className="bg-white border border-gray-200">
-      <CardContent className="p-10 text-center text-sm text-gray-500 space-y-3">
-        <div className="flex justify-center">
-          <div className="h-8 w-8 rounded-full border-2 border-gray-300 border-t-gray-700 animate-spin" />
-        </div>
-        <p>Analyzing git repositories…</p>
-      </CardContent>
-    </Card>
-  );
-}
-
-function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
-  return (
-    <Card className="bg-white border border-gray-200">
-      <CardContent className="p-10 text-center text-sm text-red-600 space-y-3">
-        <p>{message}</p>
-        {onRetry && (
-          <div>
-            <Button variant="outline" onClick={onRetry}>
-              Retry
-            </Button>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function EmptyState({ onRetry }: { onRetry?: () => void }) {
-  return (
-    <Card className="bg-white border border-gray-200">
-      <CardContent className="p-10 text-center space-y-3">
-        <p className="text-sm text-gray-600">No git analysis available yet.</p>
-        <p className="text-xs text-gray-400">
-          Scan a project that contains git repositories to see analysis results.
-        </p>
-        {onRetry && (
-          <div>
-            <Button variant="outline" onClick={onRetry}>
-              Retry
-            </Button>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
 /* ------------------------------------------------------------------ */
 /*  Formatting helpers                                                */
 /* ------------------------------------------------------------------ */

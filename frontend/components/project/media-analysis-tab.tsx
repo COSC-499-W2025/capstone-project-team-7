@@ -2,6 +2,11 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatCard } from "@/components/ui/stat-card";
+import { LoadingState } from "@/components/ui/loading-state";
+import { ErrorState } from "@/components/ui/error-state";
+import { EmptyState } from "@/components/ui/empty-state";
+import { formatBytes } from "@/lib/format-utils";
 import { FileImage, Film } from "lucide-react";
 import { resolveMediaAnalysis } from "@/lib/project-media-analysis";
 import {
@@ -117,7 +122,7 @@ export function MediaAnalysisTab({
       : undefined);
 
   if (resolvedLoading) {
-    return <LoadingState />;
+    return <LoadingState message="Analyzing media…" />;
   }
 
   if (resolvedError) {
@@ -125,7 +130,7 @@ export function MediaAnalysisTab({
   }
 
   if (!resolvedMediaAnalysis) {
-    return <EmptyState onRetry={resolvedRetry} />;
+    return <EmptyState title="No media analysis available yet." description="Run analysis or add media assets to generate results." onRetry={resolvedRetry} />;
   }
 
   const hasSummaryData =
@@ -152,7 +157,7 @@ export function MediaAnalysisTab({
   }
 
   if (!hasSummaryData && !hasListItems) {
-    return <EmptyState onRetry={resolvedRetry} />;
+    return <EmptyState title="No media analysis available yet." description="Run analysis or add media assets to generate results." onRetry={resolvedRetry} />;
   }
 
   return <MediaAnalysisSummaryView payload={resolvedMediaAnalysis} />;
@@ -430,71 +435,4 @@ function formatDuration(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
   const remainder = seconds % 60;
   return `${minutes}m ${remainder.toFixed(0)}s`;
-}
-
-function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
-}
-
-function StatCard({ label, value }: { label: string; value: string | number }) {
-  return (
-    <Card className="bg-white border border-gray-200">
-      <CardContent className="p-4">
-        <p className="text-xs text-gray-500">{label}</p>
-        <p className="text-lg font-semibold text-gray-900 mt-1">{value}</p>
-      </CardContent>
-    </Card>
-  );
-}
-
-function LoadingState() {
-  return (
-    <Card className="bg-white border border-gray-200">
-      <CardContent className="p-10 text-center text-sm text-gray-500 space-y-3">
-        <div className="flex justify-center">
-          <div className="h-8 w-8 rounded-full border-2 border-gray-300 border-t-gray-700 animate-spin" />
-        </div>
-        <p>Analyzing media…</p>
-      </CardContent>
-    </Card>
-  );
-}
-
-function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
-  return (
-    <Card className="bg-white border border-gray-200">
-      <CardContent className="p-10 text-center text-sm text-red-600 space-y-3">
-        <p>{message}</p>
-        {onRetry && (
-          <div>
-            <Button variant="outline" onClick={onRetry}>
-              Retry
-            </Button>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function EmptyState({ onRetry }: { onRetry?: () => void }) {
-  return (
-    <Card className="bg-white border border-gray-200">
-      <CardContent className="p-10 text-center space-y-3">
-        <p className="text-sm text-gray-600">No media analysis available yet.</p>
-        <p className="text-xs text-gray-400">Run analysis or add media assets to generate results.</p>
-        {onRetry && (
-          <div>
-            <Button variant="outline" onClick={onRetry}>
-              Retry
-            </Button>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
 }

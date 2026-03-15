@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useMemo, useState } from "react";
-import { Input } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/search-input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/select";
 import {
   Search,
-  X,
   File,
   AlertCircle,
   RotateCcw,
@@ -182,28 +181,12 @@ export function SearchFilterTab({
   return (
     <div className="space-y-4">
       {/* Search input */}
-      <div className="relative">
-        <Search
-          className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-          size={16}
-        />
-        <Input
-          placeholder="Search by filename or path…"
-          value={query}
-          onChange={(e) => handleQueryChange(e.target.value)}
-          className="pl-9 pr-9 h-9 text-sm border-gray-300"
-        />
-        {query && (
-          <button
-            type="button"
-            onClick={() => applyQueryImmediate("")}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-            aria-label="Clear search"
-          >
-            <X size={14} />
-          </button>
-        )}
-      </div>
+      <SearchInput
+        value={query}
+        onChange={handleQueryChange}
+        placeholder="Search by filename or path…"
+        onClear={() => applyQueryImmediate("")}
+      />
 
       {/* Filter controls */}
       <div className="flex flex-wrap gap-2 items-center">

@@ -6,9 +6,13 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
 import { DocumentAnalysisTab } from "@/components/project/document-analysis-tab";
+import { OverviewTab } from "@/components/project/overview-tab";
+import { LanguagesTab } from "@/components/project/languages-tab";
+import { SkillsTab } from "@/components/project/skills-tab";
+import { ProgressTab } from "@/components/project/progress-tab";
+import { ContributionsTab } from "@/components/project/contributions-tab";
+import { ToolsMainTab } from "@/components/project/tools-main-tab";
 import { PdfAnalysisTab } from "@/components/project/pdf-analysis-tab";
 import { getStoredToken } from "@/lib/auth";
 import { consent as consentApi, secrets as secretsApi } from "@/lib/api";
@@ -45,6 +49,12 @@ import type {
 } from "@/types/project";
 import { getCategoryLabel, buildEvidenceMap } from "@/lib/skills-utils";
 import {
+  isPlainObject,
+  formatDurationSeconds,
+  formatBytes,
+  formatCount,
+} from "@/lib/format-utils";
+import {
   MediaAnalysisTab,
 } from "@/components/project/media-analysis-tab";
 import { resolveMediaAnalysis } from "@/lib/project-media-analysis";
@@ -60,7 +70,6 @@ import {
   BookOpen,
   Wrench,
   BarChart3,
-  Code2,
   Users,
   FileText,
   Film,
@@ -68,28 +77,12 @@ import {
   GitBranch,
   Copy,
   Search,
-  FileEdit,
-  FileJson,
   FileCode2,
-  Printer,
-  Loader2,
-  Check,
-  AlertCircle,
-  Download,
-  Info,
   Sparkles,
-  ChevronDown,
-  ChevronUp,
 } from "lucide-react";
 import { FileTreeView } from "@/components/project/file-tree-view";
 import { SearchFilterTab } from "@/components/project/search-filter-tab";
 import type { FileEntry } from "@/lib/file-tree";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 
 const mainTabs = [
   { value: "overview", label: "Overview & Analysis", icon: LayoutDashboard },
@@ -127,31 +120,6 @@ const toolsSubTabs = [
   { value: "git-analysis", label: "Git Analysis", icon: GitBranch },
   { value: "duplicate-finder", label: "Duplicate Finder", icon: Copy },
 ] as const;
-
-const LANGUAGE_COLORS = [
-  "bg-gray-900",
-  "bg-blue-600",
-  "bg-emerald-600",
-  "bg-amber-500",
-  "bg-indigo-600",
-  "bg-rose-600",
-  "bg-teal-600",
-  "bg-slate-500",
-  "bg-orange-500",
-  "bg-purple-600",
-] as const;
-
-function PlaceholderContent({ label }: { label: string }) {
-  return (
-    <Card className="bg-white border border-gray-200">
-      <CardContent className="p-12 text-center">
-        <p className="text-gray-500 text-sm">
-          {label} — This section will be available soon.
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
 
 export default function ProjectPage() {
   const searchParams = useSearchParams();
@@ -1064,197 +1032,27 @@ export default function ProjectPage() {
               </TabsList>
 
               {/* Overview Main - Project Info & Stats */}
-              <TabsContent value="overview-main" className="space-y-6">
-                <Card className="bg-white border border-gray-200">
-                  <CardHeader className="border-b border-gray-200">
-                    <CardTitle className="text-xl font-bold text-gray-900">
-                      Project Information
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Project Name
-                        </p>
-                        <p className="text-sm font-semibold text-gray-900 mt-1">
-                          {projectName}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Path
-                        </p>
-                        <p className="text-sm font-mono text-gray-900 mt-1">
-                          {projectPath}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Scan Timestamp
-                        </p>
-                        <p className="text-sm text-gray-900 mt-1">{scanTimestamp}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Scan Duration
-                        </p>
-                        <p className="text-sm text-gray-900 mt-1">{scanDurationLabel}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="bg-white border border-gray-200">
-                  <CardHeader className="border-b border-gray-200">
-                    <CardTitle className="text-xl font-bold text-gray-900">
-                      Summary Statistics
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-6">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                      <div className="bg-gray-50 rounded-lg p-4 text-center">
-                        <p className="text-2xl font-bold text-gray-900">
-                          {filesProcessedLabel}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1 inline-flex items-center gap-1">
-                          Files Processed
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <button
-                                  type="button"
-                                  aria-label="Files processed info"
-                                  className="inline-flex items-center"
-                                >
-                                  <Info size={12} className="text-gray-400 cursor-help" />
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent side="top" className="max-w-xs text-xs">
-                                Only relevant files are counted. Files in excluded
-                                directories (node_modules, .git, __pycache__, etc.)
-                                and unsupported file types are filtered out during
-                                scanning.
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        </p>
-                      </div>
-                      <div className="bg-gray-50 rounded-lg p-4 text-center">
-                        <p className="text-2xl font-bold text-gray-900">
-                          {totalSizeLabel}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">Total Size</p>
-                      </div>
-                      <div className="bg-gray-50 rounded-lg p-4 text-center">
-                        <p className="text-2xl font-bold text-gray-900">
-                          {issuesFoundLabel}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">Issues Found</p>
-                      </div>
-                      <div className="bg-gray-50 rounded-lg p-4 text-center">
-                        <p className="text-2xl font-bold text-gray-900">
-                          {totalLinesLabel}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">Lines of Code</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <Card className="bg-white border border-gray-200">
-                    <CardHeader className="border-b border-gray-200">
-                      <CardTitle className="text-base font-bold text-gray-900 flex items-center gap-2">
-                        <GitBranch size={16} />
-                        Git Repositories
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-6">
-                      <p className="text-3xl font-bold text-gray-900">{gitRepos}</p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {gitRepos === 1 ? "Repository" : "Repositories"} detected
-                      </p>
-                      {scanData.contribution_metrics?.total_commits != null && (
-                        <div className="mt-3 pt-3 border-t border-gray-100 text-sm text-gray-600">
-                          <span className="font-medium">{scanData.contribution_metrics.total_commits}</span> commits
-                          {scanData.contribution_metrics.total_contributors != null && (
-                            <span> · <span className="font-medium">{scanData.contribution_metrics.total_contributors}</span> {scanData.contribution_metrics.total_contributors === 1 ? "contributor" : "contributors"}</span>
-                          )}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-
-                  <Card className="bg-white border border-gray-200">
-                    <CardHeader className="border-b border-gray-200">
-                      <CardTitle className="text-base font-bold text-gray-900">
-                        Media Files
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-6">
-                      <p className="text-3xl font-bold text-gray-900">{mediaFiles}</p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        Images, videos, and audio
-                      </p>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="bg-white border border-gray-200">
-                    <CardHeader className="border-b border-gray-200">
-                      <CardTitle className="text-base font-bold text-gray-900">
-                        Documents
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-6">
-                      <div className="flex gap-6">
-                        <div>
-                          <p className="text-3xl font-bold text-gray-900">{pdfDocs}</p>
-                          <p className="text-xs text-gray-500 mt-1">PDF files</p>
-                        </div>
-                        <div>
-                          <p className="text-3xl font-bold text-gray-900">{otherDocs}</p>
-                          <p className="text-xs text-gray-500 mt-1">Other docs</p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
+              <TabsContent value="overview-main">
+                <OverviewTab
+                  projectName={projectName}
+                  projectPath={projectPath}
+                  scanTimestamp={scanTimestamp}
+                  scanDurationLabel={scanDurationLabel}
+                  filesProcessedLabel={filesProcessedLabel}
+                  totalSizeLabel={totalSizeLabel}
+                  issuesFoundLabel={issuesFoundLabel}
+                  totalLinesLabel={totalLinesLabel}
+                  gitRepos={gitRepos}
+                  mediaFiles={mediaFiles}
+                  pdfDocs={pdfDocs}
+                  otherDocs={otherDocs}
+                  contributionMetrics={scanData.contribution_metrics}
+                />
               </TabsContent>
 
               {/* Languages Breakdown */}
               <TabsContent value="languages">
-                <Card className="bg-white border border-gray-200">
-                  <CardHeader className="border-b border-gray-200">
-                    <CardTitle className="text-xl font-bold text-gray-900">
-                      Language Breakdown
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-6">
-                    {topLanguages.length === 0 ? (
-                      <p className="text-sm text-gray-500">
-                        No language data available for this project.
-                      </p>
-                    ) : (
-                      <div className="space-y-4">
-                        {topLanguages.map((lang) => (
-                          <div key={lang.name} className="space-y-1">
-                            <div className="flex justify-between text-sm">
-                              <span className="font-medium text-gray-900">{lang.name}</span>
-                              <span className="text-gray-500">{lang.percentage}%</span>
-                            </div>
-                            <div className="w-full bg-gray-100 rounded-full h-2">
-                              <div
-                                className="bg-gray-900 h-2 rounded-full transition-all"
-                                style={{ width: `${lang.percentage}%` }}
-                              />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                <LanguagesTab topLanguages={topLanguages} />
               </TabsContent>
 
 
@@ -1283,685 +1081,57 @@ export default function ProjectPage() {
               </TabsList>
 
               {/* Skills Main */}
-              <TabsContent value="skills-main" className="space-y-6">
-                {/* Highlighted Skills Section */}
-                <Card className="bg-white border border-gray-200">
-                  <CardHeader className="border-b border-gray-200">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-xl font-bold text-gray-900">
-                        Highlighted Skills
-                      </CardTitle>
-                      {highlightSaveStatus === "success" && (
-                        <span className="flex items-center gap-1.5 text-sm text-green-600 font-medium">
-                          <Check size={16} />
-                          Saved
-                        </span>
-                      )}
-                      {highlightSaveStatus === "error" && (
-                        <span className="flex items-center gap-1.5 text-sm text-red-600 font-medium">
-                          <AlertCircle size={16} />
-                          Save failed
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm text-gray-500 mt-1">
-                      Select skills you want to emphasize on your resume or portfolio
-                    </p>
-                  </CardHeader>
-                  <CardContent className="p-6">
-                    {highlightedSkills.length === 0 ? (
-                      <p className="text-sm text-gray-500">
-                        No skills highlighted yet. Select skills below to highlight them.
-                      </p>
-                    ) : (
-                      <div className="flex flex-wrap gap-2">
-                        {highlightedSkills.map((skill) => (
-                          <span
-                            key={`highlighted-${skill}`}
-                            className="px-3 py-1.5 rounded-full bg-blue-600 text-white text-sm font-medium flex items-center gap-2"
-                          >
-                            {skill}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* All Skills with Selection */}
-                <Card className="bg-white border border-gray-200">
-                  <CardHeader className="border-b border-gray-200">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-xl font-bold text-gray-900">
-                        Select Skills to Highlight
-                      </CardTitle>
-                      <Button
-                        onClick={() => saveHighlightedSkills(highlightedSkills)}
-                        disabled={isSavingHighlights}
-                        size="sm"
-                        className="bg-gray-900 hover:bg-gray-800"
-                      >
-                        {isSavingHighlights ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Saving...
-                          </>
-                        ) : (
-                          <>
-                            <Check className="mr-2 h-4 w-4" />
-                            Save Highlights
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="p-6 space-y-4">
-                    {skillsAnalysis.success === false && (
-                      <p className="text-sm text-gray-500">
-                        Skills analysis did not complete for this scan.
-                      </p>
-                    )}
-
-                    {skillsAnalysis.success !== false &&
-                      Object.keys(skillsByCategory).length === 0 && (
-                        <p className="text-sm text-gray-500">
-                          No skills analysis available yet. Run a scan with skills extraction enabled.
-                        </p>
-                      )}
-
-                    {Object.keys(skillsByCategory).length > 0 && (
-                      <div className="space-y-6">
-                        <div className="flex flex-wrap gap-3">
-                          <span className="px-3 py-1 rounded-full bg-gray-900 text-white text-xs font-semibold">
-                            Total skills · {totalSkills}
-                          </span>
-                          <span className="px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">
-                            Highlighted · {highlightedSkills.length}
-                          </span>
-                          <span className="px-3 py-1 rounded-full bg-gray-100 text-gray-700 text-xs font-semibold">
-                            Categories · {Object.keys(skillsByCategory).length}
-                          </span>
-                        </div>
-
-                        {/* Category average proficiency bars */}
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                          {Object.entries(skillsByCategory).map(([category, skills]) => {
-                            const items = skills as Array<ProjectSkillCategoryItem>;
-                            const scores = items
-                              .map((s) => (typeof s === "object" ? s.proficiency_score ?? 0 : 0))
-                              .filter((v) => v > 0);
-                            const avg = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
-                            return (
-                              <div key={`avg-${category}`} className="bg-gray-50 rounded-lg p-3">
-                                <p className="text-xs font-medium text-gray-500 truncate">{categoryLabel(category)}</p>
-                                <div className="mt-1.5 w-full bg-gray-200 rounded-full h-2">
-                                  <div
-                                    className="bg-gray-900 h-2 rounded-full transition-all"
-                                    style={{ width: `${Math.round(avg * 100)}%` }}
-                                  />
-                                </div>
-                                <p className="text-xs text-gray-400 mt-1">{Math.round(avg * 100)}%</p>
-                              </div>
-                            );
-                          })}
-                        </div>
-
-                        {/* Search and filter */}
-                        <div className="flex flex-col sm:flex-row gap-3">
-                          <Input
-                            placeholder="Search skills..."
-                            value={skillsSearchQuery}
-                            onChange={(e) => setSkillsSearchQuery(e.target.value)}
-                            className="sm:max-w-xs text-sm"
-                          />
-                          <select
-                            value={skillsCategoryFilter}
-                            onChange={(e) => setSkillsCategoryFilter(e.target.value)}
-                            className="text-sm border border-gray-200 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900"
-                          >
-                            <option value="all">All categories</option>
-                            {Object.keys(skillsByCategory).map((cat) => (
-                              <option key={cat} value={cat}>{categoryLabel(cat)}</option>
-                            ))}
-                          </select>
-                        </div>
-
-                        {Object.entries(filteredSkillsByCategory).map(([category, skills]) => (
-                          <div key={category} className="border border-gray-200 rounded-lg p-4">
-                            <p className="text-sm font-semibold text-gray-700 mb-3">
-                              {categoryLabel(category)}
-                            </p>
-                            <div className="space-y-2">
-                              {(skills as Array<ProjectSkillCategoryItem>).map(
-                                (skill) => {
-                                  const skillName = typeof skill === "string" ? skill : skill.name ?? "";
-                                  const isHighlighted = highlightedSkills.includes(skillName);
-                                  const description = typeof skill === "object" ? skill.description : undefined;
-                                  const profScore = typeof skill === "object" ? skill.proficiency_score ?? 0 : 0;
-                                  const evidence = getSkillEvidence(skillName);
-                                  const skillKey = `${category}::${skillName}`;
-                                  const isExpanded = expandedSkillKey === skillKey;
-
-                                  return (
-                                    <div
-                                      key={`${category}-${skillName}`}
-                                      className={`rounded-md transition-colors ${
-                                        isHighlighted ? "bg-blue-50 border border-blue-200" : "border border-transparent hover:bg-gray-50"
-                                      }`}
-                                    >
-                                      <div className="flex items-center gap-3 p-2">
-                                        <Checkbox
-                                          id={`skill-${category}-${skillName}`}
-                                          checked={isHighlighted}
-                                          onChange={() => toggleSkillHighlight(skillName)}
-                                          className="border-gray-300"
-                                        />
-                                        <button
-                                          type="button"
-                                          onClick={() => setExpandedSkillKey(isExpanded ? null : skillKey)}
-                                          className="flex-1 text-left"
-                                        >
-                                          <span className="text-sm font-medium text-gray-900">
-                                            {skillName}
-                                          </span>
-                                          {description && (
-                                            <span className="block text-xs text-gray-500 mt-0.5">
-                                              {description}
-                                            </span>
-                                          )}
-                                        </button>
-                                        <div className="flex items-center gap-2">
-                                          {/* Proficiency bar */}
-                                          {profScore > 0 && (
-                                            <div className="flex items-center gap-1.5">
-                                              <div className="w-16 bg-gray-200 rounded-full h-1.5">
-                                                <div
-                                                  className={`h-1.5 rounded-full ${
-                                                    profScore >= 0.8 ? "bg-green-500" : profScore >= 0.6 ? "bg-blue-500" : profScore >= 0.4 ? "bg-amber-500" : "bg-gray-400"
-                                                  }`}
-                                                  style={{ width: `${Math.round(profScore * 100)}%` }}
-                                                />
-                                              </div>
-                                              <span className="text-xs text-gray-400 w-8">{Math.round(profScore * 100)}%</span>
-                                            </div>
-                                          )}
-                                          {evidence.length > 0 && (
-                                            <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
-                                              {evidence.length}
-                                            </span>
-                                          )}
-                                          {isHighlighted && (
-                                            <Check size={16} className="text-blue-600" />
-                                          )}
-                                          {evidence.length > 0 && (
-                                            isExpanded ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />
-                                          )}
-                                        </div>
-                                      </div>
-                                      {/* Evidence panel */}
-                                      {isExpanded && evidence.length > 0 && (
-                                        <div className="px-10 pb-3 space-y-1.5">
-                                          {evidence.slice(0, 5).map((ev, idx) => (
-                                            <div key={`${ev.file ?? ""}:${ev.line ?? ""}:${idx}`} className="text-xs text-gray-600 flex items-start gap-2">
-                                              <span className="text-gray-300 mt-0.5">-</span>
-                                              <div>
-                                                <span>{ev.description || ev.type || "Evidence"}</span>
-                                                {ev.file && (
-                                                  <span className="ml-1 text-gray-400 font-mono">
-                                                    {ev.file}{ev.line ? `:${ev.line}` : ""}
-                                                  </span>
-                                                )}
-                                              </div>
-                                            </div>
-                                          ))}
-                                          {evidence.length > 5 && (
-                                            <p className="text-xs text-gray-400 italic">
-                                              + {evidence.length - 5} more evidence items
-                                            </p>
-                                          )}
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                }
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* Skill Adoption Timeline */}
-                {skillAdoptionTimeline.length > 0 && (
-                  <Card className="bg-white border border-gray-200">
-                    <CardHeader className="border-b border-gray-200">
-                      <CardTitle className="text-xl font-bold text-gray-900">
-                        Skill Adoption Timeline
-                      </CardTitle>
-                      <p className="text-sm text-gray-500 mt-1">
-                        When each skill was first detected in the codebase
-                      </p>
-                    </CardHeader>
-                    <CardContent className="p-6">
-                      <div className="space-y-3">
-                        {skillAdoptionTimeline.map((entry) => (
-                          <div
-                            key={`${entry.skill_name}::${entry.first_used_period ?? ""}`}
-                            className="flex items-center gap-4 py-2 border-b border-gray-100 last:border-0"
-                          >
-                            <span className="text-xs font-mono text-gray-400 w-20 shrink-0">
-                              {entry.first_used_period || "Unknown"}
-                            </span>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-gray-900 truncate">
-                                {entry.skill_name}
-                              </p>
-                              <p className="text-xs text-gray-500 truncate">
-                                {categoryLabel(entry.category ?? "")}
-                                {entry.file ? ` · ${entry.file}` : ""}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <div className="w-12 bg-gray-200 rounded-full h-1.5">
-                                <div
-                                  className="bg-gray-900 h-1.5 rounded-full"
-                                  style={{ width: `${Math.round((entry.current_proficiency ?? 0) * 100)}%` }}
-                                />
-                              </div>
-                              <span className="text-xs text-gray-400">
-                                {entry.total_usage ?? 0} uses
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* Gap Analysis */}
-                <Card className="bg-white border border-gray-200">
-                  <CardHeader className="border-b border-gray-200">
-                    <CardTitle className="text-xl font-bold text-gray-900">
-                      Skill Gap Analysis
-                    </CardTitle>
-                    <p className="text-sm text-gray-500 mt-1">
-                      Compare detected skills against a target role profile
-                    </p>
-                  </CardHeader>
-                  <CardContent className="p-6 space-y-4">
-                    <div className="flex items-center gap-3">
-                      <select
-                        className="border border-gray-300 rounded-md px-3 py-2 text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"
-                        value={selectedGapRole}
-                        onChange={(e) => runGapAnalysis(e.target.value)}
-                      >
-                        <option value="">Select a role...</option>
-                        {gapRoles.map((r) => (
-                          <option key={r.key} value={r.key}>
-                            {r.label}
-                          </option>
-                        ))}
-                      </select>
-                      {gapLoading && (
-                        <Loader2 size={16} className="animate-spin text-gray-400" />
-                      )}
-                    </div>
-
-                    {gapError && (
-                      <p className="text-sm text-red-600">{gapError}</p>
-                    )}
-
-                    {gapResult && (
-                      <div className="space-y-4">
-                        {/* Coverage bar */}
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-sm">
-                            <span className="font-medium text-gray-900">
-                              Coverage for {gapResult.role_label}
-                            </span>
-                            <span className="text-gray-500">
-                              {gapResult.coverage_percent}%
-                            </span>
-                          </div>
-                          <div className="w-full bg-gray-100 rounded-full h-3">
-                            <div
-                              className={`h-3 rounded-full transition-all ${
-                                gapResult.coverage_percent >= 75
-                                  ? "bg-emerald-600"
-                                  : gapResult.coverage_percent >= 40
-                                    ? "bg-amber-500"
-                                    : "bg-red-500"
-                              }`}
-                              style={{ width: `${gapResult.coverage_percent}%` }}
-                            />
-                          </div>
-                        </div>
-
-                        {([
-                          { label: "Matched", items: gapResult.matched, bg: "bg-emerald-100", text: "text-emerald-800" },
-                          { label: "Missing", items: gapResult.missing, bg: "bg-amber-100", text: "text-amber-800" },
-                          { label: "Additional Skills", items: gapResult.extra, bg: "bg-gray-100", text: "text-gray-700" },
-                        ] as const).map(({ label, items, bg, text }) =>
-                          items.length > 0 && (
-                            <div key={label}>
-                              <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
-                                {label} ({items.length})
-                              </p>
-                              <div className="flex flex-wrap gap-1.5">
-                                {items.map((s) => (
-                                  <span
-                                    key={s}
-                                    className={`px-2.5 py-1 rounded-full ${bg} ${text} text-xs font-medium`}
-                                  >
-                                    {s}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          ),
-                        )}
-                      </div>
-                    )}
-
-                    {!selectedGapRole && !gapResult && (
-                      <p className="text-sm text-gray-400">
-                        Select a role above to see how your project skills compare.
-                      </p>
-                    )}
-                  </CardContent>
-                </Card>
+              <TabsContent value="skills-main">
+                <SkillsTab
+                  highlight={{
+                    skills: highlightedSkills,
+                    saveStatus: highlightSaveStatus,
+                    isSaving: isSavingHighlights,
+                    save: saveHighlightedSkills,
+                    toggle: toggleSkillHighlight,
+                  }}
+                  filter={{
+                    searchQuery: skillsSearchQuery,
+                    setSearchQuery: setSkillsSearchQuery,
+                    categoryFilter: skillsCategoryFilter,
+                    setCategoryFilter: setSkillsCategoryFilter,
+                    filteredByCategory: filteredSkillsByCategory,
+                    expandedSkillKey,
+                    setExpandedSkillKey,
+                  }}
+                  gapAnalysis={{
+                    roles: gapRoles,
+                    selectedRole: selectedGapRole,
+                    result: gapResult,
+                    loading: gapLoading,
+                    error: gapError,
+                    run: runGapAnalysis,
+                  }}
+                  skillsAnalysis={skillsAnalysis}
+                  skillsByCategory={skillsByCategory}
+                  totalSkills={totalSkills}
+                  categoryLabel={categoryLabel}
+                  getSkillEvidence={getSkillEvidence}
+                  skillAdoptionTimeline={skillAdoptionTimeline}
+                />
               </TabsContent>
 
               {/* Skills Progress */}
-              <TabsContent value="progress" className="space-y-6">
-                <Card className="bg-white border border-gray-200">
-                  <CardHeader className="border-b border-gray-200">
-                    <CardTitle className="text-xl font-bold text-gray-900">
-                      Skill Progression Timeline
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-6 space-y-4">
-                    {skillsLoading && (
-                      <p className="text-sm text-gray-500">
-                        Loading skill progression…
-                      </p>
-                    )}
-                    {!skillsLoading && skillsTimeline.length === 0 && (
-                      <p className="text-sm text-gray-500">
-                        {skillsNote || "No skill progression timeline available yet."}
-                      </p>
-                    )}
-
-                    {skillsTimeline.length > 0 && (
-                      <div className="space-y-4">
-                        <div className="flex flex-wrap gap-2">
-                          {topSkills.length > 0 ? (
-                            topSkills.map(([skill, count]) => (
-                              <span
-                                key={skill}
-                                className="px-3 py-1 rounded-full bg-gray-900 text-white text-xs font-semibold"
-                              >
-                                {skill} · {count}
-                              </span>
-                            ))
-                          ) : (
-                            <span className="text-xs text-gray-400">
-                              No top skills yet.
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="grid gap-4">
-                          {skillsTimeline.map((period) => (
-                            <div
-                              key={period.period_label}
-                              className="rounded-xl border border-gray-200 p-4"
-                            >
-                              <div className="flex flex-wrap items-center justify-between gap-3">
-                                <div>
-                                  <h4 className="text-base font-semibold text-gray-900">
-                                    {formatPeriodLabel(period.period_label)}
-                                  </h4>
-                                  <p className="text-xs text-gray-500">
-                                    {period.period_label}
-                                  </p>
-                                </div>
-                                <div className="flex flex-wrap gap-2 text-xs font-semibold">
-                                  <span className="px-2.5 py-1 rounded-full bg-gray-900 text-white">
-                                    {period.commits} commits
-                                  </span>
-                                  <span className="px-2.5 py-1 rounded-full bg-gray-100 text-gray-700">
-                                    {period.skill_count} skills
-                                  </span>
-                                  <span className="px-2.5 py-1 rounded-full bg-gray-100 text-gray-700">
-                                    {period.tests_changed} tests
-                                  </span>
-                                  <span className="px-2.5 py-1 rounded-full bg-gray-100 text-gray-700">
-                                    {period.contributors} contributors
-                                  </span>
-                                </div>
-                              </div>
-
-                              <div className="mt-3 flex flex-wrap gap-2">
-                                {period.activity_types.length > 0 ? (
-                                  period.activity_types.map((type) => (
-                                    <span
-                                      key={type}
-                                      className="px-2.5 py-1 rounded-full bg-gray-50 text-gray-600 text-xs font-semibold border border-gray-200"
-                                    >
-                                      {type}
-                                    </span>
-                                  ))
-                                ) : (
-                                  <span className="text-xs text-gray-400">
-                                    No activity labels
-                                  </span>
-                                )}
-                              </div>
-
-                              <div className="mt-4 grid gap-4 md:grid-cols-2">
-                                <div>
-                                  <p className="text-xs font-semibold text-gray-500 uppercase">
-                                    Top skills
-                                  </p>
-                                  <div className="mt-2 flex flex-wrap gap-2">
-                                    {period.top_skills.length > 0 ? (
-                                      period.top_skills.map((skill) => (
-                                        <span
-                                          key={skill}
-                                          className="px-2.5 py-1 rounded-full bg-gray-900 text-white text-xs"
-                                        >
-                                          {skill}
-                                        </span>
-                                      ))
-                                    ) : (
-                                      <span className="text-xs text-gray-400">
-                                        No skills recorded
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-
-                                <div>
-                                  <p className="text-xs font-semibold text-gray-500 uppercase">
-                                    Languages
-                                  </p>
-                                  <div className="mt-2 flex flex-wrap gap-2">
-                                    {Object.keys(period.period_languages).length > 0 ? (
-                                      Object.entries(period.period_languages).map(
-                                        ([lang, count]) => (
-                                          <span
-                                            key={lang}
-                                            className="px-2.5 py-1 rounded-full bg-gray-100 text-gray-700 text-xs"
-                                          >
-                                            {lang} · {count}
-                                          </span>
-                                        )
-                                      )
-                                    ) : (
-                                      <span className="text-xs text-gray-400">
-                                        No language data
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="mt-4 grid gap-4 md:grid-cols-2">
-                                <div>
-                                  <p className="text-xs font-semibold text-gray-500 uppercase">
-                                    Recent commits
-                                  </p>
-                                  <ul className="mt-2 space-y-1 text-sm text-gray-700">
-                                    {period.commit_messages
-                                      .slice(0, 4)
-                                      .map((msg, index) => (
-                                        <li
-                                          key={`${period.period_label}-commit-${index}`}
-                                          className="truncate"
-                                        >
-                                          {msg}
-                                        </li>
-                                      ))}
-                                    {period.commit_messages.length === 0 && (
-                                      <li className="text-xs text-gray-400">
-                                        No commit messages recorded.
-                                      </li>
-                                    )}
-                                  </ul>
-                                </div>
-
-                                <div>
-                                  <p className="text-xs font-semibold text-gray-500 uppercase">
-                                    Files touched
-                                  </p>
-                                  <ul className="mt-2 space-y-1 text-sm text-gray-700">
-                                    {period.top_files.slice(0, 4).map((file, index) => (
-                                      <li
-                                        key={`${period.period_label}-file-${index}`}
-                                        className="truncate"
-                                      >
-                                        {file}
-                                      </li>
-                                    ))}
-                                    {period.top_files.length === 0 && (
-                                      <li className="text-xs text-gray-400">
-                                        No file highlights recorded.
-                                      </li>
-                                    )}
-                                  </ul>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
+              <TabsContent value="progress">
+                <ProgressTab
+                  skillsTimeline={skillsTimeline}
+                  topSkills={topSkills}
+                  skillsLoading={skillsLoading}
+                  skillsNote={skillsNote}
+                  skillsSummary={skillsSummary}
+                  summaryLoading={summaryLoading}
+                  handleGenerateSummary={handleGenerateSummary}
+                />
               </TabsContent>
 
               {/* Contributions */}
               <TabsContent value="contributions">
-                <Card className="bg-white border border-gray-200">
-                  <CardHeader className="border-b border-gray-200">
-                    <CardTitle className="text-xl font-bold text-gray-900">
-                      Contribution Metrics
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-6">
-                    {!scanData.contribution_metrics ? (
-                      <p className="text-sm text-gray-500">
-                        No contribution data available for this project.
-                      </p>
-                    ) : (
-                      <div className="space-y-6">
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                          <div className="bg-gray-50 rounded-lg p-4 text-center">
-                            <p className="text-2xl font-bold text-gray-900 capitalize">
-                              {scanData.contribution_metrics.project_type ?? "Unknown"}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-1">Project Type</p>
-                          </div>
-                          <div className="bg-gray-50 rounded-lg p-4 text-center">
-                            <p className="text-2xl font-bold text-gray-900">
-                              {scanData.contribution_metrics.total_commits ?? 0}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-1">Total Commits</p>
-                          </div>
-                          <div className="bg-gray-50 rounded-lg p-4 text-center">
-                            <p className="text-2xl font-bold text-gray-900">
-                              {scanData.contribution_metrics.total_contributors ?? 1}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-1">Contributors</p>
-                          </div>
-                          <div className="bg-gray-50 rounded-lg p-4 text-center">
-                            <p className="text-2xl font-bold text-gray-900">
-                              {scanData.contribution_metrics.user_commit_share != null
-                                ? `${(scanData.contribution_metrics.user_commit_share * 100).toFixed(0)}%`
-                                : "—"}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-1">Your Share</p>
-                          </div>
-                        </div>
-
-                        {scanData.contribution_metrics.contributors && 
-                         scanData.contribution_metrics.contributors.length > 0 && (
-                          <div>
-                            <h4 className="text-sm font-semibold text-gray-900 mb-3">
-                              Top Contributors
-                            </h4>
-                            <div className="space-y-3">
-                              {scanData.contribution_metrics.contributors
-                                .slice(0, 5)
-                                .map((contributor: { name?: string; commits?: number; commit_percentage?: number }) => (
-                                <div key={contributor.name ?? "unknown"} className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <Users size={14} className="text-gray-400" />
-                                    <span className="text-sm font-medium text-gray-900">{contributor.name ?? "Unknown"}</span>
-                                  </div>
-                                  <div className="text-sm text-gray-500">
-                                    {contributor.commits ?? 0} commits
-                                    {contributor.commit_percentage != null && (
-                                      <span className="ml-2 text-gray-400">
-                                        ({contributor.commit_percentage.toFixed(0)}%)
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {scanData.contribution_metrics.project_start_date && (
-                          <div className="pt-4 border-t border-gray-200">
-                            <div className="flex gap-8 text-sm">
-                              <div>
-                                <span className="text-gray-500">Started:</span>{" "}
-                                <span className="text-gray-900">
-                                  {new Date(scanData.contribution_metrics.project_start_date).toLocaleDateString()}
-                                </span>
-                              </div>
-                              {scanData.contribution_metrics.project_end_date && (
-                                <div>
-                                  <span className="text-gray-500">Last activity:</span>{" "}
-                                  <span className="text-gray-900">
-                                    {new Date(scanData.contribution_metrics.project_end_date).toLocaleDateString()}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                <ContributionsTab contributionMetrics={scanData.contribution_metrics} />
               </TabsContent>
             </Tabs>
           </TabsContent>
@@ -2206,234 +1376,20 @@ export default function ProjectPage() {
               </TabsList>
 
               <TabsContent value="tools-main">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  <Card className="bg-white border border-gray-200">
-                    <CardHeader className="border-b border-gray-200">
-                      <CardTitle className="text-base font-bold text-gray-900">
-                        <button
-                          type="button"
-                          onClick={() => openToolsTab("file-browser")}
-                          className="inline-flex items-center gap-2 hover:text-gray-700"
-                        >
-                          <FileText size={18} />
-                          File Browser
-                        </button>
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-6 space-y-4">
-                      <p className="text-sm text-gray-500">
-                        Browse indexed project files in a dedicated full view.
-                      </p>
-                      <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                        <p className="text-xs text-gray-500">Indexed files</p>
-                        <p className="mt-1 text-lg font-semibold text-gray-900">
-                          {formatCount(projectFiles.length)}
-                        </p>
-                      </div>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => openToolsTab("file-browser")}
-                      >
-                        Open Full View
-                      </Button>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="bg-white border border-gray-200">
-                    <CardHeader className="border-b border-gray-200">
-                      <CardTitle className="text-base font-bold text-gray-900">
-                        <button
-                          type="button"
-                          onClick={() => openToolsTab("git-analysis")}
-                          className="inline-flex items-center gap-2 hover:text-gray-700"
-                        >
-                          <GitBranch size={18} />
-                          Git Analysis
-                        </button>
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-6 space-y-4">
-                      <p className="text-sm text-gray-500">
-                        Compact view of repositories and commit activity.
-                      </p>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                          <p className="text-xs text-gray-500">Repositories</p>
-                          <p className="mt-1 text-lg font-semibold text-gray-900">
-                            {gitRepoTotal}
-                          </p>
-                        </div>
-                        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                          <p className="text-xs text-gray-500">Commits</p>
-                          <p className="mt-1 text-lg font-semibold text-gray-900">
-                            {formatCount(gitCommitTotal)}
-                          </p>
-                        </div>
-                      </div>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => openToolsTab("git-analysis")}
-                      >
-                        Open Full View
-                      </Button>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="bg-white border border-gray-200">
-                    <CardHeader className="border-b border-gray-200">
-                      <CardTitle className="text-base font-bold text-gray-900">
-                        <button
-                          type="button"
-                          onClick={() => openToolsTab("duplicate-finder")}
-                          className="inline-flex items-center gap-2 hover:text-gray-700"
-                        >
-                          <Copy size={18} />
-                          Duplicate Finder
-                        </button>
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-6 space-y-4">
-                      <p className="text-sm text-gray-500">
-                        Quick snapshot of duplicate groups and storage waste.
-                      </p>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                          <p className="text-xs text-gray-500">Groups</p>
-                          <p className="mt-1 text-lg font-semibold text-gray-900">
-                            {duplicateOverview?.totalGroups ?? 0}
-                          </p>
-                        </div>
-                        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                          <p className="text-xs text-gray-500">Wasted</p>
-                          <p className="mt-1 text-lg font-semibold text-gray-900">
-                            {formatBytes(duplicateOverview?.totalWastedBytes ?? 0)}
-                          </p>
-                        </div>
-                      </div>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => openToolsTab("duplicate-finder")}
-                      >
-                        Open Full View
-                      </Button>
-                    </CardContent>
-                  </Card>
-
-                  {/* Search & Filter */}
-                  <Card className="bg-white border border-gray-200">
-                    <CardHeader className="border-b border-gray-200">
-                      <CardTitle className="text-base font-bold text-gray-900 flex items-center gap-2">
-                        <Search size={18} />
-                        Search & Filter
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-6">
-                      <p className="text-sm text-gray-500 mb-4">
-                        Use the dedicated search workspace to query files and skills across scanned projects.
-                      </p>
-                      <Link
-                        href="/search"
-                        className="inline-flex items-center rounded-md bg-gray-900 px-3 py-2 text-xs font-semibold text-white hover:bg-gray-800"
-                      >
-                        Open Search
-                      </Link>
-                    </CardContent>
-                  </Card>
-
-                  {/* Resume Generator */}
-                  <Card className="bg-white border border-gray-200">
-                    <CardHeader className="border-b border-gray-200">
-                      <CardTitle className="text-base font-bold text-gray-900 flex items-center gap-2">
-                        <FileEdit size={18} />
-                        Resume Generator
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-6">
-                      <p className="text-sm text-gray-500 mb-4">
-                        Generate resume items from project analysis.
-                      </p>
-                      <PlaceholderContent label="Resume Generator" />
-                    </CardContent>
-                  </Card>
-
-                  {/* Export Options */}
-                  <Card className="bg-white border border-gray-200">
-                    <CardHeader className="border-b border-gray-200">
-                      <CardTitle className="text-base font-bold text-gray-900 flex items-center gap-2">
-                        <FileJson size={18} />
-                        Export Options
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-6 space-y-3">
-                      <p className="text-sm text-gray-500">
-                        Export project analysis in various formats.
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {/* Export JSON — active */}
-                        <button
-                          onClick={handleExportJson}
-                          disabled={!hasProject || exportStatus === "exporting"}
-                          className={[
-                            "px-3 py-2 text-xs font-semibold rounded-md flex items-center gap-1 transition-colors",
-                            exportStatus === "success"
-                              ? "bg-emerald-100 text-emerald-700"
-                              : exportStatus === "error"
-                                ? "bg-red-100 text-red-700"
-                                : !hasProject
-                                  ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                                  : "bg-gray-900 text-white hover:bg-gray-700 cursor-pointer",
-                          ].join(" ")}
-                        >
-                          {exportStatus === "exporting" ? (
-                            <><Loader2 size={14} className="animate-spin" /> Exporting…</>
-                          ) : exportStatus === "success" ? (
-                            <><Check size={14} /> Downloaded!</>
-                          ) : exportStatus === "error" ? (
-                            <><AlertCircle size={14} /> {exportError ?? "Failed"}</>
-                          ) : (
-                            <><Download size={14} /> Export JSON</>
-                          )}
-                        </button>
-                        <button
-                          onClick={handleExportHtml}
-                          disabled={!hasProject || htmlExportStatus === "exporting"}
-                          className={[
-                            "px-3 py-2 text-xs font-semibold rounded-md flex items-center gap-1 transition-colors",
-                            htmlExportStatus === "success"
-                              ? "bg-emerald-100 text-emerald-700"
-                              : htmlExportStatus === "error"
-                                ? "bg-red-100 text-red-700"
-                                : !hasProject
-                                  ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                                  : "bg-gray-900 text-white hover:bg-gray-700 cursor-pointer",
-                          ].join(" ")}
-                        >
-                          {htmlExportStatus === "exporting" ? (
-                            <><Loader2 size={14} className="animate-spin" /> Exporting…</>
-                          ) : htmlExportStatus === "success" ? (
-                            <><Check size={14} /> Downloaded!</>
-                          ) : htmlExportStatus === "error" ? (
-                            <><AlertCircle size={14} /> {htmlExportError ?? "Failed"}</>
-                          ) : (
-                            <><FileCode2 size={14} /> Export HTML</>
-                          )}
-                        </button>
-                      </div>
-                      {htmlExportStatus === "error" && htmlExportError && (
-                        <p className="text-xs text-red-500 mt-1">{htmlExportError}</p>
-                      )}
-                      {exportStatus === "error" && exportError && (
-                        <p className="text-xs text-red-500 mt-1">{exportError}</p>
-                      )}
-                    </CardContent>
-                  </Card>
-                </div>
+                <ToolsMainTab
+                  openToolsTab={openToolsTab}
+                  projectFilesCount={projectFiles.length}
+                  gitRepoTotal={gitRepoTotal}
+                  gitCommitTotal={gitCommitTotal}
+                  duplicateOverview={duplicateOverview}
+                  hasProject={hasProject}
+                  exportStatus={exportStatus}
+                  exportError={exportError}
+                  handleExportJson={handleExportJson}
+                  htmlExportStatus={htmlExportStatus}
+                  htmlExportError={htmlExportError}
+                  handleExportHtml={handleExportHtml}
+                />
               </TabsContent>
 
               <TabsContent value="file-browser" className="space-y-4">
@@ -2544,47 +1500,4 @@ export default function ProjectPage() {
       )}
     </div>
   );
-}
-
-/** ------------------ Formatting helpers (from main) ------------------ */
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function formatPeriodLabel(value: string) {
-  const [year, month] = value.split("-");
-  if (!year || !month) return value;
-  const date = new Date(Number(year), Number(month) - 1, 1);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString(undefined, { year: "numeric", month: "short" });
-}
-
-function formatDurationSeconds(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds < 0) return "Not available";
-  if (seconds >= 10) return `${seconds.toFixed(0)} seconds`;
-  return `${seconds.toFixed(1)} seconds`;
-}
-
-function formatBytes(bytes: number): string {
-  if (!bytes || Number.isNaN(bytes)) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  const value = bytes / Math.pow(k, i);
-  return `${value.toFixed(1)} ${sizes[i]}`;
-}
-
-function formatCount(value: number | string): string {
-  const numeric = Number(value);
-  if (Number.isNaN(numeric)) return String(value);
-  return numeric.toLocaleString();
-}
-
-function formatConfidence(value: number | string): string {
-  const numeric = Number(value);
-  if (Number.isNaN(numeric)) return String(value);
-  if (numeric <= 1) return `${(numeric * 100).toFixed(0)}%`;
-  if (numeric <= 100) return `${numeric.toFixed(0)}%`;
-  return numeric.toFixed(2);
 }
