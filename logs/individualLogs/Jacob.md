@@ -57,7 +57,7 @@ The evidence retrieval bug was a good example of how TypeScript type mismatches 
 
 This week's work improves the portfolio page's usability and visual quality while fixing a runtime crash that affected the project detail page. Code reviews across five PRs helped maintain quality and consistency as the team integrates major features including public portfolio sharing, project ranking, session security, and component architecture improvements heading into the final stretch.
 
-
+<img width="1076" height="629" alt="image" src="https://github.com/user-attachments/assets/617b5bc3-7feb-4af0-a9ae-f286ef94e1a1" />
 ---
 
 # Week 23: March 2 – March 8
