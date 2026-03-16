@@ -6,6 +6,8 @@ PRs Merged:
 PRs Reviewed:
 - [PR #419](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/419) — Portfolio View Page: Reviewed the addition of a portfolio dashboard with visualizations (activity heatmap, skills timeline, top 3 project showcase) and consolidation with existing CRUD into a single tabbed page with Overview, Portfolio Items, and Project Timeline tabs. All data sourced from existing API endpoints with no backend changes.
 
+
+
 # Week 23: March 2 - March 8
 
 PRs Merged:                                                                                                                                                                                   
