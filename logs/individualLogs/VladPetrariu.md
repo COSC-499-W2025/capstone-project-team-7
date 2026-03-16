@@ -1,3 +1,11 @@
+# Week 24: March 9 - March 15
+
+PRs Merged:
+- [PR #417](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/417) — Feat/reusable project components: Refactored the project detail page by extracting reusable UI components (StatCard, LoadingState, ErrorState, EmptyState, SearchInput) and breaking a monolithic 2425-line page file into focused, maintainable pieces. Six large tab sections were lifted into dedicated components, cutting the file nearly in half while preserving identical visual output and behavior. Common formatting helpers were consolidated into a single utility module. Includes updated tests and documentation. Closes #316.
+
+PRs Reviewed:
+- [PR #419](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/419) — Portfolio View Page: Reviewed the addition of a portfolio dashboard with visualizations (activity heatmap, skills timeline, top 3 project showcase) and consolidation with existing CRUD into a single tabbed page with Overview, Portfolio Items, and Project Timeline tabs. All data sourced from existing API endpoints with no backend changes.
+
 # Week 23: March 2 - March 8
 
 PRs Merged:                                                                                                                                                                                   
