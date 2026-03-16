@@ -76,7 +76,8 @@ app.whenReady().then(() => {
 
   ipcMain.handle(IPC_CHANNELS.SELECT_DIRECTORY, async (_event, options: Electron.OpenDialogOptions | undefined) => {
     const result = await dialog.showOpenDialog({
-      properties: ["openDirectory"],
+      properties: ["openDirectory", "openFile"],
+      filters: [{ name: "ZIP Archives", extensions: ["zip"] }],
       ...options
     });
     if (result.canceled) return [];
