@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import PortfolioPage from "../app/(dashboard)/portfolio/page";
 
@@ -46,12 +46,44 @@ const MOCK_CHRONOLOGY = {
       evidence: ["Wrote 10k lines of code", "Led team of 3"],
     },
   ],
-  skills: [],
+  skills: [
+    {
+      period_label: "2025-02",
+      skills: ["React", "TypeScript", "Testing"],
+      commits: 14,
+      projects: ["proj-1"],
+    },
+    {
+      period_label: "2025-01",
+      skills: ["FastAPI", "Python"],
+      commits: 7,
+      projects: ["proj-1", "proj-2"],
+    },
+  ],
 };
 
 const MOCK_PROJECTS = [
-  { id: "proj-1", project_name: "My App", project_path: "/app", total_files: 10, total_lines: 500 },
-  { id: "proj-2", project_name: "Backend API", project_path: "/api", total_files: 5, total_lines: 200 },
+  {
+    id: "proj-1",
+    project_name: "My App",
+    project_path: "/Users/jacobdamery/Desktop/CAPSTONE LETS DO IT/capstone-project-team-7/backend",
+    total_files: 10,
+    total_lines: 500,
+    contribution_score: 91,
+    total_commits: 49,
+    user_commit_share: 0.64,
+    role: "contributor",
+  },
+  {
+    id: "proj-2",
+    project_name: "Backend API",
+    project_path: "/Users/jacobdamery/Desktop/CAPSTONE LETS DO IT/capstone-project-team-7/frontend",
+    total_files: 5,
+    total_lines: 200,
+    contribution_score: 67,
+    total_commits: 22,
+    user_commit_share: 0.42,
+  },
 ];
 
 vi.mock("@/lib/api/portfolio", () => ({
@@ -161,6 +193,10 @@ async function renderAndWait() {
   });
 }
 
+async function openPortfolioItemsTab() {
+  await userEvent.click(screen.getByRole("button", { name: "Portfolio Items" }));
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -184,6 +220,7 @@ describe("PortfolioPage", () => {
 
   it("renders portfolio items after load", async () => {
     await renderAndWait();
+    await openPortfolioItemsTab();
     expect(screen.getByText("E-Commerce Platform")).toBeInTheDocument();
     expect(screen.getByText("Data Pipeline")).toBeInTheDocument();
   });
@@ -201,11 +238,13 @@ describe("PortfolioPage", () => {
 
   it("shows role for items that have one", async () => {
     await renderAndWait();
+    await openPortfolioItemsTab();
     expect(screen.getByText("Lead Developer")).toBeInTheDocument();
   });
 
   it("shows summary for items that have one", async () => {
     await renderAndWait();
+    await openPortfolioItemsTab();
     expect(
       screen.getByText("Built a full-stack e-commerce app with React and FastAPI.")
     ).toBeInTheDocument();
@@ -232,13 +271,14 @@ describe("PortfolioPage", () => {
   it("still renders if skills fetch fails", async () => {
     mockGetSkills.mockRejectedValue(new Error("Skills unavailable"));
     await renderAndWait();
-    // Items should still show
+    await openPortfolioItemsTab();
     expect(screen.getByText("E-Commerce Platform")).toBeInTheDocument();
   });
 
   it("still renders if chronology fetch fails", async () => {
     mockGetPortfolioChronology.mockRejectedValue(new Error("Chronology unavailable"));
     await renderAndWait();
+    await openPortfolioItemsTab();
     expect(screen.getByText("E-Commerce Platform")).toBeInTheDocument();
   });
 
@@ -246,9 +286,9 @@ describe("PortfolioPage", () => {
 
   it("displays skills as badges", async () => {
     await renderAndWait();
-    expect(screen.getByText("FastAPI")).toBeInTheDocument();
-    expect(screen.getByText("React")).toBeInTheDocument();
-    expect(screen.getByText("TypeScript")).toBeInTheDocument();
+    expect(screen.getAllByText("FastAPI").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("React").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("TypeScript").length).toBeGreaterThan(0);
   });
 
   it("shows skill count in skills summary header", async () => {
@@ -256,20 +296,33 @@ describe("PortfolioPage", () => {
     expect(screen.getByText(/4 skills across all projects/i)).toBeInTheDocument();
   });
 
+  it("renders populated overview insight sections", async () => {
+    await renderAndWait();
+    expect(screen.getByRole("heading", { name: "Activity Heatmap" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Skills Timeline" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Top Projects" })).toBeInTheDocument();
+    expect(screen.getByText("2 periods")).toBeInTheDocument();
+    expect(screen.getByText("Peak: Feb 2025")).toBeInTheDocument();
+  });
+
+  it("sanitizes long project paths in the showcase", async () => {
+    await renderAndWait();
+    expect(screen.getAllByText(".../capstone-project-team-7/backend").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/\/Users\/jacobdamery\/Desktop/)).not.toBeInTheDocument();
+  });
+
   it("shows fallback message when no skills", async () => {
     mockGetSkills.mockResolvedValue({ skills: [] });
     await renderAndWait();
-    expect(
-      screen.getByText(/No skills found/i)
-    ).toBeInTheDocument();
+    expect(screen.getAllByText(/No skills found/i).length).toBeGreaterThan(0);
   });
 
   it("collapses skills section when toggle clicked", async () => {
     await renderAndWait();
     const toggleButton = screen.getByText(/Skills Summary/i);
     await userEvent.click(toggleButton);
-    // Skills badges should be gone
-    expect(screen.queryByText("FastAPI")).not.toBeInTheDocument();
+    expect(screen.queryByText(/4 skills across all projects/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "All Skills" })).not.toBeInTheDocument();
   });
 
   // --- Refresh ---
@@ -402,7 +455,9 @@ describe("PortfolioPage", () => {
     // Banner should be cleared while the second refresh is running
     expect(screen.queryByText("Portfolio refreshed")).not.toBeInTheDocument();
 
-    resolveSecond({ status: "completed", projects_scanned: 0, total_files: 0, total_size_bytes: 0, dedup_report: null });
+    await act(async () => {
+      resolveSecond({ status: "completed", projects_scanned: 0, total_files: 0, total_size_bytes: 0, dedup_report: null });
+    });
   });
 
   it("shows error banner when refreshPortfolio fails", async () => {
@@ -507,6 +562,7 @@ describe("PortfolioPage", () => {
 
   it("adds created item to the list without refetch", async () => {
     await renderAndWait();
+    await openPortfolioItemsTab();
     const newItemButtons = screen.getAllByText("New Item");
     await userEvent.click(newItemButtons[0]);
 
@@ -566,6 +622,7 @@ describe("PortfolioPage", () => {
 
   it("opens edit dialog with pre-filled data when Edit clicked", async () => {
     await renderAndWait();
+    await openPortfolioItemsTab();
 
     const editButtons = screen.getAllByText("Edit");
     await userEvent.click(editButtons[0]);
@@ -577,6 +634,7 @@ describe("PortfolioPage", () => {
 
   it("pre-fills role, summary, and evidence in edit dialog", async () => {
     await renderAndWait();
+    await openPortfolioItemsTab();
     const editButtons = screen.getAllByText("Edit");
     await userEvent.click(editButtons[0]);
 
@@ -591,6 +649,7 @@ describe("PortfolioPage", () => {
 
   it("calls updatePortfolioItem with correct args on save", async () => {
     await renderAndWait();
+    await openPortfolioItemsTab();
     const editButtons = screen.getAllByText("Edit");
     await userEvent.click(editButtons[0]);
 
@@ -611,6 +670,7 @@ describe("PortfolioPage", () => {
       title: "Updated Platform",
     });
     await renderAndWait();
+    await openPortfolioItemsTab();
 
     const editButtons = screen.getAllByText("Edit");
     await userEvent.click(editButtons[0]);
@@ -630,6 +690,7 @@ describe("PortfolioPage", () => {
   it("shows form error when edit API fails", async () => {
     mockUpdatePortfolioItem.mockRejectedValue(new Error("Update failed"));
     await renderAndWait();
+    await openPortfolioItemsTab();
 
     const editButtons = screen.getAllByText("Edit");
     await userEvent.click(editButtons[0]);
@@ -646,6 +707,7 @@ describe("PortfolioPage", () => {
   it("does not delete when confirm is cancelled", async () => {
     confirmMock.mockReturnValue(false);
     await renderAndWait();
+    await openPortfolioItemsTab();
 
     const deleteButtons = screen.getAllByText("Delete");
     await userEvent.click(deleteButtons[0]);
@@ -660,6 +722,7 @@ describe("PortfolioPage", () => {
   it("deletes item when confirmed", async () => {
     confirmMock.mockReturnValue(true);
     await renderAndWait();
+    await openPortfolioItemsTab();
 
     const deleteButtons = screen.getAllByText("Delete");
     await userEvent.click(deleteButtons[0]);
@@ -678,6 +741,7 @@ describe("PortfolioPage", () => {
     mockDeletePortfolioItem.mockRejectedValue(new Error("Delete failed"));
 
     await renderAndWait();
+    await openPortfolioItemsTab();
 
     const deleteButtons = screen.getAllByText("Delete");
     await userEvent.click(deleteButtons[0]);
@@ -720,8 +784,8 @@ describe("PortfolioPage", () => {
     const selectTrigger = screen.getByRole("combobox");
     await userEvent.click(selectTrigger);
 
-    const projectOption = await screen.findByText("My App");
-    await userEvent.click(projectOption);
+    const projectOptions = await screen.findAllByText("My App");
+    await userEvent.click(projectOptions[projectOptions.length - 1]);
 
     await userEvent.click(screen.getByText("Fill from Project"));
 
@@ -747,8 +811,8 @@ describe("PortfolioPage", () => {
 
     const selectTrigger = screen.getByRole("combobox");
     await userEvent.click(selectTrigger);
-    const projectOption = await screen.findByText("My App");
-    await userEvent.click(projectOption);
+    const projectOptions = await screen.findAllByText("My App");
+    await userEvent.click(projectOptions[projectOptions.length - 1]);
 
     await userEvent.click(screen.getByText("Fill from Project"));
 

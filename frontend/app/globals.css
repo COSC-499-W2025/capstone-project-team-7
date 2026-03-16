@@ -259,6 +259,54 @@
     font-weight: 500;
     white-space: nowrap;
   }
+
+  .portfolio-shell {
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    border-radius: 28px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.96) 100%);
+    box-shadow: 0 24px 48px -36px rgba(15, 23, 42, 0.28);
+  }
+
+  .portfolio-panel {
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    border-radius: 24px;
+    background: rgba(255, 255, 255, 0.94);
+    box-shadow: 0 16px 28px -28px rgba(15, 23, 42, 0.26);
+  }
+
+  .portfolio-panel-subtle {
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    border-radius: 20px;
+    background: rgba(248, 250, 252, 0.9);
+    box-shadow: 0 14px 24px -30px rgba(15, 23, 42, 0.22);
+  }
+
+  .portfolio-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 999px;
+    background: rgba(248, 250, 252, 0.88);
+    color: rgb(51 65 85);
+    padding: 0.48rem 0.8rem;
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 500;
+    transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+  }
+
+  .portfolio-chip:hover {
+    background: rgba(241, 245, 249, 1);
+    border-color: rgba(148, 163, 184, 0.32);
+    color: rgb(15 23 42);
+  }
+
+  .portfolio-chip-active {
+    background: rgba(14, 165, 233, 0.1);
+    border-color: rgba(56, 189, 248, 0.32);
+    color: rgb(3 105 161);
+  }
 }
 
 @layer utilities {
