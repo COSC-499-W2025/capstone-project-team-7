@@ -23,6 +23,16 @@
 
 ## Week 24 (March 9th - 15th)
 
+**Aaron**:
+**PR [#409 – “One page resume api routes”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/409)**:
+Implemented the backend REST API and Supabase schema for the Resume Builder, including RLS-protected CRUD endpoints, proper paginated queries, a shared response helper, and unit tests.
+ **PR [#414 – “One page resume frontend types api”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/414)**
+Added TypeScript types, API client functions, and LaTeX template generators for the Resume Builder, fixing two blocking LaTeX bugs (escapeLatex corruption and URL over-escaping inside \href{}) and migrating the API client to use the shared request<T> wrapper with the correct env var.
+ **PR [#415 – “One page resume frontend UI pages”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/415)**:
+Implemented the full Resume Builder UI with a list page, tabbed editor, live preview, debounced auto-save, and template selection, then fixed a deployment-breaking Next.js config change, a phantom-save bug, and a bullet input UX issue found in review.
+Code Reviews
+Reviewed and approved OM's PR#400 (Skills UI Enrichment) and PR#401 (Rule-Based Skill Gap Analysis). Reviewed and approved Joaquin's PR#404 (Gated AI Analysis Tab) and Jacob's PR#406 (Portfolio Progress Feedback). Requested changes on Joaquin's PR#396 (Backend Cleanup & Contribution Identity) to centralize duplicated settings parsing logic, which was then implemented.
+
 **Jacob**: This week I focused on redesigning the portfolio page UI and fixing a runtime crash in the project detail page, while reviewing five teammate PRs covering project ranking, public portfolio sharing, skills enrichment, session security, and component refactoring.
 
 PR [#424](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/424) redesigned the portfolio page with improved component styling, better data handling, and enhanced interactivity. The activity heatmap now displays commit counts inside cells with yearly totals and a sky-blue color scheme. The skills timeline sorts newest-first with a card-based layout per period, and the portfolio overview gains a publish/unpublish toggle and copy share link button. I updated `portfolio.test.tsx` to navigate to the Portfolio Items tab before asserting content and enriched mock data with `contribution_score`, `total_commits`, `user_commit_share`, and skills timeline entries. Manual testing covered the publish toggle, share link, heatmap rendering, and timeline sorting.
