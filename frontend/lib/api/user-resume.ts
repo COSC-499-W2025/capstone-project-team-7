@@ -8,10 +8,13 @@ import type {
   UserResumeCreateRequest,
   UserResumeUpdateRequest,
   UserResumeDuplicateRequest,
+  UserResumeAddItemsRequest,
   TemplatesListResponse,
 } from "@/types/user-resume";
 
 import { request } from "@/lib/api";
+
+const DEFAULT_API_BASE_URL = "http://localhost:8000";
 
 function authHeaders(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
@@ -21,6 +24,10 @@ async function call<T>(path: string, init: RequestInit, fallback: string): Promi
   const result = await request<T>(path, init);
   if (!result.ok) throw new Error(result.error ?? fallback);
   return result.data;
+}
+
+function getApiBaseUrl(): string {
+  return process.env.NEXT_PUBLIC_API_BASE_URL || DEFAULT_API_BASE_URL;
 }
 
 /**
@@ -53,4 +60,27 @@ export async function deleteUserResume(token: string, id: string): Promise<void>
 
 export async function duplicateUserResume(token: string, id: string, body: UserResumeDuplicateRequest = {}): Promise<UserResumeRecord> {
   return call(`/api/user-resumes/${id}/duplicate`, { method: "POST", headers: authHeaders(token), body: JSON.stringify(body) }, "Failed to duplicate resume");
+}
+
+export async function addResumeItemsToResume(token: string, id: string, body: UserResumeAddItemsRequest): Promise<UserResumeRecord> {
+  return call(`/api/user-resumes/${id}/add-items`, { method: "POST", headers: authHeaders(token), body: JSON.stringify(body) }, "Failed to add resume items to resume");
+}
+
+export async function detectResumeSkills(token: string, id: string): Promise<UserResumeRecord> {
+  return call(`/api/user-resumes/${id}/detect-skills`, { method: "POST", headers: authHeaders(token), body: JSON.stringify({}) }, "Failed to auto-detect skills");
+}
+
+export async function downloadResumePdf(token: string, id: string, latexContent: string): Promise<Blob> {
+  const response = await fetch(`${getApiBaseUrl()}/api/user-resumes/${id}/pdf`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ latex_content: latexContent }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(text || "Failed to export PDF");
+  }
+
+  return response.blob();
 }

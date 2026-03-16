@@ -22,6 +22,21 @@ kill_port 3000
 
 echo "=== Setting up environment ==="
 
+if [ -f ".env" ]; then
+    set -a
+    source ".env"
+    set +a
+else
+    echo "Warning: .env not found at repo root"
+fi
+
+export SUPABASE_URL="${SUPABASE_URL:-https://bybqsnphnkrjppseubsi.supabase.co}"
+export SUPABASE_ANON_KEY="${SUPABASE_ANON_KEY:-sb_publishable_gYNy3N9iGvQ2nCcrb1Wmeg_I-vglfB4}"
+
+if ! command -v pdflatex >/dev/null 2>&1; then
+    echo "Warning: pdflatex not found. Resume PDF export endpoint will fail until TeX Live is installed."
+fi
+
 # Setup backend (Python)
 if [ ! -d "backend/venv" ]; then
     echo "Creating Python virtual environment..."

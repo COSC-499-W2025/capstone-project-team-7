@@ -4,16 +4,22 @@ from __future__ import annotations
 
 import logging
 import os
+import re
+import shutil
+import subprocess
+import tempfile
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
-from uuid import UUID
+from uuid import uuid4
 
 try:
-    from supabase import Client, create_client
+    from supabase.client import Client, create_client as _create_client
     SUPABASE_AVAILABLE = True
 except ImportError:
     SUPABASE_AVAILABLE = False
     Client = None  # type: ignore[assignment]
+    _create_client = None
 
 from services.services.supabase_keys import (
     apply_client_access_token,
@@ -33,6 +39,58 @@ class UserResumeService:
     """Service for managing user resume documents in Supabase."""
 
     VALID_TEMPLATES = {"jake", "classic", "modern", "minimal", "custom"}
+    _SKILL_CATEGORIES: Dict[str, Dict[str, str]] = {
+        "languages": {
+            "python": "Python",
+            "typescript": "TypeScript",
+            "javascript": "JavaScript",
+            "java": "Java",
+            "c#": "C#",
+            "c++": "C++",
+            "go": "Go",
+            "rust": "Rust",
+            "sql": "SQL",
+            "bash": "Bash",
+            "html": "HTML",
+            "css": "CSS",
+        },
+        "frameworks": {
+            "react": "React",
+            "next.js": "Next.js",
+            "nextjs": "Next.js",
+            "fastapi": "FastAPI",
+            "django": "Django",
+            "flask": "Flask",
+            "node.js": "Node.js",
+            "nodejs": "Node.js",
+            "express": "Express",
+            "spring": "Spring",
+        },
+        "developer_tools": {
+            "git": "Git",
+            "docker": "Docker",
+            "kubernetes": "Kubernetes",
+            "aws": "AWS",
+            "gcp": "GCP",
+            "azure": "Azure",
+            "supabase": "Supabase",
+            "postgres": "Postgres",
+            "postgresql": "Postgres",
+            "sqlite": "SQLite",
+            "linux": "Linux",
+        },
+        "libraries": {
+            "numpy": "NumPy",
+            "pandas": "Pandas",
+            "matplotlib": "Matplotlib",
+            "scikit-learn": "Scikit-learn",
+            "tensorflow": "TensorFlow",
+            "pytorch": "PyTorch",
+            "zod": "Zod",
+            "tailwind": "Tailwind",
+            "tailwindcss": "Tailwind",
+        },
+    }
 
     def __init__(
         self,
@@ -55,8 +113,12 @@ class UserResumeService:
         self.client: Any = None
         self._requires_user_token_client = False
 
+        client_factory = cast(Any, _create_client)
+        if client_factory is None:
+            raise UserResumeServiceError("Supabase client not available. Install supabase-py.")
+
         try:
-            self.client = create_client(cast(str, self.supabase_url), cast(str, self.supabase_key))
+            self.client = client_factory(cast(str, self.supabase_url), cast(str, self.supabase_key))
         except Exception as exc:
             if (self.supabase_key or "").startswith("sb_publishable_"):
                 self._requires_user_token_client = True
@@ -80,7 +142,10 @@ class UserResumeService:
 
         if self.client is None and token and is_jwt_like(token):
             try:
-                self.client = create_client(cast(str, self.supabase_url), token)
+                client_factory = cast(Any, _create_client)
+                if client_factory is None:
+                    raise UserResumeServiceError("Supabase client not available. Install supabase-py.")
+                self.client = client_factory(cast(str, self.supabase_url), token)
             except Exception as exc:
                 try:
                     self.client = create_postgrest_client(
@@ -290,3 +355,246 @@ class UserResumeService:
             is_latex_mode=existing.get("is_latex_mode", True),
             metadata={"duplicated_from": resume_id},
         )
+
+    def add_resume_items_to_resume(
+        self,
+        user_id: str,
+        resume_id: str,
+        *,
+        item_ids: List[str],
+    ) -> Optional[Dict[str, Any]]:
+        if not user_id or not resume_id:
+            return None
+
+        normalized_ids = [item_id for item_id in item_ids if item_id]
+        if not normalized_ids:
+            raise UserResumeServiceError("item_ids must include at least one resume item id.")
+
+        existing = self.get_resume(user_id, resume_id)
+        if not existing:
+            return None
+
+        try:
+            response = (
+                self.client.table("resume_items")
+                .select("id, project_name, start_date, end_date, content, bullets, metadata")
+                .eq("user_id", user_id)
+                .in_("id", normalized_ids)
+                .execute()
+            )
+        except Exception as exc:
+            raise UserResumeServiceError(f"Failed to fetch resume items: {exc}") from exc
+
+        fetched_items = self._handle_response(response.data)
+        items_by_id = {str(item.get("id")): item for item in fetched_items}
+
+        structured_data = existing.get("structured_data") or {}
+        if not isinstance(structured_data, dict):
+            structured_data = {}
+
+        current_projects = structured_data.get("projects")
+        projects: List[Dict[str, Any]] = list(current_projects) if isinstance(current_projects, list) else []
+        existing_item_links = {
+            str(project.get("resume_item_id"))
+            for project in projects
+            if isinstance(project, dict) and project.get("resume_item_id") is not None
+        }
+
+        added = 0
+        for item_id in normalized_ids:
+            if item_id in existing_item_links:
+                continue
+
+            item = items_by_id.get(item_id)
+            if not item:
+                continue
+
+            project_name = str(item.get("project_name") or "").strip() or "Untitled Project"
+            bullets = self._extract_item_bullets(item)
+            metadata_value = item.get("metadata")
+            metadata: Dict[str, Any] = {}
+            if isinstance(metadata_value, dict):
+                metadata = {str(key): value for key, value in metadata_value.items()}
+            technologies = self._extract_technologies_string(item, metadata)
+
+            project_entry: Dict[str, Any] = {
+                "id": str(uuid4()),
+                "name": project_name,
+                "start_date": item.get("start_date"),
+                "end_date": item.get("end_date"),
+                "bullets": bullets,
+                "resume_item_id": item_id,
+            }
+            if technologies:
+                project_entry["technologies"] = technologies
+
+            projects.append(project_entry)
+            existing_item_links.add(item_id)
+            added += 1
+
+        structured_data["projects"] = projects
+        return self.update_resume(user_id, resume_id, structured_data=structured_data, metadata={"last_added_items": added})
+
+    def detect_skills_from_resume_projects(self, user_id: str, resume_id: str) -> Optional[Dict[str, Any]]:
+        if not user_id or not resume_id:
+            return None
+
+        existing = self.get_resume(user_id, resume_id)
+        if not existing:
+            return None
+
+        structured_data = existing.get("structured_data") or {}
+        if not isinstance(structured_data, dict):
+            structured_data = {}
+
+        projects = structured_data.get("projects")
+        project_list: List[Dict[str, Any]] = [p for p in projects if isinstance(p, dict)] if isinstance(projects, list) else []
+
+        detected = self._detect_skills_from_projects(project_list)
+        existing_skills_raw = structured_data.get("skills")
+        existing_skills = existing_skills_raw if isinstance(existing_skills_raw, dict) else {}
+
+        merged_skills: Dict[str, List[str]] = {}
+        for category in ["languages", "frameworks", "developer_tools", "libraries"]:
+            current_values = existing_skills.get(category)
+            current_list = [str(v) for v in current_values if isinstance(v, str)] if isinstance(current_values, list) else []
+            merged_skills[category] = self._merge_unique_case_insensitive(current_list, detected.get(category, []))
+
+        structured_data["skills"] = merged_skills
+        return self.update_resume(user_id, resume_id, structured_data=structured_data, metadata={"auto_detected_skills": True})
+
+    def _extract_item_bullets(self, item: Dict[str, Any]) -> List[str]:
+        bullets = item.get("bullets")
+        if isinstance(bullets, list):
+            return [str(bullet).strip() for bullet in bullets if str(bullet).strip()]
+
+        content = item.get("content")
+        if not isinstance(content, str):
+            return []
+
+        extracted: List[str] = []
+        for line in content.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("- "):
+                candidate = stripped[2:].strip()
+                if candidate:
+                    extracted.append(candidate)
+        return extracted
+
+    def _extract_technologies_string(self, item: Dict[str, Any], metadata: Dict[str, Any]) -> str:
+        direct = metadata.get("technologies")
+        if isinstance(direct, str):
+            return direct.strip()
+
+        languages = metadata.get("languages")
+        if isinstance(languages, list):
+            names = [str(value).strip() for value in languages if str(value).strip()]
+            return ", ".join(names[:8])
+
+        return ""
+
+    def _detect_skills_from_projects(self, projects: List[Dict[str, Any]]) -> Dict[str, List[str]]:
+        detected: Dict[str, List[str]] = {
+            "languages": [],
+            "frameworks": [],
+            "developer_tools": [],
+            "libraries": [],
+        }
+
+        for project in projects:
+            technologies = project.get("technologies")
+            if isinstance(technologies, str):
+                for token in re.split(r"[,/|;]", technologies):
+                    self._add_skill_token(token, detected)
+
+            bullets = project.get("bullets")
+            if isinstance(bullets, list):
+                for bullet in bullets:
+                    if isinstance(bullet, str):
+                        for token in re.split(r"[^a-zA-Z0-9.+#-]+", bullet):
+                            self._add_skill_token(token, detected)
+
+        return detected
+
+    def _add_skill_token(self, token: str, detected: Dict[str, List[str]]) -> None:
+        normalized = token.strip().lower()
+        if not normalized:
+            return
+
+        for category, keyword_map in self._SKILL_CATEGORIES.items():
+            match = keyword_map.get(normalized)
+            if match and match not in detected[category]:
+                detected[category].append(match)
+
+    def _merge_unique_case_insensitive(self, existing: List[str], incoming: List[str]) -> List[str]:
+        merged: List[str] = []
+        seen_lower: set[str] = set()
+
+        for value in [*existing, *incoming]:
+            cleaned = value.strip()
+            if not cleaned:
+                continue
+            lower = cleaned.lower()
+            if lower in seen_lower:
+                continue
+            seen_lower.add(lower)
+            merged.append(cleaned)
+
+        return merged
+
+    def render_pdf_bytes(
+        self,
+        user_id: str,
+        resume_id: str,
+        *,
+        latex_content: Optional[str] = None,
+    ) -> bytes:
+        if not user_id or not resume_id:
+            raise UserResumeServiceError("Missing user or resume identifier.")
+
+        if latex_content is None:
+            record = self.get_resume(user_id, resume_id)
+            if not record:
+                raise UserResumeServiceError("Resume not found.")
+            latex_content = record.get("latex_content")
+
+        if not isinstance(latex_content, str) or not latex_content.strip():
+            raise UserResumeServiceError("No LaTeX content available for PDF export.")
+
+        if shutil.which("pdflatex") is None:
+            raise UserResumeServiceError("pdflatex is not installed on the server.")
+
+        try:
+            with tempfile.TemporaryDirectory(prefix="resume_pdf_") as tmp_dir:
+                workdir = Path(tmp_dir)
+                tex_path = workdir / "resume.tex"
+                tex_path.write_text(latex_content, encoding="utf-8")
+
+                command = [
+                    "pdflatex",
+                    "-interaction=nonstopmode",
+                    "-halt-on-error",
+                    "-output-directory",
+                    str(workdir),
+                    str(tex_path),
+                ]
+                process = subprocess.run(
+                    command,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=30,
+                )
+                if process.returncode != 0:
+                    error_message = (process.stderr or process.stdout or "LaTeX compilation failed").strip()
+                    raise UserResumeServiceError(f"PDF compilation failed: {error_message[-1000:]}")
+
+                pdf_path = workdir / "resume.pdf"
+                if not pdf_path.exists():
+                    raise UserResumeServiceError("PDF generation failed: output file not found.")
+
+                return pdf_path.read_bytes()
+        except subprocess.TimeoutExpired as exc:
+            raise UserResumeServiceError("PDF compilation timed out.") from exc
+        except OSError as exc:
+            raise UserResumeServiceError(f"PDF generation failed: {exc}") from exc
