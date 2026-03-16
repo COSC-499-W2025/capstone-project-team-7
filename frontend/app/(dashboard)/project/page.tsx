@@ -587,7 +587,7 @@ export default function ProjectPage() {
     [skillsAnalysis.skills],
   );
   const getSkillEvidence = (skillName: string): SkillEvidenceItem[] =>
-    evidenceMap[skillName] ?? [];
+    evidenceMap.get(skillName) ?? [];
 
   // Adoption timeline
   const skillAdoptionTimeline: SkillAdoptionEntry[] = skillsAnalysis.skill_adoption_timeline ?? [];
@@ -942,7 +942,7 @@ export default function ProjectPage() {
 
   return (
     <div className="p-8">
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 mb-6">
+      <div className="mb-6">
         <button
           onClick={() => router.back()}
           className="text-sm text-gray-600 hover:text-gray-900 mb-2 inline-block"
