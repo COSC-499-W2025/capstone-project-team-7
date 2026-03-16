@@ -88,8 +88,8 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ data }) => {
   return (
     <div className="space-y-4">
       <div className="overflow-x-auto">
-        <div className="min-w-[38rem] space-y-3">
-          <div className="grid grid-cols-[56px_minmax(360px,1fr)_72px] items-center gap-3">
+        <div className="min-w-[18rem] space-y-3 sm:min-w-[24rem] md:min-w-[38rem]">
+          <div className="grid grid-cols-[42px_minmax(240px,1fr)] items-center gap-2.5 md:grid-cols-[56px_minmax(360px,1fr)_72px] md:gap-3">
             <div />
             <div className="grid grid-cols-12 gap-1.5">
               {MONTH_LABELS.map((month) => (
@@ -101,7 +101,7 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ data }) => {
                 </div>
               ))}
             </div>
-            <div className="text-right text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+            <div className="hidden text-right text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400 md:block">
               Total
             </div>
           </div>
@@ -109,16 +109,16 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ data }) => {
           {years.map((year) => (
             <div
               key={year}
-              className="grid grid-cols-[56px_minmax(360px,1fr)_72px] items-center gap-3"
+              className="grid grid-cols-[42px_minmax(240px,1fr)] items-center gap-2.5 md:grid-cols-[56px_minmax(360px,1fr)_72px] md:gap-3"
             >
-              <div className="text-sm font-semibold text-slate-700">{year}</div>
+              <div className="text-xs font-semibold text-slate-700 md:text-sm">{year}</div>
               <div className="grid grid-cols-12 gap-1.5">
                 {MONTH_LABELS.map((label, index) => {
                   const commits = grid[year]?.[index + 1] ?? 0;
                   return (
                     <div
                       key={`${year}-${label}`}
-                      className={`flex h-8 items-center justify-center rounded-xl border border-white/70 text-[10px] font-semibold transition-colors ${intensityClass(commits, maxCommits)}`}
+                      className={`flex h-6 items-center justify-center rounded-lg border border-white/70 text-[9px] font-semibold transition-colors sm:h-7 sm:rounded-xl sm:text-[10px] md:h-8 ${intensityClass(commits, maxCommits)}`}
                       title={`${label} ${year}: ${commits} commit${commits !== 1 ? "s" : ""}`}
                     >
                       {commits > 0 ? commits : ""}
@@ -126,7 +126,7 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ data }) => {
                   );
                 })}
               </div>
-              <div className="text-right text-xs font-medium text-slate-500">
+              <div className="hidden text-right text-xs font-medium text-slate-500 md:block">
                 {totals[year].toLocaleString()}
               </div>
             </div>

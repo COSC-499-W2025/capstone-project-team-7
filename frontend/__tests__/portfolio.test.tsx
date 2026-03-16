@@ -46,12 +46,44 @@ const MOCK_CHRONOLOGY = {
       evidence: ["Wrote 10k lines of code", "Led team of 3"],
     },
   ],
-  skills: [],
+  skills: [
+    {
+      period_label: "2025-02",
+      skills: ["React", "TypeScript", "Testing"],
+      commits: 14,
+      projects: ["proj-1"],
+    },
+    {
+      period_label: "2025-01",
+      skills: ["FastAPI", "Python"],
+      commits: 7,
+      projects: ["proj-1", "proj-2"],
+    },
+  ],
 };
 
 const MOCK_PROJECTS = [
-  { id: "proj-1", project_name: "My App", project_path: "/app", total_files: 10, total_lines: 500 },
-  { id: "proj-2", project_name: "Backend API", project_path: "/api", total_files: 5, total_lines: 200 },
+  {
+    id: "proj-1",
+    project_name: "My App",
+    project_path: "/Users/jacobdamery/Desktop/CAPSTONE LETS DO IT/capstone-project-team-7/backend",
+    total_files: 10,
+    total_lines: 500,
+    contribution_score: 91,
+    total_commits: 49,
+    user_commit_share: 0.64,
+    role: "contributor",
+  },
+  {
+    id: "proj-2",
+    project_name: "Backend API",
+    project_path: "/Users/jacobdamery/Desktop/CAPSTONE LETS DO IT/capstone-project-team-7/frontend",
+    total_files: 5,
+    total_lines: 200,
+    contribution_score: 67,
+    total_commits: 22,
+    user_commit_share: 0.42,
+  },
 ];
 
 vi.mock("@/lib/api/portfolio", () => ({
@@ -254,14 +286,29 @@ describe("PortfolioPage", () => {
 
   it("displays skills as badges", async () => {
     await renderAndWait();
-    expect(screen.getByText("FastAPI")).toBeInTheDocument();
-    expect(screen.getByText("React")).toBeInTheDocument();
-    expect(screen.getByText("TypeScript")).toBeInTheDocument();
+    expect(screen.getAllByText("FastAPI").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("React").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("TypeScript").length).toBeGreaterThan(0);
   });
 
   it("shows skill count in skills summary header", async () => {
     await renderAndWait();
     expect(screen.getByText(/4 skills across all projects/i)).toBeInTheDocument();
+  });
+
+  it("renders populated overview insight sections", async () => {
+    await renderAndWait();
+    expect(screen.getByRole("heading", { name: "Activity Heatmap" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Skills Timeline" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Top Projects" })).toBeInTheDocument();
+    expect(screen.getByText("2 periods")).toBeInTheDocument();
+    expect(screen.getByText("Peak: Feb 2025")).toBeInTheDocument();
+  });
+
+  it("sanitizes long project paths in the showcase", async () => {
+    await renderAndWait();
+    expect(screen.getAllByText(".../capstone-project-team-7/backend").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/\/Users\/jacobdamery\/Desktop/)).not.toBeInTheDocument();
   });
 
   it("shows fallback message when no skills", async () => {
@@ -274,8 +321,8 @@ describe("PortfolioPage", () => {
     await renderAndWait();
     const toggleButton = screen.getByText(/Skills Summary/i);
     await userEvent.click(toggleButton);
-    // Skills badges should be gone
-    expect(screen.queryByText("FastAPI")).not.toBeInTheDocument();
+    expect(screen.queryByText(/4 skills across all projects/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "All Skills" })).not.toBeInTheDocument();
   });
 
   // --- Refresh ---

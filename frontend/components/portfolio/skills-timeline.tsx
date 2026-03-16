@@ -8,7 +8,12 @@ interface SkillsTimelineProps {
 }
 
 function formatPeriod(label: string): string {
-  const [year, month] = label.split("-");
+  const match = /^(\d{4})-(\d{2})$/.exec(label);
+  if (!match) {
+    return label;
+  }
+
+  const year = match[1];
   const months = [
     "",
     "Jan",
@@ -24,14 +29,26 @@ function formatPeriod(label: string): string {
     "Nov",
     "Dec",
   ];
-  const monthIndex = Number.parseInt(month, 10);
-  return `${months[monthIndex] || month} ${year}`;
+  const monthIndex = Number.parseInt(match[2], 10);
+  if (monthIndex < 1 || monthIndex > 12) {
+    return label;
+  }
+
+  return `${months[monthIndex]} ${year}`;
 }
 
 function periodValue(label: string): number {
-  const [year, month] = label.split("-");
-  const yearValue = Number.parseInt(year, 10) || 0;
-  const monthValue = Number.parseInt(month, 10) || 0;
+  const match = /^(\d{4})-(\d{2})$/.exec(label);
+  if (!match) {
+    return 0;
+  }
+
+  const yearValue = Number.parseInt(match[1], 10) || 0;
+  const monthValue = Number.parseInt(match[2], 10) || 0;
+  if (monthValue < 1 || monthValue > 12) {
+    return 0;
+  }
+
   return yearValue * 100 + monthValue;
 }
 

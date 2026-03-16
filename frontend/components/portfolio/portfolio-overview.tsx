@@ -70,9 +70,18 @@ function getTopProjects(projects: ProjectMetadata[], limit = 4): ProjectMetadata
 }
 
 function parsePeriodValue(label: string): number {
-  const [year, month] = label.split("-");
-  const yearValue = Number.parseInt(year, 10) || 0;
-  const monthValue = Number.parseInt(month, 10) || 0;
+  const match = /^(\d{4})-(\d{2})$/.exec(label);
+  if (!match) {
+    return 0;
+  }
+
+  const yearValue = Number.parseInt(match[1], 10);
+  const monthValue = Number.parseInt(match[2], 10);
+
+  if (monthValue < 1 || monthValue > 12) {
+    return 0;
+  }
+
   return yearValue * 100 + monthValue;
 }
 
@@ -81,8 +90,13 @@ function formatPeriodLabel(label: string | null | undefined): string {
     return "No activity yet";
   }
 
-  const [year, month] = label.split("-");
-  const monthIndex = Number.parseInt(month, 10);
+  const match = /^(\d{4})-(\d{2})$/.exec(label);
+  if (!match) {
+    return label;
+  }
+
+  const year = match[1];
+  const monthIndex = Number.parseInt(match[2], 10);
   const months = [
     "",
     "Jan",
@@ -99,7 +113,28 @@ function formatPeriodLabel(label: string | null | undefined): string {
     "Dec",
   ];
 
-  return `${months[monthIndex] || month} ${year}`;
+  if (monthIndex < 1 || monthIndex > 12) {
+    return label;
+  }
+
+  return `${months[monthIndex]} ${year}`;
+}
+
+function formatProjectPath(projectPath: string | null | undefined): string {
+  if (!projectPath) {
+    return "Path unavailable";
+  }
+
+  const segments = projectPath.split(/[\\/]+/).filter(Boolean);
+  if (segments.length === 0) {
+    return projectPath;
+  }
+
+  if (segments.length <= 2) {
+    return segments.join("/");
+  }
+
+  return `.../${segments.slice(-2).join("/")}`;
 }
 
 function getPrimarySkill(
@@ -495,6 +530,7 @@ export function PortfolioOverview({
                 <div className="mt-5 grid gap-3 2xl:grid-cols-2">
                   {topProjects.map((project, index) => {
                     const shareLabel = formatShare(project.user_commit_share);
+                    const projectPathLabel = formatProjectPath(project.project_path);
 
                     return (
                       <article
@@ -520,7 +556,7 @@ export function PortfolioOverview({
                               <p className="mt-1 break-all text-xs leading-5 text-slate-500">
                                 {project.primary_contributor
                                   ? `Primary contributor: ${project.primary_contributor}`
-                                  : project.project_path}
+                                  : projectPathLabel}
                               </p>
                             </div>
                           </div>
@@ -556,7 +592,7 @@ export function PortfolioOverview({
 
                         <div className="mt-4 flex items-start justify-between gap-3">
                           <p className="min-w-0 flex-1 break-all text-xs leading-5 text-slate-400">
-                            {project.project_path}
+                            {projectPathLabel}
                           </p>
                           <Link
                             href={`/project?projectId=${project.id}`}
