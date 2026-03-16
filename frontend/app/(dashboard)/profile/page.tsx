@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Avatar } from "@/components/ui/avatar";
 import { Label } from "@/components/ui/label";
 import { clearStoredToken, getStoredToken } from "@/lib/auth";
+import { useAuth } from "@/hooks/use-auth";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -41,6 +42,8 @@ const EMPTY_PROFILE: UserProfile = {
 };
 
 export default function ProfilePage() {
+  const { logout } = useAuth();
+
   // ---- state ----
   const [profile, setProfile] = useState<UserProfile>(EMPTY_PROFILE);
   const [draft, setDraft] = useState<UserProfile>(EMPTY_PROFILE);
@@ -224,11 +227,7 @@ export default function ProfilePage() {
 
   // ---- logout ----
   const handleLogout = () => {
-    clearStoredToken();
-    localStorage.removeItem("refresh_token");
-    localStorage.removeItem("user_id");
-    localStorage.removeItem("email");
-    window.location.href = "/";
+    logout();
   };
 
   // ---- password change ----
