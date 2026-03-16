@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Literal, Optional
 import logging
 import sys
 from pathlib import Path
@@ -54,6 +54,10 @@ class SelectionRequest(BaseModel):
     skill_order: Optional[List[str]] = Field(default=None, description="Ordered list of skill names")
     selected_project_ids: Optional[List[str]] = Field(default=None, description="Project IDs selected for showcase")
     selected_skill_ids: Optional[List[str]] = Field(default=None, description="Skill names selected for showcase")
+    sort_mode: Optional[Literal["contribution", "recency"]] = Field(
+        default=None,
+        description="Projects ranking mode preference",
+    )
 
 
 class SelectionResponse(BaseModel):
@@ -63,6 +67,7 @@ class SelectionResponse(BaseModel):
     skill_order: List[str] = Field(default_factory=list)
     selected_project_ids: List[str] = Field(default_factory=list)
     selected_skill_ids: List[str] = Field(default_factory=list)
+    sort_mode: Literal["contribution", "recency"] = "recency"
     created_at: datetime
     updated_at: datetime
 
@@ -107,6 +112,7 @@ async def save_selection(
             skill_order=payload.skill_order,
             selected_project_ids=payload.selected_project_ids,
             selected_skill_ids=payload.selected_skill_ids,
+            sort_mode=payload.sort_mode,
         )
         
         # Convert to response model
@@ -116,6 +122,7 @@ async def save_selection(
             skill_order=result.get("skill_order") or [],
             selected_project_ids=result.get("selected_project_ids") or [],
             selected_skill_ids=result.get("selected_skill_ids") or [],
+            sort_mode=result.get("sort_mode") or "recency",
             created_at=result["created_at"],
             updated_at=result["updated_at"],
         )
@@ -161,6 +168,7 @@ async def get_selection(
                 skill_order=[],
                 selected_project_ids=[],
                 selected_skill_ids=[],
+                sort_mode="recency",
                 created_at=datetime.utcnow(),
                 updated_at=datetime.utcnow(),
             )
@@ -171,6 +179,7 @@ async def get_selection(
             skill_order=result.get("skill_order") or [],
             selected_project_ids=result.get("selected_project_ids") or [],
             selected_skill_ids=result.get("selected_skill_ids") or [],
+            sort_mode=result.get("sort_mode") or "recency",
             created_at=result["created_at"],
             updated_at=result["updated_at"],
         )

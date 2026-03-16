@@ -25,7 +25,7 @@ This project uses Supabase for persisted user data and synced scan artifacts. Be
 
 - **public.user_selections**
   - Purpose: User preferences for project/skill ordering and showcase selection.
-  - Key fields: `user_id`, `project_order` (text[]), `skill_order` (text[]), `selected_project_ids` (text[]), `selected_skill_ids` (text[]).
+  - Key fields: `user_id`, `project_order` (text[]), `skill_order` (text[]), `selected_project_ids` (text[]), `selected_skill_ids` (text[]), `sort_mode` (text).
   - Code: `backend/src/api/selection_routes.py` (to be implemented).
   - Notes: One record per user; supports custom ordering and selection state for portfolio display.
 
@@ -64,6 +64,7 @@ Do not modify; managed by Supabase:
 - `20251123000000_add_contribution_ranking.sql`: Adds contribution ranking fields to `projects`.
 - `20251124000000_drop_unused_tables.sql`: Drops `consents` and `uploads` (legacy/unused).
 - `20260115000000_add_user_selections.sql`: Adds `user_selections` table for portfolio/skill ordering and showcase preferences.
+- `20260315000000_add_selection_sort_mode.sql`: Adds persisted projects ranking mode (`contribution` or `recency`) to `user_selections`.
 - `20260120000000_add_project_overrides.sql`: Adds `project_overrides` table for user-defined chronology corrections, role/evidence, highlighted skills, and comparison attributes.
 - `20260309000000_add_scan_files.sql`: Adds `scan_files` table and owner-scoped RLS policies for incremental scan metadata.
 - `20260130000000_extend_profiles.sql`: Adds `education`, `career_title`, `avatar_url`, `schema_url`, `drive_url`, `updated_at` columns to `profiles`.
