@@ -20,6 +20,51 @@
 - [Week 4 (September 22 - 28)](#week-4-september-22---28)
 - [Week 3 (September 15 - 21)](#week-3-september-15---21)
 
+## Week 24 (March 9th - 15th)
+
+**Jacob**:
+
+## Overview
+
+This week I focused on redesigning the portfolio page UI and fixing a runtime crash in the project detail page, while reviewing five teammate PRs covering project ranking, public portfolio sharing, skills enrichment, session security, and component refactoring.
+
+## Contributions
+
+### Portfolio Page UI Redesign ([PR #424](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/424))
+
+This week's PR #424 redesigned the portfolio page with improved component styling, better data handling, and enhanced interactivity. The activity heatmap now displays commit counts inside cells with yearly totals and a sky-blue color scheme. The skills timeline sorts newest-first with a card-based layout per period, and the portfolio overview gains a publish/unpublish toggle and copy share link button. I updated `portfolio.test.tsx` to navigate to the Portfolio Items tab before asserting content and enriched mock data with `contribution_score`, `total_commits`, `user_commit_share`, and skills timeline entries. Manual testing covered the publish toggle, share link, heatmap rendering, and timeline sorting.
+
+### Evidence Retrieval Bug Fix ([PR #418](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/418))
+
+PR #418 fixed a `TypeError` crash in the ProjectPage component where `getSkillEvidence` was calling `.get()` on a plain `Record` object returned by `buildEvidenceMap`, mistakenly treating it as a `Map`. I updated `buildEvidenceMap` in `lib/skills-utils.ts` to return `Record<string, SkillEvidenceItem[]>` preserving structured evidence objects, and changed the project page to use bracket access instead of `.get()`.
+
+### Code Review – Project Rankings ([PR #423](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/423))
+
+I reviewed and approved Samarth's PR replacing manual project reordering with a persisted sort mode preference (contribution or recency), including a database migration, updated backend/frontend tests, and a ranking mode dropdown in the Projects UI.
+
+### Code Review – Portfolio Public Mode ([PR #421](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/421))
+
+I reviewed OM's large PR (34 files, 26 commits) adding public portfolio sharing via token-based shareable links and auto-ranking of projects by contribution score after scan completion.
+
+### Code Review – Skills Backend Enrichment ([PR #398](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/398))
+
+I reviewed OM's bug fix correcting a non-existent `skill.confidence` attribute to `skill.proficiency_score`, enriching skills API payloads with descriptions and proficiency scores, tightening regex patterns to reduce false positives, and adding commit message scanning for CI/CD and testing practices.
+
+### Code Review – Session Invalidation ([PR #399](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/399))
+
+I reviewed Joaquin's fix for logout session recovery, which invalidates Supabase refresh tokens server-side and blocks frontend refresh after explicit logout, including new auth routes and focused tests.
+
+### Code Review – Reusable Project Components ([PR #417](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/417))
+
+I reviewed Vlad's refactor extracting reusable UI primitives from a monolithic 2425-line page file into dedicated components and a shared utility module, cutting the file nearly in half across 23 changed files while preserving identical behavior.
+
+## Overall Impact
+
+This week's work improves portfolio usability and fixes a runtime crash affecting the project detail page. Through five code reviews spanning ranking, public sharing, skills enrichment, session security, and component architecture, I helped ensure quality and consistency as major features are integrated in the final stretch of the project.
+
+
+
+
 
 ## Week 23 (March 2nd - 8th)
 
