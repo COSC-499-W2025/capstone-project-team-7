@@ -188,7 +188,7 @@ class PortfolioSettingsService:
         try:
             resp = (
                 self.client.table("profiles")
-                .select("id,full_name,email,career_title,education,avatar_url")
+                .select("id,full_name,career_title,education,avatar_url")
                 .eq("id", user_id)
                 .limit(1)
                 .execute()

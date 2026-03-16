@@ -189,7 +189,7 @@ async def get_public_portfolio(share_token: str) -> JSONResponse:
     p = service.get_user_profile(user_id)
     if p:
         profile_data = {
-            "display_name": settings.get("display_name") or p.get("full_name") or p.get("email", ""),
+            "display_name": settings.get("display_name") or p.get("full_name") or "Anonymous",
             "career_title": p.get("career_title"),
             "education": p.get("education"),
             "avatar_url": p.get("avatar_url"),
