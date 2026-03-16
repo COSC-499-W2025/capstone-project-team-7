@@ -22,11 +22,7 @@
 
 ## Week 24 (March 9th - 15th)
 
-**Jacob**:
-
-**Jacob**:
-
-This week I focused on redesigning the portfolio page UI and fixing a runtime crash in the project detail page, while reviewing five teammate PRs covering project ranking, public portfolio sharing, skills enrichment, session security, and component refactoring.
+**Jacob**: This week I focused on redesigning the portfolio page UI and fixing a runtime crash in the project detail page, while reviewing five teammate PRs covering project ranking, public portfolio sharing, skills enrichment, session security, and component refactoring.
 
 PR [#424](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/424) redesigned the portfolio page with improved component styling, better data handling, and enhanced interactivity. The activity heatmap now displays commit counts inside cells with yearly totals and a sky-blue color scheme. The skills timeline sorts newest-first with a card-based layout per period, and the portfolio overview gains a publish/unpublish toggle and copy share link button. I updated `portfolio.test.tsx` to navigate to the Portfolio Items tab before asserting content and enriched mock data with `contribution_score`, `total_commits`, `user_commit_share`, and skills timeline entries. Manual testing covered the publish toggle, share link, heatmap rendering, and timeline sorting.
 
