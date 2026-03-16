@@ -12,7 +12,10 @@ import sys
 backend_path = Path(__file__).parent.parent / "backend"
 sys.path.insert(0, str(backend_path))
 
-from src.analyzer.skills_extractor import SkillsExtractor, Skill, SkillEvidence
+from src.analyzer.skills_extractor import (
+    SkillsExtractor, Skill, SkillEvidence,
+    TIER_BEGINNER, TIER_INTERMEDIATE, TIER_ADVANCED, TIER_SCORES,
+)
 
 
 class TestSkillsExtractor:
@@ -320,18 +323,23 @@ def knapsack(weights, values, capacity):
             "Test description",
             "test.py",
             line_number=10,
-            confidence=0.8
+            confidence=0.8,
+            tier=TIER_INTERMEDIATE,
         )
         extractor._add_skill("Test Skill", "oop", "A test skill", evidence)
-        
+
         export = extractor.export_to_dict()
-        
+
         assert "skills" in export
         assert "summary" in export
         assert len(export["skills"]) == 1
-        assert export["skills"][0]["name"] == "Test Skill"
-        assert export["skills"][0]["category"] == "oop"
-        assert export["skills"][0]["evidence_count"] == 1
+        skill_data = export["skills"][0]
+        assert skill_data["name"] == "Test Skill"
+        assert skill_data["category"] == "oop"
+        assert skill_data["evidence_count"] == 1
+        assert skill_data["highest_tier"] == TIER_INTERMEDIATE
+        assert skill_data["tier_breakdown"][TIER_INTERMEDIATE] == 1
+        assert skill_data["evidence"][0]["tier"] == TIER_INTERMEDIATE
         assert export["summary"]["total_skills"] == 1
     
     def test_complex_python_code(self, extractor):
@@ -407,23 +415,67 @@ class HashMapProcessor(DataProcessor):
             category="oop",
             description="A test skill"
         )
-        
+
         initial_score = skill.proficiency_score
         assert initial_score == 0.0
-        
-        # Add evidence
+
+        # Add beginner evidence
         for i in range(3):
             evidence = SkillEvidence(
-                f"Test Skill",
-                "test",
-                f"Evidence {i}",
-                "test.py"
+                "Test Skill", "test", f"Evidence {i}", "test.py",
+                tier=TIER_BEGINNER,
             )
             skill.add_evidence(evidence)
-        
-        # Score should increase
+
+        # Score should increase but stay within beginner range
         assert skill.proficiency_score > initial_score
+        assert skill.proficiency_score <= TIER_SCORES[TIER_BEGINNER] + 0.1
         assert len(skill.evidence) == 3
+
+    def test_tier_based_scoring(self):
+        """Test that higher tiers produce higher proficiency."""
+        beginner_skill = Skill(name="B", category="oop", description="d")
+        beginner_skill.add_evidence(
+            SkillEvidence("B", "test", "ev", "f.py", tier=TIER_BEGINNER)
+        )
+
+        intermediate_skill = Skill(name="I", category="oop", description="d")
+        intermediate_skill.add_evidence(
+            SkillEvidence("I", "test", "ev", "f.py", tier=TIER_INTERMEDIATE)
+        )
+
+        advanced_skill = Skill(name="A", category="oop", description="d")
+        advanced_skill.add_evidence(
+            SkillEvidence("A", "test", "ev", "f.py", tier=TIER_ADVANCED)
+        )
+
+        assert beginner_skill.proficiency_score < intermediate_skill.proficiency_score
+        assert intermediate_skill.proficiency_score < advanced_skill.proficiency_score
+        assert advanced_skill.proficiency_score >= 0.9
+
+    def test_tier_breakdown(self):
+        """Test that tier_breakdown counts evidence per tier."""
+        skill = Skill(name="T", category="oop", description="d")
+        skill.add_evidence(SkillEvidence("T", "t", "e", "f.py", tier=TIER_BEGINNER))
+        skill.add_evidence(SkillEvidence("T", "t", "e", "f.py", tier=TIER_BEGINNER))
+        skill.add_evidence(SkillEvidence("T", "t", "e", "f.py", tier=TIER_ADVANCED))
+
+        breakdown = skill.tier_breakdown
+        assert breakdown[TIER_BEGINNER] == 2
+        assert breakdown[TIER_INTERMEDIATE] == 0
+        assert breakdown[TIER_ADVANCED] == 1
+        assert skill.highest_tier == TIER_ADVANCED
+
+    def test_highest_tier_property(self):
+        """Test that highest_tier returns the max tier seen."""
+        skill = Skill(name="T", category="oop", description="d")
+        assert skill.highest_tier == TIER_BEGINNER  # default when empty
+
+        skill.add_evidence(SkillEvidence("T", "t", "e", "f.py", tier=TIER_BEGINNER))
+        assert skill.highest_tier == TIER_BEGINNER
+
+        skill.add_evidence(SkillEvidence("T", "t", "e", "f.py", tier=TIER_INTERMEDIATE))
+        assert skill.highest_tier == TIER_INTERMEDIATE
     
     def test_javascript_patterns(self, extractor):
         """Test detection of JavaScript patterns."""
@@ -695,6 +747,50 @@ logger = logging.getLogger(__name__)
             assert len(git_skill.evidence) > 0
             # Should have timestamp from latest timeline entry
             assert git_skill.evidence[0].timestamp is not None
+
+
+class TestTieredPatternDetection:
+    """Tests that code patterns are assigned the correct complexity tier."""
+
+    @pytest.fixture
+    def extractor(self):
+        return SkillsExtractor()
+
+    def test_inheritance_is_beginner_tier(self, extractor):
+        """Simple inheritance should be beginner tier."""
+        code = "class Dog(Animal):\n    pass\n"
+        skills = extractor.extract_skills(file_contents={"dog.py": code})
+        assert "Inheritance" in skills
+        assert skills["Inheritance"].highest_tier == TIER_BEGINNER
+
+    def test_abstraction_is_intermediate_tier(self, extractor):
+        """ABC usage should be intermediate tier."""
+        code = "from abc import ABC, abstractmethod\nclass Base(ABC):\n    @abstractmethod\n    def run(self): pass\n"
+        skills = extractor.extract_skills(file_contents={"base.py": code})
+        assert "Abstraction" in skills
+        assert skills["Abstraction"].highest_tier == TIER_INTERMEDIATE
+
+    def test_dynamic_programming_is_advanced_tier(self, extractor):
+        """DP patterns should be advanced tier."""
+        code = "from functools import lru_cache\n@lru_cache(maxsize=None)\ndef fib(n):\n    return n if n <= 1 else fib(n-1)+fib(n-2)\n"
+        skills = extractor.extract_skills(file_contents={"dp.py": code})
+        assert "Dynamic Programming" in skills
+        assert skills["Dynamic Programming"].highest_tier == TIER_ADVANCED
+        assert skills["Dynamic Programming"].proficiency_score >= 0.9
+
+    def test_async_programming_is_advanced_tier(self, extractor):
+        """Async code should be advanced tier."""
+        code = "import asyncio\nasync def fetch():\n    await asyncio.sleep(1)\n"
+        skills = extractor.extract_skills(file_contents={"async_code.py": code})
+        assert "Asynchronous Programming" in skills
+        assert skills["Asynchronous Programming"].highest_tier == TIER_ADVANCED
+
+    def test_error_handling_is_beginner_tier(self, extractor):
+        """Basic try/except should be beginner tier."""
+        code = "try:\n    x = 1\nexcept Exception:\n    pass\n"
+        skills = extractor.extract_skills(file_contents={"err.py": code})
+        assert "Error Handling" in skills
+        assert skills["Error Handling"].highest_tier == TIER_BEGINNER
 
 
 class TestTightenedPatterns:
