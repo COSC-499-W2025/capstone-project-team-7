@@ -66,6 +66,19 @@ I reviewed Jacob’s **PR [#424 – “Feature/UI update portfolio”](https://g
 
 Overall, these PRs are in good shape. The main feedback focused on UI stability, repository hygiene, avoiding duplication in backend handlers, and ensuring new features remain scalable and maintainable as the system grows.
 
+**Vlad**:
+
+PRs Merged:
+- [PR #417](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/417) — Feat/reusable project components: Refactored the project detail page by extracting reusable UI components (StatCard, LoadingState, ErrorState, EmptyState, SearchInput) and breaking a monolithic 2425-line page file into focused, maintainable pieces. Shared primitives replace duplicate implementations scattered across multiple files, and common formatting helpers are consolidated into a single utility module. Six large tab sections were lifted out of page.tsx into dedicated components, cutting the file nearly in half while preserving identical visual output and behavior. Includes updated tests and documentation. Closes #316.
+
+Code Reviews:
+- [PR #419](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/419) (Om) — Portfolio View Page: Reviewed the addition of a portfolio dashboard with visualizations (activity heatmap, skills timeline, top 3 project showcase) and consolidation with existing CRUD into a single tabbed page with Overview, Portfolio Items, and Project Timeline tabs. All data sourced from existing API endpoints with no backend changes.
+
+Impact:
+- Improved long-term maintainability of the project detail page by eliminating duplicated UI patterns and reducing the main file size by nearly 50%, making it easier for the team to modify individual tabs without navigating a monolithic file
+- Established a shared component library (StatCard, LoadingState, ErrorState, EmptyState, SearchInput) that can be reused across the application, reducing future development time for new pages
+- 1 PR merged, 1 PR reviewed
+
 **Om**:
 
 This week I shipped a three-part skills analysis enhancement, built the portfolio dashboard with visualizations, added public portfolio sharing, prepared peer testing materials, and reviewed 8 teammate PRs.
