@@ -216,7 +216,7 @@ export function SkillsTab({
               </div>
 
               {Object.entries(filter.filteredByCategory).map(([category, skills]) => (
-                <div key={category} className="border border-gray-200 rounded-lg p-4">
+                <div key={category} className="rounded-lg bg-gray-50/70 p-4">
                   <p className="text-sm font-semibold text-gray-700 mb-3">
                     {categoryLabel(category)}
                   </p>
@@ -235,7 +235,9 @@ export function SkillsTab({
                           <div
                             key={`${category}-${skillName}`}
                             className={`rounded-md transition-colors ${
-                              isHighlighted ? "bg-blue-50 border border-blue-200" : "border border-transparent hover:bg-gray-50"
+                              isHighlighted
+                                ? "bg-blue-50 ring-1 ring-blue-200"
+                                : "bg-white/80 hover:bg-white"
                             }`}
                           >
                             <div className="flex items-center gap-3 p-2">
@@ -289,7 +291,7 @@ export function SkillsTab({
                             </div>
                             {/* Evidence panel */}
                             {isExpanded && evidence.length > 0 && (
-                              <div className="px-10 pb-3 space-y-1.5">
+                              <div className="mx-2 mb-2 rounded-md border-l-2 border-gray-200 bg-white px-8 py-2.5 space-y-1.5">
                                 {evidence.slice(0, 5).map((ev, idx) => (
                                   <div key={`${ev.file ?? ""}:${ev.line ?? ""}:${idx}`} className="text-xs text-gray-600 flex items-start gap-2">
                                     <span className="text-gray-300 mt-0.5">-</span>

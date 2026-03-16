@@ -10,7 +10,6 @@ import {
   FileText,
   FileEdit,
   Settings,
-  HelpCircle,
   Search,
 } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -169,11 +168,6 @@ export const Sidebar: React.FC = () => {
             href="/settings"
             icon={<Settings size={20} />}
             label="Settings"
-          />
-          <NavItem
-            href="/help"
-            icon={<HelpCircle size={20} />}
-            label="Get Help"
           />
           <NavItem
             href="/search"
