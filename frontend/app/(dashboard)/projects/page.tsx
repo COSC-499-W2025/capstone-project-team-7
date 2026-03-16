@@ -9,65 +9,57 @@ import { getStoredToken } from "@/lib/auth";
 import { ProjectDetailModal } from "@/components/projects/project-detail-modal";
 import { formatOperationError } from "@/lib/error-utils";
 
-function applyProjectOrder(projects: ProjectMetadata[], projectOrder: string[]): ProjectMetadata[] {
-  if (projectOrder.length === 0) {
-    return projects;
-  }
+type ProjectsSortMode = "contribution" | "recency";
 
-  const byId = new Map(projects.map((project) => [project.id, project]));
-  const ordered: ProjectMetadata[] = [];
-  const seen = new Set<string>();
-
-  for (const projectId of projectOrder) {
-    const project = byId.get(projectId);
-    if (project) {
-      ordered.push(project);
-      seen.add(projectId);
-    }
-  }
-
-  for (const project of projects) {
-    if (!seen.has(project.id)) {
-      ordered.push(project);
-    }
-  }
-
-  return ordered;
+function getRecencyTimestamp(project: ProjectMetadata): number {
+  const raw = project.created_at ?? project.scan_timestamp;
+  if (!raw) return 0;
+  const parsed = new Date(raw).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function moveItem<T>(items: T[], fromIndex: number, toIndex: number): T[] {
-  if (
-    fromIndex < 0 ||
-    toIndex < 0 ||
-    fromIndex >= items.length ||
-    toIndex >= items.length ||
-    fromIndex === toIndex
-  ) {
-    return items;
+function sortProjects(projects: ProjectMetadata[], mode: ProjectsSortMode): ProjectMetadata[] {
+  const sorted = [...projects];
+
+  if (mode === "contribution") {
+    sorted.sort((a, b) => {
+      const aScore = a.contribution_score;
+      const bScore = b.contribution_score;
+      const aMissing = aScore === null || aScore === undefined;
+      const bMissing = bScore === null || bScore === undefined;
+
+      if (aMissing && bMissing) {
+        return getRecencyTimestamp(b) - getRecencyTimestamp(a);
+      }
+      if (aMissing) return 1;
+      if (bMissing) return -1;
+
+      return bScore - aScore;
+    });
+    return sorted;
   }
 
-  const nextItems = [...items];
-  const [item] = nextItems.splice(fromIndex, 1);
-  nextItems.splice(toIndex, 0, item);
-  return nextItems;
+  sorted.sort((a, b) => getRecencyTimestamp(b) - getRecencyTimestamp(a));
+  return sorted;
 }
 
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<ProjectMetadata[]>([]);
+  const [rankingMode, setRankingMode] = useState<ProjectsSortMode>("recency");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedProject, setSelectedProject] = useState<ProjectDetail | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [savingOrder, setSavingOrder] = useState(false);
-  const [orderSaveStatus, setOrderSaveStatus] = useState<"saved" | null>(null);
-  const orderSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [savingRankingMode, setSavingRankingMode] = useState(false);
+  const [rankingSaveStatus, setRankingSaveStatus] = useState<"saved" | null>(null);
+  const rankingSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(
     () => () => {
-      if (orderSaveTimeoutRef.current) {
-        clearTimeout(orderSaveTimeoutRef.current);
+      if (rankingSaveTimeoutRef.current) {
+        clearTimeout(rankingSaveTimeoutRef.current);
       }
     },
     [],
@@ -99,7 +91,9 @@ export default function ProjectsPage() {
         getProjects(token),
         getSelection(token).catch(() => null),
       ]);
-      const orderedProjects = applyProjectOrder(response.projects, selection?.project_order ?? []);
+      const nextMode: ProjectsSortMode = selection?.sort_mode ?? "recency";
+      const orderedProjects = sortProjects(response.projects, nextMode);
+      setRankingMode(nextMode);
       console.log("Projects fetched successfully:", response);
       console.log("First project data:", orderedProjects[0]);
       setProjects(orderedProjects);
@@ -220,47 +214,47 @@ export default function ProjectsPage() {
     );
   };
 
-  const persistProjectOrder = async (orderedProjects: ProjectMetadata[]) => {
+  const persistRankingMode = async (sortMode: ProjectsSortMode) => {
     const token = getAuthToken();
     if (!token) {
       return;
     }
 
-    setSavingOrder(true);
-    setOrderSaveStatus(null);
+    setSavingRankingMode(true);
+    setRankingSaveStatus(null);
     try {
       await saveSelection(token, {
-        project_order: orderedProjects.map((project) => project.id),
+        sort_mode: sortMode,
       });
-      setOrderSaveStatus("saved");
-      if (orderSaveTimeoutRef.current) {
-        clearTimeout(orderSaveTimeoutRef.current);
+      setRankingSaveStatus("saved");
+      if (rankingSaveTimeoutRef.current) {
+        clearTimeout(rankingSaveTimeoutRef.current);
       }
-      orderSaveTimeoutRef.current = setTimeout(() => {
-        setOrderSaveStatus(null);
+      rankingSaveTimeoutRef.current = setTimeout(() => {
+        setRankingSaveStatus(null);
       }, 2000);
     } catch (err) {
       setError(
         formatOperationError(
-          "save project order",
+          "save ranking preference",
           err,
-          "Failed to save project order. Your current order may be temporary.",
+          "Failed to save ranking preference. Your selection may be temporary.",
         ),
       );
-      setOrderSaveStatus(null);
+      setRankingSaveStatus(null);
     } finally {
-      setSavingOrder(false);
+      setSavingRankingMode(false);
     }
   };
 
-  const handleReorder = (fromIndex: number, toIndex: number) => {
-    setProjects((prevProjects) => {
-      const nextProjects = moveItem(prevProjects, fromIndex, toIndex);
-      if (nextProjects !== prevProjects) {
-        void persistProjectOrder(nextProjects);
-      }
-      return nextProjects;
-    });
+  const handleRankingModeChange = (mode: ProjectsSortMode) => {
+    if (mode === rankingMode) {
+      return;
+    }
+
+    setRankingMode(mode);
+    setProjects((prevProjects) => sortProjects(prevProjects, mode));
+    void persistRankingMode(mode);
   };
 
   if (loading) {
@@ -292,7 +286,7 @@ export default function ProjectsPage() {
             </div>
             <button
               onClick={handleRefresh}
-              disabled={refreshing || savingOrder}
+              disabled={refreshing || savingRankingMode}
               className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <RefreshCw size={18} className={refreshing ? "animate-spin" : ""} />
@@ -320,17 +314,33 @@ export default function ProjectsPage() {
 
         {/* Table */}
         <div className="p-8">
-          {savingOrder && (
-            <p className="mb-3 text-sm text-gray-500">Saving project order...</p>
-          )}
-          {!savingOrder && orderSaveStatus === "saved" && (
-            <p className="mb-3 text-sm text-green-700">Project order saved.</p>
-          )}
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <label htmlFor="projects-ranking-mode" className="text-sm font-medium text-gray-700">
+              Ranking
+            </label>
+            <select
+              id="projects-ranking-mode"
+              data-testid="projects-ranking-mode"
+              value={rankingMode}
+              onChange={(event) => handleRankingModeChange(event.target.value as ProjectsSortMode)}
+              disabled={savingRankingMode}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:border-gray-400 focus:outline-none"
+            >
+              <option value="recency">Recency</option>
+              <option value="contribution">Contribution</option>
+            </select>
+            {savingRankingMode && (
+              <p className="text-sm text-gray-500">Saving ranking preference...</p>
+            )}
+            {!savingRankingMode && rankingSaveStatus === "saved" && (
+              <p className="text-sm text-green-700">Ranking preference saved.</p>
+            )}
+          </div>
           <ProjectsTable
             projects={projects}
             onDelete={handleDelete}
             onView={handleView}
-            onReorder={handleReorder}
+            rankingMode={rankingMode}
           />
         </div>
       </div>

@@ -20,6 +20,7 @@ const MOCK_PROJECTS = [
     created_at: "2026-01-15T10:30:00Z",
     total_files: 42,
     total_lines: 1250,
+    contribution_score: 42.2,
     languages: ["TypeScript", "JavaScript", "CSS"],
     has_media_analysis: true,
     has_pdf_analysis: false,
@@ -46,6 +47,7 @@ const MOCK_PROJECTS = [
     created_at: "2026-01-10T14:20:00Z",
     total_files: 28,
     total_lines: 890,
+    contribution_score: 81.6,
     languages: ["Python", "YAML"],
     has_media_analysis: false,
     has_pdf_analysis: false,
@@ -148,6 +150,7 @@ beforeEach(() => {
     skill_order: [],
     selected_project_ids: [],
     selected_skill_ids: [],
+    sort_mode: "recency",
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
   });
@@ -157,6 +160,7 @@ beforeEach(() => {
     skill_order: [],
     selected_project_ids: [],
     selected_skill_ids: [],
+    sort_mode: "recency",
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
   });
@@ -440,13 +444,14 @@ describe("ProjectsPage", () => {
     expect(mockGetProjects).toHaveBeenCalledWith("test-token");
   });
 
-  it("applies saved project order from selection API", async () => {
+  it("applies saved contribution ranking mode from selection API", async () => {
     mockGetSelection.mockResolvedValue({
       user_id: "user-1",
-      project_order: ["proj-2", "proj-1"],
+      project_order: [],
       skill_order: [],
       selected_project_ids: [],
       selected_skill_ids: [],
+      sort_mode: "contribution",
       created_at: "2026-01-01T00:00:00Z",
       updated_at: "2026-01-01T00:00:00Z",
     });
@@ -458,33 +463,38 @@ describe("ProjectsPage", () => {
     expect(rows[2].textContent).toContain("My Portfolio");
   });
 
-  it("reorders projects with move buttons and persists order", async () => {
+  it("changes ranking mode and persists preference", async () => {
     await renderAndWait();
 
-    const moveDownButtons = screen.getAllByTitle("Move down");
-    await userEvent.click(moveDownButtons[0]);
+    const modeSelect = screen.getByTestId("projects-ranking-mode");
+    await userEvent.selectOptions(modeSelect, "contribution");
 
     await waitFor(() => {
       expect(mockSaveSelection).toHaveBeenCalledWith("test-token", {
-        project_order: ["proj-2", "proj-1"],
+        sort_mode: "contribution",
       });
     });
 
-    expect(screen.getByText("Project order saved.")).toBeInTheDocument();
+    expect(screen.getByText("Ranking preference saved.")).toBeInTheDocument();
   });
 
-  it("reorders projects with keyboard arrows and persists order", async () => {
+  it("keeps unranked projects at the bottom in contribution mode", async () => {
+    mockGetProjects.mockResolvedValue({
+      projects: [
+        { ...MOCK_PROJECTS[0], contribution_score: undefined },
+        { ...MOCK_PROJECTS[1], contribution_score: 65.1 },
+      ],
+      total: 2,
+    });
+
     await renderAndWait();
 
-    const reorderButtons = screen.getAllByTitle("Reorder project");
-    reorderButtons[0].focus();
-    await userEvent.keyboard("{ArrowDown}");
+    const modeSelect = screen.getByTestId("projects-ranking-mode");
+    await userEvent.selectOptions(modeSelect, "contribution");
 
-    await waitFor(() => {
-      expect(mockSaveSelection).toHaveBeenCalledWith("test-token", {
-        project_order: ["proj-2", "proj-1"],
-      });
-    });
+    const rows = screen.getAllByRole("row");
+    expect(rows[1].textContent).toContain("Backend API");
+    expect(rows[2].textContent).toContain("My Portfolio");
   });
 
   it("modal displays loading state while fetching project details", async () => {

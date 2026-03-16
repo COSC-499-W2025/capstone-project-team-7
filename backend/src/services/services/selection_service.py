@@ -148,6 +148,7 @@ class SelectionService:
         skill_order: Optional[List[str]] = None,
         selected_project_ids: Optional[List[str]] = None,
         selected_skill_ids: Optional[List[str]] = None,
+        sort_mode: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Save or update user's selection preferences.
         
@@ -157,6 +158,7 @@ class SelectionService:
             skill_order: Ordered list of skill names for display
             selected_project_ids: List of project IDs selected for showcase
             selected_skill_ids: List of skill names selected for showcase
+            sort_mode: Projects ranking mode preference (contribution or recency)
         
         Returns:
             Saved selection record
@@ -174,6 +176,8 @@ class SelectionService:
                 payload["selected_project_ids"] = selected_project_ids
             if selected_skill_ids is not None:
                 payload["selected_skill_ids"] = selected_skill_ids
+            if sort_mode is not None:
+                payload["sort_mode"] = sort_mode
             return local_store.upsert_selection(user_id, payload)
 
         try:
@@ -188,6 +192,8 @@ class SelectionService:
                 payload["selected_project_ids"] = selected_project_ids
             if selected_skill_ids is not None:
                 payload["selected_skill_ids"] = selected_skill_ids
+            if sort_mode is not None:
+                payload["sort_mode"] = sort_mode
             
             # Try to get existing record
             existing = self.get_user_selections(user_id)
@@ -210,6 +216,8 @@ class SelectionService:
                     payload["selected_project_ids"] = []
                 if "selected_skill_ids" not in payload:
                     payload["selected_skill_ids"] = []
+                if "sort_mode" not in payload:
+                    payload["sort_mode"] = "recency"
                 
                 response = (
                     self.client.table("user_selections")
