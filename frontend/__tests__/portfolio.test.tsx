@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import PortfolioPage from "../app/(dashboard)/portfolio/page";
 
@@ -161,6 +161,10 @@ async function renderAndWait() {
   });
 }
 
+async function openPortfolioItemsTab() {
+  await userEvent.click(screen.getByRole("button", { name: "Portfolio Items" }));
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -184,6 +188,7 @@ describe("PortfolioPage", () => {
 
   it("renders portfolio items after load", async () => {
     await renderAndWait();
+    await openPortfolioItemsTab();
     expect(screen.getByText("E-Commerce Platform")).toBeInTheDocument();
     expect(screen.getByText("Data Pipeline")).toBeInTheDocument();
   });
@@ -201,11 +206,13 @@ describe("PortfolioPage", () => {
 
   it("shows role for items that have one", async () => {
     await renderAndWait();
+    await openPortfolioItemsTab();
     expect(screen.getByText("Lead Developer")).toBeInTheDocument();
   });
 
   it("shows summary for items that have one", async () => {
     await renderAndWait();
+    await openPortfolioItemsTab();
     expect(
       screen.getByText("Built a full-stack e-commerce app with React and FastAPI.")
     ).toBeInTheDocument();
@@ -232,13 +239,14 @@ describe("PortfolioPage", () => {
   it("still renders if skills fetch fails", async () => {
     mockGetSkills.mockRejectedValue(new Error("Skills unavailable"));
     await renderAndWait();
-    // Items should still show
+    await openPortfolioItemsTab();
     expect(screen.getByText("E-Commerce Platform")).toBeInTheDocument();
   });
 
   it("still renders if chronology fetch fails", async () => {
     mockGetPortfolioChronology.mockRejectedValue(new Error("Chronology unavailable"));
     await renderAndWait();
+    await openPortfolioItemsTab();
     expect(screen.getByText("E-Commerce Platform")).toBeInTheDocument();
   });
 
@@ -259,9 +267,7 @@ describe("PortfolioPage", () => {
   it("shows fallback message when no skills", async () => {
     mockGetSkills.mockResolvedValue({ skills: [] });
     await renderAndWait();
-    expect(
-      screen.getByText(/No skills found/i)
-    ).toBeInTheDocument();
+    expect(screen.getAllByText(/No skills found/i).length).toBeGreaterThan(0);
   });
 
   it("collapses skills section when toggle clicked", async () => {
@@ -402,7 +408,9 @@ describe("PortfolioPage", () => {
     // Banner should be cleared while the second refresh is running
     expect(screen.queryByText("Portfolio refreshed")).not.toBeInTheDocument();
 
-    resolveSecond({ status: "completed", projects_scanned: 0, total_files: 0, total_size_bytes: 0, dedup_report: null });
+    await act(async () => {
+      resolveSecond({ status: "completed", projects_scanned: 0, total_files: 0, total_size_bytes: 0, dedup_report: null });
+    });
   });
 
   it("shows error banner when refreshPortfolio fails", async () => {
@@ -507,6 +515,7 @@ describe("PortfolioPage", () => {
 
   it("adds created item to the list without refetch", async () => {
     await renderAndWait();
+    await openPortfolioItemsTab();
     const newItemButtons = screen.getAllByText("New Item");
     await userEvent.click(newItemButtons[0]);
 
@@ -566,6 +575,7 @@ describe("PortfolioPage", () => {
 
   it("opens edit dialog with pre-filled data when Edit clicked", async () => {
     await renderAndWait();
+    await openPortfolioItemsTab();
 
     const editButtons = screen.getAllByText("Edit");
     await userEvent.click(editButtons[0]);
@@ -577,6 +587,7 @@ describe("PortfolioPage", () => {
 
   it("pre-fills role, summary, and evidence in edit dialog", async () => {
     await renderAndWait();
+    await openPortfolioItemsTab();
     const editButtons = screen.getAllByText("Edit");
     await userEvent.click(editButtons[0]);
 
@@ -591,6 +602,7 @@ describe("PortfolioPage", () => {
 
   it("calls updatePortfolioItem with correct args on save", async () => {
     await renderAndWait();
+    await openPortfolioItemsTab();
     const editButtons = screen.getAllByText("Edit");
     await userEvent.click(editButtons[0]);
 
@@ -611,6 +623,7 @@ describe("PortfolioPage", () => {
       title: "Updated Platform",
     });
     await renderAndWait();
+    await openPortfolioItemsTab();
 
     const editButtons = screen.getAllByText("Edit");
     await userEvent.click(editButtons[0]);
@@ -630,6 +643,7 @@ describe("PortfolioPage", () => {
   it("shows form error when edit API fails", async () => {
     mockUpdatePortfolioItem.mockRejectedValue(new Error("Update failed"));
     await renderAndWait();
+    await openPortfolioItemsTab();
 
     const editButtons = screen.getAllByText("Edit");
     await userEvent.click(editButtons[0]);
@@ -646,6 +660,7 @@ describe("PortfolioPage", () => {
   it("does not delete when confirm is cancelled", async () => {
     confirmMock.mockReturnValue(false);
     await renderAndWait();
+    await openPortfolioItemsTab();
 
     const deleteButtons = screen.getAllByText("Delete");
     await userEvent.click(deleteButtons[0]);
@@ -660,6 +675,7 @@ describe("PortfolioPage", () => {
   it("deletes item when confirmed", async () => {
     confirmMock.mockReturnValue(true);
     await renderAndWait();
+    await openPortfolioItemsTab();
 
     const deleteButtons = screen.getAllByText("Delete");
     await userEvent.click(deleteButtons[0]);
@@ -678,6 +694,7 @@ describe("PortfolioPage", () => {
     mockDeletePortfolioItem.mockRejectedValue(new Error("Delete failed"));
 
     await renderAndWait();
+    await openPortfolioItemsTab();
 
     const deleteButtons = screen.getAllByText("Delete");
     await userEvent.click(deleteButtons[0]);
@@ -720,8 +737,8 @@ describe("PortfolioPage", () => {
     const selectTrigger = screen.getByRole("combobox");
     await userEvent.click(selectTrigger);
 
-    const projectOption = await screen.findByText("My App");
-    await userEvent.click(projectOption);
+    const projectOptions = await screen.findAllByText("My App");
+    await userEvent.click(projectOptions[projectOptions.length - 1]);
 
     await userEvent.click(screen.getByText("Fill from Project"));
 
@@ -747,8 +764,8 @@ describe("PortfolioPage", () => {
 
     const selectTrigger = screen.getByRole("combobox");
     await userEvent.click(selectTrigger);
-    const projectOption = await screen.findByText("My App");
-    await userEvent.click(projectOption);
+    const projectOptions = await screen.findAllByText("My App");
+    await userEvent.click(projectOptions[projectOptions.length - 1]);
 
     await userEvent.click(screen.getByText("Fill from Project"));
 
