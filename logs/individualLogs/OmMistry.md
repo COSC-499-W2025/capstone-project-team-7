@@ -1,5 +1,91 @@
 # Om Mistry (@OM200401)
 
+## Week 24 - March 9 - March 15
+
+This week I shipped a three-part skills analysis enhancement (backend enrichment, UI enrichment, rule-based gap analysis), built the full portfolio dashboard with visualizations, added public portfolio sharing with token-based access, and reviewed 8 teammate PRs with detailed feedback. Also prepared the peer testing task list for the upcoming session.
+
+**Core Implementation:**
+
+1. **Skills Backend Enrichment (PR #398):**
+   - Fixed a bug where `skill.confidence` referenced a non-existent attribute (should be `skill.proficiency_score`)
+   - Enriched skills API payloads with descriptions, proficiency scores, and human-friendly category labels
+   - Tightened regex patterns that produced false positives (empty dict `{}` triggering hash map, `@property` triggering decorator pattern, `.append()` alone triggering queue/stack)
+   - Added commit message scanning to detect CI/CD, containerization, and testing practices from git history
+   - All 39 skills extractor tests passing
+
+2. **Skills UI Enrichment (PR #400):**
+   - Replaced raw internal category keys (e.g. `data_structures`) with human-friendly labels from the backend `category_labels` map
+   - Added skill descriptions shown as subtitle text under each skill name
+   - Replaced text proficiency badges with colored CSS proficiency bars
+   - Added collapsible evidence sections showing file paths and code snippets that back each detected skill
+   - 570 lines added across frontend components
+
+3. **Rule-Based Gap Analysis (PR #401):**
+   - Built `skill_gap_analyzer.py` module with 5 role profiles (Backend Developer, Frontend Developer, Full-Stack Developer, Data Scientist, DevOps Engineer)
+   - Added `GET /{project_id}/skills/gaps?role=...` endpoint returning matched/missing/extra skills and overall coverage percentage
+   - Added `GET /skills/roles` endpoint listing available role profiles
+   - Built frontend UI for role selection dropdown and gap analysis visualization
+   - 1062 lines added with full test coverage
+
+4. **Portfolio View Page (PR #419):**
+   - Built portfolio dashboard with three tabs: Overview (dashboard view), Portfolio Items (CRUD management), and Project Timeline (chronological list)
+   - Added activity heatmap visualization component showing commit activity over time
+   - Added skills timeline visualization component displaying skill adoption chronologically
+   - Added top 3 project showcase with contribution scores
+   - Consolidated existing portfolio CRUD into the new tabbed layout
+   - Extracted portfolio overview into a dedicated reusable component
+
+5. **Portfolio Public Mode (PR #421):**
+   - Added `portfolio_settings` database migration for public sharing with share token generation
+   - Built portfolio settings service with token generation and publish/unpublish toggle
+   - Added portfolio settings and public portfolio API routes (unauthenticated access via token)
+   - Built public portfolio page at `/p?token=` displaying profile, stats, heatmap, skills timeline, top projects, and skills cloud with search filter
+   - Added auto-ranking of projects by contribution score immediately after scan completion
+   - Parallelized backend queries using `asyncio.gather` to eliminate double-fetch and improve page load performance
+   - Built shared UI components (LoadingState, EmptyState) used consistently across pages
+   - Fixed email exposure vulnerability in public portfolio endpoint after code review feedback from JacobDamery
+
+6. **Profile Logout Fix (fix/profile-logout branch):**
+   - Fixed broken logout on the Profile page — was using an incomplete inline implementation that only cleared some tokens
+   - Replaced with the `useAuth` hook's `logout()` which properly calls the backend, sets the logout flag, clears all token keys, and dispatches `auth:signout`
+
+7. **Peer Testing Preparation:**
+   - Created `docs/peer-testing-tasks.md` with a structured 6-task user evaluation flow covering account setup, scanning, project exploration, resume building, portfolio sharing, and wrap-up — timed for 15-minute sessions
+
+**PR Reviews (8 total):**
+- **PR #424** (JacobDamery - Portfolio UI Update): Approved with non-blocking suggestions on component size and CSS approach
+- **PR #423** (Samarth-G - Project Rankings): Approved — clean sort_mode implementation with DB constraint
+- **PR #415** (aaronbanerjee123 - Resume Frontend UI): Requested changes on deployment-breaking config and auto-save bugs, approved after fixes
+- **PR #414** (aaronbanerjee123 - Resume Frontend Types/API): Requested changes on `escapeLatex` corruption bug, approved after fixes
+- **PR #409** (aaronbanerjee123 - Resume API Routes): Approved after prior review feedback addressed
+- **PR #404** (joaquinalmora - AI Analysis Tab): Approved with suggestions on useState consolidation
+- **PR #399** (joaquinalmora - Session Logout Fix): Requested changes on auth requirement for logout endpoint, approved after fixes
+- **PR #396** (joaquinalmora - Backend Cleanup): Requested changes on import fallback and missing auth token, approved after two rounds
+
+**What Went Well:**
+- The three-PR skills enhancement chain (backend → UI → gap analysis) shipped cleanly because each PR was scoped to one layer with clear dependencies
+- Parallelizing backend queries with `asyncio.gather` in the portfolio endpoints noticeably improved page load times
+- Detailed PR reviews caught real bugs (LaTeX escaping, deployment config, auth gaps) before they hit main
+
+**What Didn't Go Well:**
+- The public portfolio endpoint initially exposed user emails — caught in review but should have been caught during development
+- Portfolio public mode PR grew large (984 additions) due to bundling auto-ranking with the sharing feature — could have been split into two PRs
+
+**Next Steps:**
+- Run peer testing session tomorrow (March 16) and log all identified issues as GitHub issues
+- Address any feedback from peer testing evaluators
+- Merge profile logout fix into main
+
+Issues resolved: [#397 - Skills Analysis Enhancement](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/397)
+
+PRs: [#398 - Skills Backend Enrichment](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/398) (Merged), [#400 - Skills UI Enrichment](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/400) (Merged), [#401 - Rule Based Gap Analysis](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/401) (Merged), [#419 - Portfolio View Page](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/419) (Merged), [#421 - Portfolio Public Mode](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/421) (Merged)
+
+---
+
+# Week 23 - March 2 - March 8
+
+** Away for Hackathon in Ottawa but permission taken from Professor Bowen**
+
 ## Week 22: February 23 - March 1
 
 This week I delivered a high volume of bug fixes and features across the full stack: fixing the API scan pipeline, overhauling project detection, syncing milestone 2 changes into main, and shipping two new user-facing features - role editing and evidence of success - end-to-end from DB to UI.
