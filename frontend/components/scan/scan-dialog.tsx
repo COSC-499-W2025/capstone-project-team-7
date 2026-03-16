@@ -356,28 +356,62 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
               {/* Scan mode toggle */}
               <div className="space-y-2">
                 <Label>Scan Type</Label>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant={scanMode === "new" ? "default" : "outline"}
-                    className="flex-1"
-                    onClick={() => handleModeChange("new")}
-                    disabled={!isAuthenticated}
+                <div role="radiogroup" aria-label="Scan type" className="grid gap-2 sm:grid-cols-2">
+                  <label
+                    className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${
+                      scanMode === "new"
+                        ? "border-gray-900 bg-gray-50"
+                        : "border-gray-200 bg-white hover:border-gray-300"
+                    } ${!isAuthenticated ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
                   >
-                    <Plus className="h-4 w-4 mr-2" />
-                    New Project
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={scanMode === "append" ? "default" : "outline"}
-                    className="flex-1"
-                    onClick={() => handleModeChange("append")}
-                    disabled={!isAuthenticated}
+                    <input
+                      type="radio"
+                      name="scan-mode"
+                      value="new"
+                      className="mt-0.5 h-4 w-4 accent-gray-900"
+                      checked={scanMode === "new"}
+                      onChange={() => handleModeChange("new")}
+                      disabled={!isAuthenticated}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                        <Plus className="h-4 w-4" />
+                        New Project
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Create a new project from selected files.
+                      </p>
+                    </div>
+                  </label>
+
+                  <label
+                    className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${
+                      scanMode === "append"
+                        ? "border-gray-900 bg-gray-50"
+                        : "border-gray-200 bg-white hover:border-gray-300"
+                    } ${!isAuthenticated ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
                   >
-                    <FolderPlus className="h-4 w-4 mr-2" />
-                    Add to Existing
-                  </Button>
+                    <input
+                      type="radio"
+                      name="scan-mode"
+                      value="append"
+                      className="mt-0.5 h-4 w-4 accent-gray-900"
+                      checked={scanMode === "append"}
+                      onChange={() => handleModeChange("append")}
+                      disabled={!isAuthenticated}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                        <FolderPlus className="h-4 w-4" />
+                        Add to Existing
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Merge new files into a project you already created.
+                      </p>
+                    </div>
+                  </label>
                 </div>
+                <p className="text-xs text-gray-500">Choose a scan type, then pick a folder or ZIP below.</p>
               </div>
 
               {/* Project selector (append mode only) */}
