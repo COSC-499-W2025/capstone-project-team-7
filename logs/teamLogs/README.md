@@ -41,8 +41,43 @@ I reviewed Vlad's PR [#417](https://github.com/COSC-499-W2025/capstone-project-t
 
 This week's work improves portfolio usability and fixes a runtime crash affecting the project detail page. Through five code reviews spanning ranking, public sharing, skills enrichment, session security, and component architecture, I helped ensure quality and consistency as major features are integrated in the final stretch of the project.
 
+**Joaquin**: 
+These weeks I reviewed several backend, frontend, and portfolio feature PRs, focusing on correctness, UI stability, API design quality, and long-term maintainability.
 
+I reviewed Om’s **PR [#400 – “Skills UI Enrichment”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/400)**. This is a solid UI implementation reflecting the improved skills analysis output. The interface changes clearly surface the richer backend data and make the analysis easier to interpret. One thing I suggested checking before merging is the use of `key={idx}` in several mapped lists (evidence items and adoption timeline). Index-based keys make React reconciliation position-based rather than identity-based, which can lead to stale UI state if filtering or sorting changes the list order. I also noted that `expandedSkill` is keyed only by the raw skill name, which can collide if the same skill appears in multiple categories. Using a composite key such as `category::skillName` would prevent incorrect panel toggling.
 
+I reviewed Om’s **PR [#398 – “Skills Backend Enrichment”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/398)**. This is a strong backend improvement that fixes the previous skills mapping limitations and produces a richer API response while keeping the overall schema coherent for downstream consumers. The updated extraction logic and tightened pattern matching improve signal quality, and the added tests around commit-message skill extraction significantly increase confidence in the new behavior.
+
+I reviewed Om’s **PR [#401 – “Rule Based Gap Analysis for Skills”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/401)**. The implementation looks solid overall. The analyzer logic is straightforward and deterministic, the backend routes are cleanly structured, and the frontend client integrates correctly with the new endpoints. I did not see any blocking issues.
+
+I reviewed Jacob’s **PR [#406 – “Feature/portfolio progress feedback”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/406)**. This is a nice usability improvement. The addition of clear in-progress and completion feedback improves user visibility during portfolio generation, and the deduplication results are surfaced in a user-friendly way. The test updates are also strong, expanding coverage while updating existing tests to reflect the new behavior.
+
+I reviewed Aaron’s **PR [#409 – “One page resume api routes”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/409)**. The CRUD structure for the resume builder API looks solid overall, but I flagged a few issues before merge. First, there is no migration file visible in the diff despite the new database-backed functionality. Second, the current pagination approach fetches all resumes and slices them in memory, which can become inefficient at scale; it would be better to query a limited range with a total count and paginate at the database level. I also noticed repeated response-building logic where the same eight fields are mapped from database records to a Pydantic model in multiple endpoint handlers. This duplication should be extracted into a helper function. Finally, I did not see any test files in the PR, which suggests they may have been omitted during commit.
+
+I reviewed Aaron’s **PR [#415 – “One page resume frontend UI pages”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/415)**. The frontend implementation looks good overall and integrates well with the resume API flow. Aside from the issues already noted by Om in the discussion, I did not see additional concerns. After those fixes are applied, this should be safe to merge.
+
+I reviewed Aaron’s **PR [#414 – “One page resume frontend types api”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/414)**. I agreed with Om’s observation that the export logic currently always uses Jake’s template regardless of the user’s selection. I also suggested renaming `NEXT_PUBLIC_API_URL` to `NEXT_PUBLIC_API_BASE_URL` to match the naming convention used across the rest of the application’s API configuration.
+
+I reviewed Vlad’s **PR [#417 – “Feat/reusable project components”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/417)**. The reusable component extraction is a good direction for improving UI maintainability, but I suggested a few repository hygiene fixes before merging. The `docs/superpowers` directory appears unrelated and should likely be removed or added to `.gitignore`. I also recommended re-checking the removal of the broad `*skills*` ignore rule in `.gitignore`, since that change affects repository-wide tracking behavior and should either be narrowed or separated into its own change. The PR also introduces `frontend/tsconfig.tsbuildinfo`, which is a generated artifact and should not be committed. Finally, in `frontend/components/project/contributions-tab.tsx`, the contributors list uses `key={contributor.name ?? "unknown"}`, which can produce duplicate keys when names repeat or are missing, so a more unique fallback key would be safer.
+
+I reviewed Om’s **PR [#421 – “Portfolio Public Mode”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/421)**. The new overview flow is noticeably cleaner and the tab structure improves navigation across the public portfolio pages. The updated tests also provide good coverage for the new behavior. The only suggestion I made was to try splitting very large PRs into smaller functional units in the future when possible, ideally keeping them around ~1000 lines or grouped by backend/frontend changes, though I recognize that this can be difficult under time constraints.
+
+I reviewed Jacob’s **PR [#424 – “Feature/UI update portfolio”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/424)**. This is a strong addition that helps wrap up the portfolio feature set. The component extractions keep the UI structure maintainable, and the backend/frontend flow for tokenized sharing is implemented cleanly. The automatic ranking trigger after scan completion is also a useful quality-of-life improvement. With the email exposure fix now addressed, the PR looks ready to merge.
+
+Overall, these PRs are in good shape. The main feedback focused on UI stability, repository hygiene, avoiding duplication in backend handlers, and ensuring new features remain scalable and maintainable as the system grows.
+
+### What went well
+- Finishing up on the last features for our app
+
+### Challenges
+- Figuring out what our app was missing
+
+### Next steps
+- Write task list, test app
+
+<p align="center">
+  <img src="./charts/w24burnup.png" alt="Week 24 Burnup Chart width="400"/>
+</p>
 
 ## Week 23 (March 2nd - 8th)
 
