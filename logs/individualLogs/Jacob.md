@@ -1,6 +1,65 @@
 
 # Jacob Damery
 
+# Week 24: March 9 – March 15
+
+This week I focused on portfolio UI improvements and bug fixes while also reviewing several teammate PRs spanning project ranking, public portfolio sharing, skills backend enrichment, session invalidation, and reusable component extraction. My authored work included a full redesign of the portfolio page and a targeted bug fix for the project detail page.
+
+## Key Accomplishments
+
+### Portfolio Page UI Redesign [PR #424](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/424)
+
+I redesigned the portfolio page UI with improved component styling, better data handling, and enhanced interactivity across multiple sections.
+
+Key work included:
+
+- Rebuilt the activity heatmap to display commit counts inside cells, show yearly totals, and use a sky-blue color scheme.
+- Updated the skills timeline to sort newest-first with a card-based layout grouped by period.
+- Added a publish/unpublish toggle and a copy share link button to the portfolio overview.
+- Updated `portfolio.test.tsx` to navigate to the Portfolio Items tab before asserting on item content, matching the new tabbed UI.
+- Enriched mock data with `contribution_score`, `total_commits`, `user_commit_share`, and skills timeline entries to cover the new overview sections.
+- Manually tested publish/unpublish toggle, copy share link, heatmap rendering, and skills timeline sorting.
+
+### Evidence Retrieval Bug Fix [PR #418](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/418)
+
+I fixed a crash in the ProjectPage component caused by a type mismatch in the evidence retrieval method.
+
+Key work included:
+
+- Identified that `getSkillEvidence` in `project/page.tsx` was calling `.get()` on the return value of `buildEvidenceMap`, treating it as a `Map` when it actually returns a plain `Record<string, string[]>` object. This caused an uncaught `TypeError: evidenceMap.get is not a function` on every render.
+- Updated `buildEvidenceMap` in `lib/skills-utils.ts` to return `Record<string, SkillEvidenceItem[]>`, preserving evidence as structured objects rather than flattened strings.
+- Changed `evidenceMap.get(skillName)` to `evidenceMap[skillName]` in the project page for correct plain-object bracket access.
+
+## Code Reviews
+
+### Project Rankings by User Contribution [PR #423](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/423)
+Reviewed Samarth's PR that replaces manual project reordering with a persisted ranking preference (contribution or recency) on the Projects page, including a database migration adding `user_selections.sort_mode` and updated backend/frontend tests. Approved the PR.
+
+### Portfolio Public Mode [PR #421](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/421)
+Reviewed OM's PR adding public portfolio sharing via a shareable `/p?token=xxx` link with no authentication required, along with auto-ranking of projects by contribution score after scan completion. A large PR spanning 34 files and 26 commits.
+
+### Skills Backend Enrichment [PR #398](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/398)
+Reviewed OM's bug fix addressing a non-existent `skill.confidence` attribute (corrected to `skill.proficiency_score`), enriched skills API payloads, tightened regex patterns to reduce false positives, and added commit message scanning for CI/CD and testing practices. All 39 tests passing.
+
+### Session Invalidation on Logout [PR #399](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/399)
+Reviewed Joaquin's fix for logout session recovery by invalidating Supabase refresh tokens server-side and blocking frontend refresh after explicit logout. Included new backend auth route, logout-flag checks, and focused backend/frontend tests.
+
+### Reusable Project Components [PR #417](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/417)
+Reviewed Vlad's large refactor extracting reusable UI components from a monolithic 2425-line project page file into dedicated components and shared primitives (StatCard, LoadingState, ErrorState, EmptyState, SearchInput), cutting the file nearly in half while preserving identical behavior. 23 files changed across 16 commits.
+
+## Challenges & Learning
+
+The portfolio UI redesign required coordinating changes across the heatmap, skills timeline, and overview sections simultaneously while keeping existing tests passing. Updating the test suite to account for the new tabbed layout was important since assertions that previously worked against a flat page structure needed to first navigate to the correct tab.
+
+The evidence retrieval bug was a good example of how TypeScript type mismatches can hide behind working code until runtime — the `buildEvidenceMap` function's return type didn't match how it was being consumed, and the error only surfaced as a crash on render.
+
+## Impact
+
+This week's work improves the portfolio page's usability and visual quality while fixing a runtime crash that affected the project detail page. Code reviews across five PRs helped maintain quality and consistency as the team integrates major features including public portfolio sharing, project ranking, session security, and component architecture improvements heading into the final stretch.
+
+
+---
+
 # Week 23: March 2 – March 8
 
 This week I focused on improving system reliability and developer visibility through expanded test coverage and environment validation tooling. My primary contributions included adding a comprehensive automated test suite for the project filtering system and implementing an encryption status feature that verifies backend encryption configuration and exposes it through the API and Settings UI.
