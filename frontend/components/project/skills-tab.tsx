@@ -18,7 +18,42 @@ import type {
   SkillAdoptionEntry,
   RoleProfile,
   SkillGapAnalysis,
+  SkillTier,
 } from "@/types/project";
+
+const TIER_CONFIG: Record<SkillTier, { label: string; color: string; bg: string }> = {
+  beginner: { label: "Beginner", color: "bg-gray-400", bg: "bg-gray-100" },
+  intermediate: { label: "Intermediate", color: "bg-blue-500", bg: "bg-blue-50" },
+  advanced: { label: "Advanced", color: "bg-emerald-500", bg: "bg-emerald-50" },
+};
+
+function TierIndicator({ tier, breakdown }: { tier?: SkillTier; breakdown?: { beginner: number; intermediate: number; advanced: number } }) {
+  const currentTier = tier ?? "beginner";
+  const tiers: SkillTier[] = ["beginner", "intermediate", "advanced"];
+  const reachedIndex = tiers.indexOf(currentTier);
+
+  return (
+    <div className="flex items-center gap-1">
+      {tiers.map((t, i) => {
+        const reached = i <= reachedIndex;
+        const cfg = TIER_CONFIG[t];
+        const count = breakdown?.[t] ?? 0;
+        return (
+          <div
+            key={t}
+            title={`${cfg.label}: ${count} evidence`}
+            className={`h-2 w-3 rounded-sm transition-colors ${reached ? cfg.color : "bg-gray-200"}`}
+          />
+        );
+      })}
+      <span className={`ml-1 text-xs font-medium ${
+        currentTier === "advanced" ? "text-emerald-600" : currentTier === "intermediate" ? "text-blue-600" : "text-gray-500"
+      }`}>
+        {TIER_CONFIG[currentTier].label}
+      </span>
+    </div>
+  );
+}
 
 export interface SkillHighlightProps {
   skills: string[];
@@ -227,6 +262,8 @@ export function SkillsTab({
                         const isHighlighted = highlight.skills.includes(skillName);
                         const description = typeof skill === "object" ? skill.description : undefined;
                         const profScore = typeof skill === "object" ? skill.proficiency_score ?? 0 : 0;
+                        const highestTier = typeof skill === "object" ? skill.highest_tier : undefined;
+                        const tierBreakdown = typeof skill === "object" ? skill.tier_breakdown : undefined;
                         const evidence = getSkillEvidence(skillName);
                         const skillKey = `${category}::${skillName}`;
                         const isExpanded = filter.expandedSkillKey === skillKey;
@@ -260,8 +297,12 @@ export function SkillsTab({
                                 )}
                               </button>
                               <div className="flex items-center gap-2">
+                                {/* Tier depth indicator */}
+                                {highestTier && (
+                                  <TierIndicator tier={highestTier} breakdown={tierBreakdown} />
+                                )}
                                 {/* Proficiency bar */}
-                                {profScore > 0 && (
+                                {profScore > 0 && !highestTier && (
                                   <div className="flex items-center gap-1.5">
                                     <div className="w-16 bg-gray-200 rounded-full h-1.5">
                                       <div

@@ -376,6 +376,8 @@ def _build_skills_analysis(service: SkillsAnalysisService) -> Dict[str, Any]:
                 "description": skill.get("description", ""),
                 "proficiency_score": float(skill.get("proficiency_score", 0.0)),
                 "category_label": CATEGORY_LABELS.get(category, category.replace("_", " ").title()),
+                "highest_tier": skill.get("highest_tier"),
+                "tier_breakdown": skill.get("tier_breakdown"),
             }
         )
     return {

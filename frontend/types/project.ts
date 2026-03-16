@@ -62,12 +62,22 @@ export interface ProjectScanSummary extends Record<string, unknown> {
   languages?: ProjectScanLanguageEntry[];
 }
 
+export type SkillTier = "beginner" | "intermediate" | "advanced";
+
+export interface TierBreakdown {
+  beginner: number;
+  intermediate: number;
+  advanced: number;
+}
+
 export interface ProjectSkillCategoryItem extends Record<string, unknown> {
   name?: string;
   proficiency?: string | number;
   description?: string;
   proficiency_score?: number;
   category_label?: string;
+  highest_tier?: SkillTier;
+  tier_breakdown?: TierBreakdown;
 }
 
 export type ProjectSkillCategoryEntry = string | ProjectSkillCategoryItem;
@@ -83,6 +93,8 @@ export interface ProjectSkillsAnalysis extends Record<string, unknown> {
     category?: string;
     description?: string;
     proficiency_score?: number;
+    highest_tier?: SkillTier;
+    tier_breakdown?: TierBreakdown;
     evidence_count?: number;
     evidence?: SkillEvidenceItem[];
   }>;
@@ -262,6 +274,7 @@ export interface SkillEvidenceItem {
   line?: number | null;
   confidence?: number;
   timestamp?: string | null;
+  tier?: SkillTier;
 }
 
 export interface SkillAdoptionEntry {

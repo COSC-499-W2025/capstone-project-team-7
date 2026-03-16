@@ -440,7 +440,9 @@ class SkillsAnalysisService:
                 "name": skill.name,
                 "proficiency": skill.proficiency_score,
                 "evidence_count": len(skill.evidence),
-                "description": skill.description or ""
+                "description": skill.description or "",
+                "highest_tier": skill.highest_tier,
+                "tier_breakdown": skill.tier_breakdown,
             }
             
             skills_data["skills_by_category"][skill.category].append(skill_dict)
