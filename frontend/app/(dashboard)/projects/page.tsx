@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { ProjectsTable } from "@/components/projects/projects-table";
 import { getProjects, deleteProject, getProjectById, getSelection, saveSelection } from "@/lib/api/projects";
 import { ProjectMetadata, ProjectDetail } from "@/types/project";
-import { Loader2, RefreshCw } from "lucide-react";
+import { BarChart3, FolderKanban, Languages, Loader2, RefreshCw } from "lucide-react";
 import { getStoredToken } from "@/lib/auth";
 import { ProjectDetailModal } from "@/components/projects/project-detail-modal";
 import { formatOperationError } from "@/lib/error-utils";
@@ -74,19 +74,14 @@ export default function ProjectsPage() {
     try {
       setError(null);
       const token = getAuthToken();
-      
-      // Debug logging
-      console.log("Projects page - Token check:", token ? "Token found" : "No token");
-      console.log("Projects page - Token length:", token?.length);
-      
+
       if (!token) {
         setError("Not authenticated. Please log in through Settings.");
         setLoading(false);
         setRefreshing(false);
         return;
       }
-      
-      console.log("Fetching projects with token...");
+
       const [response, selection] = await Promise.all([
         getProjects(token),
         getSelection(token).catch(() => null),
@@ -94,8 +89,6 @@ export default function ProjectsPage() {
       const nextMode: ProjectsSortMode = selection?.sort_mode ?? "recency";
       const orderedProjects = sortProjects(response.projects, nextMode);
       setRankingMode(nextMode);
-      console.log("Projects fetched successfully:", response);
-      console.log("First project data:", orderedProjects[0]);
       setProjects(orderedProjects);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "";
@@ -257,13 +250,54 @@ export default function ProjectsPage() {
     void persistRankingMode(mode);
   };
 
+  const projectSummary = useMemo(() => {
+    const totals = projects.reduce(
+      (acc, project) => {
+        acc.files += typeof project.total_files === "number" ? project.total_files : 0;
+        acc.lines += typeof project.total_lines === "number" ? project.total_lines : 0;
+        if (Array.isArray(project.languages)) {
+          project.languages.forEach((language) => acc.languages.add(language));
+        }
+        if (typeof project.contribution_score === "number") {
+          acc.scoredCount += 1;
+          acc.scoreTotal += project.contribution_score;
+        }
+        return acc;
+      },
+      {
+        files: 0,
+        lines: 0,
+        scoredCount: 0,
+        scoreTotal: 0,
+        languages: new Set<string>(),
+      },
+    );
+
+    const mostRecentProject = [...projects].sort(
+      (a, b) => getRecencyTimestamp(b) - getRecencyTimestamp(a),
+    )[0];
+
+    return {
+      totalProjects: projects.length,
+      totalFiles: totals.files,
+      totalLines: totals.lines,
+      uniqueLanguages: totals.languages.size,
+      averageScore:
+        totals.scoredCount > 0 ? (totals.scoreTotal / totals.scoredCount).toFixed(1) : "Unranked",
+      mostRecentLabel:
+        mostRecentProject?.created_at || mostRecentProject?.scan_timestamp
+          ? new Date(mostRecentProject.created_at ?? mostRecentProject.scan_timestamp ?? "").toLocaleDateString()
+          : "No scans yet",
+    };
+  }, [projects]);
+
   if (loading) {
     return (
-      <div className="p-8">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-            <span className="ml-3 text-gray-500">Loading projects...</span>
+      <div className="mx-auto max-w-[1440px] p-6 lg:p-8">
+        <div className="rounded-[28px] border border-slate-200 bg-white px-8 py-20 shadow-[0_18px_60px_rgba(15,23,42,0.06)]">
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+            <span className="ml-3 text-sm font-medium text-slate-500">Loading projects...</span>
           </div>
         </div>
       </div>
@@ -271,78 +305,130 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className="p-8">
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-        {/* Header */}
-        <div className="px-8 py-6 border-b border-gray-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Projects</h1>
-              <p className="mt-2 text-sm text-gray-600">
-                {projects.length === 0
-                  ? "No projects yet"
-                  : `${projects.length} project${projects.length === 1 ? "" : "s"} saved`}
+    <div className="mx-auto max-w-[1440px] p-6 lg:p-8">
+      <div className="space-y-6">
+        <section className="rounded-[32px] border border-slate-200 bg-[linear-gradient(135deg,rgba(248,250,252,0.96),rgba(255,255,255,0.98))] p-8 shadow-[0_18px_60px_rgba(15,23,42,0.06)]">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+            <div className="max-w-2xl">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
+                Project Library
+              </p>
+              <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950">Projects</h1>
+              <p className="mt-3 text-sm leading-6 text-slate-600">
+                A cleaner view of your scanned work, with the key metrics surfaced early and full
+                analysis one click away.
               </p>
             </div>
-            <button
-              onClick={handleRefresh}
-              disabled={refreshing || savingRankingMode}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <RefreshCw size={18} className={refreshing ? "animate-spin" : ""} />
-              <span className="font-medium">Refresh</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Error State */}
-        {error && (
-          <div className="mx-8 mt-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <div className="flex">
-              <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-red-800">Error loading projects</h3>
-                <p className="mt-1 text-sm text-red-700">{error}</p>
-              </div>
+            <div className="flex shrink-0 items-center gap-3">
+              <button
+                onClick={handleRefresh}
+                disabled={refreshing || savingRankingMode}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <RefreshCw size={18} className={refreshing ? "animate-spin" : ""} />
+                <span>Refresh</span>
+              </button>
             </div>
+          </div>
+
+          <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-3xl border border-slate-200 bg-white/90 p-5">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Projects</p>
+                <FolderKanban className="h-4 w-4 text-slate-400" />
+              </div>
+              <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">
+                {projectSummary.totalProjects}
+              </p>
+              <p className="mt-1 text-sm text-slate-500">
+                {projectSummary.totalProjects === 1 ? "Saved project" : "Saved projects"}
+              </p>
+            </div>
+            <div className="rounded-3xl border border-slate-200 bg-white/90 p-5">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Tracked Files</p>
+                <BarChart3 className="h-4 w-4 text-slate-400" />
+              </div>
+              <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">
+                {projectSummary.totalFiles.toLocaleString()}
+              </p>
+              <p className="mt-1 text-sm text-slate-500">
+                {projectSummary.totalLines.toLocaleString()} lines across all projects
+              </p>
+            </div>
+            <div className="rounded-3xl border border-slate-200 bg-white/90 p-5">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Languages</p>
+                <Languages className="h-4 w-4 text-slate-400" />
+              </div>
+              <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">
+                {projectSummary.uniqueLanguages}
+              </p>
+              <p className="mt-1 text-sm text-slate-500">
+                Avg contribution score {projectSummary.averageScore}
+              </p>
+            </div>
+            <div className="rounded-3xl border border-slate-200 bg-white/90 p-5">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Most Recent</p>
+                <RefreshCw className="h-4 w-4 text-slate-400" />
+              </div>
+              <p className="mt-3 text-xl font-semibold tracking-tight text-slate-950">
+                {projectSummary.mostRecentLabel}
+              </p>
+              <p className="mt-1 text-sm text-slate-500">Newest saved scan date</p>
+            </div>
+          </div>
+        </section>
+
+        {error && (
+          <div className="rounded-3xl border border-red-200 bg-red-50 px-5 py-4">
+            <h3 className="text-sm font-semibold text-red-800">Error loading projects</h3>
+            <p className="mt-1 text-sm text-red-700">{error}</p>
           </div>
         )}
 
-        {/* Table */}
-        <div className="p-8">
-          <div className="mb-4 flex flex-wrap items-center gap-3">
-            <label htmlFor="projects-ranking-mode" className="text-sm font-medium text-gray-700">
-              Ranking
-            </label>
-            <select
-              id="projects-ranking-mode"
-              data-testid="projects-ranking-mode"
-              value={rankingMode}
-              onChange={(event) => handleRankingModeChange(event.target.value as ProjectsSortMode)}
-              disabled={savingRankingMode}
-              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:border-gray-400 focus:outline-none"
-            >
-              <option value="recency">Recency</option>
-              <option value="contribution">Contribution</option>
-            </select>
-            {savingRankingMode && (
-              <p className="text-sm text-gray-500">Saving ranking preference...</p>
-            )}
-            {!savingRankingMode && rankingSaveStatus === "saved" && (
-              <p className="text-sm text-green-700">Ranking preference saved.</p>
-            )}
+        <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-[0_18px_60px_rgba(15,23,42,0.05)]">
+          <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold tracking-tight text-slate-950">Scanned projects</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                {projects.length === 0
+                  ? "No projects saved yet"
+                  : `${projects.length} project${projects.length === 1 ? "" : "s"} in your current workspace`}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <label htmlFor="projects-ranking-mode" className="text-sm font-medium text-slate-700">
+                Sort by
+              </label>
+              <select
+                id="projects-ranking-mode"
+                data-testid="projects-ranking-mode"
+                value={rankingMode}
+                onChange={(event) => handleRankingModeChange(event.target.value as ProjectsSortMode)}
+                disabled={savingRankingMode}
+                className="rounded-full border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+              >
+                <option value="recency">Recency</option>
+                <option value="contribution">Contribution</option>
+              </select>
+              {savingRankingMode && (
+                <p className="text-sm text-slate-500">Saving ranking preference...</p>
+              )}
+              {!savingRankingMode && rankingSaveStatus === "saved" && (
+                <p className="text-sm text-emerald-700">Ranking preference saved.</p>
+              )}
+            </div>
           </div>
+
           <ProjectsTable
             projects={projects}
             onDelete={handleDelete}
             onView={handleView}
             rankingMode={rankingMode}
           />
-        </div>
+        </section>
       </div>
 
       {/* Loading overlay when fetching project details */}

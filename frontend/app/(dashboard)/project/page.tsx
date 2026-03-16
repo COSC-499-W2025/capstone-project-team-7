@@ -65,6 +65,7 @@ import {
   type ToolsTabValue,
 } from "@/lib/stores/project-page-store";
 import {
+  ArrowLeft,
   LayoutDashboard,
   Award,
   BookOpen,
@@ -75,6 +76,7 @@ import {
   Film,
   FileImage,
   GitBranch,
+  Clock3,
   Copy,
   Search,
   FileCode2,
@@ -673,6 +675,8 @@ export default function ProjectPage() {
   const projectName = project?.project_name ?? "";
   const projectPath = project?.project_path ?? "";
   const scanTimestamp = project?.scan_timestamp ?? "Not available";
+  const scanTimestampLabel =
+    project?.scan_timestamp ? new Date(project.scan_timestamp).toLocaleString() : "Not available";
 
   const scanDurationRaw = Number(
     summary.scan_duration_seconds ?? scanData.scan_duration_seconds ?? scanData.scan_duration
@@ -942,36 +946,93 @@ export default function ProjectPage() {
     }
   };
 
+  const headerStats = [
+    { label: "Files", value: filesProcessedLabel },
+    { label: "Lines", value: totalLinesLabel },
+    { label: "Languages", value: languageBreakdown.length || 0 },
+    { label: "Commits", value: gitCommitTotal || 0 },
+  ];
+
+  const mainTabsListClass =
+    "grid h-auto gap-2 rounded-[28px] border border-slate-200 bg-slate-50 p-2 sm:grid-cols-2 xl:grid-cols-5";
+  const mainTabTriggerClass =
+    "justify-start rounded-[22px] border border-transparent px-4 py-3 text-left text-sm font-medium text-slate-600 transition-all hover:text-slate-900 data-[state=active]:border-slate-200 data-[state=active]:bg-white data-[state=active]:text-slate-950 data-[state=active]:shadow-[0_8px_30px_rgba(15,23,42,0.06)]";
+  const subTabsListClass =
+    "flex h-auto flex-wrap justify-start gap-2 rounded-3xl border border-slate-200 bg-slate-50 p-2";
+  const subTabTriggerClass =
+    "rounded-full border border-transparent px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 transition-all hover:text-slate-800 data-[state=active]:border-slate-200 data-[state=active]:bg-white data-[state=active]:text-slate-950";
+  const contentClass = "mt-0 border-0 bg-transparent p-0 shadow-none";
+
   return (
-    <div className="p-8">
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 mb-6">
-        <button
-          onClick={() => router.back()}
-          className="text-sm text-gray-600 hover:text-gray-900 mb-2 inline-block"
-        >
-          ← Back
-        </button>
+    <div className="mx-auto max-w-[1440px] p-6 lg:p-8">
+      <div className="space-y-6">
+        <section className="rounded-[32px] border border-slate-200 bg-[linear-gradient(135deg,rgba(248,250,252,0.96),rgba(255,255,255,0.98))] p-8 shadow-[0_18px_60px_rgba(15,23,42,0.06)]">
+          <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+            <div className="min-w-0 max-w-3xl">
+              <button
+                onClick={() => router.back()}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50"
+              >
+                <ArrowLeft size={16} />
+                <span>Back</span>
+              </button>
 
-        <h1 className="text-4xl font-bold text-gray-900 tracking-tight">
-          {hasProject ? `Project: ${projectName}` : "Project"}
-        </h1>
+              <h1 className="mt-5 text-4xl font-semibold tracking-tight text-slate-950">
+                {hasProject ? `Project: ${projectName}` : "Project"}
+              </h1>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
+                Scanned project analysis and reports with a clearer top-level summary and structured detail sections.
+              </p>
 
-        <p className="text-gray-500 mt-1 text-sm">Scanned project analysis and reports</p>
+              {hasProject && (
+                <>
+                  <p className="mt-4 break-all text-sm text-slate-500">{projectPath}</p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600">
+                      <Clock3 size={13} />
+                      <span>{scanTimestampLabel}</span>
+                    </span>
+                    <span className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600">
+                      Scan duration: {scanDurationLabel}
+                    </span>
+                    <span className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600">
+                      Total size: {totalSizeLabel}
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
 
-        {projectLoading && (
-          <p className="text-xs text-gray-400 mt-2">Loading project data…</p>
-        )}
-        {projectError && <p className="text-xs text-red-600 mt-2">{projectError}</p>}
-      </div>
+            {hasProject && (
+              <div className="grid w-full gap-3 md:grid-cols-2 xl:w-[430px]">
+                {headerStats.map((item) => (
+                  <div key={item.label} className="rounded-3xl border border-slate-200 bg-white/90 p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      {item.label}
+                    </p>
+                    <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">
+                      {item.value}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {projectLoading && (
+            <p className="mt-4 text-xs text-slate-400">Loading project data…</p>
+          )}
+          {projectError && <p className="mt-4 text-xs text-red-600">{projectError}</p>}
+        </section>
 
       {!projectLoading && !projectError && !hasProject && (
-        <Card className="bg-white border border-gray-200">
+        <Card className="rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_60px_rgba(15,23,42,0.05)]">
           <CardContent className="p-8 text-center space-y-3">
-            <p className="text-lg font-semibold text-gray-900">No project selected</p>
-            <p className="text-sm text-gray-600">
+            <p className="text-lg font-semibold text-slate-900">No project selected</p>
+            <p className="text-sm text-slate-600">
               Select a project from your scanned results to view its analysis.
             </p>
-            <Link href="/projects" className="text-sm text-gray-900 underline">
+            <Link href="/projects" className="text-sm font-medium text-slate-900 underline">
               Go to projects
             </Link>
           </CardContent>
@@ -979,32 +1040,34 @@ export default function ProjectPage() {
       )}
 
       {projectError && !hasProject && (
-        <Card className="bg-white border border-red-200">
+        <Card className="rounded-[28px] border border-red-200 bg-white shadow-[0_18px_60px_rgba(15,23,42,0.05)]">
           <CardContent className="p-8 text-center space-y-2">
             <p className="text-sm font-semibold text-red-700">Unable to load project data</p>
-            <p className="text-sm text-gray-600">Please return to Settings and verify your session.</p>
+            <p className="text-sm text-slate-600">Please return to Settings and verify your session.</p>
           </CardContent>
         </Card>
       )}
 
       {hasProject && (
+        <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-[0_18px_60px_rgba(15,23,42,0.05)]">
         <Tabs
-          key={activeMainTab}
           defaultValue={activeMainTab}
+          value={activeMainTab}
           onValueChange={(value) => setActiveMainTab(value as MainTabValue)}
+          className="space-y-6"
         >
           {/* Main 4 tabs */}
-          <TabsList className="flex justify-start gap-2 h-auto bg-gray-100 rounded-lg p-2 mb-6">
+          <TabsList className={mainTabsListClass}>
             {mainTabs.map((tab) => {
               const Icon = tab.icon;
               return (
                 <TabsTrigger
                   key={tab.value}
                   value={tab.value}
-                  className="text-sm px-5 py-2.5 font-medium"
+                  className={mainTabTriggerClass}
                 >
-                  <Icon size={18} className="mr-2" />
-                  {tab.label}
+                  <Icon size={18} className="mr-2 shrink-0" />
+                  <span>{tab.label}</span>
                 </TabsTrigger>
               );
             })}
@@ -1013,18 +1076,18 @@ export default function ProjectPage() {
           {/* ============================================
               TAB 1: OVERVIEW & ANALYSIS
           ============================================ */}
-          <TabsContent value="overview">
+          <TabsContent value="overview" className={contentClass}>
             <Tabs defaultValue="overview-main" className="space-y-6">
-              <TabsList className="flex justify-start gap-1 h-auto bg-transparent p-0 border-b border-gray-200 rounded-none">
+              <TabsList className={subTabsListClass}>
                 {overviewSubTabs.map((tab) => {
                   const Icon = tab.icon;
                   return (
                     <TabsTrigger
                       key={tab.value}
                       value={tab.value}
-                      className="text-xs px-4 py-2 rounded-t-lg rounded-b-none border-b-2 border-transparent data-[state=active]:border-gray-900 data-[state=active]:bg-white"
+                      className={subTabTriggerClass}
                     >
-                      <Icon size={14} className="mr-1.5" />
+                      <Icon size={14} className="mr-1.5 shrink-0" />
                       {tab.label}
                     </TabsTrigger>
                   );
@@ -1032,7 +1095,7 @@ export default function ProjectPage() {
               </TabsList>
 
               {/* Overview Main - Project Info & Stats */}
-              <TabsContent value="overview-main">
+              <TabsContent value="overview-main" className={contentClass}>
                 <OverviewTab
                   projectName={projectName}
                   projectPath={projectPath}
@@ -1051,7 +1114,7 @@ export default function ProjectPage() {
               </TabsContent>
 
               {/* Languages Breakdown */}
-              <TabsContent value="languages">
+              <TabsContent value="languages" className={contentClass}>
                 <LanguagesTab topLanguages={topLanguages} />
               </TabsContent>
 
@@ -1062,18 +1125,18 @@ export default function ProjectPage() {
           {/* ============================================
               TAB 2: SKILLS & PROGRESS
           ============================================ */}
-          <TabsContent value="skills">
+          <TabsContent value="skills" className={contentClass}>
             <Tabs defaultValue="skills-main" className="space-y-6">
-              <TabsList className="flex justify-start gap-1 h-auto bg-transparent p-0 border-b border-gray-200 rounded-none">
+              <TabsList className={subTabsListClass}>
                 {skillsSubTabs.map((tab) => {
                   const Icon = tab.icon;
                   return (
                     <TabsTrigger
                       key={tab.value}
                       value={tab.value}
-                      className="text-xs px-4 py-2 rounded-t-lg rounded-b-none border-b-2 border-transparent data-[state=active]:border-gray-900 data-[state=active]:bg-white"
+                      className={subTabTriggerClass}
                     >
-                      <Icon size={14} className="mr-1.5" />
+                      <Icon size={14} className="mr-1.5 shrink-0" />
                       {tab.label}
                     </TabsTrigger>
                   );
@@ -1081,7 +1144,7 @@ export default function ProjectPage() {
               </TabsList>
 
               {/* Skills Main */}
-              <TabsContent value="skills-main">
+              <TabsContent value="skills-main" className={contentClass}>
                 <SkillsTab
                   highlight={{
                     skills: highlightedSkills,
@@ -1117,7 +1180,7 @@ export default function ProjectPage() {
               </TabsContent>
 
               {/* Skills Progress */}
-              <TabsContent value="progress">
+              <TabsContent value="progress" className={contentClass}>
                 <ProgressTab
                   skillsTimeline={skillsTimeline}
                   topSkills={topSkills}
@@ -1130,30 +1193,30 @@ export default function ProjectPage() {
               </TabsContent>
 
               {/* Contributions */}
-              <TabsContent value="contributions">
+              <TabsContent value="contributions" className={contentClass}>
                 <ContributionsTab contributionMetrics={scanData.contribution_metrics} />
               </TabsContent>
             </Tabs>
           </TabsContent>
 
-          <TabsContent value="ai-analysis" className="space-y-6">
-            <Card className="bg-white border border-gray-200">
-              <CardHeader className="border-b border-gray-200">
-                <CardTitle className="text-xl font-bold text-gray-900">
+          <TabsContent value="ai-analysis" className="space-y-6 border-0 bg-transparent p-0 shadow-none">
+            <Card className="rounded-3xl border border-slate-200 bg-white shadow-[0_10px_40px_rgba(15,23,42,0.04)]">
+              <CardHeader className="border-b border-slate-200">
+                <CardTitle className="text-xl font-semibold tracking-tight text-slate-950">
                   AI Analysis Status
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-                    <p className="text-xs font-semibold text-gray-500 uppercase">External Data Consent</p>
-                    <p className={`mt-2 text-sm font-medium ${externalServicesConsentEnabled ? "text-green-700" : "text-gray-600"}`}>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">External Data Consent</p>
+                    <p className={`mt-2 text-sm font-medium ${externalServicesConsentEnabled ? "text-green-700" : "text-slate-600"}`}>
                       {externalServicesConsentEnabled ? "Enabled" : "Not enabled"}
                     </p>
                   </div>
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-                    <p className="text-xs font-semibold text-gray-500 uppercase">OpenAI API Key</p>
-                    <p className={`mt-2 text-sm font-medium ${openAiKeyValid ? "text-green-700" : "text-gray-600"}`}>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">OpenAI API Key</p>
+                    <p className={`mt-2 text-sm font-medium ${openAiKeyValid ? "text-green-700" : "text-slate-600"}`}>
                       {openAiKeyValid ? "Verified" : "Missing or invalid"}
                     </p>
                   </div>
@@ -1165,17 +1228,17 @@ export default function ProjectPage() {
                     variant="outline"
                     onClick={() => void checkAiEligibility()}
                     disabled={aiEligibilityLoading}
-                    className="border-gray-300"
+                    className="border-slate-300"
                   >
                     {aiEligibilityLoading ? "Checking..." : "Re-check requirements"}
                   </Button>
-                  <Link href="/settings" className="text-sm text-gray-700 underline">
+                  <Link href="/settings" className="text-sm text-slate-700 underline">
                     Open Settings
                   </Link>
                 </div>
 
                 {!aiEligibilityChecked && (
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-slate-500">
                     Open this tab to validate consent and API key requirements.
                   </p>
                 )}
@@ -1191,13 +1254,13 @@ export default function ProjectPage() {
               </CardContent>
             </Card>
 
-            <Card className="bg-white border border-gray-200">
-              <CardHeader className="border-b border-gray-200 flex flex-row items-center justify-between">
+            <Card className="rounded-3xl border border-slate-200 bg-white shadow-[0_10px_40px_rgba(15,23,42,0.04)]">
+              <CardHeader className="border-b border-slate-200 flex flex-row items-center justify-between">
                 <div>
-                  <CardTitle className="text-xl font-bold text-gray-900">
+                  <CardTitle className="text-xl font-semibold tracking-tight text-slate-950">
                     AI Summary
                   </CardTitle>
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="mt-1 text-xs text-slate-500">
                     Summarize skill growth from the timeline.
                   </p>
                 </div>
@@ -1214,17 +1277,17 @@ export default function ProjectPage() {
                 </button>
               </CardHeader>
               <CardContent className="p-6 space-y-4">
-                {skillsNote && <p className="text-sm text-gray-500">{skillsNote}</p>}
+                {skillsNote && <p className="text-sm text-slate-500">{skillsNote}</p>}
                 {!aiEligibilityReady && (
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-slate-500">
                     AI summary generation stays disabled until External Data consent is enabled and a valid OpenAI API key is verified in Settings.
                   </p>
                 )}
                 {skillsSummary && (
                   <div className="space-y-4">
                     <div>
-                      <p className="text-sm font-semibold text-gray-700">Overview</p>
-                      <p className="text-sm text-gray-700 mt-1">
+                      <p className="text-sm font-semibold text-slate-700">Overview</p>
+                      <p className="mt-1 text-sm text-slate-700">
                         {skillsSummary.overview}
                       </p>
                       {skillsSummary.validation_warning && (
@@ -1236,10 +1299,10 @@ export default function ProjectPage() {
 
                     <div className="grid gap-4 md:grid-cols-2">
                       <div>
-                        <p className="text-sm font-semibold text-gray-700">
+                        <p className="text-sm font-semibold text-slate-700">
                           Timeline highlights
                         </p>
-                        <ul className="mt-2 space-y-1 text-sm text-gray-700 list-disc list-inside">
+                        <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-slate-700">
                           {skillsSummary.timeline.map((item, index) => (
                             <li key={`timeline-${index}`}>{item}</li>
                           ))}
@@ -1252,10 +1315,10 @@ export default function ProjectPage() {
                       </div>
 
                       <div>
-                        <p className="text-sm font-semibold text-gray-700">
+                        <p className="text-sm font-semibold text-slate-700">
                           Skills focus
                         </p>
-                        <ul className="mt-2 space-y-1 text-sm text-gray-700 list-disc list-inside">
+                        <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-slate-700">
                           {skillsSummary.skills_focus.map((item, index) => (
                             <li key={`skills-${index}`}>{item}</li>
                           ))}
@@ -1269,10 +1332,10 @@ export default function ProjectPage() {
                     </div>
 
                     <div>
-                      <p className="text-sm font-semibold text-gray-700">
+                      <p className="text-sm font-semibold text-slate-700">
                         Suggested next steps
                       </p>
-                      <ul className="mt-2 space-y-1 text-sm text-gray-700 list-disc list-inside">
+                      <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-slate-700">
                         {skillsSummary.suggested_next_steps.map((item, index) => (
                           <li key={`steps-${index}`}>{item}</li>
                         ))}
@@ -1292,18 +1355,18 @@ export default function ProjectPage() {
           {/* ============================================
               TAB 3: CONTENT ANALYSIS
           ============================================ */}
-          <TabsContent value="content">
+          <TabsContent value="content" className={contentClass}>
             <Tabs defaultValue="documents" className="space-y-6">
-              <TabsList className="flex justify-start gap-1 h-auto bg-transparent p-0 border-b border-gray-200 rounded-none">
+              <TabsList className={subTabsListClass}>
                 {contentSubTabs.map((tab) => {
                   const Icon = tab.icon;
                   return (
                     <TabsTrigger
                       key={tab.value}
                       value={tab.value}
-                      className="text-xs px-4 py-2 rounded-t-lg rounded-b-none border-b-2 border-transparent data-[state=active]:border-gray-900 data-[state=active]:bg-white"
+                      className={subTabTriggerClass}
                     >
-                      <Icon size={14} className="mr-1.5" />
+                      <Icon size={14} className="mr-1.5 shrink-0" />
                       {tab.label}
                     </TabsTrigger>
                   );
@@ -1311,7 +1374,7 @@ export default function ProjectPage() {
               </TabsList>
 
               {/* Documents */}
-              <TabsContent value="documents">
+              <TabsContent value="documents" className={contentClass}>
                 <DocumentAnalysisTab
                   documentAnalysis={scanData.document_analysis}
                   isLoading={projectLoading}
@@ -1320,16 +1383,16 @@ export default function ProjectPage() {
               </TabsContent>
 
                  {/* Code Analysis */}
-            <TabsContent value="code-analysis">
+            <TabsContent value="code-analysis" className={contentClass}>
               <CodeAnalysisTab
                 codeAnalysis={isPlainObject(scanData.code_analysis) ? scanData.code_analysis : null}
                 isLoading={projectLoading}
                 errorMessage={projectError}
               />
-            </TabsContent>
+              </TabsContent>
 
               {/* Media */}
-              <TabsContent value="media">
+              <TabsContent value="media" className={contentClass}>
                 <MediaAnalysisTab
                   loading={projectLoading}
                   error={projectError}
@@ -1339,7 +1402,7 @@ export default function ProjectPage() {
               </TabsContent>
 
               {/* PDFs */}
-              <TabsContent value="pdfs">
+              <TabsContent value="pdfs" className={contentClass}>
                 <PdfAnalysisTab
                   pdfAnalysis={scanData.pdf_analysis}
                   isLoading={projectLoading}
@@ -1352,30 +1415,30 @@ export default function ProjectPage() {
           {/* ============================================
               TAB 4: TOOLS & EXPORT
           ============================================ */}
-          <TabsContent value="tools">
+          <TabsContent value="tools" className={contentClass}>
             <Tabs
-              key={activeToolsTab}
               defaultValue={activeToolsTab}
+              value={activeToolsTab}
               onValueChange={(value) => setActiveToolsTab(value as ToolsTabValue)}
               className="space-y-6"
             >
-              <TabsList className="flex justify-start gap-1 h-auto bg-transparent p-0 border-b border-gray-200 rounded-none">
+              <TabsList className={subTabsListClass}>
                 {toolsSubTabs.map((tab) => {
                   const Icon = tab.icon;
                   return (
                     <TabsTrigger
                       key={tab.value}
                       value={tab.value}
-                      className="text-xs px-4 py-2 rounded-t-lg rounded-b-none border-b-2 border-transparent data-[state=active]:border-gray-900 data-[state=active]:bg-white"
+                      className={subTabTriggerClass}
                     >
-                      <Icon size={14} className="mr-1.5" />
+                      <Icon size={14} className="mr-1.5 shrink-0" />
                       {tab.label}
                     </TabsTrigger>
                   );
                 })}
               </TabsList>
 
-              <TabsContent value="tools-main">
+              <TabsContent value="tools-main" className={contentClass}>
                 <ToolsMainTab
                   openToolsTab={openToolsTab}
                   projectFilesCount={projectFiles.length}
@@ -1392,10 +1455,10 @@ export default function ProjectPage() {
                 />
               </TabsContent>
 
-              <TabsContent value="file-browser" className="space-y-4">
-                <Card className="bg-white border border-gray-200">
-                  <CardHeader className="border-b border-gray-200 flex flex-row items-center justify-between">
-                    <CardTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
+              <TabsContent value="file-browser" className="space-y-4 border-0 bg-transparent p-0 shadow-none">
+                <Card className="rounded-3xl border border-slate-200 bg-white shadow-[0_10px_40px_rgba(15,23,42,0.04)]">
+                  <CardHeader className="border-b border-slate-200 flex flex-row items-center justify-between">
+                    <CardTitle className="flex items-center gap-2 text-xl font-semibold tracking-tight text-slate-950">
                       <FileText size={18} />
                       File Browser
                     </CardTitle>
@@ -1414,10 +1477,10 @@ export default function ProjectPage() {
                 </Card>
               </TabsContent>
 
-              <TabsContent value="search-filter" className="space-y-4">
-                <Card className="bg-white border border-gray-200">
-                  <CardHeader className="border-b border-gray-200 flex flex-row items-center justify-between">
-                    <CardTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
+              <TabsContent value="search-filter" className="space-y-4 border-0 bg-transparent p-0 shadow-none">
+                <Card className="rounded-3xl border border-slate-200 bg-white shadow-[0_10px_40px_rgba(15,23,42,0.04)]">
+                  <CardHeader className="border-b border-slate-200 flex flex-row items-center justify-between">
+                    <CardTitle className="flex items-center gap-2 text-xl font-semibold tracking-tight text-slate-950">
                       <Search size={18} />
                       Search &amp; Filter Files
                     </CardTitle>
@@ -1441,10 +1504,10 @@ export default function ProjectPage() {
                 </Card>
               </TabsContent>
 
-              <TabsContent value="git-analysis" className="space-y-4">
-                <Card className="bg-white border border-gray-200">
-                  <CardHeader className="border-b border-gray-200 flex flex-row items-center justify-between">
-                    <CardTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
+              <TabsContent value="git-analysis" className="space-y-4 border-0 bg-transparent p-0 shadow-none">
+                <Card className="rounded-3xl border border-slate-200 bg-white shadow-[0_10px_40px_rgba(15,23,42,0.04)]">
+                  <CardHeader className="border-b border-slate-200 flex flex-row items-center justify-between">
+                    <CardTitle className="flex items-center gap-2 text-xl font-semibold tracking-tight text-slate-950">
                       <GitBranch size={18} />
                       Git Analysis
                     </CardTitle>
@@ -1468,10 +1531,10 @@ export default function ProjectPage() {
                 </Card>
               </TabsContent>
 
-              <TabsContent value="duplicate-finder" className="space-y-4">
-                <Card className="bg-white border border-gray-200">
-                  <CardHeader className="border-b border-gray-200 flex flex-row items-center justify-between">
-                    <CardTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
+              <TabsContent value="duplicate-finder" className="space-y-4 border-0 bg-transparent p-0 shadow-none">
+                <Card className="rounded-3xl border border-slate-200 bg-white shadow-[0_10px_40px_rgba(15,23,42,0.04)]">
+                  <CardHeader className="border-b border-slate-200 flex flex-row items-center justify-between">
+                    <CardTitle className="flex items-center gap-2 text-xl font-semibold tracking-tight text-slate-950">
                       <Copy size={18} />
                       Duplicate Finder
                     </CardTitle>
@@ -1497,7 +1560,9 @@ export default function ProjectPage() {
             </Tabs>
           </TabsContent>
         </Tabs>
+        </section>
       )}
+      </div>
     </div>
   );
 }

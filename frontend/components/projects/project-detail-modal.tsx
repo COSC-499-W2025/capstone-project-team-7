@@ -1,30 +1,34 @@
 "use client";
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import type {
-  ProjectDetail,
-  ProjectScanData,
-  ProjectScanLanguageEntry,
-} from "@/types/project";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { StatCard } from "@/components/ui/stat-card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { ProjectDetail, ProjectScanData } from "@/types/project";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { updateProjectOverrides } from "@/lib/api/projects";
 import { api } from "@/lib/api";
 import { getStoredToken } from "@/lib/auth";
-import { getCategoryLabel, buildEvidenceMap } from "@/lib/skills-utils";
-import { StatCard } from "@/components/ui/stat-card";
-import { EmptyState } from "@/components/ui/empty-state";
 import { formatBytes } from "@/lib/format-utils";
-import { 
-  FileCode, 
-  Code2, 
-  GitBranch, 
-  Sparkles, 
-  FileText, 
+import {
+  ArrowUpRight,
+  Braces,
+  Check,
+  Clock3,
+  FileText,
+  FolderTree,
+  GitBranch,
   Image as ImageIcon,
   Loader2,
+  Sparkles,
+  PencilLine,
   Upload,
-  Video,
-  X
+  X,
 } from "lucide-react";
 
 interface ProjectDetailModalProps {
@@ -36,133 +40,12 @@ interface ProjectDetailModalProps {
   onRoleUpdate?: (projectId: string, newRole: string) => void;
 }
 
-type TabId = "overview" | "files" | "languages" | "git" | "skills" | "documents" | "media";
-
-export function ProjectDetailModal({
-  isOpen,
-  onClose,
-  project,
-  onProjectUpdate,
-  token,
-  onRoleUpdate,
-}: ProjectDetailModalProps) {
-  const [activeTab, setActiveTab] = useState<TabId>("overview");
-
-  if (!project) return null;
-
-  const scanData = (project.scan_data ?? {}) as ProjectScanData;
-  const files = Array.isArray(scanData.files)
-    ? (scanData.files as any[])
-        .map((f: any) => ({
-          ...f,
-          path: typeof f.path === "string" ? f.path : typeof f.file_path === "string" ? f.file_path : "",
-        }))
-        .filter((f: any) => typeof f.path === "string" && f.path.length > 0)
-    : [];
-  
-  // Handle languages as either array or object
-  let languagesData: Record<string, { files?: number; lines?: number; bytes?: number; percentage?: number }> = {};
-  const rawLanguages = scanData.languages;
-  if (rawLanguages && typeof rawLanguages === 'object') {
-    if (Array.isArray(rawLanguages)) {
-      rawLanguages.forEach((lang) => {
-        if (typeof lang === "string") {
-          languagesData[lang] = { files: 0, lines: 0 };
-          return;
-        }
-
-        const languageEntry = lang as ProjectScanLanguageEntry;
-        const languageName =
-          typeof languageEntry.language === "string"
-            ? languageEntry.language
-            : typeof languageEntry.name === "string"
-              ? languageEntry.name
-              : "";
-
-        if (!languageName) return;
-
-        const files =
-          typeof languageEntry.files === "number"
-            ? languageEntry.files
-            : typeof languageEntry.count === "number"
-              ? languageEntry.count
-              : 0;
-
-        languagesData[languageName] = {
-          files,
-          lines: typeof languageEntry.lines === "number" ? languageEntry.lines : 0,
-          bytes: typeof languageEntry.bytes === "number" ? languageEntry.bytes : undefined,
-          percentage:
-            typeof languageEntry.percentage === "number"
-              ? languageEntry.percentage
-              : undefined,
-        };
-      });
-    } else {
-      languagesData = rawLanguages as Record<
-        string,
-        { files?: number; lines?: number; bytes?: number; percentage?: number }
-      >;
-    }
-  }
-  
-  const gitAnalysis = scanData.git_analysis ?? {};
-  const skillsAnalysis = scanData.skills_analysis ?? {};
-  const rawDocumentAnalysis =
-    scanData.document_analysis ??
-    (scanData as Record<string, unknown>).documents_analysis;
-  const documentsAnalysis = Array.isArray(rawDocumentAnalysis)
-    ? rawDocumentAnalysis
-    : [];
-  const mediaAnalysis = Array.isArray(scanData.media_analysis)
-    ? scanData.media_analysis
-    : [];
-
-  // Simplified view - just overview
-  const tabs = [
-    { id: "overview" as TabId, label: "Project Details", icon: FileCode },
-  ];
-
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-5xl max-h-[85vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="text-2xl font-bold">{project.project_name}</DialogTitle>
-          <p className="text-sm text-gray-500">{project.project_path}</p>
-        </DialogHeader>
-
-        {/* Simplified header - no tabs */}
-        <div className="border-b border-gray-200 px-6 py-3">
-          <h3 className="text-lg font-semibold text-gray-900">Project Overview</h3>
-        </div>
-
-        {/* Tab Content */}
-        <div className="flex-1 overflow-y-auto p-6">
-          {activeTab === "overview" && (
-            <OverviewTab
-              project={project}
-              onProjectUpdate={onProjectUpdate}
-              token={token}
-              onRoleUpdate={onRoleUpdate}
-            />
-          )}
-          {activeTab === "files" && <FilesTab files={files} />}
-          {activeTab === "languages" && <LanguagesTab languages={languagesData} />}
-          {activeTab === "git" && <GitTab gitAnalysis={gitAnalysis} />}
-          {activeTab === "skills" && <SkillsTab skillsAnalysis={skillsAnalysis} />}
-          {activeTab === "documents" && <DocumentsTab documents={documentsAnalysis} />}
-          {activeTab === "media" && <MediaTab media={mediaAnalysis} />}
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 const ALLOWED_ROLES = ["author", "contributor", "lead", "maintainer", "reviewer"] as const;
+type ProjectModalTab = "overview" | "files" | "languages" | "git" | "skills" | "documents" | "media";
 
 function extractLanguageNames(
   rawLanguages: ProjectScanData["languages"],
-  fallback: string[] = []
+  fallback: string[] = [],
 ): string[] {
   if (Array.isArray(rawLanguages)) {
     return rawLanguages
@@ -184,23 +67,34 @@ function extractLanguageNames(
   return fallback;
 }
 
-function ThumbnailSection({ project, onProjectUpdate }: { project: ProjectDetail; onProjectUpdate?: () => void }) {
+function formatContributionScore(score?: number) {
+  if (score === undefined || score === null) return "Unranked";
+  return score.toFixed(1);
+}
+
+function ProjectThumbnail({
+  project,
+  onProjectUpdate,
+}: {
+  project: ProjectDetail;
+  onProjectUpdate?: () => void;
+}) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmingRemoval, setConfirmingRemoval] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      setError("Please select an image file (JPG, PNG)");
+      setError("Please select an image file (JPG, PNG, GIF, or WebP).");
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      setError("Image must be less than 5MB");
+      setError("Image must be less than 5MB.");
       return;
     }
 
@@ -216,15 +110,14 @@ function ThumbnailSection({ project, onProjectUpdate }: { project: ProjectDetail
       }
 
       const result = await api.projects.uploadThumbnail(token, project.id, file);
-
       if (!result.ok) {
-        setError(result.error || "Failed to upload thumbnail");
+        setError(result.error || "Failed to upload thumbnail.");
         return;
       }
 
       onProjectUpdate?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
+      setError(err instanceof Error ? err.message : "Upload failed.");
     } finally {
       setUploading(false);
       if (fileInputRef.current) {
@@ -246,15 +139,14 @@ function ThumbnailSection({ project, onProjectUpdate }: { project: ProjectDetail
       }
 
       const result = await api.projects.deleteThumbnail(token, project.id);
-
       if (!result.ok) {
-        setError(result.error || "Failed to remove thumbnail");
+        setError(result.error || "Failed to remove thumbnail.");
         return;
       }
 
       onProjectUpdate?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to remove thumbnail");
+      setError(err instanceof Error ? err.message : "Failed to remove thumbnail.");
     } finally {
       setUploading(false);
     }
@@ -263,100 +155,101 @@ function ThumbnailSection({ project, onProjectUpdate }: { project: ProjectDetail
   const thumbnailUrl = project.thumbnail_url || project.user_overrides?.thumbnail_url;
 
   return (
-    <div>
-      <h3 className="text-sm font-semibold mb-2">Project Thumbnail</h3>
-      <div className="flex items-start gap-4">
-        <div className="relative w-32 h-32 bg-gray-100 rounded-lg border border-gray-200 overflow-hidden flex items-center justify-center">
+    <section className="rounded-3xl border border-slate-200 bg-slate-50/70 p-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Thumbnail</p>
+          <h3 className="mt-1 text-lg font-semibold tracking-tight text-slate-950">Project cover</h3>
+        </div>
+      </div>
+
+      <div className="mt-4 space-y-4">
+        <div className="relative aspect-[4/3] overflow-hidden rounded-2xl border border-slate-200 bg-white">
           {thumbnailUrl ? (
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={thumbnailUrl}
                 alt={`${project.project_name} thumbnail`}
-                className="w-full h-full object-cover"
+                className="h-full w-full object-cover"
               />
               <button
                 onClick={() => setConfirmingRemoval(true)}
                 disabled={uploading}
-                className="absolute top-1 right-1 p-1 bg-black/60 text-white rounded-full hover:bg-black/80 transition-colors disabled:opacity-50"
+                className="absolute right-3 top-3 rounded-full bg-slate-950/70 p-1.5 text-white transition-colors hover:bg-slate-950 disabled:opacity-50"
                 title="Remove thumbnail"
               >
                 <X size={14} />
               </button>
             </>
           ) : (
-            <div className="text-center text-gray-400">
-              <ImageIcon size={32} className="mx-auto mb-1" />
-              <span className="text-xs">No thumbnail</span>
+            <div className="flex h-full flex-col items-center justify-center gap-2 text-slate-400">
+              <ImageIcon size={28} />
+              <p className="text-sm">No thumbnail set</p>
             </div>
           )}
 
           {uploading && (
-            <div className="absolute inset-0 bg-white/80 flex items-center justify-center">
-              <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+            <div className="absolute inset-0 flex items-center justify-center bg-white/75">
+              <Loader2 className="h-6 w-6 animate-spin text-slate-700" />
             </div>
           )}
         </div>
 
-        <div className="flex flex-col gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/jpeg,image/png,image/gif,image/webp"
-            onChange={handleFileSelect}
-            className="hidden"
-            disabled={uploading}
-          />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/gif,image/webp"
+          onChange={handleFileSelect}
+          className="hidden"
+          disabled={uploading}
+        />
 
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Upload size={16} />
-            {thumbnailUrl ? "Replace" : "Set Thumbnail"}
-          </button>
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100 disabled:opacity-50"
+        >
+          <Upload size={16} />
+          <span>{thumbnailUrl ? "Replace thumbnail" : "Upload thumbnail"}</span>
+        </button>
 
-          <p className="text-xs text-gray-500">JPG, PNG, GIF, or WebP. Max 5MB.</p>
+        <p className="text-xs text-slate-500">Use JPG, PNG, GIF, or WebP. Maximum size: 5MB.</p>
 
-          {confirmingRemoval && thumbnailUrl && (
-            <div className="rounded-md border border-red-200 bg-red-50 p-2">
-              <p className="text-xs text-red-700">Remove this project thumbnail?</p>
-              <div className="mt-2 flex gap-2">
-                <button
-                  onClick={handleRemoveThumbnail}
-                  disabled={uploading}
-                  className="rounded-md bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
-                >
-                  Yes, remove
-                </button>
-                <button
-                  onClick={() => setConfirmingRemoval(false)}
-                  disabled={uploading}
-                  className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-              </div>
+        {confirmingRemoval && thumbnailUrl && (
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-3">
+            <p className="text-sm text-red-700">Remove the current thumbnail?</p>
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={handleRemoveThumbnail}
+                disabled={uploading}
+                className="rounded-full bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                Remove
+              </button>
+              <button
+                onClick={() => setConfirmingRemoval(false)}
+                disabled={uploading}
+                className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
             </div>
-          )}
+          </div>
+        )}
 
-          {error && <p className="text-xs text-red-600">{error}</p>}
-        </div>
+        {error && <p className="text-xs text-red-600">{error}</p>}
       </div>
-    </div>
+    </section>
   );
 }
 
-// Overview Tab
-function OverviewTab({
+function RoleAndEvidenceSection({
   project,
-  onProjectUpdate,
   token,
   onRoleUpdate,
 }: {
   project: ProjectDetail;
-  onProjectUpdate?: () => void;
   token?: string | null;
   onRoleUpdate?: (projectId: string, newRole: string) => void;
 }) {
@@ -365,8 +258,6 @@ function OverviewTab({
   const [selectedRole, setSelectedRole] = useState(currentRole);
   const [savingRole, setSavingRole] = useState(false);
   const [roleError, setRoleError] = useState<string | null>(null);
-
-  // Evidence state
   const [evidence, setEvidence] = useState<string[]>(project.user_overrides?.evidence ?? []);
   const [newEvidenceItem, setNewEvidenceItem] = useState("");
   const [savingEvidence, setSavingEvidence] = useState(false);
@@ -381,35 +272,32 @@ function OverviewTab({
     if (!token || !selectedRole) return;
     setSavingRole(true);
     setRoleError(null);
+
     try {
       await updateProjectOverrides(token, project.id, { role: selectedRole });
       onRoleUpdate?.(project.id, selectedRole);
       setIsEditingRole(false);
     } catch (err) {
-      setRoleError(err instanceof Error ? err.message : "Failed to update role");
+      setRoleError(err instanceof Error ? err.message : "Failed to update role.");
     } finally {
       setSavingRole(false);
     }
   };
 
-  const handleCancelEdit = () => {
-    setIsEditingRole(false);
-    setSelectedRole(project.role || project.user_overrides?.role || "");
-    setRoleError(null);
-  };
-
   const handleAddEvidence = async () => {
     const trimmed = newEvidenceItem.trim();
     if (!token || !trimmed) return;
+
     const updated = [...evidence, trimmed];
     setSavingEvidence(true);
     setEvidenceError(null);
+
     try {
       await updateProjectOverrides(token, project.id, { evidence: updated });
       setEvidence(updated);
       setNewEvidenceItem("");
     } catch (err) {
-      setEvidenceError(err instanceof Error ? err.message : "Failed to save evidence");
+      setEvidenceError(err instanceof Error ? err.message : "Failed to save evidence.");
     } finally {
       setSavingEvidence(false);
     }
@@ -420,310 +308,349 @@ function OverviewTab({
     const updated = evidence.filter((_, i) => i !== index);
     setSavingEvidence(true);
     setEvidenceError(null);
+
     try {
       await updateProjectOverrides(token, project.id, { evidence: updated });
       setEvidence(updated);
     } catch (err) {
-      setEvidenceError(err instanceof Error ? err.message : "Failed to save evidence");
+      setEvidenceError(err instanceof Error ? err.message : "Failed to save evidence.");
     } finally {
       setSavingEvidence(false);
     }
   };
 
-  const scanData = (project.scan_data ?? {}) as ProjectScanData;
-  const summary =
-    scanData.summary && typeof scanData.summary === "object"
-      ? scanData.summary
-      : {};
-  const rawLanguages = scanData.languages;
-  const languages = extractLanguageNames(rawLanguages, project.languages ?? []);
-  
-  const totalFiles = summary.total_files || project.total_files || 0;
-  const totalLines = summary.total_lines || project.total_lines || 0;
-  const bytesProcessed = summary.bytes_processed || 0;
-  
   return (
-    <div className="space-y-6">
-      <ThumbnailSection project={project} onProjectUpdate={onProjectUpdate} />
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard variant="plain" label="Total Files" value={totalFiles.toLocaleString()} />
-        <StatCard variant="plain" label="Total Lines" value={totalLines.toLocaleString()} />
-        <StatCard variant="plain" label="Languages" value={languages.length} />
-        <StatCard variant="plain" label="Size" value={formatBytes(bytesProcessed)} />
-      </div>
-
-      {/* Role section */}
-      <div>
-        <h3 className="text-sm font-semibold mb-2">Your Role</h3>
-        {isEditingRole ? (
-          <div className="flex items-center gap-2 flex-wrap">
-            <select
-              value={selectedRole}
-              onChange={(e) => setSelectedRole(e.target.value)}
-              className="text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Select a role...</option>
-              {ALLOWED_ROLES.map((r) => (
-                <option key={r} value={r}>
-                  {r.charAt(0).toUpperCase() + r.slice(1)}
-                </option>
-              ))}
-            </select>
-            <button
-              onClick={handleSaveRole}
-              disabled={savingRole || !selectedRole}
-              className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {savingRole ? "Saving..." : "Save"}
-            </button>
-            <button
-              onClick={handleCancelEdit}
-              className="px-3 py-1 bg-gray-100 text-gray-700 text-sm rounded hover:bg-gray-200"
-            >
-              Cancel
-            </button>
-            {roleError && <p className="text-xs text-red-600 w-full mt-1">{roleError}</p>}
-          </div>
-        ) : (
-          <div className="flex items-center gap-2">
-            {currentRole ? (
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                {currentRole}
-              </span>
-            ) : (
-              <span className="text-sm text-gray-400">No role set</span>
-            )}
-            {token && (
-              <button
-                onClick={() => setIsEditingRole(true)}
-                className="text-xs text-blue-600 hover:text-blue-800 underline"
-              >
-                Edit Role
-              </button>
-            )}
-          </div>
+    <section className="rounded-3xl border border-slate-200 bg-white p-5">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Context</p>
+          <h3 className="mt-1 text-lg font-semibold tracking-tight text-slate-950">Role and outcomes</h3>
+        </div>
+        {!isEditingRole && token && (
+          <button
+            onClick={() => setIsEditingRole(true)}
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+          >
+            <PencilLine size={14} />
+            Edit Role
+          </button>
         )}
       </div>
 
-      {/* Evidence of Success section */}
-      <div>
-        <h3 className="text-sm font-semibold mb-2">Evidence of Success</h3>
-        <ul className="space-y-1 mb-2">
-          {evidence.map((item, idx) => (
-            <li key={idx} className="flex items-start gap-2 text-sm text-gray-700">
-              <span className="mt-0.5 text-gray-400">•</span>
-              <span className="flex-1">{item}</span>
-              {token && (
+      <div className="mt-5 grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Current role</p>
+          {isEditingRole ? (
+            <div className="mt-3 space-y-3">
+              <select
+                value={selectedRole}
+                onChange={(event) => setSelectedRole(event.target.value)}
+                className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+              >
+                <option value="">Select a role...</option>
+                {ALLOWED_ROLES.map((role) => (
+                  <option key={role} value={role}>
+                    {role.charAt(0).toUpperCase() + role.slice(1)}
+                  </option>
+                ))}
+              </select>
+              <div className="flex gap-2">
                 <button
-                  onClick={() => handleRemoveEvidence(idx)}
-                  disabled={savingEvidence}
-                  className="text-xs text-red-500 hover:text-red-700 disabled:opacity-50"
-                  aria-label="Remove evidence item"
+                  onClick={handleSaveRole}
+                  disabled={savingRole || !selectedRole}
+                  className="inline-flex items-center gap-1 rounded-full bg-slate-950 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
                 >
-                  ×
+                  <Check size={13} />
+                  {savingRole ? "Saving..." : "Save"}
                 </button>
+                <button
+                  onClick={() => {
+                    setIsEditingRole(false);
+                    setSelectedRole(currentRole);
+                    setRoleError(null);
+                  }}
+                  className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+              </div>
+              {roleError && <p className="text-xs text-red-600">{roleError}</p>}
+            </div>
+          ) : (
+            <div className="mt-3">
+              {currentRole ? (
+                <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">
+                  {currentRole}
+                </span>
+              ) : (
+                <p className="text-sm text-slate-400">No role set</p>
               )}
-            </li>
-          ))}
-          {evidence.length === 0 && (
-            <li className="text-sm text-gray-400">No evidence added yet.</li>
+            </div>
           )}
-        </ul>
-        {token && (
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={newEvidenceItem}
-              onChange={(e) => setNewEvidenceItem(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") handleAddEvidence(); }}
-              placeholder="e.g. Throughput improved 35%"
-              className="flex-1 text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <button
-              onClick={handleAddEvidence}
-              disabled={savingEvidence || !newEvidenceItem.trim()}
-              className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {savingEvidence ? "Saving…" : "Add"}
-            </button>
-          </div>
-        )}
-        {evidenceError && <p className="text-xs text-red-600 mt-1">{evidenceError}</p>}
-      </div>
-
-      {languages.length > 0 && (
-        <div>
-          <h3 className="text-sm font-semibold mb-2">Languages Detected</h3>
-          <div className="flex flex-wrap gap-2">
-            {languages.map((lang) => (
-              <span
-                key={lang}
-                className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
-              >
-                {lang}
-              </span>
-            ))}
-          </div>
         </div>
-      )}
 
-      <div>
-        <h3 className="text-sm font-semibold mb-2">Project Path</h3>
-        <p className="text-sm text-gray-600 font-mono bg-gray-50 p-2 rounded">{project.project_path}</p>
-      </div>
-      
-      {project.scan_timestamp && (
-        <div>
-          <h3 className="text-sm font-semibold mb-2">Scanned</h3>
-          <p className="text-sm text-gray-600">{new Date(project.scan_timestamp).toLocaleString()}</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Files Tab
-function FilesTab({ files }: { files: any[] }) {
-  if (files.length === 0) {
-    return <EmptyState variant="plain" title="No files found" />;
-  }
-
-  return (
-    <div className="space-y-2">
-      {files.slice(0, 100).map((file, idx) => (
-        <div
-          key={idx}
-          className="p-3 bg-gray-50 rounded border border-gray-200 hover:bg-gray-100 transition-colors"
-        >
-          <div className="flex items-start justify-between">
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate">{file.path || file.file_path}</p>
-              {file.language && (
-                <span className="text-xs text-gray-500">{file.language}</span>
-              )}
-            </div>
-            <div className="text-right ml-4">
-              {file.lines && <p className="text-xs text-gray-500">{file.lines} lines</p>}
-              {file.size_bytes && (
-                <p className="text-xs text-gray-500">{formatBytes(file.size_bytes)}</p>
-              )}
-            </div>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Evidence of success</p>
+            <span className="text-xs text-slate-400">{evidence.length} item{evidence.length === 1 ? "" : "s"}</span>
           </div>
-        </div>
-      ))}
-      {files.length > 100 && (
-        <p className="text-sm text-gray-500 text-center py-2">
-          Showing first 100 of {files.length} files
-        </p>
-      )}
-    </div>
-  );
-}
-
-// Languages Tab
-function LanguagesTab({ languages }: { languages: Record<string, any> }) {
-  const entries = Object.entries(languages);
-  
-  if (entries.length === 0) {
-    return <EmptyState variant="plain" title="No language data available" />;
-  }
-
-  return (
-    <div className="space-y-4">
-      {entries.map(([lang, data]) => (
-        <div key={lang} className="p-4 bg-gray-50 rounded border border-gray-200">
-          <h3 className="font-semibold text-lg mb-2">{lang}</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {data.files && <StatCard variant="plain" label="Files" value={data.files} />}
-            {data.lines && <StatCard variant="plain" label="Lines" value={data.lines.toLocaleString()} />}
-            {data.bytes && <StatCard variant="plain" label="Size" value={formatBytes(data.bytes)} />}
-            {data.percentage && <StatCard variant="plain" label="Percentage" value={`${data.percentage.toFixed(1)}%`} />}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// Git Tab
-function GitTab({ gitAnalysis }: { gitAnalysis: any }) {
-  if (!gitAnalysis || Object.keys(gitAnalysis).length === 0) {
-    return <EmptyState variant="plain" title="No git analysis available" />;
-  }
-
-  const commits = gitAnalysis.commits || [];
-  const contributors = gitAnalysis.contributors || [];
-
-  return (
-    <div className="space-y-6">
-      {contributors.length > 0 && (
-        <div>
-          <h3 className="text-sm font-semibold mb-3">Contributors</h3>
           <div className="space-y-2">
-            {contributors.map((contributor: any, idx: number) => (
-              <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded">
-                <span className="font-medium">{contributor.name || contributor.email}</span>
-                <span className="text-sm text-gray-600">{contributor.commits} commits</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {commits.length > 0 && (
-        <div>
-          <h3 className="text-sm font-semibold mb-3">Recent Commits</h3>
-          <div className="space-y-2">
-            {commits.slice(0, 20).map((commit: any, idx: number) => (
-              <div key={idx} className="p-3 bg-gray-50 rounded border border-gray-200">
-                <p className="text-sm font-medium">{commit.message || commit.subject}</p>
-                <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
-                  <span>{commit.author || commit.author_name}</span>
-                  {commit.date && <span>{new Date(commit.date).toLocaleDateString()}</span>}
-                  {commit.hash && <span className="font-mono">{commit.hash.substring(0, 7)}</span>}
+            {evidence.length > 0 ? (
+              evidence.map((item, index) => (
+                <div
+                  key={`${item}-${index}`}
+                  className="flex items-start justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+                >
+                  <p className="text-sm leading-6 text-slate-700">{item}</p>
+                  {token && (
+                    <button
+                      onClick={() => handleRemoveEvidence(index)}
+                      disabled={savingEvidence}
+                      className="rounded-full p-1 text-slate-400 transition-colors hover:bg-white hover:text-red-600 disabled:opacity-50"
+                      aria-label="Remove evidence item"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
                 </div>
+              ))
+            ) : (
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-400">
+                No evidence added yet.
               </div>
-            ))}
+            )}
+          </div>
+
+          {token && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-3">
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <input
+                  type="text"
+                  value={newEvidenceItem}
+                  onChange={(event) => setNewEvidenceItem(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") handleAddEvidence();
+                  }}
+                  placeholder="Add a concise outcome or proof point"
+                  className="flex-1 rounded-2xl border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                />
+                <button
+                  onClick={handleAddEvidence}
+                  disabled={savingEvidence || !newEvidenceItem.trim()}
+                  className="rounded-full bg-slate-950 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                >
+                  {savingEvidence ? "Saving..." : "Add evidence"}
+                </button>
+              </div>
+              {evidenceError && <p className="mt-2 text-xs text-red-600">{evidenceError}</p>}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function AnalysisEmptyState({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center">
+      <p className="text-base font-semibold text-slate-900">{title}</p>
+      <p className="mt-2 text-sm text-slate-500">{description}</p>
+    </div>
+  );
+}
+
+function FilesAnalysisTab({
+  files,
+}: {
+  files: Array<{ path: string; language?: string; lines?: number; size_bytes?: number }>;
+}) {
+  if (files.length === 0) {
+    return (
+      <AnalysisEmptyState
+        title="No file inventory"
+        description="This project does not include file-level scan details."
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {files.slice(0, 120).map((file, index) => (
+        <div
+          key={`${file.path}-${index}`}
+          className="rounded-2xl border border-slate-200 bg-white px-4 py-3"
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium text-slate-900">{file.path}</p>
+              {file.language && <p className="mt-1 text-xs text-slate-500">{file.language}</p>}
+            </div>
+            <div className="shrink-0 text-right text-xs text-slate-500">
+              {typeof file.lines === "number" && <p>{file.lines.toLocaleString()} lines</p>}
+              {typeof file.size_bytes === "number" && file.size_bytes > 0 && (
+                <p>{formatBytes(file.size_bytes)}</p>
+              )}
+            </div>
           </div>
         </div>
+      ))}
+      {files.length > 120 && (
+        <p className="text-center text-xs text-slate-500">Showing the first 120 files.</p>
       )}
     </div>
   );
 }
 
-// Skills Tab
-function SkillsTab({ skillsAnalysis }: { skillsAnalysis: any }) {
-  const skillsByCategory = skillsAnalysis?.skills_by_category;
-  const categoryLabels: Record<string, string> = skillsAnalysis?.category_labels ?? {};
-  const fullSkills: any[] = Array.isArray(skillsAnalysis?.skills) ? skillsAnalysis.skills : [];
+function LanguagesAnalysisTab({
+  entries,
+}: {
+  entries: Array<{ name: string; files?: number; lines?: number; bytes?: number; percentage?: number }>;
+}) {
+  if (entries.length === 0) {
+    return (
+      <AnalysisEmptyState
+        title="No language breakdown"
+        description="Language-level analysis is not available for this project."
+      />
+    );
+  }
 
-  const evidenceMap = useMemo(() => buildEvidenceMap(fullSkills), [fullSkills]);
+  return (
+    <div className="grid gap-3 md:grid-cols-2">
+      {entries.map((entry) => (
+        <div key={entry.name} className="rounded-3xl border border-slate-200 bg-white p-5">
+          <div className="flex items-center justify-between gap-4">
+            <h3 className="text-lg font-semibold tracking-tight text-slate-950">{entry.name}</h3>
+            {typeof entry.percentage === "number" && (
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+                {entry.percentage.toFixed(1)}%
+              </span>
+            )}
+          </div>
+          <div className="mt-4 grid grid-cols-3 gap-3">
+            <StatCard variant="plain" label="Files" value={entry.files ?? 0} />
+            <StatCard variant="plain" label="Lines" value={(entry.lines ?? 0).toLocaleString()} />
+            <StatCard
+              variant="plain"
+              label="Size"
+              value={typeof entry.bytes === "number" && entry.bytes > 0 ? formatBytes(entry.bytes) : "n/a"}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
-  if (!skillsByCategory || Object.keys(skillsByCategory).length === 0) {
-    return <EmptyState variant="plain" title="No skills analysis available" />;
+function GitAnalysisTab({ gitAnalysis }: { gitAnalysis: unknown }) {
+  const repos = Array.isArray(gitAnalysis)
+    ? gitAnalysis.filter((entry): entry is Record<string, unknown> => typeof entry === "object" && entry !== null)
+    : [];
+
+  if (repos.length === 0) {
+    return (
+      <AnalysisEmptyState
+        title="No git analysis"
+        description="This project does not currently include repository contribution data."
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {repos.map((repo, index) => {
+        const repoName =
+          typeof repo.path === "string"
+            ? repo.path
+            : typeof repo.name === "string"
+              ? repo.name
+              : `Repository ${index + 1}`;
+        const commitCount =
+          typeof repo.commit_count === "number"
+            ? repo.commit_count.toLocaleString()
+            : typeof repo.total_commits === "number"
+              ? repo.total_commits.toLocaleString()
+              : "n/a";
+
+        return (
+          <div key={`${repoName}-${index}`} className="rounded-3xl border border-slate-200 bg-white p-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-slate-900">{repoName}</p>
+                {typeof repo.primary_author === "string" && (
+                  <p className="mt-1 text-xs text-slate-500">Primary author: {repo.primary_author}</p>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                <StatCard variant="plain" label="Commits" value={commitCount} />
+                <StatCard
+                  variant="plain"
+                  label="Contributors"
+                  value={typeof repo.contributor_count === "number" ? repo.contributor_count : "n/a"}
+                />
+                <StatCard
+                  variant="plain"
+                  label="Your Share"
+                  value={
+                    typeof repo.user_commit_share === "number"
+                      ? `${repo.user_commit_share.toFixed(1)}%`
+                      : "n/a"
+                  }
+                />
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function SkillsAnalysisTab({ skillsAnalysis }: { skillsAnalysis: unknown }) {
+  const skillsByCategory =
+    skillsAnalysis && typeof skillsAnalysis === "object" && !Array.isArray(skillsAnalysis)
+      ? ((skillsAnalysis as Record<string, unknown>).skills_by_category as Record<string, unknown[]> | undefined) ?? {}
+      : {};
+
+  if (Object.keys(skillsByCategory).length === 0) {
+    return (
+      <AnalysisEmptyState
+        title="No skills analysis"
+        description="No categorized skills were generated for this project."
+      />
+    );
   }
 
   return (
     <div className="space-y-4">
       {Object.entries(skillsByCategory).map(([category, skills]) => (
-        <div key={category} className="p-4 bg-gray-50 rounded border border-gray-200">
-          <h3 className="font-semibold text-lg mb-3">{getCategoryLabel(category, categoryLabels)}</h3>
-          <div className="flex flex-wrap gap-2">
-            {(skills as any[]).map((skill: any) => {
-              const skillName = typeof skill === "string" ? skill : skill?.name ?? "";
-              const evidenceCount = evidenceMap.get(skillName)?.length ?? 0;
+        <div key={category} className="rounded-3xl border border-slate-200 bg-white p-5">
+          <div className="flex items-center justify-between gap-4">
+            <h3 className="text-lg font-semibold tracking-tight text-slate-950">{category}</h3>
+            <span className="text-xs text-slate-400">{skills.length} skills</span>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {skills.map((skill, index) => {
+              const label =
+                typeof skill === "string"
+                  ? skill
+                  : skill && typeof skill === "object" && typeof (skill as { name?: unknown }).name === "string"
+                    ? (skill as { name: string }).name
+                    : `Skill ${index + 1}`;
+
               return (
                 <span
-                  key={`${category}-${skillName}`}
-                  className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm inline-flex items-center gap-1.5"
+                  key={`${category}-${label}-${index}`}
+                  className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-700"
                 >
-                  {skillName}
-                  {evidenceCount > 0 && (
-                    <span className="bg-blue-200 text-blue-700 text-xs px-1.5 py-0.5 rounded-full leading-none">
-                      {evidenceCount}
-                    </span>
-                  )}
+                  {label}
                 </span>
               );
             })}
@@ -734,54 +661,369 @@ function SkillsTab({ skillsAnalysis }: { skillsAnalysis: any }) {
   );
 }
 
-// Documents Tab
-function DocumentsTab({ documents }: { documents: any[] }) {
+function DocumentsAnalysisTab({ documents }: { documents: unknown[] }) {
   if (documents.length === 0) {
-    return <EmptyState variant="plain" title="No documents analyzed" />;
+    return (
+      <AnalysisEmptyState
+        title="No document analysis"
+        description="No document summaries are available for this project."
+      />
+    );
   }
 
   return (
     <div className="space-y-3">
-      {documents.map((doc, idx) => (
-        <div key={idx} className="p-4 bg-gray-50 rounded border border-gray-200">
-          <h4 className="font-medium mb-2">{doc.file_name || doc.path}</h4>
-          {doc.summary && <p className="text-sm text-gray-700 mb-2">{doc.summary}</p>}
-          {doc.content && (
-            <p className="text-xs text-gray-600 line-clamp-3">{doc.content}</p>
-          )}
-        </div>
-      ))}
+      {documents.map((document, index) => {
+        const entry = typeof document === "object" && document !== null ? (document as Record<string, unknown>) : {};
+        const title =
+          typeof entry.file_name === "string"
+            ? entry.file_name
+            : typeof entry.path === "string"
+              ? entry.path
+              : `Document ${index + 1}`;
+        const summary =
+          typeof entry.summary === "string"
+            ? entry.summary
+            : typeof entry.content === "string"
+              ? entry.content
+              : "";
+
+        return (
+          <div key={`${title}-${index}`} className="rounded-3xl border border-slate-200 bg-white p-5">
+            <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
+            {summary && <p className="mt-2 text-sm leading-6 text-slate-600">{summary}</p>}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-// Media Tab
-function MediaTab({ media }: { media: any[] }) {
+function MediaAnalysisTab({ media }: { media: unknown[] }) {
   if (media.length === 0) {
-    return <EmptyState variant="plain" title="No media files analyzed" />;
+    return (
+      <AnalysisEmptyState
+        title="No media analysis"
+        description="No image, video, or audio analysis is available for this project."
+      />
+    );
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      {media.map((item, idx) => (
-        <div key={idx} className="p-4 bg-gray-50 rounded border border-gray-200">
-          <div className="flex items-start gap-3">
-            {item.type === "image" ? <ImageIcon size={20} /> : <Video size={20} />}
-            <div className="flex-1">
-              <h4 className="font-medium text-sm">{item.file_name || item.path}</h4>
-              {item.analysis && <p className="text-xs text-gray-600 mt-1">{item.analysis}</p>}
-              {item.metadata && (
-                <div className="mt-2 text-xs text-gray-500">
-                  {item.metadata.duration && <span>Duration: {item.metadata.duration}s</span>}
-                  {item.metadata.resolution && <span className="ml-2">{item.metadata.resolution}</span>}
+    <div className="grid gap-3 md:grid-cols-2">
+      {media.map((item, index) => {
+        const entry = typeof item === "object" && item !== null ? (item as Record<string, unknown>) : {};
+        const title =
+          typeof entry.file_name === "string"
+            ? entry.file_name
+            : typeof entry.path === "string"
+              ? entry.path
+              : `Media ${index + 1}`;
+        const analysis = typeof entry.analysis === "string" ? entry.analysis : "";
+        const metadata =
+          entry.metadata && typeof entry.metadata === "object" && !Array.isArray(entry.metadata)
+            ? (entry.metadata as Record<string, unknown>)
+            : {};
+
+        return (
+          <div key={`${title}-${index}`} className="rounded-3xl border border-slate-200 bg-white p-5">
+            <div className="flex items-start gap-3">
+              <ImageIcon className="mt-0.5 h-4 w-4 text-slate-400" />
+              <div className="min-w-0">
+                <h3 className="truncate text-sm font-semibold text-slate-900">{title}</h3>
+                {analysis && <p className="mt-2 text-sm leading-6 text-slate-600">{analysis}</p>}
+                <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
+                  {typeof metadata.duration === "number" && <span>Duration: {metadata.duration}s</span>}
+                  {typeof metadata.resolution === "string" && <span>{metadata.resolution}</span>}
                 </div>
-              )}
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
+export function ProjectDetailModal({
+  isOpen,
+  onClose,
+  project,
+  onProjectUpdate,
+  token,
+  onRoleUpdate,
+}: ProjectDetailModalProps) {
+  const [activeTab, setActiveTab] = useState<ProjectModalTab>("overview");
+  const projectId = project?.id ?? null;
 
+  useEffect(() => {
+    if (isOpen && projectId) {
+      setActiveTab("overview");
+    }
+  }, [isOpen, projectId]);
+
+  if (!project) return null;
+
+  const scanData = (project.scan_data ?? {}) as ProjectScanData;
+  const summary =
+    scanData.summary && typeof scanData.summary === "object"
+      ? scanData.summary
+      : {};
+  const languages = extractLanguageNames(scanData.languages, project.languages ?? []);
+  const totalFiles = summary.total_files || project.total_files || 0;
+  const totalLines = summary.total_lines || project.total_lines || 0;
+  const bytesProcessed = summary.bytes_processed || 0;
+  const files = Array.isArray(scanData.files)
+    ? scanData.files
+        .map((file) => {
+          const entry = file as Record<string, unknown>;
+          return {
+            path:
+              typeof entry.path === "string"
+                ? entry.path
+                : typeof entry.file_path === "string"
+                  ? entry.file_path
+                  : "",
+            language: typeof entry.language === "string" ? entry.language : undefined,
+            lines: typeof entry.lines === "number" ? entry.lines : undefined,
+            size_bytes: typeof entry.size_bytes === "number" ? entry.size_bytes : undefined,
+          };
+        })
+        .filter((file) => file.path.length > 0)
+    : [];
+  const languageEntries =
+    Array.isArray(scanData.languages)
+      ? scanData.languages
+          .map((entry) => {
+            if (typeof entry === "string") return { name: entry };
+            if (entry && typeof entry === "object") {
+              return {
+                name:
+                  typeof entry.language === "string"
+                    ? entry.language
+                    : typeof entry.name === "string"
+                      ? entry.name
+                      : "",
+                files:
+                  typeof entry.files === "number"
+                    ? entry.files
+                    : typeof entry.count === "number"
+                      ? entry.count
+                      : undefined,
+                lines: typeof entry.lines === "number" ? entry.lines : undefined,
+                bytes: typeof entry.bytes === "number" ? entry.bytes : undefined,
+                percentage:
+                  typeof entry.percentage === "number" ? entry.percentage : undefined,
+              };
+            }
+            return { name: "" };
+          })
+          .filter((entry) => entry.name.length > 0)
+      : scanData.languages && typeof scanData.languages === "object"
+        ? Object.entries(scanData.languages)
+            .map(([name, value]) => {
+              const record =
+                value && typeof value === "object" && !Array.isArray(value)
+                  ? (value as Record<string, unknown>)
+                  : {};
+              return {
+                name,
+                files: typeof record.files === "number" ? record.files : undefined,
+                lines: typeof record.lines === "number" ? record.lines : undefined,
+                bytes: typeof record.bytes === "number" ? record.bytes : undefined,
+                percentage: typeof record.percentage === "number" ? record.percentage : undefined,
+              };
+            })
+        : [];
+  const documentEntries = Array.isArray(scanData.document_analysis) ? scanData.document_analysis : [];
+  const mediaEntries = Array.isArray(scanData.media_analysis) ? scanData.media_analysis : [];
+  const tabClass = "mt-0 border-0 bg-transparent p-0 shadow-none";
+  const analysisTabs = [
+    { id: "overview" as const, label: "Overview", icon: Sparkles },
+    { id: "files" as const, label: "Files", icon: FolderTree },
+    { id: "languages" as const, label: "Languages", icon: Braces },
+    { id: "git" as const, label: "Git", icon: GitBranch },
+    { id: "skills" as const, label: "Skills", icon: Sparkles },
+    { id: "documents" as const, label: "Documents", icon: FileText },
+    { id: "media" as const, label: "Media", icon: ImageIcon },
+  ];
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-h-[88vh] max-w-6xl overflow-hidden rounded-[32px] border border-slate-200 bg-white p-0">
+        <DialogHeader className="border-b border-slate-200 bg-[linear-gradient(135deg,rgba(248,250,252,0.96),rgba(255,255,255,0.98))] px-8 py-6">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Quick View</p>
+              <DialogTitle className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">
+                {project.project_name}
+              </DialogTitle>
+              <DialogDescription className="sr-only">
+                Quick summary for {project.project_name}, including project metrics, role, evidence, and thumbnail controls.
+              </DialogDescription>
+              <p className="mt-2 truncate text-sm text-slate-500">{project.project_path}</p>
+            </div>
+            <a
+              href={`/project?projectId=${project.id}`}
+              className="inline-flex shrink-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50"
+            >
+              <span>Open full analysis</span>
+              <ArrowUpRight size={16} />
+            </a>
+          </div>
+
+          <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <StatCard variant="plain" label="Files" value={totalFiles.toLocaleString()} />
+            <StatCard variant="plain" label="Lines" value={totalLines.toLocaleString()} />
+            <StatCard variant="plain" label="Languages" value={languages.length} />
+            <StatCard
+              variant="plain"
+              label="Contribution"
+              value={formatContributionScore(project.contribution_score)}
+            />
+          </div>
+        </DialogHeader>
+
+        <div className="overflow-y-auto px-8 py-6">
+          <Tabs
+            defaultValue="overview"
+            value={activeTab}
+            onValueChange={(value) => setActiveTab(value as ProjectModalTab)}
+            className="space-y-6"
+          >
+            <TabsList className="flex h-auto flex-wrap justify-start gap-2 rounded-3xl border border-slate-200 bg-slate-50 p-2">
+              {analysisTabs.map((tab) => {
+                const Icon = tab.icon;
+                return (
+                  <TabsTrigger
+                    key={tab.id}
+                    value={tab.id}
+                    className="rounded-full border border-transparent px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 transition-all hover:text-slate-800 data-[state=active]:border-slate-200 data-[state=active]:bg-white data-[state=active]:text-slate-950"
+                  >
+                    <Icon size={14} className="mr-1.5 shrink-0" />
+                    {tab.label}
+                  </TabsTrigger>
+                );
+              })}
+            </TabsList>
+
+            <TabsContent value="overview" className={tabClass}>
+              <div className="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.9fr)]">
+                <div className="space-y-6">
+                  <section className="rounded-3xl border border-slate-200 bg-white p-5">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Summary</p>
+                        <h3 className="mt-1 text-lg font-semibold tracking-tight text-slate-950">Project snapshot</h3>
+                      </div>
+                      {project.scan_timestamp && (
+                        <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-600">
+                          <Clock3 size={13} />
+                          <span>{new Date(project.scan_timestamp).toLocaleString()}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="mt-5 grid gap-4 md:grid-cols-2">
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Project path</p>
+                        <p className="mt-2 break-all text-sm font-medium text-slate-800">{project.project_path}</p>
+                      </div>
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Bytes processed</p>
+                        <p className="mt-2 text-sm font-medium text-slate-800">{formatBytes(bytesProcessed)}</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {project.role && (
+                        <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                          Role: {project.role}
+                        </span>
+                      )}
+                      {languages.map((language) => (
+                        <span
+                          key={language}
+                          className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700"
+                        >
+                          {language}
+                        </span>
+                      ))}
+                      {languages.length === 0 && (
+                        <span className="text-sm text-slate-400">No languages detected</span>
+                      )}
+                    </div>
+                  </section>
+
+                  <RoleAndEvidenceSection project={project} token={token} onRoleUpdate={onRoleUpdate} />
+                </div>
+
+                <div className="space-y-6">
+                  <ProjectThumbnail project={project} onProjectUpdate={onProjectUpdate} />
+
+                  <section className="rounded-3xl border border-slate-200 bg-white p-5">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">At a glance</p>
+                        <h3 className="mt-1 text-lg font-semibold tracking-tight text-slate-950">Analysis coverage</h3>
+                      </div>
+                      <Sparkles className="h-4 w-4 text-slate-400" />
+                    </div>
+
+                    <div className="mt-5 grid gap-3">
+                      <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                        <span className="text-sm text-slate-600">Files</span>
+                        <span className="text-sm font-semibold text-slate-900">{files.length}</span>
+                      </div>
+                      <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                        <span className="text-sm text-slate-600">Documents</span>
+                        <span className="text-sm font-semibold text-slate-900">{documentEntries.length}</span>
+                      </div>
+                      <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                        <span className="text-sm text-slate-600">Media</span>
+                        <span className="text-sm font-semibold text-slate-900">{mediaEntries.length}</span>
+                      </div>
+                      <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                        <span className="inline-flex items-center gap-2 text-sm text-slate-600">
+                          <FolderTree size={14} />
+                          Git analysis
+                        </span>
+                        <span className="text-sm font-semibold text-slate-900">
+                          {Array.isArray(scanData.git_analysis) ? scanData.git_analysis.length : 0}
+                        </span>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="files" className={tabClass}>
+              <FilesAnalysisTab files={files} />
+            </TabsContent>
+
+            <TabsContent value="languages" className={tabClass}>
+              <LanguagesAnalysisTab entries={languageEntries} />
+            </TabsContent>
+
+            <TabsContent value="git" className={tabClass}>
+              <GitAnalysisTab gitAnalysis={scanData.git_analysis} />
+            </TabsContent>
+
+            <TabsContent value="skills" className={tabClass}>
+              <SkillsAnalysisTab skillsAnalysis={scanData.skills_analysis} />
+            </TabsContent>
+
+            <TabsContent value="documents" className={tabClass}>
+              <DocumentsAnalysisTab documents={documentEntries} />
+            </TabsContent>
+
+            <TabsContent value="media" className={tabClass}>
+              <MediaAnalysisTab media={mediaEntries} />
+            </TabsContent>
+          </Tabs>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

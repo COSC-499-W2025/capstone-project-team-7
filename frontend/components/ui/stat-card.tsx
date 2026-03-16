@@ -12,18 +12,28 @@ interface StatCardProps {
 export function StatCard({ label, value, variant = "card", className }: StatCardProps) {
   if (variant === "plain") {
     return (
-      <div className={cn("p-3 bg-white border border-gray-200 rounded", className)}>
-        <p className="text-xs text-gray-500">{label}</p>
-        <p className="text-lg font-semibold text-gray-900 mt-1">{value}</p>
+      <div
+        className={cn(
+          "rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]",
+          className,
+        )}
+      >
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">{label}</p>
+        <p className="mt-2 text-xl font-semibold tracking-tight text-slate-950">{value}</p>
       </div>
     );
   }
 
   return (
-    <Card className={cn("bg-white border border-gray-200", className)}>
+    <Card
+      className={cn(
+        "rounded-2xl border border-slate-200 bg-white/95 shadow-[0_1px_2px_rgba(15,23,42,0.04)]",
+        className,
+      )}
+    >
       <CardContent className="p-4">
-        <p className="text-xs text-gray-500">{label}</p>
-        <p className="text-lg font-semibold text-gray-900 mt-1">{value}</p>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">{label}</p>
+        <p className="mt-2 text-xl font-semibold tracking-tight text-slate-950">{value}</p>
       </CardContent>
     </Card>
   );

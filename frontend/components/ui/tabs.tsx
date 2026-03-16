@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 
 type TabsValue = string;
@@ -12,11 +12,25 @@ const TabsContext = createContext<TabsContextValue | null>(null);
 
 interface TabsProps extends React.HTMLAttributes<HTMLDivElement> {
   defaultValue: TabsValue;
+  value?: TabsValue;
   onValueChange?: (value: TabsValue) => void;
 }
 
-export function Tabs({ defaultValue, onValueChange, className, children, ...props }: TabsProps) {
+export function Tabs({
+  defaultValue,
+  value: controlledValue,
+  onValueChange,
+  className,
+  children,
+  ...props
+}: TabsProps) {
   const [value, setValue] = useState<TabsValue>(defaultValue);
+
+  useEffect(() => {
+    if (controlledValue !== undefined) {
+      setValue(controlledValue);
+    }
+  }, [controlledValue]);
 
   const ctx = useMemo<TabsContextValue>(
     () => ({
@@ -65,6 +79,7 @@ export function TabsTrigger({ className, value, ...props }: TabsTriggerProps) {
       )}
       onClick={() => ctx.setValue(value)}
       aria-pressed={isActive}
+      data-state={isActive ? "active" : "inactive"}
       {...props}
     />
   );
