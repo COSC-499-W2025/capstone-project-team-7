@@ -71,7 +71,7 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
   // Check for Electron and auth on mount
   useEffect(() => {
     const desktopApi = typeof window !== "undefined" ? window.desktop : undefined;
-    setIsElectron(!!desktopApi?.selectDirectory || !!desktopApi?.openFile);
+    setIsElectron(!!desktopApi?.selectScanSource || !!desktopApi?.selectDirectory || !!desktopApi?.openFile);
     setIsAuthenticated(!!getStoredToken());
   }, [open]);
 
@@ -122,13 +122,22 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
   }, [open, resetNewScan, resetAppendScan]);
 
   const handleBrowse = async () => {
-    if (!window.desktop?.selectDirectory) return;
+    const selectScanSource = window.desktop?.selectScanSource;
+    const selectDirectory = window.desktop?.selectDirectory;
+    if (!selectScanSource && !selectDirectory) return;
 
     setIsBrowsing(true);
     try {
-      const paths = await window.desktop.selectDirectory({
-        title: "Select folder or ZIP archive to scan",
-      });
+      let paths: string[] = [];
+      if (selectScanSource) {
+        paths = await selectScanSource({
+          title: "Select folder or ZIP archive to scan",
+        });
+      } else if (selectDirectory) {
+        paths = await selectDirectory({
+          title: "Select folder to scan",
+        });
+      }
 
       if (paths && paths.length > 0) {
         setSourcePath(paths[0]);
