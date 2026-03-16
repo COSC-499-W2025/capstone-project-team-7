@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
+  Briefcase,
+  Calendar,
   Plus,
   Loader2,
   Edit2,
@@ -52,8 +54,6 @@ import type {
 import type { ProjectMetadata } from "@/types/project";
 import type { UserProfile } from "@/lib/api.types";
 import { PortfolioOverview } from "@/components/portfolio/portfolio-overview";
-import { LoadingState } from "@/components/ui/loading-state";
-import { EmptyState } from "@/components/ui/empty-state";
 
 interface FormState {
   title: string;
@@ -158,6 +158,10 @@ export default function PortfolioPage() {
 
       if (projectsData.status === "fulfilled") {
         setProjects(projectsData.value.projects);
+      }
+
+      if (settingsData.status === "fulfilled") {
+        setPortfolioSettings(settingsData.value);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load portfolio data");
@@ -451,6 +455,7 @@ export default function PortfolioPage() {
                   chronology={chronology}
                   projects={projects}
                   skills={skills}
+                  initialSettings={portfolioSettings}
                 />
               </TabsContent>
 

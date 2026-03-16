@@ -7,9 +7,14 @@ import {
   Award,
   Briefcase,
   Calendar,
+  Check,
+  Copy,
   Eye,
   EyeOff,
   GitCommit,
+  Globe,
+  Lock,
+  Loader2,
   Sparkles,
   Trophy,
   User,
@@ -211,6 +216,7 @@ export function PortfolioOverview({
   const [pubSettings, setPubSettings] = useState<PortfolioSettings | null>(initialSettings ?? null);
   const [publishing, setPublishing] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
 
   // Sync if parent re-fetches settings
   useEffect(() => {
@@ -228,8 +234,8 @@ export function PortfolioOverview({
         ? { ...prev, is_public: result.is_public, share_token: result.share_token }
         : null,
       );
-    } catch {
-      // silently fail
+    } catch (err) {
+      setPublishError(err instanceof Error ? err.message : "Failed to publish portfolio");
     } finally {
       setPublishing(false);
     }
@@ -323,6 +329,43 @@ export function PortfolioOverview({
                 Project output, contribution activity, and extracted skills are grouped
                 into a tighter dashboard so the strongest signals are visible quickly.
               </p>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleTogglePublish}
+                  disabled={publishing}
+                  className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-medium transition-colors ${
+                    pubSettings?.is_public
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                  } disabled:cursor-not-allowed disabled:opacity-50`}
+                >
+                  {publishing ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : pubSettings?.is_public ? (
+                    <Globe className="h-3.5 w-3.5" />
+                  ) : (
+                    <Lock className="h-3.5 w-3.5" />
+                  )}
+                  {pubSettings?.is_public ? "Public" : "Private"}
+                </button>
+
+                {pubSettings?.is_public && pubSettings.share_token && (
+                  <button
+                    type="button"
+                    onClick={handleCopyLink}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50"
+                  >
+                    {copied ? (
+                      <Check className="h-3.5 w-3.5 text-emerald-600" />
+                    ) : (
+                      <Copy className="h-3.5 w-3.5" />
+                    )}
+                    {copied ? "Copied!" : "Copy Link"}
+                  </button>
+                )}
+              </div>
 
               <div className="flex flex-wrap gap-2">
                 <span className="portfolio-chip">
