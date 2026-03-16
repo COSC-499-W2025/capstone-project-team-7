@@ -1,6 +1,7 @@
 # Joaquin Almora / @joaquinalmora
 
 ### Weekly Navigation
+- [Week 24](#week-24-march-9th---15th)
 - [Week 23](#week-23-march-2nd---8th)
 - [Week 22](#week-22-february-23rd---march-1st)
 - [Week 20](#week-20-february-9th--15th)
