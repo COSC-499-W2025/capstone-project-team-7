@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowUpRight,
@@ -14,7 +14,9 @@ import {
   Trophy,
   User,
 } from "lucide-react";
-import type { PortfolioChronology } from "@/types/portfolio";
+import { getStoredToken } from "@/lib/auth";
+import { publishPortfolio } from "@/lib/api/portfolio";
+import type { PortfolioChronology, PortfolioSettings } from "@/types/portfolio";
 import type { ProjectMetadata } from "@/types/project";
 import type { UserProfile } from "@/lib/api.types";
 import { ActivityHeatmap } from "@/components/portfolio/activity-heatmap";
@@ -25,6 +27,7 @@ interface PortfolioOverviewProps {
   chronology: PortfolioChronology | null;
   projects: ProjectMetadata[];
   skills: string[];
+  initialSettings?: PortfolioSettings | null;
 }
 
 interface SectionVisibility {
@@ -195,6 +198,7 @@ export function PortfolioOverview({
   chronology,
   projects,
   skills,
+  initialSettings,
 }: PortfolioOverviewProps) {
   const [visibility, setVisibility] = useState<SectionVisibility>({
     heatmap: true,
@@ -202,6 +206,43 @@ export function PortfolioOverview({
     topProjects: true,
     allSkills: true,
   });
+
+  // Publish state — initialized from parent-fetched settings
+  const [pubSettings, setPubSettings] = useState<PortfolioSettings | null>(initialSettings ?? null);
+  const [publishing, setPublishing] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  // Sync if parent re-fetches settings
+  useEffect(() => {
+    if (initialSettings) setPubSettings(initialSettings);
+  }, [initialSettings]);
+
+  const handleTogglePublish = useCallback(async () => {
+    const token = getStoredToken();
+    if (!token) return;
+    setPublishing(true);
+    try {
+      const newPublic = !pubSettings?.is_public;
+      const result = await publishPortfolio(token, newPublic);
+      setPubSettings((prev) => prev
+        ? { ...prev, is_public: result.is_public, share_token: result.share_token }
+        : null,
+      );
+    } catch {
+      // silently fail
+    } finally {
+      setPublishing(false);
+    }
+  }, [pubSettings?.is_public]);
+
+  const handleCopyLink = useCallback(() => {
+    if (!pubSettings?.share_token) return;
+    const url = `${window.location.origin}/p?token=${pubSettings.share_token}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, [pubSettings?.share_token]);
 
   const toggleSection = useCallback((key: keyof SectionVisibility) => {
     setVisibility((current) => ({ ...current, [key]: !current[key] }));

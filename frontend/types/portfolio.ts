@@ -93,3 +93,44 @@ export interface PortfolioRefreshResponse {
   total_size_bytes: number;
   dedup_report?: DedupReport | null;
 }
+
+export interface PortfolioSettings {
+  is_public: boolean;
+  share_token: string | null;
+  display_name: string | null;
+  bio: string | null;
+  show_heatmap: boolean;
+  show_skills_timeline: boolean;
+  show_top_projects: boolean;
+  show_all_skills: boolean;
+  showcase_count: number;
+}
+
+export interface PublicPortfolioResponse {
+  profile: {
+    display_name?: string;
+    career_title?: string;
+    education?: string;
+    avatar_url?: string;
+    bio?: string;
+  };
+  settings: {
+    show_heatmap: boolean;
+    show_skills_timeline: boolean;
+    show_top_projects: boolean;
+    show_all_skills: boolean;
+    showcase_count: number;
+  };
+  skills_timeline: SkillsTimelineItem[];
+  projects_timeline: TimelineItem[];
+  top_projects: {
+    project_name: string;
+    contribution_score?: number;
+    total_commits?: number;
+    user_commit_share?: number;
+    primary_contributor?: string;
+    languages?: string[];
+  }[];
+  heatmap_data: { period: string; commits: number }[];
+  all_skills: string[];
+}

@@ -6,6 +6,8 @@ import type {
   PortfolioGenerateResponse,
   PortfolioChronology,
   PortfolioRefreshResponse,
+  PortfolioSettings,
+  PublicPortfolioResponse,
 } from "@/types/portfolio";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
@@ -137,6 +139,69 @@ export async function getPortfolioChronology(token: string): Promise<PortfolioCh
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(extractError(error, "Failed to fetch portfolio chronology"));
+  }
+  return response.json();
+}
+
+// ── Portfolio Settings ──────────────────────────────────────────────────
+
+export async function getPortfolioSettings(token: string): Promise<PortfolioSettings> {
+  const response = await fetch(`${API_BASE_URL}/api/portfolio/settings`, {
+    method: "GET",
+    headers: authHeaders(token),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(extractError(error, "Failed to fetch portfolio settings"));
+  }
+  return response.json();
+}
+
+export async function updatePortfolioSettings(
+  token: string,
+  settings: Partial<PortfolioSettings>,
+): Promise<PortfolioSettings> {
+  const response = await fetch(`${API_BASE_URL}/api/portfolio/settings`, {
+    method: "PATCH",
+    headers: authHeaders(token),
+    body: JSON.stringify(settings),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(extractError(error, "Failed to update portfolio settings"));
+  }
+  return response.json();
+}
+
+export async function publishPortfolio(
+  token: string,
+  isPublic: boolean,
+): Promise<{ is_public: boolean; share_token: string | null }> {
+  const response = await fetch(`${API_BASE_URL}/api/portfolio/settings/publish`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ is_public: isPublic }),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(extractError(error, "Failed to publish portfolio"));
+  }
+  return response.json();
+}
+
+// ── Public Portfolio (no auth) ──────────────────────────────────────────
+
+export async function getPublicPortfolio(shareToken: string): Promise<PublicPortfolioResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/public/portfolio/${shareToken}`, {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error("Portfolio not found or not published.");
+    }
+    const error = await response.json().catch(() => ({}));
+    throw new Error(extractError(error, "Failed to load public portfolio"));
   }
   return response.json();
 }

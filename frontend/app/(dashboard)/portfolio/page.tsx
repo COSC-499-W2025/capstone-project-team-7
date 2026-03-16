@@ -4,12 +4,10 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Plus,
   Loader2,
-  Briefcase,
   Edit2,
   Trash2,
   RefreshCw,
   Sparkles,
-  Calendar,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,6 +38,7 @@ import {
   deletePortfolioItem,
   generatePortfolioItem,
   getPortfolioChronology,
+  getPortfolioSettings,
   refreshPortfolio,
 } from "@/lib/api/portfolio";
 import { getProjects, getSkills } from "@/lib/api/projects";
@@ -47,11 +46,14 @@ import type {
   PortfolioItem,
   PortfolioChronology,
   PortfolioRefreshResponse,
+  PortfolioSettings,
   TimelineItem,
 } from "@/types/portfolio";
 import type { ProjectMetadata } from "@/types/project";
 import type { UserProfile } from "@/lib/api.types";
 import { PortfolioOverview } from "@/components/portfolio/portfolio-overview";
+import { LoadingState } from "@/components/ui/loading-state";
+import { EmptyState } from "@/components/ui/empty-state";
 
 interface FormState {
   title: string;
@@ -96,6 +98,7 @@ export default function PortfolioPage() {
   const [skills, setSkills] = useState<string[]>([]);
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [projects, setProjects] = useState<ProjectMetadata[]>([]);
+  const [portfolioSettings, setPortfolioSettings] = useState<PortfolioSettings | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -123,13 +126,14 @@ export default function PortfolioPage() {
 
     try {
       setError(null);
-      const [profileRes, itemsData, skillsData, chronologyData, projectsData] =
+      const [profileRes, itemsData, skillsData, chronologyData, projectsData, settingsData] =
         await Promise.allSettled([
           api.profile.get(token),
           listPortfolioItems(token),
           getSkills(token),
           getPortfolioChronology(token),
           getProjects(token),
+          getPortfolioSettings(token),
         ]);
 
       if (profileRes.status === "fulfilled" && profileRes.value.ok) {
