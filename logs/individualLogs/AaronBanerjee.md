@@ -1,5 +1,44 @@
 # Aaron Banerjee (@aaronbanerjee123)
 
+
+## Term 2 - Week 10 (March 9th - March 15th)
+## One Page Resume Backend API Routes (PR#409) [(PR#409)](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/409)
+Implemented the complete backend for the Resume Builder feature: Supabase migration creating the user_resumes table with RLS policies, a UserResumeService for CRUD operations, and REST endpoints at /api/user-resumes (list, create, get, update, delete, duplicate). After review, replaced fetch-all-and-slice pagination with proper count=exact + .range() queries, extracted a shared response helper to remove duplication across route handlers, added the missing migration file, and wrote unit tests.
+
+Challenges & Learning:
+Learned to use Supabase's server-side range queries for efficient pagination. Debugging RLS policies required testing with multiple auth tokens to verify per-user isolation.
+
+Impact:
+Delivered the full data layer for the Resume Builder, with user data isolated at the database level via RLS.
+
+## Issues Resolved:[#408](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/408)
+
+
+## One Page Resume Frontend Types & API Client (PR#414) [(PR#414)](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/414)
+Added TypeScript types matching the backend schema (frontend/types/user-resume.ts), API client functions for all CRUD operations (frontend/lib/api/user-resume.ts), and LaTeX template generators for Jake, Modern, Classic, Minimal, and Custom templates (frontend/lib/latex-templates.ts). Fixed two blocking LaTeX bugs: rewrote escapeLatex as a single-pass regex replacer to prevent the replacement chain from corrupting its own output, and fixed URL escaping inside \href{} so URLs are passed unescaped to hyperref. Also corrected the NEXT_PUBLIC_API_URL env var and migrated the API client to use the shared request<T> wrapper.
+
+Challenges & Learning:
+The escapeLatex bug was subtle — sequential replacement corrupts characters introduced by earlier steps. A single-pass regex replacer visits each character once, solving it cleanly. Also learned that \href{} URLs must not be pre-escaped as hyperref handles them internally.
+
+Impact:
+Provides a type-safe API and working LaTeX generation layer for all Resume Builder UI work.
+
+# Issues Resolved:[#246](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/246)
+
+
+## One Page Resume Frontend UI Pages (PR#415)  [(PR#415)](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/415)
+Implemented the full Resume Builder UI: a list page (/resume-builder) and an editor page with tabbed form inputs, live preview, 1.5s debounced auto-save, template selection, and LaTeX mode. Added a sidebar nav link and a CommaSeparatedInput component that preserves commas while typing. After review, fixed three issues: reverted the removal of output: "export" (used useSearchParams instead of a dynamic route to avoid breaking static/Electron deployment), added resumeName and template to the auto-save payload so those changes aren't silently lost, and moved bullet filtering from onChange to onBlur so pressing Enter doesn't delete the new empty line mid-type.
+
+Challenges & Learning:
+Removing output: "export" silently switches the app to server-rendered mode, breaking Electron and static hosting — a single config line with app-wide impact. The phantom-save bug required auditing which state triggered saves and ensuring the payload included all dirty fields.
+
+Impact:
+Delivers the complete end-to-end Resume Builder to users across both the web and Electron desktop app.
+
+# Issues Resolved:[#246](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/246)
+
+
+
 ## Term 2 - Week 9 (March 2nd - March 8th)
 
 ## Portfolio Page Styling Fix [(PR#391)](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/391)
