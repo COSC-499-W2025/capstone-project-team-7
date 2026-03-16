@@ -5,6 +5,7 @@ import { contextBridge, ipcRenderer } from "electron";
 let IPC_CHANNELS = {
   PING: "desktop:ping",
   OPEN_FILE: "desktop:openFile",
+  READ_FILE: "desktop:readFile",
   SELECT_DIRECTORY: "desktop:selectDirectory",
   SAVE_SETTINGS: "desktop:saveSettings",
   LOAD_SETTINGS: "desktop:loadSettings",
@@ -24,6 +25,7 @@ try {
 contextBridge.exposeInMainWorld("desktop", {
   ping: () => ipcRenderer.invoke(IPC_CHANNELS.PING),
   openFile: (options?: Electron.OpenDialogOptions) => ipcRenderer.invoke(IPC_CHANNELS.OPEN_FILE, options),
+  readFile: (filePath: string) => ipcRenderer.invoke(IPC_CHANNELS.READ_FILE, filePath),
   selectDirectory: (options?: Electron.OpenDialogOptions) => ipcRenderer.invoke(IPC_CHANNELS.SELECT_DIRECTORY, options),
   saveSettings: (settings?: any) => ipcRenderer.invoke(IPC_CHANNELS.SAVE_SETTINGS, settings),
   loadSettings: () => ipcRenderer.invoke(IPC_CHANNELS.LOAD_SETTINGS),

@@ -1,6 +1,7 @@
 export const IPC_CHANNELS = {
   PING: "desktop:ping",
   OPEN_FILE: "desktop:openFile",
+  READ_FILE: "desktop:readFile",
   SELECT_DIRECTORY: "desktop:selectDirectory",
   SAVE_SETTINGS: "desktop:saveSettings",
   LOAD_SETTINGS: "desktop:loadSettings"

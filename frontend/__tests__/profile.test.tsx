@@ -25,6 +25,7 @@ vi.mock("@/lib/api", () => ({
       get: vi.fn(),
       update: vi.fn(),
       uploadAvatar: vi.fn(),
+      deleteAvatar: vi.fn(),
       changePassword: vi.fn(),
     },
   },
@@ -34,6 +35,7 @@ import { api } from "@/lib/api";
 
 const mockGet = api.profile.get as Mock;
 const mockUpdate = api.profile.update as Mock;
+const mockUploadAvatar = api.profile.uploadAvatar as Mock;
 const mockChangePassword = api.profile.changePassword as Mock;
 
 // Mock localStorage
@@ -78,9 +80,11 @@ beforeEach(() => {
   localStorageMock.clear();
   localStorageMock.setItem("access_token", "test-token");
   locationMock.href = "";
+  delete (window as Window & { desktop?: Window["desktop"] }).desktop;
 
   mockGet.mockResolvedValue({ ok: true, data: { ...MOCK_PROFILE } });
   mockUpdate.mockResolvedValue({ ok: true, data: { ...MOCK_PROFILE } });
+  mockUploadAvatar.mockResolvedValue({ ok: true, data: { avatar_url: "https://avatar.example.com/new.png" } });
   mockChangePassword.mockResolvedValue({ ok: true, data: { ok: true, message: "done" } });
 });
 
@@ -195,6 +199,32 @@ describe("ProfilePage", () => {
 
     // After removal, the Remove button should be gone
     expect(screen.queryByRole("button", { name: "Remove" })).not.toBeInTheDocument();
+  });
+
+  it("electron avatar selection uploads the picked file on save", async () => {
+    (window as Window & { desktop?: Window["desktop"] }).desktop = {
+      ping: vi.fn(),
+      openFile: vi.fn().mockResolvedValue(["/tmp/avatar.png"]),
+      readFile: vi.fn().mockResolvedValue({
+        name: "avatar.png",
+        type: "image/png",
+        size: 16,
+        data: btoa("desktop-avatar"),
+      }),
+      selectDirectory: vi.fn(),
+    };
+
+    await renderAndWait();
+
+    await userEvent.click(screen.getByRole("button", { name: "Change" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => {
+      expect(mockUploadAvatar).toHaveBeenCalledWith(
+        "test-token",
+        expect.objectContaining({ name: "avatar.png", type: "image/png" }),
+      );
+    });
   });
 
   it("password validation - mismatch error", async () => {
