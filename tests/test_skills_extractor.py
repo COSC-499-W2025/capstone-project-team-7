@@ -798,6 +798,43 @@ class TestTieredPatternDetection:
         assert skills["Error Handling"].highest_tier == TIER_BEGINNER
 
 
+class TestMLDataPatterns:
+    """Tests for ML & data science pattern detection."""
+
+    @pytest.fixture
+    def extractor(self):
+        return SkillsExtractor()
+
+    def test_pandas_detection(self, extractor):
+        code = "import pandas as pd\ndf = pd.DataFrame({'a': [1, 2]})\n"
+        skills = extractor.extract_skills(file_contents={"analysis.py": code})
+        assert "Data Analysis (pandas)" in skills
+        assert skills["Data Analysis (pandas)"].highest_tier == TIER_BEGINNER
+
+    def test_numpy_detection(self, extractor):
+        code = "import numpy as np\narr = np.array([1, 2, 3])\n"
+        skills = extractor.extract_skills(file_contents={"math.py": code})
+        assert "Numerical Computing (NumPy)" in skills
+
+    def test_sklearn_detection(self, extractor):
+        code = "from sklearn.model_selection import train_test_split\nX_train, X_test = train_test_split(X)\n"
+        skills = extractor.extract_skills(file_contents={"ml.py": code})
+        assert "Machine Learning (scikit-learn)" in skills
+        assert skills["Machine Learning (scikit-learn)"].highest_tier == TIER_INTERMEDIATE
+
+    def test_pytorch_detection(self, extractor):
+        code = "import torch\nfrom torch import nn\nclass Net(nn.Module):\n    pass\n"
+        skills = extractor.extract_skills(file_contents={"model.py": code})
+        assert "Deep Learning (PyTorch)" in skills
+        assert skills["Deep Learning (PyTorch)"].highest_tier == TIER_ADVANCED
+
+    def test_no_false_positive_on_unrelated_code(self, extractor):
+        code = "x = 1\ny = 2\nprint(x + y)\n"
+        skills = extractor.extract_skills(file_contents={"simple.py": code})
+        ml_skills = [s for s in skills if "pandas" in s or "NumPy" in s or "scikit" in s]
+        assert len(ml_skills) == 0
+
+
 class TestTightenedPatterns:
     """Regression tests for tightened regex patterns to reduce false positives."""
 
