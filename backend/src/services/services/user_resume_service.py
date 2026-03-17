@@ -113,6 +113,9 @@ class UserResumeService:
         self.client: Any = None
         self._requires_user_token_client = False
 
+        # supabase-py ships loose/dynamic typing for create_client and we also
+        # set _create_client = None in the ImportError path above. Casting to
+        # Any lets us validate at runtime (None-check) and still call it safely.
         client_factory = cast(Any, _create_client)
         if client_factory is None:
             raise UserResumeServiceError("Supabase client not available. Install supabase-py.")
