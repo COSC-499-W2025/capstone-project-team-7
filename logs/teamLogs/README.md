@@ -106,6 +106,12 @@ I also fixed the broken logout on the Profile page — the page was using an inc
 
 On the review side, I reviewed 8 PRs: Jacob's [#424](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/424) (portfolio UI redesign — approved with suggestions on component size and CSS approach) and Samarth's [#423](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/423) (project rankings — approved). For Aaron's PRs, I requested changes on [#415](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/415) (deployment-breaking config and auto-save bugs) and [#414](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/414) (LaTeX `escapeLatex` corruption bug), both approved after fixes; and approved [#409](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/409) (resume API routes). For Joaquin's PRs, I approved [#404](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/404) (AI analysis tab), requested changes on [#399](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/399) (logout endpoint auth requirement) and [#396](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/396) (import fallback and missing auth token), both approved after fixes.
 
+**Samarth**:
+
+This week I focused on replacing manual project ordering with persisted ranking preferences on the Projects page. In **[PR #423 – "add project rankings based on user contribution"](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/423)**, I introduced a saved `sort_mode` preference (`contribution` or `recency`) across the API, service, and frontend layers so ranking behavior is consistent and persists between sessions. I removed manual reorder controls, added a ranking mode dropdown, and ensured changing modes immediately saves and reapplies sorting. I also updated backend/frontend tests and added a migration for `user_selections.sort_mode` (default `recency`) with validation constraints.
+
+On the revewing side, I reviewed Om's [PR #419](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/419). The implementation cleanly consolidates the portfolio view into a practical Overview tab with profile context, activity heatmap, and skills timeline. The feature wiring is solid, the UI is polished, and the changes requested by Vlad were addressed. I tested the portfolio page locally and it ran smoothly with no errors; this looked good to merge.
+
 ### What went well
 - Finishing up on the last features for our app
 

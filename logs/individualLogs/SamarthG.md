@@ -1,5 +1,54 @@
 # Samarth Grover (@Samarth-G)
 
+## Week 24: March 9 - March 15
+
+This week I worked on replacing manual project ordering with persisted project ranking preferences on the Projects page. The work shipped in **[PR 407 add project rankings based on user contribution](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/423)**.
+
+The main change was introducing a saved `sort_mode` preference (`contribution` or `recency`) across the selection API and service layer so ranking behavior is consistent and persists across sessions. I added support for `sort_mode` in selection request/response models and save/get logic, with `recency` as the fallback when no preference is present.
+
+On the frontend Projects UI, I removed the old manual reorder controls and replaced them with a ranking mode dropdown. Selecting a mode now immediately saves the preference and re-applies ranking so users get a stable, predictable project ordering without redoing it each time.
+
+I also updated backend and frontend tests to cover `sort_mode` persistence, defaults, and expected ranking behavior. Finally, I added a database migration introducing `user_selections.sort_mode` with a default of `recency` and a CHECK constraint to enforce valid values.
+
+### Reflection
+
+**What went well:**
+The end-to-end flow from DB migration to API contract to UI behavior came together cleanly, and replacing manual reordering simplified the user experience a lot. Test updates helped verify persistence and default behavior quickly.
+
+**What didn’t go well:**
+Coordinating model, migration, and UI changes at the same time required careful syncing to avoid mismatch issues. There were also a few edge cases around missing preferences that needed extra handling before everything behaved consistently.
+
+### Next Steps
+
+- Work on improving AI pipeline and add caching for repeated calls
+- Consider adding additional ranking modes/filters in the future
+
+![Week 24 Image](./assets/SamarthG-W24.png)
+
+## Week 20 - 22: February 9 - March 1st
+
+This week I implemented both JSON and HTML export actions in the Project page's Tools & Export tab, replacing placeholder behavior with working report downloads. The work shipped through **[PR 361 add export json report tab action](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/361)** and **[PR 363 implement export html report tab action](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/363)**.
+
+For PR 361, I added the `handleExportJson()` flow in `frontend/app/(dashboard)/project/page.tsx` to build the export payload, trigger file download, and surface clear UI states (`idle`, `exporting`, `success`, `error`) so users get immediate feedback while exporting.
+
+For PR 363, I implemented the export HTML tab action to generate and download an HTML project report, replacing the previous placeholder-only button in the Export section. This completed the export experience so users can now download project reports in multiple formats directly from the same tab.
+
+Together, these changes improved usability of the Project page by turning export controls into reliable, end-to-end actions with better status visibility and fewer manual steps for users.
+
+### Reflection
+
+**What went well:**
+Implementing the two export actions back-to-back made it easier to reuse patterns for payload construction, download handling, and visual status updates. The tab action flow stayed consistent, which helped keep the UI behavior predictable across formats.
+
+**What didn’t go well:**
+Handling export states cleanly across multiple outcomes required extra care to avoid confusing UI feedback during quick repeated clicks or failed export attempts.
+
+### Next Steps
+
+- Work on adding sorting feature for project page, recency vs collabaration score
+- Add tests around export tab actions and state transitions for JSON/HTML flows
+
+
 ## Week 18 & 19: January 26 - February 8
 This week I was focused on implementing the **New Scan Workflow** feature for the frontend Electron dashboard. The main work landed through **[PR 279 run new scan implementation](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/286)**, adding a complete scan workflow that lets users select a local folder, monitor scan progress, and view results; all integrated with the Electron desktop app for native file system access.
 
@@ -24,6 +73,30 @@ The scan dialog component grew fairly large (~245 lines) handling multiple state
 - Adding backend support for Code Analysis page
 
 ## Week 17: January 19 - January 25
+This week I implemented **user role management per project** with an inference-first approach. The main work landed through **[PR 217 implement user role per project](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/247)** on branch `217-implement-user-role-per-project`.
+
+The core change was introducing project-level role read/update support with new endpoints: `GET /api/projects/{project_id}/role` and `PUT /api/projects/{project_id}/role`. These endpoints validate against allowed role values (`author`, `contributor`, `lead`, `maintainer`, `reviewer`) and persist manual overrides in the `project_overrides` table.
+
+I added `infer_role_from_contribution()` in `projects_service.py` to automatically infer a user's role from contribution metrics. The current rule assigns `author` when commit share is >=80% and `contributor` otherwise, with fallback logic that uses `contribution_metrics` when `contribution_ranking` is unavailable. This keeps role assignment consistent even when one ranking source is missing.
+
+For the TUI side, I built a new `RoleEditScreen` modal with a `RadioSet` for manual role selection and role descriptions (for example, "Author (>=80% of commits)"). I also integrated it into `textual_app.py` for navigation and event handling so users can adjust inferred roles when needed.
+
+On the frontend typing layer, I added `ProjectRoleValue` and updated `api.types.ts` so role values remain type-safe across API calls and UI state.
+
+I also added a comprehensive test suite (10+ tests) covering both inference and API behavior, including threshold edge cases and fallback scenarios, primarily in `test_role_inference.py` and `test_project_api.py`.
+
+### Reflection
+
+**What went well:**
+The inference-first model reduced manual input while still giving users control through overrides, which made the feature both practical and flexible. Adding strict role validation and typed frontend role values also helped keep the contract stable across backend, CLI, and frontend layers.
+
+**What didn’t go well:**
+Getting inference behavior to stay predictable across missing or partial contribution data took extra iteration, especially around fallback handling. There were also a few threshold-focused test cases that needed refinement to ensure exact boundary behavior at the 80% cutoff.
+
+### Next Steps
+
+- Expand role inference inputs beyond commit share (for example reviews/issues) to improve accuracy
+- Surface role override history or audit visibility for better transparency
 
 
 ## Week 16: January 12 - January 18
