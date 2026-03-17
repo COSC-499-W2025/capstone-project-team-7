@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
 
 from api.dependencies import AuthContext, get_auth_context
@@ -97,6 +97,14 @@ class UserResumeUpdateRequest(BaseModel):
 class UserResumeDuplicateRequest(BaseModel):
     """Request to duplicate a resume."""
     new_name: Optional[str] = None
+
+
+class UserResumeAddItemsRequest(BaseModel):
+    item_ids: List[str] = Field(default_factory=list)
+
+
+class UserResumeExportPdfRequest(BaseModel):
+    latex_content: Optional[str] = None
 
 
 class TemplatesListResponse(BaseModel):
@@ -433,3 +441,137 @@ def duplicate_user_resume(
         ) from exc
 
     return _build_resume_record(record)
+
+
+@router.post(
+    "/{resume_id}/add-items",
+    response_model=UserResumeRecord,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Resume not found"},
+        422: {"model": ErrorResponse, "description": "Validation error"},
+        500: {"model": ErrorResponse, "description": "Resume update failed"},
+    },
+)
+def add_items_to_user_resume(
+    resume_id: str,
+    payload: UserResumeAddItemsRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    service: UserResumeService = Depends(get_user_resume_service),
+) -> UserResumeRecord:
+    if not payload.item_ids:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "invalid_payload", "message": "item_ids is required."},
+        )
+
+    try:
+        service.apply_access_token(auth.access_token)
+        record = service.add_resume_items_to_resume(
+            auth.user_id,
+            resume_id,
+            item_ids=payload.item_ids,
+        )
+    except UserResumeServiceError as exc:
+        if "item_ids" in str(exc):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"code": "invalid_payload", "message": str(exc)},
+            ) from exc
+        logger.exception("Failed to add resume items to user resume")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "resume_update_error", "message": str(exc)},
+        ) from exc
+
+    if not record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "resume_not_found", "message": "Resume not found."},
+        )
+
+    return _build_resume_record(record)
+
+
+@router.post(
+    "/{resume_id}/detect-skills",
+    response_model=UserResumeRecord,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Resume not found"},
+        500: {"model": ErrorResponse, "description": "Resume update failed"},
+    },
+)
+def detect_skills_for_user_resume(
+    resume_id: str,
+    auth: AuthContext = Depends(get_auth_context),
+    service: UserResumeService = Depends(get_user_resume_service),
+) -> UserResumeRecord:
+    try:
+        service.apply_access_token(auth.access_token)
+        record = service.detect_skills_from_resume_projects(auth.user_id, resume_id)
+    except UserResumeServiceError as exc:
+        logger.exception("Failed to auto-detect resume skills")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "resume_update_error", "message": str(exc)},
+        ) from exc
+
+    if not record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "resume_not_found", "message": "Resume not found."},
+        )
+
+    return _build_resume_record(record)
+
+
+@router.post(
+    "/{resume_id}/pdf",
+    response_class=Response,
+    responses={
+        200: {"content": {"application/pdf": {}}},
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Resume not found"},
+        422: {"model": ErrorResponse, "description": "Validation error"},
+        500: {"model": ErrorResponse, "description": "PDF export failed"},
+    },
+)
+def export_user_resume_pdf(
+    resume_id: str,
+    payload: UserResumeExportPdfRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    service: UserResumeService = Depends(get_user_resume_service),
+) -> Response:
+    try:
+        service.apply_access_token(auth.access_token)
+        pdf_bytes = service.render_pdf_bytes(
+            auth.user_id,
+            resume_id,
+            latex_content=payload.latex_content,
+        )
+    except UserResumeServiceError as exc:
+        lower = str(exc).lower()
+        if "not found" in lower:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "resume_not_found", "message": str(exc)},
+            ) from exc
+        if "no latex content" in lower:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"code": "invalid_payload", "message": str(exc)},
+            ) from exc
+        logger.exception("Failed to export user resume PDF")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "resume_pdf_export_error", "message": str(exc)},
+        ) from exc
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{resume_id}.pdf"',
+        },
+    )

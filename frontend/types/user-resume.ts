@@ -53,6 +53,10 @@ export interface UserResumeDuplicateRequest {
   new_name?: string | null;
 }
 
+export interface UserResumeAddItemsRequest {
+  item_ids: string[];
+}
+
 export interface TemplatesListResponse {
   templates: ResumeTemplateMeta[];
 }
@@ -96,6 +100,8 @@ export interface ResumeExperienceEntry {
 export interface ResumeProjectEntry {
   id: string;
   name: string;
+  role?: string;
+  company?: string;
   technologies?: string;
   url?: string;
   start_date?: string;

@@ -1,6 +1,6 @@
 """Tests for User Resume API routes."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
@@ -371,6 +371,114 @@ def test_duplicate_resume_not_found(override_service):
     
     response = client.post("/api/user-resumes/nonexistent/duplicate", json={})
     assert response.status_code == 404
+
+
+# ============================================================================
+# Add Items + Detect Skills Tests
+# ============================================================================
+
+
+def test_add_items_to_resume_success(override_service):
+    override_service.add_resume_items_to_resume.return_value = {
+        "id": "resume-1",
+        "name": "My Resume",
+        "template": "jake",
+        "is_latex_mode": False,
+        "metadata": {"last_added_items": 2},
+        "latex_content": None,
+        "structured_data": {
+            "projects": [
+                {
+                    "id": "proj-1",
+                    "name": "Capstone Project",
+                    "bullets": ["Built API"],
+                    "resume_item_id": "item-1",
+                }
+            ]
+        },
+        "created_at": "2026-03-11T10:00:00Z",
+        "updated_at": "2026-03-11T10:00:00Z",
+    }
+
+    response = client.post(
+        "/api/user-resumes/resume-1/add-items",
+        json={"item_ids": ["item-1", "item-2"]},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["id"] == "resume-1"
+    assert len(payload["structured_data"]["projects"]) == 1
+    override_service.add_resume_items_to_resume.assert_called_once_with(
+        "user-123",
+        "resume-1",
+        item_ids=["item-1", "item-2"],
+    )
+
+
+def test_add_items_to_resume_rejects_empty_item_ids(override_service):
+    response = client.post(
+        "/api/user-resumes/resume-1/add-items",
+        json={"item_ids": []},
+    )
+
+    assert response.status_code == 422
+    payload = response.json()
+    assert payload["detail"]["code"] == "invalid_payload"
+
+
+def test_detect_skills_for_resume_success(override_service):
+    override_service.detect_skills_from_resume_projects.return_value = {
+        "id": "resume-1",
+        "name": "My Resume",
+        "template": "jake",
+        "is_latex_mode": False,
+        "metadata": {"auto_detected_skills": True},
+        "latex_content": None,
+        "structured_data": {
+            "skills": {
+                "languages": ["Python", "TypeScript"],
+                "frameworks": ["React", "FastAPI"],
+                "developer_tools": ["Git"],
+                "libraries": ["Pandas"],
+            }
+        },
+        "created_at": "2026-03-11T10:00:00Z",
+        "updated_at": "2026-03-11T10:00:00Z",
+    }
+
+    response = client.post("/api/user-resumes/resume-1/detect-skills")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["structured_data"]["skills"]["languages"] == ["Python", "TypeScript"]
+    override_service.detect_skills_from_resume_projects.assert_called_once_with("user-123", "resume-1")
+
+
+def test_export_resume_pdf_success(override_service):
+    override_service.render_pdf_bytes.return_value = b"%PDF-1.4\nmock"
+
+    response = client.post(
+        "/api/user-resumes/resume-1/pdf",
+        json={"latex_content": "\\documentclass{article}\\begin{document}x\\end{document}"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert "attachment; filename=\"resume-1.pdf\"" in response.headers["content-disposition"]
+    assert response.content.startswith(b"%PDF")
+
+
+def test_export_resume_pdf_rejects_missing_latex(override_service):
+    override_service.render_pdf_bytes.side_effect = UserResumeServiceError(
+        "No LaTeX content available for PDF export."
+    )
+
+    response = client.post("/api/user-resumes/resume-1/pdf", json={})
+
+    assert response.status_code == 422
+    payload = response.json()
+    assert payload["detail"]["code"] == "invalid_payload"
 
 
 # ============================================================================
