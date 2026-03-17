@@ -27,6 +27,8 @@ TIER_BEGINNER = "beginner"
 TIER_INTERMEDIATE = "intermediate"
 TIER_ADVANCED = "advanced"
 
+VALID_TIERS = {TIER_BEGINNER, TIER_INTERMEDIATE, TIER_ADVANCED}
+
 # Score floor for each tier — the highest tier reached sets the minimum proficiency
 TIER_SCORES = {
     TIER_BEGINNER: 0.3,
@@ -46,6 +48,10 @@ class SkillEvidence:
     confidence: float = 1.0  # 0.0 to 1.0
     timestamp: Optional[str] = None  # ISO format timestamp when skill was used
     tier: str = TIER_BEGINNER  # complexity tier of this evidence
+
+    def __post_init__(self):
+        if self.tier not in VALID_TIERS:
+            raise ValueError(f"Invalid tier '{self.tier}'. Must be one of {VALID_TIERS}")
 
     def __hash__(self):
         return hash((self.skill_name, self.file_path, self.line_number))
@@ -316,6 +322,10 @@ class SkillsExtractor:
         }
 
         # Framework Patterns
+        # No tier mapping for frameworks — detecting framework usage (e.g. `import React`)
+        # is inherently beginner-level; distinguishing intermediate/advanced usage would
+        # require semantic analysis (hooks vs class components, etc.) which is out of scope
+        # for regex-based detection.  All framework matches default to TIER_BEGINNER.
         self.framework_patterns = {
             'react': {
                 'javascript': [r'import.*from\s+["\']react["\']', r'useState', r'useEffect', r'React\.Component', r'\.jsx'],

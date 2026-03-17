@@ -391,6 +391,11 @@ class HashMapProcessor(DataProcessor):
         assert "Abstraction" in skill_names or "Encapsulation" in skill_names
         assert any("Hash" in name for name in skill_names)
     
+    def test_invalid_tier_raises_error(self):
+        """Test that an invalid tier value raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid tier"):
+            SkillEvidence("Skill", "test", "desc", "f.py", tier="advnaced")
+
     def test_skill_evidence(self):
         """Test SkillEvidence creation and properties."""
         evidence = SkillEvidence(
@@ -401,7 +406,7 @@ class HashMapProcessor(DataProcessor):
             line_number=42,
             confidence=0.85
         )
-        
+
         assert evidence.skill_name == "Test Skill"
         assert evidence.evidence_type == "code_pattern"
         assert evidence.file_path == "test.py"
