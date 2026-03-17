@@ -21,14 +21,14 @@ import type {
   SkillTier,
 } from "@/types/project";
 
-const TIER_CONFIG: Record<SkillTier, { label: string; color: string; bg: string }> = {
-  beginner: { label: "Beginner", color: "bg-gray-400", bg: "bg-gray-100" },
-  intermediate: { label: "Intermediate", color: "bg-blue-500", bg: "bg-blue-50" },
-  advanced: { label: "Advanced", color: "bg-emerald-500", bg: "bg-emerald-50" },
+const TIER_CONFIG: Record<SkillTier, { label: string; color: string }> = {
+  beginner: { label: "Beginner", color: "bg-gray-400" },
+  intermediate: { label: "Intermediate", color: "bg-blue-500" },
+  advanced: { label: "Advanced", color: "bg-emerald-500" },
 };
 
 function TierIndicator({ tier, breakdown }: { tier?: SkillTier; breakdown?: { beginner: number; intermediate: number; advanced: number } }) {
-  const currentTier = tier ?? "beginner";
+  const currentTier = tier && tier in TIER_CONFIG ? tier : "beginner";
   const tiers: SkillTier[] = ["beginner", "intermediate", "advanced"];
   const reachedIndex = tiers.indexOf(currentTier);
 
