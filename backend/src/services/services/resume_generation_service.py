@@ -301,48 +301,59 @@ class ResumeGenerationService:
         skills_text = ", ".join(skill_highlights[:5]) if skill_highlights else "Not detected"
         summary_fact = project_summary or "Not provided"
         prompt = f"""
-You are a resume-rewriter that converts scanned project data into a refined Jake-resume style entry.
+You are a senior software engineer writing resume bullets. Convert project scan data into polished, professional accomplishments.
 
-Follow this exact output format:
-
+OUTPUT FORMAT:
 {project_name} — {start_date} – {end_date}
-Overview: One concise sentence explaining what the project accomplishes.
+Overview: One sentence describing what the project does and its key technical approach.
 - Bullet 1
 - Bullet 2
 - Bullet 3 (optional)
 - Bullet 4 (optional)
 
-Strict Rules:
-- 2–4 bullets total.
-- Each bullet is one line, ~90 characters max.
-- Use past-tense action verbs (optimized, implemented, integrated, improved).
-- Focus bullets on impact: performance, reliability, architecture, UX, stability,
-  async design, testing, data handling, developer tooling, integrations, or system design improvements.
-- You MUST translate raw scan data into senior-sounding, recruiter-friendly accomplishments. Do not repeat raw commit messages or file paths.
-- Do not explain everything the project does—summarize the user's contributions.
-- Include specific technologies ONLY when they add clarity (Next.js, Node, Supabase, Prisma, Vercel, Textual, Python, etc.)
-- Avoid filler language, run-on sentences, or generic claims.
-- Tone: concise, technical, results-oriented.
-- Output ONLY the formatted Markdown block. No commentary.
+REQUIREMENTS:
+1. QUANTIFY WHEN POSSIBLE: Include metrics where the data supports them. Good metrics include:
+   - Latency/performance: "0.78s median latency", "40% faster", "sub-200ms response"
+   - Scale: "30+ users", "1000+ requests/day", "15 API endpoints"
+   - Coverage/quality: "85% test coverage", "13-check validation gate", "3-retry queue"
+   - Codebase: "12 modules", "50+ components", "8 integrated services"
+   If data doesn't support specific metrics, focus on technical accomplishments instead.
 
-Your job is to take messy, unstructured scan data and produce a polished, high-clarity resume item that reads like a senior engineer's contributions.
+2. STRUCTURE: Action verb + What you built + How/with what + Impact or result
+   - Good: "Architected a modular Manifest V3 system with background/content scripts, secure API communication, and local storage, achieving Chrome Web Store approval."
+   - Good: "Built a real-time data pipeline using Redis streams and async workers for reliable message processing."
+   - Bad: "Built a Chrome extension that shows grades." (no technical detail)
 
-Project facts (context only, do not echo verbatim):
-- Project summary clues: {summary_fact}
-- Project profile: {project_desc}
-- Stack/Languages: {lang_block}
-- Files processed: {files_processed}{filter_txt}; code files: ~{code_files}
-- Notable integrations/plugins: {integrations_text}
-- Highlighted skills: {skills_text}
-- Code quality hints: {code_quality}
+3. TECHNICAL DENSITY: Pack specific technologies, patterns, and architectural decisions into each bullet.
+
+4. NO FILLER: Eliminate phrases like "making skills tangible", "emphasizing production readiness", "connecting architecture to user value".
+
+5. BULLET LENGTH: 120-180 characters ideal. Dense with information, not padding.
+
+EXAMPLE BULLETS (emulate this style):
+- "Built a WhatsApp-based receipt processing system integrating OpenAI Vision, Google Drive, and queued job workflows, delivering structured confirmations with 0.78s median end-to-end latency."
+- "Engineered a modular CLI tool in Go with Git pre-commit hook integration, supporting Conventional Commits and YAML configuration for flexible developer workflows."
+- "Automated quality assurance with unit tests, linting, GitHub Actions CI/CD pipelines, and semantic-release for reliable versioned releases."
+- "Strengthened production reliability through retry queues, dead-letter storage, health checks, and pre-deploy validation gates."
+
+PROJECT DATA (use to generate technical details and metrics where available):
+- Summary: {summary_fact}
+- Profile: {project_desc}
+- Stack: {lang_block}
+- Files: {files_processed}{filter_txt}; code files: ~{code_files}
+- Integrations: {integrations_text}
+- Skills: {skills_text}
+- Quality metrics: {code_quality}
 - Git signals: {git_signals}
-- Contribution metrics: {contrib}
+- Contribution data: {contrib}
 
-Include:
-- A short 1-2 sentence project overview describing what the project is and what the program actually does.
-- Bullets that emphasize YOUR contributions and impact.
+INFERENCE GUIDANCE:
+- If files_processed > 50: can mention "50+ files" or "large-scale codebase"
+- If multiple integrations: can count them ("integrated 5 external services")
+- If contribution_metrics shows commits: can use for activity ("200+ commits")
+- If no metrics available: focus on technical approach and architecture instead
 
-Write the Markdown block only, no extra text.
+Output ONLY the formatted entry. No commentary, no explanations.
 
 """
         return "\n".join(line.rstrip() for line in prompt.strip().splitlines())
@@ -382,12 +393,12 @@ Write the Markdown block only, no extra text.
 
         if not bullets:
             bullets.append(
-                self._trim("Documented the project narrative, stack, and differentiators for review-ready summaries.")
+                self._trim("Designed and implemented core application features with modular architecture and clean code practices.")
             )
 
         if len(bullets) == 1:
             bullets.append(
-                self._trim("Connected architecture choices to user value, emphasizing integrations over raw counts.")
+                self._trim("Delivered production-ready functionality with comprehensive error handling and user-focused design.")
             )
 
         if not meaningful_signals:
@@ -442,36 +453,45 @@ Write the Markdown block only, no extra text.
         integration_text = self._format_integrations(integration_signals)
         if not stack and not integration_text:
             return None
+        integration_count = len(integration_signals) if integration_signals else 0
         if stack and integration_text:
             return self._trim(
-                f"Built and shipped with {stack} plus {integration_text}, applying the tooling directly to project features."
+                f"Architected a {stack} application integrating {integration_count} external services ({integration_text}), implementing end-to-end feature workflows."
             )
         if stack:
             primary = project_profile.get("primary_type")
-            descriptor = f"{stack} ({primary})" if primary and primary not in stack else stack
-            return self._trim(f"Built on {descriptor}, using the stack to deliver core workflows instead of boilerplate.")
-        return self._trim(f"Implemented with key integrations ({integration_text}) to ship features using real tools.")
+            descriptor = f"{stack} {primary}" if primary and primary not in stack else stack
+            return self._trim(f"Engineered a full-stack {descriptor} system with modular architecture and production-ready patterns.")
+        return self._trim(f"Integrated {integration_count} services ({integration_text}) with secure API communication and error handling.")
 
     def _skills_bullet(self, skill_highlights: List[str]) -> Optional[str]:
         if not skill_highlights:
             return None
         listed = ", ".join(skill_highlights[:3])
-        return self._trim(f"Applied {listed} while building the solution, making the skills tangible to reviewers.")
+        skill_count = len(skill_highlights)
+        return self._trim(f"Demonstrated proficiency in {listed} across {skill_count}+ technical domains through hands-on implementation.")
 
     def _quality_bullet(self, code_summary: Dict[str, Any]) -> Optional[str]:
         focus: List[str] = []
+        metrics: List[str] = []
         if code_summary.get("avg_maintainability") is not None:
-            focus.append("maintainability reviews")
+            score = code_summary.get("avg_maintainability")
+            metrics.append(f"{score:.0f}% maintainability score" if isinstance(score, (int, float)) else "maintainability analysis")
+            focus.append("code quality standards")
         if code_summary.get("avg_complexity") is not None:
-            focus.append("complexity coaching")
+            focus.append("complexity optimization")
         if code_summary.get("security_issues"):
+            count = code_summary.get("security_issues")
+            metrics.append(f"{count} security issue{'s' if count != 1 else ''} addressed")
             focus.append("security hardening")
         if code_summary.get("todos"):
-            focus.append("actionable backlog triage")
+            count = code_summary.get("todos")
+            metrics.append(f"{count}-item backlog")
         if not focus:
             return None
+        metric_text = f" ({', '.join(metrics)})" if metrics else ""
         phrase = self._join_with_and(self._dedupe_preserve_order(focus))
-        return self._trim(f"Reinforced engineering rigor via {phrase}, emphasizing production readiness over raw output.")
+        return self._trim(f"Enforced {phrase}{metric_text}, ensuring production-grade reliability and maintainability.")
 
     def _team_bullet(
         self,
@@ -480,21 +500,21 @@ Write the Markdown block only, no extra text.
     ) -> Optional[str]:
         contributors = None
         project_type = git_signals.get("project_type")
+        commits = git_signals.get("commit_count", 0)
         if contribution_metrics:
             contributors = getattr(contribution_metrics, "total_contributors", None)
             project_type = project_type or getattr(contribution_metrics, "project_type", None)
+            commits = getattr(contribution_metrics, "total_commits", commits)
         contributors = contributors or git_signals.get("contributor_count")
+        commit_text = f" across {commits}+ commits" if commits and commits > 10 else ""
         if contributors and contributors > 1:
-            descriptor = f"{contributors}-person"
-            if project_type:
-                descriptor = f"{descriptor} {project_type}"
             return self._trim(
-                f"Coordinated delivery with a {descriptor} team, translating research and builds into polished deliverables."
+                f"Collaborated with a {contributors}-person team{commit_text}, coordinating code reviews, feature planning, and deployment workflows."
             )
         if (contributors == 1) or (project_type and str(project_type).lower() == "solo"):
-            return self._trim("Owned roadmap, build, and storytelling end-to-end to keep the project cohesive.")
+            return self._trim(f"Owned full development lifecycle end-to-end{commit_text}, from architecture design through deployment and documentation.")
         if project_type:
-            return self._trim(f"Led the {project_type} initiative, shaping direction and capturing lessons for reuse.")
+            return self._trim(f"Led the {project_type} initiative{commit_text}, driving technical decisions and milestone delivery.")
         return None
 
     def _project_profile(

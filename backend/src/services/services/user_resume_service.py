@@ -449,8 +449,16 @@ class UserResumeService:
 
         projects = structured_data.get("projects")
         project_list: List[Dict[str, Any]] = [p for p in projects if isinstance(p, dict)] if isinstance(projects, list) else []
-
         detected = self._detect_skills_from_projects(project_list)
+
+        all_items_detected = self._detect_skills_from_all_user_items(user_id)
+        
+        for category in ["languages", "frameworks", "developer_tools", "libraries"]:
+            detected[category] = self._merge_unique_case_insensitive(
+                detected.get(category, []), 
+                all_items_detected.get(category, [])
+            )
+
         existing_skills_raw = structured_data.get("skills")
         existing_skills = existing_skills_raw if isinstance(existing_skills_raw, dict) else {}
 
@@ -462,6 +470,69 @@ class UserResumeService:
 
         structured_data["skills"] = merged_skills
         return self.update_resume(user_id, resume_id, structured_data=structured_data, metadata={"auto_detected_skills": True})
+
+    def _detect_skills_from_all_user_items(self, user_id: str) -> Dict[str, List[str]]:
+        detected: Dict[str, List[str]] = {
+            "languages": [],
+            "frameworks": [],
+            "developer_tools": [],
+            "libraries": [],
+        }
+        
+        if not self.client:
+            return detected
+            
+        try:
+            response = (
+                self.client.table("resume_items")
+                .select("metadata, bullets, content")
+                .eq("user_id", user_id)
+                .execute()
+            )
+        except Exception as exc:
+            logger.warning(f"Failed to fetch user resume items for skill detection: {exc}")
+            return detected
+            
+        if not response.data:
+            return detected
+            
+        for item in response.data:
+            metadata = item.get("metadata") or {}
+            if isinstance(metadata, dict):
+                languages = metadata.get("languages")
+                if isinstance(languages, list):
+                    for lang in languages:
+                        if isinstance(lang, dict):
+                            lang_name = lang.get("language")
+                            if lang_name:
+                                self._add_skill_token(str(lang_name), detected)
+                        elif isinstance(lang, str):
+                            self._add_skill_token(lang, detected)
+                
+                technologies = metadata.get("technologies")
+                if isinstance(technologies, str):
+                    for token in re.split(r"[,/|;]", technologies):
+                        self._add_skill_token(token, detected)
+                        
+                integrations = metadata.get("integration_signals")
+                if isinstance(integrations, list):
+                    for integration in integrations:
+                        if isinstance(integration, str):
+                            self._add_skill_token(integration, detected)
+            
+            bullets = item.get("bullets")
+            if isinstance(bullets, list):
+                for bullet in bullets:
+                    if isinstance(bullet, str):
+                        for token in re.split(r"[^a-zA-Z0-9.+#-]+", bullet):
+                            self._add_skill_token(token, detected)
+            
+            content = item.get("content")
+            if isinstance(content, str):
+                for token in re.split(r"[^a-zA-Z0-9.+#-]+", content):
+                    self._add_skill_token(token, detected)
+        
+        return detected
 
     def _extract_item_bullets(self, item: Dict[str, Any]) -> List[str]:
         bullets = item.get("bullets")
