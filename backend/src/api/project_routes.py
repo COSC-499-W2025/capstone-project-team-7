@@ -83,6 +83,7 @@ CATEGORY_LABELS = {
     "frameworks": "Frameworks",
     "databases": "Databases",
     "architecture": "Architecture",
+    "ml_data": "ML & Data Science",
 }
 
 # Create router for project endpoints
