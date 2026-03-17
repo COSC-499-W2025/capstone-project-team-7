@@ -24,6 +24,15 @@ function getToken(): string | null {
   return getStoredToken();
 }
 
+function base64ToBytes(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -128,8 +137,20 @@ export default function ProfilePage() {
         const result = await window.desktop!.openFile({
           filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp"] }],
         });
-        if (result && result.length > 0) {
-          setAvatarPreview(result[0]);
+        const selectedPath = result?.[0];
+        if (selectedPath && window.desktop?.readFile) {
+          const desktopFile = await window.desktop.readFile(selectedPath);
+          if (desktopFile.size > MAX_AVATAR_BYTES) {
+            setMessage({ type: "err", text: "Avatar must be under 5 MB." });
+            return;
+          }
+          if (avatarPreview?.startsWith("blob:")) URL.revokeObjectURL(avatarPreview);
+          const file = new File([base64ToBytes(desktopFile.data)], desktopFile.name, {
+            type: desktopFile.type,
+          });
+          const previewUrl = URL.createObjectURL(file);
+          setAvatarPreview(previewUrl);
+          setAvatarFile(file);
         }
       } catch {
         // user cancelled

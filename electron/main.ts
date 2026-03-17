@@ -9,6 +9,23 @@ const shouldOpenDevTools =
   process.env.ELECTRON_OPEN_DEVTOOLS === "1" ||
   process.env.ELECTRON_OPEN_DEVTOOLS === "true";
 
+const inferMimeType = (filePath: string) => {
+  const ext = path.extname(filePath).toLowerCase();
+  switch (ext) {
+    case ".png":
+      return "image/png";
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg";
+    case ".gif":
+      return "image/gif";
+    case ".webp":
+      return "image/webp";
+    default:
+      return "application/octet-stream";
+  }
+};
+
 const resolveRendererUrl = () => {
   const envUrl = process.env.ELECTRON_START_URL;
   if (envUrl) {
@@ -72,6 +89,16 @@ app.whenReady().then(() => {
     });
     if (result.canceled) return [];
     return result.filePaths;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.READ_FILE, async (_event, filePath: string) => {
+    const content = await fsPromises.readFile(filePath);
+    return {
+      name: path.basename(filePath),
+      type: inferMimeType(filePath),
+      size: content.byteLength,
+      data: content.toString("base64"),
+    };
   });
 
   ipcMain.handle(IPC_CHANNELS.SELECT_DIRECTORY, async (_event, options: Electron.OpenDialogOptions | undefined) => {
