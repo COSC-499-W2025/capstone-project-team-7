@@ -1,10 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
-
-type UploadError = {
-  detail?: {
-    message?: string;
-  } | string;
-};
+import { request } from "@/lib/api";
 
 export interface UploadFromPathResponse {
   upload_id: string;
@@ -18,44 +12,28 @@ export interface ParseUploadResponse {
   status: string;
 }
 
+function authHeaders(token: string): Record<string, string> {
+  return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+}
+
+async function call<T>(path: string, init: RequestInit, fallback: string): Promise<T> {
+  const result = await request<T>(path, init);
+  if (!result.ok) throw new Error(result.error ?? fallback);
+  return result.data;
+}
+
 export async function uploadFromPath(token: string, sourcePath: string): Promise<UploadFromPathResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/uploads/from-path`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ source_path: sourcePath }),
-  });
-
-  if (!response.ok) {
-    const error: UploadError = await response.json().catch(() => ({}));
-    if (typeof error.detail === "string") {
-      throw new Error(error.detail);
-    }
-    throw new Error(error.detail?.message || "Failed to upload source path");
-  }
-
-  return response.json();
+  return call(
+    "/api/uploads/from-path",
+    { method: "POST", headers: authHeaders(token), body: JSON.stringify({ source_path: sourcePath }) },
+    "Failed to upload source path"
+  );
 }
 
 export async function parseUpload(token: string, uploadId: string): Promise<ParseUploadResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/uploads/${uploadId}/parse`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({}),
-  });
-
-  if (!response.ok) {
-    const error: UploadError = await response.json().catch(() => ({}));
-    if (typeof error.detail === "string") {
-      throw new Error(error.detail);
-    }
-    throw new Error(error.detail?.message || "Failed to parse uploaded source");
-  }
-
-  return response.json();
+  return call(
+    `/api/uploads/${uploadId}/parse`,
+    { method: "POST", headers: authHeaders(token), body: JSON.stringify({}) },
+    "Failed to parse uploaded source"
+  );
 }

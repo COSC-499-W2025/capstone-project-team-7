@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, type Mock } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import SettingsPage from "../app/(dashboard)/settings/page";
 
 vi.mock("next/navigation", () => ({
@@ -43,6 +43,12 @@ vi.mock("@/lib/api", () => ({
   encryption: {
     status: vi.fn(),
   },
+  secrets: {
+    getStatus: vi.fn(),
+    save: vi.fn(),
+    remove: vi.fn(),
+    verify: vi.fn(),
+  },
 }));
 
 import { encryption } from "@/lib/api";
@@ -57,6 +63,7 @@ describe("Settings encryption status panel", () => {
     });
 
     render(<SettingsPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Security & Privacy" }));
 
     await waitFor(() => {
       expect(screen.getByText("Encryption ready")).toBeInTheDocument();
@@ -72,6 +79,7 @@ describe("Settings encryption status panel", () => {
     });
 
     render(<SettingsPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Security & Privacy" }));
 
     await waitFor(() => {
       expect(screen.getByText("Action required")).toBeInTheDocument();

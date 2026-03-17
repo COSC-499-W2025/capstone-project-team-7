@@ -3,6 +3,7 @@ export const IPC_CHANNELS = {
   OPEN_FILE: "desktop:openFile",
   READ_FILE: "desktop:readFile",
   SELECT_DIRECTORY: "desktop:selectDirectory",
+  SELECT_SCAN_SOURCE: "desktop:selectScanSource",
   SAVE_SETTINGS: "desktop:saveSettings",
   LOAD_SETTINGS: "desktop:loadSettings"
 } as const;

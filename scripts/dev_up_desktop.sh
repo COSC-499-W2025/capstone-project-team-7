@@ -3,6 +3,23 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# --- Helper: kill process on port ---
+kill_port() {
+    local port=$1
+    local pid
+    pid=$(lsof -ti :"$port" 2>/dev/null || true)
+    if [ -n "$pid" ]; then
+        echo "Killing existing process on port $port (PID: $pid)..."
+        kill -9 $pid 2>/dev/null || true
+        sleep 1
+    fi
+}
+
+# --- Clean up stale processes ---
+echo "=== Cleaning up stale processes ==="
+kill_port 8000
+kill_port 3000
+
 echo "=== Setting up environment ==="
 
 # Setup backend (Python)
@@ -43,9 +60,22 @@ echo "=== Starting services ==="
 (source backend/venv/bin/activate && cd backend && uvicorn src.main:app --reload --port 8000) &
 BACK_PID=$!
 
+# Give backend a moment to start before frontend
+sleep 2
+
 # Start frontend
 (cd frontend && npm run dev) &
 FRONT_PID=$!
+
+# Wait for frontend to be ready before launching Electron
+echo "Waiting for frontend to start..."
+for i in {1..30}; do
+    if curl -s http://localhost:3000 > /dev/null 2>&1; then
+        echo "Frontend ready!"
+        break
+    fi
+    sleep 1
+done
 
 # Start Electron
 (cd electron && ELECTRON_START_URL=http://localhost:3000 ELECTRON_OPEN_DEVTOOLS=0 npm run dev) &
@@ -59,6 +89,6 @@ echo "  Electron:  Desktop app window"
 echo ""
 echo "Press Ctrl+C to stop all services"
 
-trap 'kill $BACK_PID $FRONT_PID $ELECTRON_PID' EXIT INT TERM
+trap 'kill $BACK_PID $FRONT_PID $ELECTRON_PID 2>/dev/null' EXIT INT TERM
 
 wait

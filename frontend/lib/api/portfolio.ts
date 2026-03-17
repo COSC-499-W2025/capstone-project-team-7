@@ -9,8 +9,7 @@ import type {
   PortfolioSettings,
   PublicPortfolioResponse,
 } from "@/types/portfolio";
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+import { request } from "@/lib/api";
 
 function authHeaders(token: string): Record<string, string> {
   return {
@@ -19,56 +18,29 @@ function authHeaders(token: string): Record<string, string> {
   };
 }
 
-// Portfolio endpoints return detail as an object: {"code": "...", "message": "..."}
-// This extracts a human-readable string from either format.
-function extractError(error: Record<string, unknown>, fallback: string): string {
-  const detail = error.detail;
-  if (typeof detail === "string") return detail;
-  if (detail && typeof detail === "object") {
-    const msg = (detail as Record<string, unknown>).message;
-    if (typeof msg === "string") return msg;
-  }
-  return fallback;
+async function call<T>(path: string, init: RequestInit, fallback: string): Promise<T> {
+  const result = await request<T>(path, init);
+  if (!result.ok) throw new Error(result.error ?? fallback);
+  return result.data;
 }
 
 export async function listPortfolioItems(token: string): Promise<PortfolioItem[]> {
-  const response = await fetch(`${API_BASE_URL}/api/portfolio/items`, {
-    method: "GET",
-    headers: authHeaders(token),
-  });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(extractError(error, "Failed to fetch portfolio items"));
-  }
-  return response.json();
+  return call("/api/portfolio/items", { headers: authHeaders(token) }, "Failed to fetch portfolio items");
 }
 
 export async function getPortfolioItem(token: string, id: string): Promise<PortfolioItem> {
-  const response = await fetch(`${API_BASE_URL}/api/portfolio/items/${id}`, {
-    method: "GET",
-    headers: authHeaders(token),
-  });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(extractError(error, "Failed to fetch portfolio item"));
-  }
-  return response.json();
+  return call(`/api/portfolio/items/${id}`, { headers: authHeaders(token) }, "Failed to fetch portfolio item");
 }
 
 export async function createPortfolioItem(
   token: string,
   body: PortfolioItemCreate
 ): Promise<PortfolioItem> {
-  const response = await fetch(`${API_BASE_URL}/api/portfolio/items`, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(extractError(error, "Failed to create portfolio item"));
-  }
-  return response.json();
+  return call(
+    "/api/portfolio/items",
+    { method: "POST", headers: authHeaders(token), body: JSON.stringify(body) },
+    "Failed to create portfolio item"
+  );
 }
 
 export async function updatePortfolioItem(
@@ -76,132 +48,87 @@ export async function updatePortfolioItem(
   id: string,
   body: PortfolioItemUpdate
 ): Promise<PortfolioItem> {
-  const response = await fetch(`${API_BASE_URL}/api/portfolio/items/${id}`, {
-    method: "PATCH",
-    headers: authHeaders(token),
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(extractError(error, "Failed to update portfolio item"));
-  }
-  return response.json();
+  return call(
+    `/api/portfolio/items/${id}`,
+    { method: "PATCH", headers: authHeaders(token), body: JSON.stringify(body) },
+    "Failed to update portfolio item"
+  );
 }
 
 export async function deletePortfolioItem(token: string, id: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/api/portfolio/items/${id}`, {
+  const result = await request<Record<string, unknown>>(`/api/portfolio/items/${id}`, {
     method: "DELETE",
     headers: authHeaders(token),
   });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(extractError(error, "Failed to delete portfolio item"));
-  }
+  if (!result.ok) throw new Error(result.error ?? "Failed to delete portfolio item");
 }
 
 export async function generatePortfolioItem(
   token: string,
   body: PortfolioGenerateRequest
 ): Promise<PortfolioGenerateResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/portfolio/generate`, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(extractError(error, "Failed to generate portfolio item"));
-  }
-  return response.json();
+  return call(
+    "/api/portfolio/generate",
+    { method: "POST", headers: authHeaders(token), body: JSON.stringify(body) },
+    "Failed to generate portfolio item"
+  );
 }
 
 export async function refreshPortfolio(
   token: string,
   includeDuplicates = true
 ): Promise<PortfolioRefreshResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/portfolio/refresh`, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify({ include_duplicates: includeDuplicates }),
-  });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(extractError(error, "Failed to refresh portfolio"));
-  }
-  return response.json();
+  return call(
+    "/api/portfolio/refresh",
+    { method: "POST", headers: authHeaders(token), body: JSON.stringify({ include_duplicates: includeDuplicates }) },
+    "Failed to refresh portfolio"
+  );
 }
 
 export async function getPortfolioChronology(token: string): Promise<PortfolioChronology> {
-  const response = await fetch(`${API_BASE_URL}/api/portfolio/chronology`, {
-    method: "GET",
-    headers: authHeaders(token),
-  });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(extractError(error, "Failed to fetch portfolio chronology"));
-  }
-  return response.json();
+  return call("/api/portfolio/chronology", { headers: authHeaders(token) }, "Failed to fetch portfolio chronology");
 }
 
 // ── Portfolio Settings ──────────────────────────────────────────────────
 
 export async function getPortfolioSettings(token: string): Promise<PortfolioSettings> {
-  const response = await fetch(`${API_BASE_URL}/api/portfolio/settings`, {
-    method: "GET",
-    headers: authHeaders(token),
-  });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(extractError(error, "Failed to fetch portfolio settings"));
-  }
-  return response.json();
+  return call("/api/portfolio/settings", { headers: authHeaders(token) }, "Failed to fetch portfolio settings");
 }
 
 export async function updatePortfolioSettings(
   token: string,
   settings: Partial<PortfolioSettings>,
 ): Promise<PortfolioSettings> {
-  const response = await fetch(`${API_BASE_URL}/api/portfolio/settings`, {
-    method: "PATCH",
-    headers: authHeaders(token),
-    body: JSON.stringify(settings),
-  });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(extractError(error, "Failed to update portfolio settings"));
-  }
-  return response.json();
+  return call(
+    "/api/portfolio/settings",
+    { method: "PATCH", headers: authHeaders(token), body: JSON.stringify(settings) },
+    "Failed to update portfolio settings"
+  );
 }
 
 export async function publishPortfolio(
   token: string,
   isPublic: boolean,
 ): Promise<{ is_public: boolean; share_token: string | null }> {
-  const response = await fetch(`${API_BASE_URL}/api/portfolio/settings/publish`, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify({ is_public: isPublic }),
-  });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(extractError(error, "Failed to publish portfolio"));
-  }
-  return response.json();
+  return call(
+    "/api/portfolio/settings/publish",
+    { method: "POST", headers: authHeaders(token), body: JSON.stringify({ is_public: isPublic }) },
+    "Failed to publish portfolio"
+  );
 }
 
 // ── Public Portfolio (no auth) ──────────────────────────────────────────
 
 export async function getPublicPortfolio(shareToken: string): Promise<PublicPortfolioResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/public/portfolio/${shareToken}`, {
-    method: "GET",
+  // Public endpoint - no auth token, but still use request() for consistency
+  const result = await request<PublicPortfolioResponse>(`/api/public/portfolio/${shareToken}`, {
     headers: { "Content-Type": "application/json" },
   });
-  if (!response.ok) {
-    if (response.status === 404) {
+  if (!result.ok) {
+    if (result.status === 404) {
       throw new Error("Portfolio not found or not published.");
     }
-    const error = await response.json().catch(() => ({}));
-    throw new Error(extractError(error, "Failed to load public portfolio"));
+    throw new Error(result.error ?? "Failed to load public portfolio");
   }
-  return response.json();
+  return result.data;
 }

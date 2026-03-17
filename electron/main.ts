@@ -102,12 +102,37 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle(IPC_CHANNELS.SELECT_DIRECTORY, async (_event, options: Electron.OpenDialogOptions | undefined) => {
+    const { properties: _ignoredProperties, filters: _ignoredFilters, ...dialogOptions } = options ?? {};
     const result = await dialog.showOpenDialog({
+      ...dialogOptions,
       properties: ["openDirectory"],
-      ...options
     });
     if (result.canceled) return [];
     return result.filePaths;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.SELECT_SCAN_SOURCE, async (_event, options: Electron.OpenDialogOptions | undefined) => {
+    const { properties: _ignoredProperties, filters: _ignoredFilters, ...dialogOptions } = options ?? {};
+    const result = await dialog.showOpenDialog({
+      ...dialogOptions,
+      properties: ["openDirectory", "openFile"],
+      filters: [{ name: "ZIP Archives", extensions: ["zip"] }],
+    });
+    if (result.canceled) return [];
+    if (result.filePaths.length === 0) return [];
+
+    const selectedPath = result.filePaths[0];
+    try {
+      const stat = await fsPromises.stat(selectedPath);
+      if (stat.isDirectory()) return result.filePaths;
+      if (stat.isFile() && path.extname(selectedPath).toLowerCase() === ".zip") {
+        return result.filePaths;
+      }
+    } catch {
+      return [];
+    }
+
+    return [];
   });
 
   // Persist settings to a file under the user's application data directory

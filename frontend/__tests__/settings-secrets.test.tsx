@@ -44,6 +44,9 @@ vi.mock("@/lib/api", () => ({
     saveProfile: vi.fn(),
     update: vi.fn(),
   },
+  encryption: {
+    status: vi.fn(),
+  },
   secrets: {
     getStatus: vi.fn(),
     save: vi.fn(),
@@ -53,7 +56,7 @@ vi.mock("@/lib/api", () => ({
 }));
 
 import { auth, getStoredToken, getStoredRefreshToken } from "@/lib/auth";
-import { config, consent, secrets } from "@/lib/api";
+import { config, consent, encryption, secrets } from "@/lib/api";
 
 const mockGetSession = auth.getSession as Mock;
 const mockGetStoredToken = getStoredToken as Mock;
@@ -61,6 +64,7 @@ const mockGetStoredRefreshToken = getStoredRefreshToken as Mock;
 const mockConsentGet = consent.get as Mock;
 const mockConfigGet = config.get as Mock;
 const mockListProfiles = config.listProfiles as Mock;
+const mockEncryptionStatus = encryption.status as Mock;
 const mockSecretsGetStatus = secrets.getStatus as Mock;
 const mockSecretsSave = secrets.save as Mock;
 const mockSecretsRemove = secrets.remove as Mock;
@@ -88,6 +92,7 @@ function setupLoggedIn(opts?: { externalConsent?: boolean; hasKey?: boolean }) {
     ok: true,
     data: { profiles: { all: { description: "All files" } }, current_profile: "all" },
   });
+  mockEncryptionStatus.mockResolvedValue({ ok: true, data: { enabled: false, ready: false } });
   mockSecretsGetStatus.mockResolvedValue({
     ok: true,
     data: {
@@ -98,6 +103,10 @@ function setupLoggedIn(opts?: { externalConsent?: boolean; hasKey?: boolean }) {
   });
 }
 
+function openSecurityAndPrivacyTab() {
+  fireEvent.click(screen.getByRole("button", { name: "Security & Privacy" }));
+}
+
 describe("Settings — External Services (secrets)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -106,6 +115,7 @@ describe("Settings — External Services (secrets)", () => {
   it("shows 'Not configured' when no secret exists", async () => {
     setupLoggedIn({ externalConsent: true, hasKey: false });
     render(<SettingsPage />);
+    openSecurityAndPrivacyTab();
 
     await waitFor(() => {
       expect(screen.getByText("Not configured")).toBeInTheDocument();
@@ -115,6 +125,7 @@ describe("Settings — External Services (secrets)", () => {
   it("shows 'Configured' when secret exists", async () => {
     setupLoggedIn({ externalConsent: true, hasKey: true });
     render(<SettingsPage />);
+    openSecurityAndPrivacyTab();
 
     await waitFor(() => {
       expect(screen.getByText("Configured")).toBeInTheDocument();
@@ -135,6 +146,7 @@ describe("Settings — External Services (secrets)", () => {
   it("shows consent required banner when external services not enabled", async () => {
     setupLoggedIn({ externalConsent: false, hasKey: false });
     render(<SettingsPage />);
+    openSecurityAndPrivacyTab();
 
     await waitFor(() => {
       expect(
@@ -158,6 +170,7 @@ describe("Settings — External Services (secrets)", () => {
       });
 
     render(<SettingsPage />);
+    openSecurityAndPrivacyTab();
 
     await waitFor(() => {
       expect(screen.getByText("Not configured")).toBeInTheDocument();
@@ -186,6 +199,7 @@ describe("Settings — External Services (secrets)", () => {
     });
 
     render(<SettingsPage />);
+    openSecurityAndPrivacyTab();
 
     await waitFor(() => {
       expect(screen.getByText("Configured")).toBeInTheDocument();
@@ -210,6 +224,7 @@ describe("Settings — External Services (secrets)", () => {
       .mockResolvedValueOnce({ ok: true, data: { secrets: [] } });
 
     render(<SettingsPage />);
+    openSecurityAndPrivacyTab();
 
     await waitFor(() => {
       expect(screen.getByText("Configured")).toBeInTheDocument();

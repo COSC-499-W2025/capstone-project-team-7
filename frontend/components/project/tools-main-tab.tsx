@@ -8,7 +8,6 @@ import {
   GitBranch,
   Copy,
   Search,
-  FileEdit,
   FileJson,
   FileCode2,
   Loader2,
@@ -39,18 +38,6 @@ interface ToolsMainTabProps {
   handleExportHtml: () => void;
 }
 
-function PlaceholderContent({ label }: { label: string }) {
-  return (
-    <Card className="bg-white border border-gray-200">
-      <CardContent className="p-12 text-center">
-        <p className="text-gray-500 text-sm">
-          {label} — This section will be available soon.
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
-
 export function ToolsMainTab({
   openToolsTab,
   projectFilesCount,
@@ -76,13 +63,13 @@ export function ToolsMainTab({
               className="inline-flex items-center gap-2 hover:text-gray-700"
             >
               <FileText size={18} />
-              File Browser
+              Files Explorer
             </button>
           </CardTitle>
         </CardHeader>
         <CardContent className="p-6 space-y-4">
           <p className="text-sm text-gray-500">
-            Browse indexed project files in a dedicated full view.
+            Browse and filter indexed project files in one full view.
           </p>
           <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
             <p className="text-xs text-gray-500">Indexed files</p>
@@ -96,7 +83,7 @@ export function ToolsMainTab({
             variant="outline"
             onClick={() => openToolsTab("file-browser")}
           >
-            Open Full View
+            Open Explorer
           </Button>
         </CardContent>
       </Card>
@@ -190,12 +177,12 @@ export function ToolsMainTab({
         <CardHeader className="border-b border-gray-200">
           <CardTitle className="text-base font-bold text-gray-900 flex items-center gap-2">
             <Search size={18} />
-            Search & Filter
+            Global Search
           </CardTitle>
         </CardHeader>
         <CardContent className="p-6">
           <p className="text-sm text-gray-500 mb-4">
-            Use the dedicated search workspace to query files and skills across scanned projects.
+            Use the dedicated search workspace to query files and skills across all projects.
           </p>
           <Link
             href="/search"
@@ -203,22 +190,6 @@ export function ToolsMainTab({
           >
             Open Search
           </Link>
-        </CardContent>
-      </Card>
-
-      {/* Resume Generator */}
-      <Card className="bg-white border border-gray-200">
-        <CardHeader className="border-b border-gray-200">
-          <CardTitle className="text-base font-bold text-gray-900 flex items-center gap-2">
-            <FileEdit size={18} />
-            Resume Generator
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-6">
-          <p className="text-sm text-gray-500 mb-4">
-            Generate resume items from project analysis.
-          </p>
-          <PlaceholderContent label="Resume Generator" />
         </CardContent>
       </Card>
 

@@ -248,7 +248,10 @@ export function DocumentAnalysisTab({
             </div>
             <div className="bg-gray-50 rounded-lg p-4 text-center">
               <p className="text-2xl font-bold text-gray-900">{stats.documents_with_keywords}</p>
-              <p className="text-xs text-gray-500 mt-1">With Keywords</p>
+              <p className="text-xs text-gray-500 mt-1">Docs with key terms</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                At least one extracted keyword or topic
+              </p>
             </div>
             <div className="bg-gray-50 rounded-lg p-4 text-center">
               <p className="text-2xl font-bold text-gray-900">{stats.documents_with_headings}</p>

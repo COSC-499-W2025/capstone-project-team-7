@@ -94,6 +94,7 @@ vi.mock("@/lib/api/portfolio", () => ({
   generatePortfolioItem: vi.fn(),
   getPortfolioChronology: vi.fn(),
   refreshPortfolio: vi.fn(),
+  getPortfolioSettings: vi.fn(),
 }));
 
 vi.mock("@/lib/api/projects", () => ({
@@ -103,6 +104,12 @@ vi.mock("@/lib/api/projects", () => ({
 
 vi.mock("@/lib/auth", () => ({
   getStoredToken: vi.fn(),
+  getStoredTokenCandidates: vi.fn(() => []),
+  getStoredRefreshToken: vi.fn(() => null),
+  clearStoredToken: vi.fn(),
+  clearStoredRefreshToken: vi.fn(),
+  setStoredToken: vi.fn(),
+  refreshAccessToken: vi.fn(),
 }));
 
 import {
@@ -113,9 +120,10 @@ import {
   generatePortfolioItem,
   getPortfolioChronology,
   refreshPortfolio,
+  getPortfolioSettings,
 } from "@/lib/api/portfolio";
 import { getProjects, getSkills } from "@/lib/api/projects";
-import { getStoredToken } from "@/lib/auth";
+import { getStoredToken, getStoredTokenCandidates } from "@/lib/auth";
 
 const mockListPortfolioItems = listPortfolioItems as Mock;
 const mockCreatePortfolioItem = createPortfolioItem as Mock;
@@ -123,9 +131,11 @@ const mockUpdatePortfolioItem = updatePortfolioItem as Mock;
 const mockDeletePortfolioItem = deletePortfolioItem as Mock;
 const mockGeneratePortfolioItem = generatePortfolioItem as Mock;
 const mockGetPortfolioChronology = getPortfolioChronology as Mock;
+const mockGetPortfolioSettings = getPortfolioSettings as Mock;
 const mockGetProjects = getProjects as Mock;
 const mockGetSkills = getSkills as Mock;
 const mockGetStoredToken = getStoredToken as Mock;
+const mockGetStoredTokenCandidates = getStoredTokenCandidates as Mock;
 const mockRefreshPortfolio = refreshPortfolio as Mock;
 
 const confirmMock = vi.fn();
@@ -145,9 +155,11 @@ beforeEach(() => {
   confirmMock.mockReturnValue(false);
 
   mockGetStoredToken.mockReturnValue("test-token");
+  mockGetStoredTokenCandidates.mockReturnValue(["test-token"]);
   mockListPortfolioItems.mockResolvedValue([...MOCK_ITEMS]);
   mockGetSkills.mockResolvedValue({ skills: [...MOCK_SKILLS] });
   mockGetPortfolioChronology.mockResolvedValue({ ...MOCK_CHRONOLOGY });
+  mockGetPortfolioSettings.mockResolvedValue({ public_portfolio_enabled: false, public_slug: null });
   mockGetProjects.mockResolvedValue({ projects: [...MOCK_PROJECTS], count: 2 });
   mockCreatePortfolioItem.mockResolvedValue({
     id: "item-new",

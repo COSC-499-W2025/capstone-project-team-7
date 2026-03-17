@@ -1,7 +1,16 @@
 // API client functions for Scans
 import type { ScanRequest, ScanStatusResponse, StartScanResponse } from "@/types/scan";
+import { request } from "@/lib/api";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+function authHeaders(token: string): Record<string, string> {
+  return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+}
+
+async function call<T>(path: string, init: RequestInit, fallback: string): Promise<T> {
+  const result = await request<T>(path, init);
+  if (!result.ok) throw new Error(result.error ?? fallback);
+  return result.data;
+}
 
 /**
  * Start a new portfolio scan
@@ -20,21 +29,11 @@ export async function startScan(
     ...options,
   };
 
-  const response = await fetch(`${API_BASE_URL}/api/scans`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: "Failed to start scan" }));
-    throw new Error(error.detail || "Failed to start scan");
-  }
-
-  return response.json();
+  return call(
+    "/api/scans",
+    { method: "POST", headers: authHeaders(token), body: JSON.stringify(body) },
+    "Failed to start scan"
+  );
 }
 
 /**
@@ -45,19 +44,9 @@ export async function getScanStatus(
   scanId: string,
   signal?: AbortSignal
 ): Promise<ScanStatusResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/scans/${scanId}`, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    signal,
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: "Failed to get scan status" }));
-    throw new Error(error.detail || "Failed to get scan status");
-  }
-
-  return response.json();
+  return call(
+    `/api/scans/${scanId}`,
+    { headers: authHeaders(token), signal },
+    "Failed to get scan status"
+  );
 }

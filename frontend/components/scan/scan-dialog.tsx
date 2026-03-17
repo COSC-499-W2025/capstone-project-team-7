@@ -36,7 +36,7 @@ import {
 } from "lucide-react";
 
 type ScanMode = "new" | "append";
-type SourceType = "folder" | "zip";
+
 
 interface ScanDialogProps {
   open: boolean;
@@ -49,7 +49,7 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
   const [isElectron, setIsElectron] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isBrowsing, setIsBrowsing] = useState(false);
-  const [sourceType, setSourceType] = useState<SourceType>("folder");
+
   
   // Append mode state
   const [scanMode, setScanMode] = useState<ScanMode>("new");
@@ -71,7 +71,7 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
   // Check for Electron and auth on mount
   useEffect(() => {
     const desktopApi = typeof window !== "undefined" ? window.desktop : undefined;
-    setIsElectron(!!desktopApi?.selectDirectory || !!desktopApi?.openFile);
+    setIsElectron(!!desktopApi?.selectScanSource || !!desktopApi?.selectDirectory || !!desktopApi?.openFile);
     setIsAuthenticated(!!getStoredToken());
   }, [open]);
 
@@ -111,7 +111,7 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
       const timeout = setTimeout(() => {
         setSourcePath("");
         setScanMode("new");
-        setSourceType("folder");
+
         setSelectedProjectId("");
         setProjectLoadError(null);
         resetNewScan();
@@ -122,21 +122,19 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
   }, [open, resetNewScan, resetAppendScan]);
 
   const handleBrowse = async () => {
-    if (!window.desktop) return;
+    const selectScanSource = window.desktop?.selectScanSource;
+    const selectDirectory = window.desktop?.selectDirectory;
+    if (!selectScanSource && !selectDirectory) return;
 
     setIsBrowsing(true);
     try {
       let paths: string[] = [];
-      if (sourceType === "zip") {
-        if (!window.desktop.openFile) return;
-        paths = await window.desktop.openFile({
-          title: "Select ZIP archive to scan",
-          filters: [{ name: "ZIP Archives", extensions: ["zip"] }],
-          properties: ["openFile"],
+      if (selectScanSource) {
+        paths = await selectScanSource({
+          title: "Select folder or ZIP archive to scan",
         });
-      } else {
-        if (!window.desktop.selectDirectory) return;
-        paths = await window.desktop.selectDirectory({
+      } else if (selectDirectory) {
+        paths = await selectDirectory({
           title: "Select folder to scan",
         });
       }
@@ -358,28 +356,62 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
               {/* Scan mode toggle */}
               <div className="space-y-2">
                 <Label>Scan Type</Label>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant={scanMode === "new" ? "default" : "outline"}
-                    className="flex-1"
-                    onClick={() => handleModeChange("new")}
-                    disabled={!isAuthenticated}
+                <div role="radiogroup" aria-label="Scan type" className="grid gap-2 sm:grid-cols-2">
+                  <label
+                    className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${
+                      scanMode === "new"
+                        ? "border-gray-900 bg-gray-50"
+                        : "border-gray-200 bg-white hover:border-gray-300"
+                    } ${!isAuthenticated ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
                   >
-                    <Plus className="h-4 w-4 mr-2" />
-                    New Project
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={scanMode === "append" ? "default" : "outline"}
-                    className="flex-1"
-                    onClick={() => handleModeChange("append")}
-                    disabled={!isAuthenticated}
+                    <input
+                      type="radio"
+                      name="scan-mode"
+                      value="new"
+                      className="mt-0.5 h-4 w-4 accent-gray-900"
+                      checked={scanMode === "new"}
+                      onChange={() => handleModeChange("new")}
+                      disabled={!isAuthenticated}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                        <Plus className="h-4 w-4" />
+                        New Project
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Create a new project from selected files.
+                      </p>
+                    </div>
+                  </label>
+
+                  <label
+                    className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${
+                      scanMode === "append"
+                        ? "border-gray-900 bg-gray-50"
+                        : "border-gray-200 bg-white hover:border-gray-300"
+                    } ${!isAuthenticated ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
                   >
-                    <FolderPlus className="h-4 w-4 mr-2" />
-                    Add to Existing
-                  </Button>
+                    <input
+                      type="radio"
+                      name="scan-mode"
+                      value="append"
+                      className="mt-0.5 h-4 w-4 accent-gray-900"
+                      checked={scanMode === "append"}
+                      onChange={() => handleModeChange("append")}
+                      disabled={!isAuthenticated}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                        <FolderPlus className="h-4 w-4" />
+                        Add to Existing
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Merge new files into a project you already created.
+                      </p>
+                    </div>
+                  </label>
                 </div>
+                <p className="text-xs text-gray-500">Choose a scan type, then pick a folder or ZIP below.</p>
               </div>
 
               {/* Project selector (append mode only) */}
@@ -440,43 +472,16 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
                 </div>
               )}
 
-              <div className="space-y-2">
-                <Label>Source Type</Label>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant={sourceType === "folder" ? "default" : "outline"}
-                    className="flex-1"
-                    onClick={() => setSourceType("folder")}
-                    disabled={!isAuthenticated || isBrowsing}
-                  >
-                    <FolderOpen className="h-4 w-4 mr-2" />
-                    Folder
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={sourceType === "zip" ? "default" : "outline"}
-                    className="flex-1"
-                    onClick={() => setSourceType("zip")}
-                    disabled={!isAuthenticated || isBrowsing}
-                  >
-                    ZIP Archive
-                  </Button>
-                </div>
-              </div>
+
 
               <div className="space-y-2">
-                <Label htmlFor="source-path">{sourceType === "zip" ? "ZIP File Path" : "Folder Path"}</Label>
+                <Label htmlFor="source-path">Source Path</Label>
                 <div className="flex gap-2">
                   <Input
                     id="source-path"
                     placeholder={
                       isElectron
-                        ? sourceType === "zip"
-                          ? "Click Browse to select a .zip file"
-                          : "Click Browse to select a folder"
-                        : sourceType === "zip"
-                        ? "/path/to/archive.zip"
+                        ? "Click Browse to select a folder or ZIP"
                         : "/path/to/project"
                     }
                     value={sourcePath}

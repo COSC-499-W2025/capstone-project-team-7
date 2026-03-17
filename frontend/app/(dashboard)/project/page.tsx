@@ -76,7 +76,6 @@ import {
   FileImage,
   GitBranch,
   Copy,
-  Search,
   FileCode2,
   Sparkles,
 } from "lucide-react";
@@ -115,8 +114,7 @@ const contentSubTabs = [
 
 const toolsSubTabs = [
   { value: "tools-main", label: "Overview", icon: Wrench },
-  { value: "file-browser", label: "File Browser", icon: FileText },
-  { value: "search-filter", label: "Search & Filter Files", icon: Search },
+  { value: "file-browser", label: "Files Explorer", icon: FileText },
   { value: "git-analysis", label: "Git Analysis", icon: GitBranch },
   { value: "duplicate-finder", label: "Duplicate Finder", icon: Copy },
 ] as const;
@@ -589,7 +587,7 @@ export default function ProjectPage() {
     [skillsAnalysis.skills],
   );
   const getSkillEvidence = (skillName: string): SkillEvidenceItem[] =>
-    evidenceMap[skillName] ?? [];
+    evidenceMap.get(skillName) ?? [];
 
   // Adoption timeline
   const skillAdoptionTimeline: SkillAdoptionEntry[] = skillsAnalysis.skill_adoption_timeline ?? [];
@@ -944,7 +942,7 @@ export default function ProjectPage() {
 
   return (
     <div className="p-8">
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 mb-6">
+      <div className="mb-6">
         <button
           onClick={() => router.back()}
           className="text-sm text-gray-600 hover:text-gray-900 mb-2 inline-block"
@@ -1397,7 +1395,7 @@ export default function ProjectPage() {
                   <CardHeader className="border-b border-gray-200 flex flex-row items-center justify-between">
                     <CardTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
                       <FileText size={18} />
-                      File Browser
+                      Files Explorer
                     </CardTitle>
                     <Button
                       type="button"
@@ -1409,34 +1407,29 @@ export default function ProjectPage() {
                     </Button>
                   </CardHeader>
                   <CardContent className="p-6">
-                    <FileTreeView files={projectFiles} />
-                  </CardContent>
-                </Card>
-              </TabsContent>
+                    <Tabs defaultValue="tree-browser" className="space-y-4">
+                      <TabsList className="h-auto w-fit gap-2 border border-gray-200 bg-white p-1.5">
+                        <TabsTrigger value="tree-browser" className="px-3 py-1.5 text-xs">
+                          Tree Browser
+                        </TabsTrigger>
+                        <TabsTrigger value="filtered-list" className="px-3 py-1.5 text-xs">
+                          Filtered List
+                        </TabsTrigger>
+                      </TabsList>
 
-              <TabsContent value="search-filter" className="space-y-4">
-                <Card className="bg-white border border-gray-200">
-                  <CardHeader className="border-b border-gray-200 flex flex-row items-center justify-between">
-                    <CardTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                      <Search size={18} />
-                      Search &amp; Filter Files
-                    </CardTitle>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setActiveToolsTab("tools-main")}
-                    >
-                      Back to Overview
-                    </Button>
-                  </CardHeader>
-                  <CardContent className="p-6">
-                    <SearchFilterTab
-                      files={projectFiles}
-                      loading={projectLoading}
-                      error={projectError}
-                      onRetry={loadProject}
-                    />
+                      <TabsContent value="tree-browser">
+                        <FileTreeView files={projectFiles} />
+                      </TabsContent>
+
+                      <TabsContent value="filtered-list">
+                        <SearchFilterTab
+                          files={projectFiles}
+                          loading={projectLoading}
+                          error={projectError}
+                          onRetry={loadProject}
+                        />
+                      </TabsContent>
+                    </Tabs>
                   </CardContent>
                 </Card>
               </TabsContent>

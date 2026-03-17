@@ -109,6 +109,14 @@ describe("auth refresh flow", () => {
   it("retries consent request after refresh when access token is missing", async () => {
     localStorage.setItem("refresh token", "legacy-refresh-token");
 
+    const consentResponse = {
+      data_access: true,
+      external_services: false,
+      updated_at: "2026-02-10T00:00:00Z",
+      data_access_updated_at: "2026-02-10T00:00:00Z",
+      external_services_updated_at: null,
+    };
+
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce({
@@ -126,13 +134,7 @@ describe("auth refresh flow", () => {
       })
       .mockResolvedValueOnce({
         ok: true,
-        json: vi.fn().mockResolvedValue({
-          data_access: true,
-          external_services: false,
-          updated_at: "2026-02-10T00:00:00Z",
-          data_access_updated_at: "2026-02-10T00:00:00Z",
-          external_services_updated_at: null,
-        }),
+        text: vi.fn().mockResolvedValue(JSON.stringify(consentResponse)),
       });
 
     vi.stubGlobal("fetch", fetchMock);

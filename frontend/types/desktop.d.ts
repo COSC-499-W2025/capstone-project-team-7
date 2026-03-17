@@ -20,6 +20,7 @@ declare global {
       openFile: (options?: DesktopOpenDialogOptions) => Promise<string[]>;
       readFile?: (filePath: string) => Promise<DesktopFilePayload>;
       selectDirectory: (options?: DesktopOpenDialogOptions) => Promise<string[]>;
+      selectScanSource?: (options?: DesktopOpenDialogOptions) => Promise<string[]>;
       saveSettings?: (settings?: any) => Promise<{ ok: boolean; path?: string; error?: string }>;
       loadSettings?: () => Promise<{ ok: boolean; settings?: any; path?: string; error?: string }>;
     };
