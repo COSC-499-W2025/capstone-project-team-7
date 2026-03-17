@@ -448,52 +448,112 @@ export function SkillsTab({
 
           {gapAnalysis.result && (
             <div className="space-y-4">
-              {/* Coverage bar */}
+              {/* Weighted coverage bar */}
               <div className="space-y-1">
                 <div className="flex justify-between text-sm">
                   <span className="font-medium text-gray-900">
-                    Coverage for {gapAnalysis.result.role_label}
+                    Weighted Coverage for {gapAnalysis.result.role_label}
                   </span>
                   <span className="text-gray-500">
-                    {gapAnalysis.result.coverage_percent}%
+                    {gapAnalysis.result.weighted_coverage_percent ?? gapAnalysis.result.coverage_percent}%
                   </span>
                 </div>
                 <div className="w-full bg-gray-100 rounded-full h-3">
                   <div
                     className={`h-3 rounded-full transition-all ${
-                      gapAnalysis.result.coverage_percent >= 75
+                      (gapAnalysis.result.weighted_coverage_percent ?? gapAnalysis.result.coverage_percent) >= 75
                         ? "bg-emerald-600"
-                        : gapAnalysis.result.coverage_percent >= 40
+                        : (gapAnalysis.result.weighted_coverage_percent ?? gapAnalysis.result.coverage_percent) >= 40
                           ? "bg-amber-500"
                           : "bg-red-500"
                     }`}
-                    style={{ width: `${gapAnalysis.result.coverage_percent}%` }}
+                    style={{ width: `${gapAnalysis.result.weighted_coverage_percent ?? gapAnalysis.result.coverage_percent}%` }}
                   />
                 </div>
+                <p className="text-xs text-gray-400">
+                  Critical skills are weighted 3x, recommended 2x, nice-to-have 1x
+                </p>
               </div>
 
-              {([
-                { label: "Matched", items: gapAnalysis.result.matched, bg: "bg-emerald-100", text: "text-emerald-800" },
-                { label: "Missing", items: gapAnalysis.result.missing, bg: "bg-amber-100", text: "text-amber-800" },
-                { label: "Additional Skills", items: gapAnalysis.result.extra, bg: "bg-gray-100", text: "text-gray-700" },
-              ] as const).map(({ label, items, bg, text }) =>
-                items.length > 0 && (
-                  <div key={label}>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
-                      {label} ({items.length})
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {items.map((s) => (
+              {/* Matched skills with importance badges */}
+              {gapAnalysis.result.matched.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                    Matched ({gapAnalysis.result.matched.length})
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {gapAnalysis.result.matched.map((s) => {
+                      const name = typeof s === "string" ? s : s.name;
+                      const importance = typeof s === "object" ? s.importance : undefined;
+                      return (
                         <span
-                          key={s}
-                          className={`px-2.5 py-1 rounded-full ${bg} ${text} text-xs font-medium`}
+                          key={name}
+                          className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-medium inline-flex items-center gap-1"
                         >
-                          {s}
+                          {name}
+                          {importance && (
+                            <span className={`text-[10px] font-semibold uppercase ${
+                              importance === "critical" ? "text-emerald-600" : importance === "recommended" ? "text-emerald-500" : "text-emerald-400"
+                            }`}>
+                              · {importance === "nice_to_have" ? "bonus" : importance}
+                            </span>
+                          )}
                         </span>
-                      ))}
-                    </div>
+                      );
+                    })}
                   </div>
-                ),
+                </div>
+              )}
+
+              {/* Missing skills with importance badges */}
+              {gapAnalysis.result.missing.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                    Missing ({gapAnalysis.result.missing.length})
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {gapAnalysis.result.missing.map((s) => {
+                      const name = typeof s === "string" ? s : s.name;
+                      const importance = typeof s === "object" ? s.importance : undefined;
+                      return (
+                        <span
+                          key={name}
+                          className={`px-2.5 py-1 rounded-full text-xs font-medium inline-flex items-center gap-1 ${
+                            importance === "critical" ? "bg-red-100 text-red-800" : importance === "recommended" ? "bg-amber-100 text-amber-800" : "bg-gray-100 text-gray-600"
+                          }`}
+                        >
+                          {name}
+                          {importance && (
+                            <span className={`text-[10px] font-semibold uppercase ${
+                              importance === "critical" ? "text-red-600" : importance === "recommended" ? "text-amber-600" : "text-gray-400"
+                            }`}>
+                              · {importance === "nice_to_have" ? "bonus" : importance}
+                            </span>
+                          )}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Extra skills */}
+              {gapAnalysis.result.extra.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                    Additional Skills ({gapAnalysis.result.extra.length})
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {gapAnalysis.result.extra.map((s) => (
+                      <span
+                        key={s}
+                        className="px-2.5 py-1 rounded-full bg-gray-100 text-gray-700 text-xs font-medium"
+                      >
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
           )}

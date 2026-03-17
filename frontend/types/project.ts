@@ -292,11 +292,19 @@ export interface RoleProfile {
   description: string;
 }
 
+export type SkillImportance = "critical" | "recommended" | "nice_to_have";
+
+export interface WeightedSkillEntry {
+  name: string;
+  importance: SkillImportance;
+}
+
 export interface SkillGapAnalysis {
   role: string;
   role_label: string;
-  matched: string[];
-  missing: string[];
+  matched: WeightedSkillEntry[];
+  missing: WeightedSkillEntry[];
   extra: string[];
   coverage_percent: number;
+  weighted_coverage_percent: number;
 }
