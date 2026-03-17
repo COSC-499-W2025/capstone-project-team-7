@@ -14,8 +14,6 @@ import type {
 
 import { request } from "@/lib/api";
 
-const DEFAULT_API_BASE_URL = "http://localhost:8000";
-
 function authHeaders(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
@@ -24,10 +22,6 @@ async function call<T>(path: string, init: RequestInit, fallback: string): Promi
   const result = await request<T>(path, init);
   if (!result.ok) throw new Error(result.error ?? fallback);
   return result.data;
-}
-
-function getApiBaseUrl(): string {
-  return process.env.NEXT_PUBLIC_API_BASE_URL || DEFAULT_API_BASE_URL;
 }
 
 /**
@@ -71,16 +65,16 @@ export async function detectResumeSkills(token: string, id: string): Promise<Use
 }
 
 export async function downloadResumePdf(token: string, id: string, latexContent: string): Promise<Blob> {
-  const response = await fetch(`${getApiBaseUrl()}/api/user-resumes/${id}/pdf`, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify({ latex_content: latexContent }),
-  });
+  const result = await request<Blob>(
+    `/api/user-resumes/${id}/pdf`,
+    {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify({ latex_content: latexContent }),
+    },
+    async (response) => response.blob(),
+  );
 
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(text || "Failed to export PDF");
-  }
-
-  return response.blob();
+  if (!result.ok) throw new Error(result.error ?? "Failed to export PDF");
+  return result.data;
 }
