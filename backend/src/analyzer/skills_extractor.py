@@ -65,6 +65,7 @@ class Skill:
     description: str
     evidence: List[SkillEvidence] = field(default_factory=list)
     proficiency_score: float = 0.0  # 0.0 to 1.0 based on evidence quality/quantity
+    _max_tier_score: float = field(default=0.0, repr=False)
 
     def add_evidence(self, evidence: SkillEvidence):
         """Add evidence and update proficiency score.
@@ -75,32 +76,23 @@ class Skill:
         matches can only reach ~0.5.
         """
         self.evidence.append(evidence)
-        self._recalculate_proficiency()
-
-    def _recalculate_proficiency(self):
-        """Recompute proficiency from the full evidence list."""
-        if not self.evidence:
-            self.proficiency_score = 0.0
-            return
-
-        highest_tier_score = max(
-            TIER_SCORES.get(ev.tier, TIER_SCORES[TIER_BEGINNER])
-            for ev in self.evidence
-        )
-        # Small bonus per piece of evidence beyond the first (diminishing)
+        # Track max tier incrementally to avoid O(n) rescan on each add
+        tier_score = TIER_SCORES.get(evidence.tier, TIER_SCORES[TIER_BEGINNER])
+        if tier_score > self._max_tier_score:
+            self._max_tier_score = tier_score
         evidence_bonus = min(0.1, (len(self.evidence) - 1) * 0.02)
-        self.proficiency_score = min(1.0, highest_tier_score + evidence_bonus)
+        self.proficiency_score = min(1.0, self._max_tier_score + evidence_bonus)
 
     @property
     def highest_tier(self) -> str:
         """Return the highest complexity tier reached across all evidence."""
         if not self.evidence:
             return TIER_BEGINNER
-        tier_order = {TIER_BEGINNER: 0, TIER_INTERMEDIATE: 1, TIER_ADVANCED: 2}
-        return max(
-            (ev.tier for ev in self.evidence),
-            key=lambda t: tier_order.get(t, 0),
-        )
+        # Use cached max score to find tier in O(1)
+        for tier, score in sorted(TIER_SCORES.items(), key=lambda x: -x[1]):
+            if self._max_tier_score >= score:
+                return tier
+        return TIER_BEGINNER
 
     @property
     def tier_breakdown(self) -> Dict[str, int]:
@@ -332,14 +324,15 @@ class SkillsExtractor:
                 'typescript': [r'import.*from\s+["\']react["\']', r'useState', r'useEffect', r'FC<', r'\.tsx'],
             },
             'react_intermediate': {
-                'javascript': [r'useReducer', r'useContext', r'React\.memo', r'useMemo', r'useCallback', r'createContext'],
-                'typescript': [r'useReducer', r'useContext', r'React\.memo', r'useMemo', r'useCallback', r'createContext'],
+                'javascript': (_react_int := [r'useReducer', r'useContext', r'React\.memo', r'useMemo', r'useCallback', r'createContext']),
+                'typescript': _react_int,
             },
             'react_advanced': {
-                'javascript': [r'React\.lazy', r'Suspense', r'forwardRef', r'createPortal', r'useImperativeHandle'],
-                'typescript': [r'React\.lazy', r'Suspense', r'forwardRef', r'createPortal', r'useImperativeHandle'],
+                'javascript': (_react_adv := [r'React\.lazy', r'Suspense', r'forwardRef', r'createPortal', r'useImperativeHandle']),
+                'typescript': _react_adv,
             },
-            # Vue
+            # Vue — only basic tier; Vue's advanced patterns (Composition API,
+            # Pinia, etc.) need template-aware parsing beyond regex scope.
             'vue_basic': {
                 'javascript': [r'import.*from\s+["\']vue["\']', r'Vue\.component', r'v-if', r'v-for', r'\.vue'],
             },
@@ -405,40 +398,34 @@ class SkillsExtractor:
                 'typescript': [r'import.*from\s+["\']next', r'getServerSideProps', r'getStaticProps'],
             },
             'nextjs_intermediate': {
-                'javascript': [r'getStaticPaths', r'useRouter', r'next/image', r'next/head'],
-                'typescript': [r'getStaticPaths', r'useRouter', r'next/image', r'next/head'],
+                'javascript': (_nextjs_int := [r'getStaticPaths', r'useRouter', r'next/image', r'next/head']),
+                'typescript': _nextjs_int,
             },
             'nextjs_advanced': {
-                'javascript': [r'generateMetadata', r'revalidatePath', r'unstable_cache', r'generateStaticParams'],
-                'typescript': [r'generateMetadata', r'revalidatePath', r'unstable_cache', r'generateStaticParams'],
+                'javascript': (_nextjs_adv := [r'generateMetadata', r'revalidatePath', r'unstable_cache', r'generateStaticParams']),
+                'typescript': _nextjs_adv,
             },
         }
 
+        # Auto-derive tiers from key suffix — avoids hand-maintaining a parallel dict
+        _suffix_tier = {"_basic": TIER_BEGINNER, "_intermediate": TIER_INTERMEDIATE, "_advanced": TIER_ADVANCED}
         self.framework_tiers = {
-            'react_basic': TIER_BEGINNER,
-            'react_intermediate': TIER_INTERMEDIATE,
-            'react_advanced': TIER_ADVANCED,
-            'vue_basic': TIER_BEGINNER,
-            'angular_basic': TIER_BEGINNER,
-            'angular_intermediate': TIER_INTERMEDIATE,
-            'angular_advanced': TIER_ADVANCED,
-            'django_basic': TIER_BEGINNER,
-            'django_intermediate': TIER_INTERMEDIATE,
-            'django_advanced': TIER_ADVANCED,
-            'flask_basic': TIER_BEGINNER,
-            'flask_intermediate': TIER_INTERMEDIATE,
-            'flask_advanced': TIER_ADVANCED,
-            'express_basic': TIER_BEGINNER,
-            'express_intermediate': TIER_INTERMEDIATE,
-            'express_advanced': TIER_ADVANCED,
-            'spring_basic': TIER_BEGINNER,
-            'spring_intermediate': TIER_INTERMEDIATE,
-            'spring_advanced': TIER_ADVANCED,
-            'nextjs_basic': TIER_BEGINNER,
-            'nextjs_intermediate': TIER_INTERMEDIATE,
-            'nextjs_advanced': TIER_ADVANCED,
+            k: next(tier for suffix, tier in _suffix_tier.items() if k.endswith(suffix))
+            for k in self.framework_patterns
         }
-        
+
+        # Map framework prefix -> display name (used to auto-generate skill_mapping)
+        self._framework_skill_names = {
+            "react": "React Framework",
+            "vue": "Vue.js Framework",
+            "angular": "Angular Framework",
+            "django": "Django Framework",
+            "flask": "Flask Framework",
+            "express": "Express.js Framework",
+            "spring": "Spring Framework",
+            "nextjs": "Next.js Framework",
+        }
+
         # Database & ORM Patterns
         self.database_patterns = {
             'sql_queries': {
@@ -936,33 +923,12 @@ class SkillsExtractor:
             )
             
             # Check frameworks (tiered: basic/intermediate/advanced per framework)
+            # skill_mapping derived from _framework_skill_names — strip tier suffix to find display name
             self._check_patterns(
                 content, file_path, language,
                 self.framework_patterns, "frameworks",
-                {
-                    'react_basic': "React Framework",
-                    'react_intermediate': "React Framework",
-                    'react_advanced': "React Framework",
-                    'vue_basic': "Vue.js Framework",
-                    'angular_basic': "Angular Framework",
-                    'angular_intermediate': "Angular Framework",
-                    'angular_advanced': "Angular Framework",
-                    'django_basic': "Django Framework",
-                    'django_intermediate': "Django Framework",
-                    'django_advanced': "Django Framework",
-                    'flask_basic': "Flask Framework",
-                    'flask_intermediate': "Flask Framework",
-                    'flask_advanced': "Flask Framework",
-                    'express_basic': "Express.js Framework",
-                    'express_intermediate': "Express.js Framework",
-                    'express_advanced': "Express.js Framework",
-                    'spring_basic': "Spring Framework",
-                    'spring_intermediate': "Spring Framework",
-                    'spring_advanced': "Spring Framework",
-                    'nextjs_basic': "Next.js Framework",
-                    'nextjs_intermediate': "Next.js Framework",
-                    'nextjs_advanced': "Next.js Framework",
-                },
+                {k: self._framework_skill_names[k.rsplit("_", 1)[0]]
+                 for k in self.framework_patterns},
                 tier_mapping=self.framework_tiers,
             )
             
@@ -1038,7 +1004,7 @@ class SkillsExtractor:
                 if matches:
                     # Get line number of first match
                     first_match = matches[0]
-                    line_num = content[:first_match.start()].count('\n') + 1
+                    line_num = content.count('\n', 0, first_match.start()) + 1
 
                     tier = (tier_mapping or {}).get(pattern_key, TIER_BEGINNER)
 
