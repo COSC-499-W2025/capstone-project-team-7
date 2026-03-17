@@ -38,7 +38,7 @@ export default function SettingsPage() {
 
   // Consent management
   const [consentData, setConsentData] = useState<{ data_access: boolean; external_services: boolean }>({ data_access: false, external_services: false });
-  const [consentLoading, setConsentLoading] = useState(false);
+  const [consentLoading, setConsentLoading] = useState(true);
   const [consentError, setConsentError] = useState<string | null>(null);
 
   // Scan configuration
