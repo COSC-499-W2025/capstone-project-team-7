@@ -23,6 +23,20 @@ import subprocess
 logger = logging.getLogger(__name__)
 
 
+TIER_BEGINNER = "beginner"
+TIER_INTERMEDIATE = "intermediate"
+TIER_ADVANCED = "advanced"
+
+VALID_TIERS = {TIER_BEGINNER, TIER_INTERMEDIATE, TIER_ADVANCED}
+
+# Score floor for each tier — the highest tier reached sets the minimum proficiency
+TIER_SCORES = {
+    TIER_BEGINNER: 0.3,
+    TIER_INTERMEDIATE: 0.6,
+    TIER_ADVANCED: 0.9,
+}
+
+
 @dataclass
 class SkillEvidence:
     """Evidence supporting a skill claim."""
@@ -33,7 +47,12 @@ class SkillEvidence:
     line_number: Optional[int] = None
     confidence: float = 1.0  # 0.0 to 1.0
     timestamp: Optional[str] = None  # ISO format timestamp when skill was used
-    
+    tier: str = TIER_BEGINNER  # complexity tier of this evidence
+
+    def __post_init__(self):
+        if self.tier not in VALID_TIERS:
+            raise ValueError(f"Invalid tier '{self.tier}'. Must be one of {VALID_TIERS}")
+
     def __hash__(self):
         return hash((self.skill_name, self.file_path, self.line_number))
 
@@ -46,12 +65,50 @@ class Skill:
     description: str
     evidence: List[SkillEvidence] = field(default_factory=list)
     proficiency_score: float = 0.0  # 0.0 to 1.0 based on evidence quality/quantity
-    
+
     def add_evidence(self, evidence: SkillEvidence):
-        """Add evidence and update proficiency score."""
+        """Add evidence and update proficiency score.
+
+        Scoring uses the **highest tier** reached as a floor, then adds a small
+        bonus per additional piece of evidence (capped at 1.0).  This means
+        a single advanced-tier match already yields 0.9, while many beginner
+        matches can only reach ~0.5.
+        """
         self.evidence.append(evidence)
-        # More evidence = higher proficiency (with diminishing returns)
-        self.proficiency_score = min(1.0, len(self.evidence) * 0.2 + 0.2)
+        self._recalculate_proficiency()
+
+    def _recalculate_proficiency(self):
+        """Recompute proficiency from the full evidence list."""
+        if not self.evidence:
+            self.proficiency_score = 0.0
+            return
+
+        highest_tier_score = max(
+            TIER_SCORES.get(ev.tier, TIER_SCORES[TIER_BEGINNER])
+            for ev in self.evidence
+        )
+        # Small bonus per piece of evidence beyond the first (diminishing)
+        evidence_bonus = min(0.1, (len(self.evidence) - 1) * 0.02)
+        self.proficiency_score = min(1.0, highest_tier_score + evidence_bonus)
+
+    @property
+    def highest_tier(self) -> str:
+        """Return the highest complexity tier reached across all evidence."""
+        if not self.evidence:
+            return TIER_BEGINNER
+        tier_order = {TIER_BEGINNER: 0, TIER_INTERMEDIATE: 1, TIER_ADVANCED: 2}
+        return max(
+            (ev.tier for ev in self.evidence),
+            key=lambda t: tier_order.get(t, 0),
+        )
+
+    @property
+    def tier_breakdown(self) -> Dict[str, int]:
+        """Count evidence items per tier."""
+        counts: Dict[str, int] = {TIER_BEGINNER: 0, TIER_INTERMEDIATE: 0, TIER_ADVANCED: 0}
+        for ev in self.evidence:
+            counts[ev.tier] = counts.get(ev.tier, 0) + 1
+        return counts
 
 
 class SkillsExtractor:
@@ -85,7 +142,7 @@ class SkillsExtractor:
     def _init_patterns(self):
         """Initialize regex patterns for detecting skills in code."""
         
-        # OOP Patterns
+        # OOP Patterns — tiered by complexity
         self.oop_patterns = {
             'abstract_class': {
                 'python': [r'class\s+\w+\(ABC\)', r'@abstractmethod', r'from\s+abc\s+import'],
@@ -110,6 +167,16 @@ class SkillsExtractor:
                 'python': [r'def\s+\w+\(self[^)]*\):.*\n.*super\(\)', r'@override'],
                 'java': [r'@Override'],
             }
+        }
+
+        # Tier overrides for OOP — keys are (category_key, pattern_key) -> tier
+        # Patterns not listed here default to TIER_BEGINNER.
+        self.oop_tiers = {
+            'abstract_class': TIER_INTERMEDIATE,
+            'interface': TIER_INTERMEDIATE,
+            'inheritance': TIER_BEGINNER,
+            'encapsulation': TIER_INTERMEDIATE,
+            'polymorphism': TIER_ADVANCED,
         }
         
         # Data Structure Patterns
@@ -146,7 +213,16 @@ class SkillsExtractor:
                 'java': [r'PriorityQueue<'],
             },
         }
-        
+
+        self.data_structure_tiers = {
+            'hash_map': TIER_BEGINNER,
+            'tree': TIER_INTERMEDIATE,
+            'graph': TIER_ADVANCED,
+            'queue': TIER_INTERMEDIATE,
+            'stack': TIER_BEGINNER,
+            'heap': TIER_ADVANCED,
+        }
+
         # Algorithm & Complexity Patterns
         self.algorithm_patterns = {
             'sorting': {
@@ -166,7 +242,14 @@ class SkillsExtractor:
                 'java': [r'memo\[', r'dp\['],
             },
         }
-        
+
+        self.algorithm_tiers = {
+            'sorting': TIER_BEGINNER,
+            'searching': TIER_INTERMEDIATE,
+            'recursion': TIER_INTERMEDIATE,
+            'dynamic_programming': TIER_ADVANCED,
+        }
+
         # Design Pattern Patterns
         self.design_pattern_patterns = {
             'singleton': {
@@ -190,7 +273,15 @@ class SkillsExtractor:
                 'java': [r'interface\s+\w*Strategy', r'class\s+\w*Strategy'],
             },
         }
-        
+
+        self.design_pattern_tiers = {
+            'singleton': TIER_INTERMEDIATE,
+            'factory': TIER_INTERMEDIATE,
+            'observer': TIER_ADVANCED,
+            'decorator': TIER_ADVANCED,
+            'strategy': TIER_ADVANCED,
+        }
+
         # Software Engineering Practices
         self.practice_patterns = {
             'error_handling': {
@@ -220,8 +311,21 @@ class SkillsExtractor:
                 'java': [r'/\*\*.*\*/', r'//.*@param', r'//.*@return'],
             },
         }
-        
+
+        self.practice_tiers = {
+            'error_handling': TIER_BEGINNER,
+            'testing': TIER_INTERMEDIATE,
+            'logging': TIER_BEGINNER,
+            'type_hints': TIER_INTERMEDIATE,
+            'async_programming': TIER_ADVANCED,
+            'documentation': TIER_BEGINNER,
+        }
+
         # Framework Patterns
+        # No tier mapping for frameworks — detecting framework usage (e.g. `import React`)
+        # is inherently beginner-level; distinguishing intermediate/advanced usage would
+        # require semantic analysis (hooks vs class components, etc.) which is out of scope
+        # for regex-based detection.  All framework matches default to TIER_BEGINNER.
         self.framework_patterns = {
             'react': {
                 'javascript': [r'import.*from\s+["\']react["\']', r'useState', r'useEffect', r'React\.Component', r'\.jsx'],
@@ -655,9 +759,10 @@ class SkillsExtractor:
                     'inheritance': "Inheritance",
                     'encapsulation': "Encapsulation",
                     'polymorphism': "Polymorphism",
-                }
+                },
+                tier_mapping=self.oop_tiers,
             )
-            
+
             # Check data structures
             self._check_patterns(
                 content, file_path, language,
@@ -669,9 +774,10 @@ class SkillsExtractor:
                     'queue': "Queue Data Structure",
                     'stack': "Stack Data Structure",
                     'heap': "Heap/Priority Queue",
-                }
+                },
+                tier_mapping=self.data_structure_tiers,
             )
-            
+
             # Check algorithms
             self._check_patterns(
                 content, file_path, language,
@@ -681,9 +787,10 @@ class SkillsExtractor:
                     'searching': "Search Algorithms",
                     'recursion': "Recursive Problem Solving",
                     'dynamic_programming': "Dynamic Programming",
-                }
+                },
+                tier_mapping=self.algorithm_tiers,
             )
-            
+
             # Check design patterns
             self._check_patterns(
                 content, file_path, language,
@@ -694,9 +801,10 @@ class SkillsExtractor:
                     'observer': "Observer Pattern",
                     'decorator': "Decorator Pattern",
                     'strategy': "Strategy Pattern",
-                }
+                },
+                tier_mapping=self.design_pattern_tiers,
             )
-            
+
             # Check practices
             self._check_patterns(
                 content, file_path, language,
@@ -708,7 +816,8 @@ class SkillsExtractor:
                     'type_hints': "Static Typing",
                     'async_programming': "Asynchronous Programming",
                     'documentation': "Code Documentation",
-                }
+                },
+                tier_mapping=self.practice_tiers,
             )
             
             # Check frameworks
@@ -760,26 +869,34 @@ class SkillsExtractor:
         language: str,
         pattern_dict: Dict,
         category: str,
-        skill_mapping: Dict[str, str]
+        skill_mapping: Dict[str, str],
+        tier_mapping: Optional[Dict[str, str]] = None,
     ):
-        """Check for patterns in code and add evidence."""
-        
+        """Check for patterns in code and add evidence.
+
+        Args:
+            tier_mapping: optional dict mapping pattern_key -> tier string.
+                          Defaults to TIER_BEGINNER for any key not present.
+        """
+
         # Get timestamp for this file
         timestamp = self._get_file_timestamp(file_path)
-        
+
         for pattern_key, skill_name in skill_mapping.items():
             if pattern_key not in pattern_dict:
                 continue
-            
+
             patterns = pattern_dict[pattern_key].get(language, [])
             for pattern in patterns:
                 matches = list(re.finditer(pattern, content, re.MULTILINE | re.IGNORECASE))
-                
+
                 if matches:
                     # Get line number of first match
                     first_match = matches[0]
                     line_num = content[:first_match.start()].count('\n') + 1
-                    
+
+                    tier = (tier_mapping or {}).get(pattern_key, TIER_BEGINNER)
+
                     # Create evidence
                     evidence = SkillEvidence(
                         skill_name=skill_name,
@@ -788,9 +905,10 @@ class SkillsExtractor:
                         file_path=file_path,
                         line_number=line_num,
                         confidence=min(1.0, len(matches) * 0.3 + 0.4),
-                        timestamp=timestamp
+                        timestamp=timestamp,
+                        tier=tier,
                     )
-                    
+
                     # Add skill with evidence
                     description = self._get_skill_description(skill_name, category, pattern_key)
                     self._add_skill(skill_name, category, description, evidence)
@@ -1084,6 +1202,8 @@ class SkillsExtractor:
                     "category": skill.category,
                     "description": skill.description,
                     "proficiency_score": skill.proficiency_score,
+                    "highest_tier": skill.highest_tier,
+                    "tier_breakdown": skill.tier_breakdown,
                     "evidence_count": len(skill.evidence),
                     "evidence": [
                         {
@@ -1093,6 +1213,7 @@ class SkillsExtractor:
                             "line": ev.line_number,
                             "confidence": ev.confidence,
                             "timestamp": ev.timestamp,
+                            "tier": ev.tier,
                         }
                         for ev in skill.evidence
                     ]
