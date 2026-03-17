@@ -8,7 +8,6 @@ import {
   Folder,
   Briefcase,
   FileText,
-  FileEdit,
   Settings,
   Search,
 } from 'lucide-react';
@@ -150,14 +149,9 @@ export const Sidebar: React.FC = () => {
             label="Projects"
           />
           <NavItem
-            href="/resumes"
+            href="/resume-builder"
             icon={<FileText size={20} />}
             label="Resumes"
-          />
-          <NavItem
-            href="/resume-builder"
-            icon={<FileEdit size={20} />}
-            label="Resume Builder"
           />
         </div>
       </div>
