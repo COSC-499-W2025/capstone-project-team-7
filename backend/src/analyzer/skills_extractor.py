@@ -376,6 +376,37 @@ class SkillsExtractor:
             },
         }
         
+        # ML & Data Science Patterns
+        self.ml_data_patterns = {
+            'pandas': {
+                'python': [r'import\s+pandas', r'from\s+pandas', r'pd\.DataFrame', r'pd\.read_csv', r'\.groupby\('],
+            },
+            'numpy': {
+                'python': [r'import\s+numpy', r'from\s+numpy', r'np\.array', r'np\.zeros', r'np\.dot'],
+            },
+            'sklearn': {
+                'python': [r'from\s+sklearn', r'import\s+sklearn', r'\.fit\(', r'\.predict\(', r'train_test_split'],
+            },
+            'tensorflow': {
+                'python': [r'import\s+tensorflow', r'from\s+tensorflow', r'tf\.keras', r'tf\.constant'],
+            },
+            'pytorch': {
+                'python': [r'import\s+torch', r'from\s+torch', r'nn\.Module', r'torch\.tensor'],
+            },
+            'matplotlib': {
+                'python': [r'import\s+matplotlib', r'from\s+matplotlib', r'plt\.plot', r'plt\.show'],
+            },
+        }
+
+        self.ml_data_tiers = {
+            'pandas': TIER_BEGINNER,
+            'numpy': TIER_BEGINNER,
+            'sklearn': TIER_INTERMEDIATE,
+            'tensorflow': TIER_ADVANCED,
+            'pytorch': TIER_ADVANCED,
+            'matplotlib': TIER_BEGINNER,
+        }
+
         # Architecture & Security Patterns
         self.architecture_patterns = {
             'mvc': {
@@ -848,6 +879,21 @@ class SkillsExtractor:
                 }
             )
             
+            # Check ML & data science patterns
+            self._check_patterns(
+                content, file_path, language,
+                self.ml_data_patterns, "ml_data",
+                {
+                    'pandas': "Data Analysis (pandas)",
+                    'numpy': "Numerical Computing (NumPy)",
+                    'sklearn': "Machine Learning (scikit-learn)",
+                    'tensorflow': "Deep Learning (TensorFlow)",
+                    'pytorch': "Deep Learning (PyTorch)",
+                    'matplotlib': "Data Visualization (matplotlib)",
+                },
+                tier_mapping=self.ml_data_tiers,
+            )
+
             # Check architecture patterns
             self._check_patterns(
                 content, file_path, language,
@@ -1028,6 +1074,13 @@ class SkillsExtractor:
             "Authentication & Authorization": "Implements secure authentication systems",
             "Input Validation": "Validates and sanitizes user input for security",
             "Middleware Pattern": "Uses middleware for request/response processing",
+            # ML & Data Science
+            "Data Analysis (pandas)": "Uses pandas for data manipulation and analysis",
+            "Numerical Computing (NumPy)": "Performs numerical operations with NumPy arrays",
+            "Machine Learning (scikit-learn)": "Builds ML models using scikit-learn pipelines",
+            "Deep Learning (TensorFlow)": "Implements neural networks with TensorFlow/Keras",
+            "Deep Learning (PyTorch)": "Builds deep learning models with PyTorch",
+            "Data Visualization (matplotlib)": "Creates data visualizations with matplotlib",
             # CI/CD and DevOps
             "CI/CD Practices": "Implements continuous integration and deployment workflows",
             "Containerization": "Uses container technologies for application packaging and deployment",
