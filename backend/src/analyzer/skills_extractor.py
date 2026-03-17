@@ -321,38 +321,122 @@ class SkillsExtractor:
             'documentation': TIER_BEGINNER,
         }
 
-        # Framework Patterns
-        # No tier mapping for frameworks — detecting framework usage (e.g. `import React`)
-        # is inherently beginner-level; distinguishing intermediate/advanced usage would
-        # require semantic analysis (hooks vs class components, etc.) which is out of scope
-        # for regex-based detection.  All framework matches default to TIER_BEGINNER.
+        # Framework Patterns — split into beginner/intermediate/advanced per framework
+        # so that detecting basic imports yields beginner tier while advanced usage
+        # patterns (custom hooks, performance APIs, etc.) yield higher tiers.
         self.framework_patterns = {
-            'react': {
+            # React — beginner: basic imports/hooks; intermediate: perf hooks, context;
+            # advanced: lazy loading, portals, refs
+            'react_basic': {
                 'javascript': [r'import.*from\s+["\']react["\']', r'useState', r'useEffect', r'React\.Component', r'\.jsx'],
                 'typescript': [r'import.*from\s+["\']react["\']', r'useState', r'useEffect', r'FC<', r'\.tsx'],
             },
-            'vue': {
+            'react_intermediate': {
+                'javascript': [r'useReducer', r'useContext', r'React\.memo', r'useMemo', r'useCallback', r'createContext'],
+                'typescript': [r'useReducer', r'useContext', r'React\.memo', r'useMemo', r'useCallback', r'createContext'],
+            },
+            'react_advanced': {
+                'javascript': [r'React\.lazy', r'Suspense', r'forwardRef', r'createPortal', r'useImperativeHandle'],
+                'typescript': [r'React\.lazy', r'Suspense', r'forwardRef', r'createPortal', r'useImperativeHandle'],
+            },
+            # Vue
+            'vue_basic': {
                 'javascript': [r'import.*from\s+["\']vue["\']', r'Vue\.component', r'v-if', r'v-for', r'\.vue'],
             },
-            'angular': {
-                'typescript': [r'@Component', r'@Injectable', r'@NgModule', r'import.*@angular'],
+            # Angular — beginner: decorators; intermediate: services/HTTP;
+            # advanced: change detection, custom directives
+            'angular_basic': {
+                'typescript': [r'@Component', r'@NgModule', r'import.*@angular'],
             },
-            'django': {
+            'angular_intermediate': {
+                'typescript': [r'@Injectable', r'HttpClient', r'@Pipe', r'Observable'],
+            },
+            'angular_advanced': {
+                'typescript': [r'ChangeDetectionStrategy\.OnPush', r'@HostListener', r'@ContentChild'],
+            },
+            # Django — beginner: models/views; intermediate: forms/signals;
+            # advanced: Q objects, prefetch, caching
+            'django_basic': {
                 'python': [r'from\s+django', r'django\.db\.models', r'models\.Model', r'\.views', r'urlpatterns'],
             },
-            'flask': {
+            'django_intermediate': {
+                'python': [r'class\s+Meta:', r'ModelForm', r'django\.forms', r'signals\.'],
+            },
+            'django_advanced': {
+                'python': [r'models\.Q\b', r'F\(\s*["\']', r'select_related', r'prefetch_related', r'django\.core\.cache'],
+            },
+            # Flask — beginner: basic routes; intermediate: blueprints/hooks;
+            # advanced: app context, signals
+            'flask_basic': {
                 'python': [r'from\s+flask\s+import', r'@app\.route', r'Flask\(__name__\)', r'render_template'],
             },
-            'express': {
+            'flask_intermediate': {
+                'python': [r'Blueprint\(', r'before_request', r'after_request', r'flask\.g\b'],
+            },
+            'flask_advanced': {
+                'python': [r'app_context', r'current_app', r'flask\.signals', r'@app\.errorhandler'],
+            },
+            # Express — beginner: basic app; intermediate: router/middleware;
+            # advanced: custom error middleware
+            'express_basic': {
                 'javascript': [r'require\(["\']express["\']\)', r'express\(\)', r'app\.get\(', r'app\.post\('],
             },
-            'spring': {
+            'express_intermediate': {
+                'javascript': [r'express\.Router\(\)', r'router\.use\(', r'app\.use\('],
+            },
+            'express_advanced': {
+                'javascript': [r'function\s*\(\s*err\s*,\s*req\s*,\s*res\s*,\s*next\s*\)', r'app\.all\('],
+            },
+            # Spring — beginner: boot/controller; intermediate: service layer;
+            # advanced: AOP, caching, async
+            'spring_basic': {
                 'java': [r'@SpringBootApplication', r'@RestController', r'@Autowired', r'import.*springframework'],
             },
-            'nextjs': {
+            'spring_intermediate': {
+                'java': [r'@Service', r'@Repository', r'@Transactional', r'JpaRepository'],
+            },
+            'spring_advanced': {
+                'java': [r'@Aspect', r'@EnableCaching', r'@Async', r'@EventListener'],
+            },
+            # Next.js — beginner: imports/SSR; intermediate: ISR/routing;
+            # advanced: middleware, server actions
+            'nextjs_basic': {
                 'javascript': [r'import.*from\s+["\']next', r'getServerSideProps', r'getStaticProps', r'next\.config'],
                 'typescript': [r'import.*from\s+["\']next', r'getServerSideProps', r'getStaticProps'],
             },
+            'nextjs_intermediate': {
+                'javascript': [r'getStaticPaths', r'useRouter', r'next/image', r'next/head'],
+                'typescript': [r'getStaticPaths', r'useRouter', r'next/image', r'next/head'],
+            },
+            'nextjs_advanced': {
+                'javascript': [r'generateMetadata', r'revalidatePath', r'unstable_cache', r'generateStaticParams'],
+                'typescript': [r'generateMetadata', r'revalidatePath', r'unstable_cache', r'generateStaticParams'],
+            },
+        }
+
+        self.framework_tiers = {
+            'react_basic': TIER_BEGINNER,
+            'react_intermediate': TIER_INTERMEDIATE,
+            'react_advanced': TIER_ADVANCED,
+            'vue_basic': TIER_BEGINNER,
+            'angular_basic': TIER_BEGINNER,
+            'angular_intermediate': TIER_INTERMEDIATE,
+            'angular_advanced': TIER_ADVANCED,
+            'django_basic': TIER_BEGINNER,
+            'django_intermediate': TIER_INTERMEDIATE,
+            'django_advanced': TIER_ADVANCED,
+            'flask_basic': TIER_BEGINNER,
+            'flask_intermediate': TIER_INTERMEDIATE,
+            'flask_advanced': TIER_ADVANCED,
+            'express_basic': TIER_BEGINNER,
+            'express_intermediate': TIER_INTERMEDIATE,
+            'express_advanced': TIER_ADVANCED,
+            'spring_basic': TIER_BEGINNER,
+            'spring_intermediate': TIER_INTERMEDIATE,
+            'spring_advanced': TIER_ADVANCED,
+            'nextjs_basic': TIER_BEGINNER,
+            'nextjs_intermediate': TIER_INTERMEDIATE,
+            'nextjs_advanced': TIER_ADVANCED,
         }
         
         # Database & ORM Patterns
@@ -851,20 +935,35 @@ class SkillsExtractor:
                 tier_mapping=self.practice_tiers,
             )
             
-            # Check frameworks
+            # Check frameworks (tiered: basic/intermediate/advanced per framework)
             self._check_patterns(
                 content, file_path, language,
                 self.framework_patterns, "frameworks",
                 {
-                    'react': "React Framework",
-                    'vue': "Vue.js Framework",
-                    'angular': "Angular Framework",
-                    'django': "Django Framework",
-                    'flask': "Flask Framework",
-                    'express': "Express.js Framework",
-                    'spring': "Spring Framework",
-                    'nextjs': "Next.js Framework",
-                }
+                    'react_basic': "React Framework",
+                    'react_intermediate': "React Framework",
+                    'react_advanced': "React Framework",
+                    'vue_basic': "Vue.js Framework",
+                    'angular_basic': "Angular Framework",
+                    'angular_intermediate': "Angular Framework",
+                    'angular_advanced': "Angular Framework",
+                    'django_basic': "Django Framework",
+                    'django_intermediate': "Django Framework",
+                    'django_advanced': "Django Framework",
+                    'flask_basic': "Flask Framework",
+                    'flask_intermediate': "Flask Framework",
+                    'flask_advanced': "Flask Framework",
+                    'express_basic': "Express.js Framework",
+                    'express_intermediate': "Express.js Framework",
+                    'express_advanced': "Express.js Framework",
+                    'spring_basic': "Spring Framework",
+                    'spring_intermediate': "Spring Framework",
+                    'spring_advanced': "Spring Framework",
+                    'nextjs_basic': "Next.js Framework",
+                    'nextjs_intermediate': "Next.js Framework",
+                    'nextjs_advanced': "Next.js Framework",
+                },
+                tier_mapping=self.framework_tiers,
             )
             
             # Check database patterns
