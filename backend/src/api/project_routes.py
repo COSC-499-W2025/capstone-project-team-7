@@ -1920,13 +1920,19 @@ class RoleProfileItem(BaseModel):
     description: str
 
 
+class WeightedSkillEntry(BaseModel):
+    name: str
+    importance: str
+
+
 class SkillGapAnalysisResponse(BaseModel):
     role: str
     role_label: str
-    matched: List[str]
-    missing: List[str]
+    matched: List[WeightedSkillEntry]
+    missing: List[WeightedSkillEntry]
     extra: List[str]
     coverage_percent: float
+    weighted_coverage_percent: float
 
 
 @router.get(
