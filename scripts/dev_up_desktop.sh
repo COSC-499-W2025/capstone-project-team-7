@@ -22,6 +22,14 @@ kill_port 3000
 
 echo "=== Setting up environment ==="
 
+frontend_deps_healthy() {
+    [ -f "node_modules/react/cjs/react.development.js" ] && [ -f "node_modules/next/package.json" ]
+}
+
+electron_deps_healthy() {
+    [ -f "electron/node_modules/electron/package.json" ] || [ -f "node_modules/electron/package.json" ]
+}
+
 # Setup backend (Python)
 if [ ! -d "backend/venv" ]; then
     echo "Creating Python virtual environment..."
@@ -34,24 +42,11 @@ else
     echo "Python venv already exists, skipping..."
 fi
 
-# Setup frontend
-if [ ! -d "frontend/node_modules" ]; then
-    echo "Installing frontend dependencies..."
-    cd frontend
-    npm install
-    cd ..
+if frontend_deps_healthy && electron_deps_healthy; then
+    echo "Workspace frontend/electron dependencies look healthy, skipping npm install..."
 else
-    echo "Frontend already installed, skipping..."
-fi
-
-# Setup electron
-if [ ! -d "electron/node_modules" ]; then
-    echo "Installing Electron dependencies..."
-    cd electron
-    npm install
-    cd ..
-else
-    echo "Electron already installed, skipping..."
+    echo "Installing workspace dependencies (frontend + electron + root)..."
+    npm run install:all
 fi
 
 echo "=== Starting services ==="
