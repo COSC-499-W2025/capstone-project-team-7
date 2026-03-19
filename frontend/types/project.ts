@@ -144,6 +144,12 @@ export interface ProjectDuplicateReport extends Record<string, unknown> {
   total_wasted_mb?: number;
 }
 
+export interface ProjectCategoryInfo {
+  category: string;
+  label: string;
+  confidence: number;
+}
+
 export interface ProjectScanData extends Record<string, unknown> {
   summary?: ProjectScanSummary;
   skills_analysis?: ProjectSkillsAnalysis;
@@ -157,6 +163,7 @@ export interface ProjectScanData extends Record<string, unknown> {
   duplicate_report?: ProjectDuplicateReport;
   files?: ProjectScanFile[];
   languages?: string[] | ProjectScanLanguageEntry[] | Record<string, unknown>;
+  project_category?: ProjectCategoryInfo;
 }
 
 export interface ProjectDetail extends ProjectMetadata {

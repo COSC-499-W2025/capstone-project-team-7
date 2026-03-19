@@ -7,7 +7,7 @@ import { StatCard } from "@/components/ui/stat-card";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
-import type { GitRepoAnalysis, GitContributor, GitTimelineEntry } from "@/types/git-analysis";
+import type { GitRepoAnalysis, GitContributor, GitTimelineEntry, ProjectCategoryInfo } from "@/types/git-analysis";
 import { formatContributorEmail } from "@/lib/git-email";
 import {
   projectPageSelectors,
@@ -80,12 +80,14 @@ export function GitAnalysisTab({
   gitAnalysis,
   onRetry,
   useStore = false,
+  projectCategory,
 }: {
   loading?: boolean;
   error?: string | null;
   gitAnalysis?: unknown;
   onRetry?: () => void;
   useStore?: boolean;
+  projectCategory?: ProjectCategoryInfo | null;
 }) {
   const scanData = useProjectPageStore(projectPageSelectors.scanData);
   const storeLoading = useProjectPageStore(projectPageSelectors.projectLoading);
@@ -105,6 +107,14 @@ export function GitAnalysisTab({
           void storeRetryLoadProject();
         }
       : undefined);
+
+  // Resolve project category from prop or store
+  const resolvedCategory =
+    projectCategory ??
+    (useStoreFallback
+      ? (scanData as Record<string, unknown>).project_category as ProjectCategoryInfo | undefined
+      : null) ??
+    null;
 
   const repos = normalizeGitAnalysis(resolvedGitAnalysis);
   const [selectedIdx, setSelectedIdx] = useState(0);
@@ -127,7 +137,7 @@ export function GitAnalysisTab({
       )}
 
       {/* Summary stats */}
-      <SummaryStats repo={repo} />
+      <SummaryStats repo={repo} projectCategory={resolvedCategory} />
 
       {/* Contributors */}
       {repo.contributors.length > 0 && (
@@ -182,15 +192,27 @@ function RepoSelector({
   );
 }
 
-function SummaryStats({ repo }: { repo: GitRepoAnalysis }) {
+function SummaryStats({
+  repo,
+  projectCategory,
+}: {
+  repo: GitRepoAnalysis;
+  projectCategory?: ProjectCategoryInfo | null;
+}) {
   const dateLabel = repo.date_range
     ? `${formatDate(repo.date_range.start)} – ${formatDate(repo.date_range.end)}`
     : "N/A";
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div className={`grid grid-cols-2 ${projectCategory ? "md:grid-cols-5" : "md:grid-cols-4"} gap-4`}>
       <StatCard label="Total Commits" value={repo.commit_count.toLocaleString()} />
       <StatCard label="Project Type" value={capitalize(repo.project_type)} />
+      {projectCategory && (
+        <StatCard
+          label="Category"
+          value={projectCategory.label}
+        />
+      )}
       <StatCard label="Date Range" value={dateLabel} />
       <StatCard label="Branches" value={repo.branches.length.toLocaleString()} />
     </div>
@@ -198,13 +220,58 @@ function SummaryStats({ repo }: { repo: GitRepoAnalysis }) {
 }
 
 
+type ContributorSortKey = "commits" | "lines_changed";
+
 function ContributorsTable({ contributors }: { contributors: GitContributor[] }) {
+  const [sortBy, setSortBy] = useState<ContributorSortKey>("commits");
+
+  const hasLinesData = contributors.some((c) => (c.lines_changed ?? 0) > 0);
+
+  const sorted = [...contributors].sort((a, b) => {
+    if (sortBy === "lines_changed") {
+      return (b.lines_changed ?? 0) - (a.lines_changed ?? 0);
+    }
+    return b.commits - a.commits;
+  });
+
+  // Compute share based on current sort metric
+  const total =
+    sortBy === "lines_changed"
+      ? sorted.reduce((s, c) => s + (c.lines_changed ?? 0), 0) || 1
+      : sorted.reduce((s, c) => s + c.commits, 0) || 1;
+
   return (
     <Card className="bg-white border border-gray-200">
       <CardHeader className="border-b border-gray-200">
-        <CardTitle className="text-sm font-semibold text-gray-900">
-          Contributors ({contributors.length})
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-semibold text-gray-900">
+            Contributors ({contributors.length})
+          </CardTitle>
+          {hasLinesData && (
+            <div className="flex items-center gap-1 rounded-lg bg-gray-100 p-0.5">
+              <button
+                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                  sortBy === "commits"
+                    ? "bg-white text-gray-900 shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+                onClick={() => setSortBy("commits")}
+              >
+                Commits
+              </button>
+              <button
+                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                  sortBy === "lines_changed"
+                    ? "bg-white text-gray-900 shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+                onClick={() => setSortBy("lines_changed")}
+              >
+                Lines Changed
+              </button>
+            </div>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="p-0">
         <div className="overflow-x-auto">
@@ -214,6 +281,12 @@ function ContributorsTable({ contributors }: { contributors: GitContributor[] })
                 <th className="px-4 py-3">Name</th>
                 <th className="px-4 py-3">Email</th>
                 <th className="px-4 py-3">Commits</th>
+                {hasLinesData && (
+                  <>
+                    <th className="px-4 py-3">Lines Added</th>
+                    <th className="px-4 py-3">Lines Deleted</th>
+                  </>
+                )}
                 <th className="px-4 py-3">Share</th>
                 <th className="px-4 py-3">First Commit</th>
                 <th className="px-4 py-3">Last Commit</th>
@@ -221,45 +294,61 @@ function ContributorsTable({ contributors }: { contributors: GitContributor[] })
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {contributors.map((c, idx) => (
-                <tr key={`${c.name}-${idx}`} className="text-gray-700">
-                  <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">
-                    {c.name}
-                  </td>
-                  <td
-                    className="px-4 py-3 text-gray-500 whitespace-nowrap"
-                    title={c.email ?? undefined}
-                  >
-                    {formatContributorEmail(c.email)}
-                    {(c.all_emails?.length ?? 0) > 1 && (
-                      <span className="ml-1 text-xs text-gray-400">
-                        (+{(c.all_emails!.length) - 1})
-                      </span>
+              {sorted.map((c, idx) => {
+                const metricValue =
+                  sortBy === "lines_changed" ? (c.lines_changed ?? 0) : c.commits;
+                const sharePercent = Math.round((metricValue / total) * 10000) / 100;
+
+                return (
+                  <tr key={`${c.name}-${idx}`} className="text-gray-700">
+                    <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">
+                      {c.name}
+                    </td>
+                    <td
+                      className="px-4 py-3 text-gray-500 whitespace-nowrap"
+                      title={c.email ?? undefined}
+                    >
+                      {formatContributorEmail(c.email)}
+                      {(c.all_emails?.length ?? 0) > 1 && (
+                        <span className="ml-1 text-xs text-gray-400">
+                          (+{(c.all_emails!.length) - 1})
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">{c.commits}</td>
+                    {hasLinesData && (
+                      <>
+                        <td className="px-4 py-3 text-green-600">
+                          +{(c.lines_added ?? 0).toLocaleString()}
+                        </td>
+                        <td className="px-4 py-3 text-red-500">
+                          -{(c.lines_deleted ?? 0).toLocaleString()}
+                        </td>
+                      </>
                     )}
-                  </td>
-                  <td className="px-4 py-3">{c.commits}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 bg-gray-100 rounded-full h-2 max-w-[80px]">
-                        <div
-                          className="bg-gray-900 h-2 rounded-full"
-                          style={{ width: `${Math.min(c.percent, 100)}%` }}
-                        />
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 bg-gray-100 rounded-full h-2 max-w-[80px]">
+                          <div
+                            className="bg-gray-900 h-2 rounded-full"
+                            style={{ width: `${Math.min(sharePercent, 100)}%` }}
+                          />
+                        </div>
+                        <span className="text-xs text-gray-500 w-12 text-right">
+                          {sharePercent}%
+                        </span>
                       </div>
-                      <span className="text-xs text-gray-500 w-12 text-right">
-                        {c.percent}%
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
-                    {formatDate(c.first_commit_date)}
-                  </td>
-                  <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
-                    {formatDate(c.last_commit_date)}
-                  </td>
-                  <td className="px-4 py-3">{c.active_days ?? "—"}</td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                      {formatDate(c.first_commit_date)}
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                      {formatDate(c.last_commit_date)}
+                    </td>
+                    <td className="px-4 py-3">{c.active_days ?? "—"}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -64,6 +64,41 @@ def _get_contributor_key(contrib: Dict[str, Any]) -> str:
     return name.lower()
 
 
+def _lines_changed_by_email(repo_dir: str) -> Dict[str, Dict[str, int]]:
+    """
+    Collect total lines added/deleted per author email from the full git log.
+    Runs a single git command and aggregates per email.
+    """
+    try:
+        raw = _git(
+            ["log", "--all", "--numstat", "--format=COMMIT_SEP%aE"],
+            repo_dir,
+        )
+    except CalledProcessError:
+        return {}
+
+    stats: Dict[str, Dict[str, int]] = {}
+    current_email: str | None = None
+
+    for line in raw.splitlines():
+        if line.startswith("COMMIT_SEP"):
+            current_email = line[len("COMMIT_SEP"):].strip().lower()
+            if current_email and current_email not in stats:
+                stats[current_email] = {"added": 0, "deleted": 0}
+            continue
+        if not line.strip() or current_email is None:
+            continue
+        parts = line.split("\t")
+        if len(parts) >= 3 and parts[0] != "-" and parts[1] != "-":
+            try:
+                stats[current_email]["added"] += int(parts[0])
+                stats[current_email]["deleted"] += int(parts[1])
+            except (ValueError, KeyError):
+                pass
+
+    return stats
+
+
 def _merge_contributors(contributors: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Merge contributors that appear to be the same person.
@@ -267,6 +302,24 @@ def analyze_git_repo(repo_dir: str) -> dict:
             contributor.setdefault("first_commit_date", None)
             contributor.setdefault("last_commit_date", None)
             contributor.setdefault("active_days", 0)
+
+    # ---------- lines changed per contributor ----------
+    lines_stats = _lines_changed_by_email(repo_dir)
+    for contributor in contributors:
+        emails = contributor.get("all_emails", [])
+        if not emails:
+            email = contributor.get("email")
+            emails = [email] if email else []
+        total_added = 0
+        total_deleted = 0
+        for em in emails:
+            key = (em or "").lower()
+            if key in lines_stats:
+                total_added += lines_stats[key]["added"]
+                total_deleted += lines_stats[key]["deleted"]
+        contributor["lines_added"] = total_added
+        contributor["lines_deleted"] = total_deleted
+        contributor["lines_changed"] = total_added + total_deleted
 
     # ---------- dates ----------
     try:

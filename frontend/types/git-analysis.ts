@@ -12,6 +12,9 @@ export interface GitContributor {
   first_commit_date?: string | null;
   last_commit_date?: string | null;
   active_days?: number;
+  lines_added?: number;
+  lines_deleted?: number;
+  lines_changed?: number;
   aliases?: string[];
   all_emails?: string[];
 }
@@ -49,4 +52,13 @@ export interface GitRepoAnalysis {
   date_range: GitDateRange | null;
   branches: string[];
   timeline: GitTimelineEntry[];
+}
+
+/**
+ * Auto-detected project category (e.g. Web Application, API, Data Science).
+ */
+export interface ProjectCategoryInfo {
+  category: string;
+  label: string;
+  confidence: number;
 }
