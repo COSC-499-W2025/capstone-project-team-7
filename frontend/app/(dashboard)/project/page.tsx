@@ -1456,6 +1456,7 @@ export default function ProjectPage() {
                       error={projectError}
                       gitAnalysis={scanData.git_analysis}
                       onRetry={loadProject}
+                      projectCategory={scanData.project_category ?? null}
                     />
                   </CardContent>
                 </Card>

@@ -1039,6 +1039,21 @@ def _run_scan_background(
             logger.info(f"💾 Saving duplicate report to scan_data")
             result_payload["duplicate_report"] = duplicate_report
 
+        # Project auto-categorization
+        try:
+            from analyzer.project_classifier import classify_project as _classify
+            file_paths = [f.path for f in scan_result.parse_result.files if hasattr(f, "path")]
+            cat_result = _classify(file_paths, scan_result.languages)
+            if cat_result.category != "unknown":
+                result_payload["project_category"] = {
+                    "category": cat_result.category,
+                    "label": cat_result.label,
+                    "confidence": cat_result.confidence,
+                }
+                logger.info(f"💾 Project categorized as: {cat_result.label} (confidence={cat_result.confidence})")
+        except Exception as e:
+            logger.warning(f"⚠️  Project categorization failed: {e}")
+
         if temp_analysis_dir is not None:
             temp_analysis_dir.cleanup()
 
