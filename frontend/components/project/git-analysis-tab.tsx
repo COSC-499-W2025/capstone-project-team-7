@@ -7,7 +7,7 @@ import { StatCard } from "@/components/ui/stat-card";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
-import type { GitRepoAnalysis, GitContributor, GitTimelineEntry, ProjectCategoryInfo } from "@/types/git-analysis";
+import type { GitRepoAnalysis, GitContributor, GitTimelineEntry } from "@/types/git-analysis";
 import { formatContributorEmail } from "@/lib/git-email";
 import {
   projectPageSelectors,
@@ -80,14 +80,12 @@ export function GitAnalysisTab({
   gitAnalysis,
   onRetry,
   useStore = false,
-  projectCategory,
 }: {
   loading?: boolean;
   error?: string | null;
   gitAnalysis?: unknown;
   onRetry?: () => void;
   useStore?: boolean;
-  projectCategory?: ProjectCategoryInfo | null;
 }) {
   const scanData = useProjectPageStore(projectPageSelectors.scanData);
   const storeLoading = useProjectPageStore(projectPageSelectors.projectLoading);
@@ -107,14 +105,6 @@ export function GitAnalysisTab({
           void storeRetryLoadProject();
         }
       : undefined);
-
-  // Resolve project category from prop or store
-  const resolvedCategory =
-    projectCategory ??
-    (useStoreFallback
-      ? (scanData as Record<string, unknown>).project_category as ProjectCategoryInfo | undefined
-      : null) ??
-    null;
 
   const repos = normalizeGitAnalysis(resolvedGitAnalysis);
   const [selectedIdx, setSelectedIdx] = useState(0);
@@ -137,7 +127,7 @@ export function GitAnalysisTab({
       )}
 
       {/* Summary stats */}
-      <SummaryStats repo={repo} projectCategory={resolvedCategory} />
+      <SummaryStats repo={repo} />
 
       {/* Contributors */}
       {repo.contributors.length > 0 && (
@@ -192,27 +182,15 @@ function RepoSelector({
   );
 }
 
-function SummaryStats({
-  repo,
-  projectCategory,
-}: {
-  repo: GitRepoAnalysis;
-  projectCategory?: ProjectCategoryInfo | null;
-}) {
+function SummaryStats({ repo }: { repo: GitRepoAnalysis }) {
   const dateLabel = repo.date_range
     ? `${formatDate(repo.date_range.start)} – ${formatDate(repo.date_range.end)}`
     : "N/A";
 
   return (
-    <div className={`grid grid-cols-2 ${projectCategory ? "md:grid-cols-5" : "md:grid-cols-4"} gap-4`}>
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
       <StatCard label="Total Commits" value={repo.commit_count.toLocaleString()} />
       <StatCard label="Project Type" value={capitalize(repo.project_type)} />
-      {projectCategory && (
-        <StatCard
-          label="Category"
-          value={projectCategory.label}
-        />
-      )}
       <StatCard label="Date Range" value={dateLabel} />
       <StatCard label="Branches" value={repo.branches.length.toLocaleString()} />
     </div>

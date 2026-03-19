@@ -1045,6 +1045,7 @@ export default function ProjectPage() {
                   pdfDocs={pdfDocs}
                   otherDocs={otherDocs}
                   contributionMetrics={scanData.contribution_metrics}
+                  projectCategory={scanData.project_category ?? null}
                 />
               </TabsContent>
 
@@ -1456,7 +1457,6 @@ export default function ProjectPage() {
                       error={projectError}
                       gitAnalysis={scanData.git_analysis}
                       onRetry={loadProject}
-                      projectCategory={scanData.project_category ?? null}
                     />
                   </CardContent>
                 </Card>
