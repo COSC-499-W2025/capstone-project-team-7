@@ -35,6 +35,7 @@ try:
         _run_document_analysis,
         _run_duplicate_detection,
         _extract_archive_for_analysis,
+        _collect_files_for_ai,
     )
 except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
     from backend.src.api.dependencies import AuthContext, get_auth_context
@@ -49,6 +50,7 @@ except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fal
         _run_document_analysis,
         _run_duplicate_detection,
         _extract_archive_for_analysis,
+        _collect_files_for_ai,
     )
 
 # Add parent directory to path for absolute imports (needed for lazy imports in background tasks)
@@ -756,7 +758,7 @@ def _run_scan_background(
         # RUN ALL ANALYSES (optimized with parallel execution)
         # ========================================
         logger.info("=" * 50)
-        logger.info("🚀 Starting all analysis pipelines (parallel mode)...")
+        logger.info("≡ƒÜÇ Starting all analysis pipelines (parallel mode)...")
         logger.info("=" * 50)
         
         _update_scan_status(
@@ -776,7 +778,7 @@ def _run_scan_background(
         document_analysis = None
         
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-            logger.info("🔄 Phase 1: Running independent analyses in parallel...")
+            logger.info("≡ƒöä Phase 1: Running independent analyses in parallel...")
             
             # Submit all independent analyses
             future_git = executor.submit(_run_git_analysis_for_path, analysis_target)
@@ -787,29 +789,29 @@ def _run_scan_background(
             # Collect results as they complete
             try:
                 git_analysis = future_git.result(timeout=120)
-                logger.info("✅ Git analysis completed")
+                logger.info("Γ£à Git analysis completed")
             except Exception as e:
-                logger.warning(f"⚠️  Git analysis failed: {e}")
+                logger.warning(f"ΓÜá∩╕Å  Git analysis failed: {e}")
             
             try:
                 media_analysis = future_media.result(timeout=60)
-                logger.info("✅ Media analysis completed")
+                logger.info("Γ£à Media analysis completed")
             except Exception as e:
-                logger.warning(f"⚠️  Media analysis failed: {e}")
+                logger.warning(f"ΓÜá∩╕Å  Media analysis failed: {e}")
             
             try:
                 pdf_analysis = future_pdf.result(timeout=90)
-                logger.info("✅ PDF analysis completed")
+                logger.info("Γ£à PDF analysis completed")
             except Exception as e:
-                logger.warning(f"⚠️  PDF analysis failed: {e}")
+                logger.warning(f"ΓÜá∩╕Å  PDF analysis failed: {e}")
             
             try:
                 document_analysis = future_document.result(timeout=60)
-                logger.info("✅ Document analysis completed")
+                logger.info("Γ£à Document analysis completed")
             except Exception as e:
-                logger.warning(f"⚠️  Document analysis failed: {e}")
+                logger.warning(f"ΓÜá∩╕Å  Document analysis failed: {e}")
         
-        logger.info("✨ Phase 1 complete")
+        logger.info("Γ£¿ Phase 1 complete")
         
         git_data = git_analysis[0] if git_analysis else None
         
@@ -828,7 +830,7 @@ def _run_scan_background(
             file_based_timeout = max(base_timeout, base_timeout + (total_files // 100) * 10)
             timeout_seconds = min(file_based_timeout, 300)  # Cap at 5 minutes
             
-            logger.info(f"🔄 Phase 2: Code analysis starting...")
+            logger.info(f"≡ƒöä Phase 2: Code analysis starting...")
             logger.info(f"   Target: {analysis_target}")
             logger.info(f"   Timeout: {timeout_seconds}s for {total_files} files")
             
@@ -851,22 +853,22 @@ def _run_scan_background(
             thread.join(timeout=timeout_seconds)
             
             if thread.is_alive():
-                logger.warning(f"⚠️  Code analysis timed out after {timeout_seconds} seconds - skipping")
+                logger.warning(f"ΓÜá∩╕Å  Code analysis timed out after {timeout_seconds} seconds - skipping")
                 code_analysis = None
             elif exception_container[0]:
-                logger.warning(f"⚠️  Code analysis error: {exception_container[0]} - skipping")
+                logger.warning(f"ΓÜá∩╕Å  Code analysis error: {exception_container[0]} - skipping")
                 code_analysis = None
             else:
                 code_analysis = result_container[0]
                 if code_analysis:
-                    logger.info(f"✅ Code analysis completed: {list(code_analysis.keys())}")
+                    logger.info(f"Γ£à Code analysis completed: {list(code_analysis.keys())}")
                 else:
-                    logger.info("⚠️  Code analysis returned None")
+                    logger.info("ΓÜá∩╕Å  Code analysis returned None")
         except Exception as e:
-            logger.warning(f"⚠️  Code analysis setup error: {e} - skipping")
+            logger.warning(f"ΓÜá∩╕Å  Code analysis setup error: {e} - skipping")
             code_analysis = None
         
-        logger.info("✨ Phase 2 complete")
+        logger.info("Γ£¿ Phase 2 complete")
         
         # PHASE 3: Run dependent analyses in parallel
         # Skills, Contribution Metrics, and Duplicate Detection can run together
@@ -882,7 +884,7 @@ def _run_scan_background(
         duplicate_report = None
         
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-            logger.info("🔄 Phase 3: Running dependent analyses in parallel...")
+            logger.info("≡ƒöä Phase 3: Running dependent analyses in parallel...")
             
             # Skills Analysis
             def run_skills_analysis():
@@ -896,7 +898,7 @@ def _run_scan_background(
                     )
                     return _build_skills_analysis(skills_service)
                 except Exception as e:
-                    logger.error(f"❌ Skills analysis failed: {e}", exc_info=True)
+                    logger.error(f"Γ¥î Skills analysis failed: {e}", exc_info=True)
                     return None
             
             # Contribution Metrics
@@ -913,7 +915,7 @@ def _run_scan_background(
                     payload = _serialize_contribution_metrics(metrics)
                     return payload, metrics
                 except Exception as e:
-                    logger.error(f"❌ Contribution analysis failed: {e}", exc_info=True)
+                    logger.error(f"Γ¥î Contribution analysis failed: {e}", exc_info=True)
                     return None, None
             
             # Duplicate Detection
@@ -921,7 +923,7 @@ def _run_scan_background(
                 try:
                     return _run_duplicate_detection(scan_result.parse_result)
                 except Exception as e:
-                    logger.warning(f"⚠️  Duplicate detection failed: {e}")
+                    logger.warning(f"ΓÜá∩╕Å  Duplicate detection failed: {e}")
                     return None
             
             # Submit parallel tasks
@@ -933,25 +935,25 @@ def _run_scan_background(
             try:
                 skills_analysis = future_skills.result(timeout=120)
                 if skills_analysis:
-                    logger.info("✅ Skills analysis completed")
+                    logger.info("Γ£à Skills analysis completed")
             except Exception as e:
-                logger.warning(f"⚠️  Skills analysis timeout/error: {e}")
+                logger.warning(f"ΓÜá∩╕Å  Skills analysis timeout/error: {e}")
             
             try:
                 contribution_metrics_payload, metrics_obj = future_contrib.result(timeout=90)
                 if contribution_metrics_payload:
-                    logger.info("✅ Contribution metrics completed")
+                    logger.info("Γ£à Contribution metrics completed")
             except Exception as e:
-                logger.warning(f"⚠️  Contribution metrics timeout/error: {e}")
+                logger.warning(f"ΓÜá∩╕Å  Contribution metrics timeout/error: {e}")
             
             try:
                 duplicate_report = future_dupes.result(timeout=60)
                 if duplicate_report:
-                    logger.info("✅ Duplicate detection completed")
+                    logger.info("Γ£à Duplicate detection completed")
             except Exception as e:
-                logger.warning(f"⚠️  Duplicate detection timeout/error: {e}")
+                logger.warning(f"ΓÜá∩╕Å  Duplicate detection timeout/error: {e}")
         
-        logger.info("✨ Phase 3 complete")
+        logger.info("Γ£¿ Phase 3 complete")
         
         # PHASE 4: Skills Progress Timeline (depends on skills analysis)
         skills_progress = None
@@ -959,19 +961,19 @@ def _run_scan_background(
             chronological = skills_analysis.get("chronological_overview") or []
             if chronological:
                 try:
-                    logger.info("🔄 Phase 4: Building skills progress timeline...")
+                    logger.info("≡ƒöä Phase 4: Building skills progress timeline...")
                     from local_analysis.skill_progress_timeline import build_skill_progression
                     progression = build_skill_progression(chronological, metrics_obj)
                     from api.project_routes import _period_to_dict
                     skills_progress = {
                         "timeline": [_period_to_dict(period) for period in progression.timeline],
                     }
-                    logger.info("✅ Skills progress timeline completed")
+                    logger.info("Γ£à Skills progress timeline completed")
                 except Exception as e:
-                    logger.error(f"❌ Skills progress failed: {e}", exc_info=True)
+                    logger.error(f"Γ¥î Skills progress failed: {e}", exc_info=True)
         
         logger.info("=" * 50)
-        logger.info("✨ All analysis pipelines completed")
+        logger.info("Γ£¿ All analysis pipelines completed")
         logger.info("=" * 50)
 
         # Build result payload with all analyses
@@ -1002,42 +1004,51 @@ def _run_scan_background(
         
         # Add all analyses to the result payload
         if git_analysis:
-            logger.info(f"💾 Saving git analysis to scan_data ({len(git_analysis)} repos)")
+            logger.info(f"≡ƒÆ╛ Saving git analysis to scan_data ({len(git_analysis)} repos)")
             result_payload["git_analysis"] = git_analysis
         
         if code_analysis:
-            logger.info(f"💾 Saving code analysis to scan_data")
+            logger.info(f"≡ƒÆ╛ Saving code analysis to scan_data")
             result_payload["code_analysis"] = code_analysis
         else:
-            logger.warning("⚠️  No code analysis data to save")
+            logger.warning("ΓÜá∩╕Å  No code analysis data to save")
         
         if skills_analysis:
-            logger.info(f"💾 Saving skills analysis to scan_data")
+            logger.info(f"≡ƒÆ╛ Saving skills analysis to scan_data")
             result_payload["skills_analysis"] = skills_analysis
         
         if contribution_metrics_payload:
-            logger.info(f"💾 Saving contribution metrics to scan_data")
+            logger.info(f"≡ƒÆ╛ Saving contribution metrics to scan_data")
             result_payload["contribution_metrics"] = contribution_metrics_payload
         
         if skills_progress:
-            logger.info(f"💾 Saving skills progress to scan_data")
+            logger.info(f"≡ƒÆ╛ Saving skills progress to scan_data")
             result_payload["skills_progress"] = skills_progress
         
         if media_analysis:
-            logger.info(f"💾 Saving media analysis to scan_data")
+            logger.info(f"≡ƒÆ╛ Saving media analysis to scan_data")
             result_payload["media_analysis"] = media_analysis
         
         if pdf_analysis:
-            logger.info(f"💾 Saving PDF analysis to scan_data ({len(pdf_analysis)} PDFs)")
+            logger.info(f"≡ƒÆ╛ Saving PDF analysis to scan_data ({len(pdf_analysis)} PDFs)")
             result_payload["pdf_analysis"] = pdf_analysis
         
         if document_analysis:
-            logger.info(f"💾 Saving document analysis to scan_data ({len(document_analysis)} documents)")
+            logger.info(f"≡ƒÆ╛ Saving document analysis to scan_data ({len(document_analysis)} documents)")
             result_payload["document_analysis"] = document_analysis
         
         if duplicate_report:
-            logger.info(f"💾 Saving duplicate report to scan_data")
+            logger.info(f"≡ƒÆ╛ Saving duplicate report to scan_data")
             result_payload["duplicate_report"] = duplicate_report
+
+        # Store the original source path for AI analysis to read files later
+        result_payload["project_source_path"] = str(source_path)
+
+        # Collect file snippets at scan time for AI analysis
+        file_snippets = _collect_files_for_ai(analysis_target)
+        if file_snippets:
+            logger.info(f"Saving {len(file_snippets)} file snippets for AI analysis")
+            result_payload["file_snippets"] = file_snippets
 
         if temp_analysis_dir is not None:
             temp_analysis_dir.cleanup()
@@ -1055,12 +1066,12 @@ def _run_scan_background(
                 return obj
         
         result_payload = convert_sets_to_lists(result_payload)
-        logger.info("✅ Converted all sets to lists for JSON serialization")
+        logger.info("Γ£à Converted all sets to lists for JSON serialization")
 
         # Optionally persist to database
         project_id = None
         if persist_project and profile_id:
-            logger.info(f"📝 Attempting to save project to database (user_id={profile_id}, project_name={target.name})")
+            logger.info(f"≡ƒô¥ Attempting to save project to database (user_id={profile_id}, project_name={target.name})")
             try:
                 projects_service = ProjectsService()
                 if access_token and hasattr(projects_service, "apply_access_token"):
@@ -1074,11 +1085,11 @@ def _run_scan_background(
                 )
                 project_id = saved.get("id")
                 result_payload["project_id"] = project_id
-                logger.info(f"✅ Project saved successfully! project_id={project_id}")
+                logger.info(f"Γ£à Project saved successfully! project_id={project_id}")
                 
                 # Auto-generate portfolio item using the shared helper function
                 try:
-                    logger.info(f"📋 Auto-generating portfolio item for project {project_id}...")
+                    logger.info(f"≡ƒôï Auto-generating portfolio item for project {project_id}...")
                     from services.services.portfolio_item_service import PortfolioItemService
                     from api.portfolio_routes import generate_portfolio_content_from_project
                     
@@ -1093,13 +1104,13 @@ def _run_scan_background(
                     )
                     
                     if portfolio_result.get('id'):
-                        logger.info(f"✅ Portfolio item auto-generated! portfolio_item_id={portfolio_result['id']}")
+                        logger.info(f"Γ£à Portfolio item auto-generated! portfolio_item_id={portfolio_result['id']}")
                         result_payload["portfolio_item_id"] = portfolio_result['id']
                     else:
-                        logger.warning("⚠️ Portfolio generation succeeded but no ID returned")
+                        logger.warning("ΓÜá∩╕Å Portfolio generation succeeded but no ID returned")
                     
                 except Exception as portfolio_err:
-                    logger.warning(f"⚠️ Failed to auto-generate portfolio item: {portfolio_err}", exc_info=True)
+                    logger.warning(f"ΓÜá∩╕Å Failed to auto-generate portfolio item: {portfolio_err}", exc_info=True)
                     # Don't fail the scan if portfolio generation fails
                     result_payload["portfolio_generation_warning"] = str(portfolio_err)
 
@@ -1107,7 +1118,7 @@ def _run_scan_background(
                 try:
                     contribution_metrics = result_payload.get("contribution_metrics")
                     if contribution_metrics:
-                        logger.info(f"📊 Auto-ranking project {project_id}...")
+                        logger.info(f"≡ƒôè Auto-ranking project {project_id}...")
                         from services.services.contribution_analysis_service import ContributionAnalysisService
                         ranking_service = ContributionAnalysisService()
                         ranking = ranking_service.compute_contribution_score(contribution_metrics)
@@ -1118,14 +1129,14 @@ def _run_scan_background(
                             user_commit_share=ranking.get("user_commit_share", 0),
                             total_commits=contribution_metrics.get("total_commits", 0),
                         )
-                        logger.info(f"✅ Project ranked! score={ranking['score']}")
+                        logger.info(f"Γ£à Project ranked! score={ranking['score']}")
                 except Exception as rank_err:
-                    logger.warning(f"⚠️ Failed to auto-rank project: {rank_err}", exc_info=True)
+                    logger.warning(f"ΓÜá∩╕Å Failed to auto-rank project: {rank_err}", exc_info=True)
                     result_payload["ranking_warning"] = str(rank_err)
 
                 # Auto-generate resume item using the shared helper function
                 try:
-                    logger.info(f"📝 Auto-generating resume item for project {project_id}...")
+                    logger.info(f"≡ƒô¥ Auto-generating resume item for project {project_id}...")
                     from services.services.resume_storage_service import ResumeStorageService
                     from api.resume_routes import generate_resume_content_from_project
                     
@@ -1143,23 +1154,23 @@ def _run_scan_background(
                     )
                     
                     if resume_result.get('id'):
-                        logger.info(f"✅ Resume item auto-generated! resume_item_id={resume_result['id']}")
+                        logger.info(f"Γ£à Resume item auto-generated! resume_item_id={resume_result['id']}")
                         result_payload["resume_item_id"] = resume_result['id']
                     else:
-                        logger.warning("⚠️ Resume generation succeeded but no ID returned")
+                        logger.warning("ΓÜá∩╕Å Resume generation succeeded but no ID returned")
                     
                 except Exception as resume_err:
-                    logger.warning(f"⚠️ Failed to auto-generate resume item: {resume_err}", exc_info=True)
+                    logger.warning(f"ΓÜá∩╕Å Failed to auto-generate resume item: {resume_err}", exc_info=True)
                     # Don't fail the scan if resume generation fails
                     result_payload["resume_generation_warning"] = str(resume_err)
                 
             except Exception as persist_err:
-                logger.error(f"❌ Failed to persist scan to database: {persist_err}", exc_info=True)
+                logger.error(f"Γ¥î Failed to persist scan to database: {persist_err}", exc_info=True)
                 result_payload["persist_warning"] = str(persist_err)
         elif not persist_project:
-            logger.warning(f"⚠️  Project NOT saved: persist_project=False")
+            logger.warning(f"ΓÜá∩╕Å  Project NOT saved: persist_project=False")
         elif not profile_id:
-            logger.warning(f"⚠️  Project NOT saved: profile_id is None")
+            logger.warning(f"ΓÜá∩╕Å  Project NOT saved: profile_id is None")
 
         _update_scan_status(
             scan_id,
@@ -1220,7 +1231,7 @@ def set_consent(payload: ConsentUpdateRequest = Body(...)):
     return status_obj
 
 
-# POST /api/uploads removed — real implementation is in upload_routes.py
+# POST /api/uploads removed ΓÇö real implementation is in upload_routes.py
 
 
 @router.post("/api/scans", response_model=ScanStatus, status_code=status.HTTP_202_ACCEPTED)
@@ -1680,10 +1691,6 @@ def dedup(project_id: str, auth: AuthContext = Depends(get_auth_context)):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"code": "validation_error", "message": "project_id must be a valid UUID"},
-        )
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"code": "validation_error", "message": "project_id is required"},
         )
 
     try:

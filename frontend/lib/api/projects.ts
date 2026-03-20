@@ -12,6 +12,7 @@ import {
   SkillsListResponse,
   RoleProfile,
   SkillGapAnalysis,
+  AiAnalysisApiResponse,
 } from "@/types/project";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
@@ -459,6 +460,35 @@ export async function getSkillGaps(
   if (!response.ok) {
     const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
     throw new Error(extractErrorFromResponse(error, "Failed to analyse skill gaps"));
+  }
+
+  return response.json();
+}
+
+/**
+ * Run AI analysis for an existing project using its stored scan data.
+ * pass force=true to re-run even if a cached result exists.
+ */
+export async function runProjectAiAnalysis(
+  token: string,
+  projectId: string,
+  force = false,
+): Promise<AiAnalysisApiResponse> {
+  const params = force ? "?force=true" : "";
+  const response = await fetch(
+    `${API_BASE_URL}/api/projects/${projectId}/ai-analysis${params}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    },
+  );
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
+    throw new Error(extractErrorFromResponse(error, "Failed to run AI analysis"));
   }
 
   return response.json();
