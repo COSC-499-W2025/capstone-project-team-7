@@ -147,9 +147,8 @@ class ProjectDetector:
 
         # PRIMARY markers: a directory must contain at least one of these to be
         # considered a project root during subdirectory scanning (Rule 3).
-        # Lock files, README.md, Dockerfile, Makefile, and .git are intentionally
-        # excluded — they appear throughout project trees and are not reliable
-        # standalone project-root indicators.
+        # Lock files and README.md are intentionally excluded — they appear
+        # throughout project trees and are not reliable standalone indicators.
         self.primary_markers = {
             # Python
             'setup.py', 'pyproject.toml', 'requirements.txt', 'Pipfile',
@@ -168,6 +167,13 @@ class ProjectDetector:
             'composer.json',
             # C#
             '.csproj', '.sln',
+            # Monorepo / workspace root indicators — these signal that the
+            # directory is a unified project root even without language markers.
+            'docker-compose.yml', 'docker-compose.yaml',
+            'Makefile',
+            'Dockerfile',
+            # JS/TS workspace managers
+            'lerna.json', 'nx.json', 'turbo.json', 'pnpm-workspace.yaml',
         }
 
         # Directories that are ALWAYS treated as internal sub-components and
