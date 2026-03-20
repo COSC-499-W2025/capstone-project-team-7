@@ -34,6 +34,10 @@ logger = logging.getLogger(__name__)
 class UserResumeServiceError(Exception):
     """Raised when user resume operations fail."""
 
+    def __init__(self, message: str, *, code: str = "user_resume_error") -> None:
+        super().__init__(message)
+        self.code = code
+
 
 class UserResumeService:
     """Service for managing user resume documents in Supabase."""
@@ -244,7 +248,10 @@ class UserResumeService:
             raise UserResumeServiceError("User ID is required to create a resume.")
 
         if template not in self.VALID_TEMPLATES:
-            raise UserResumeServiceError(f"Invalid template: {template}. Must be one of {self.VALID_TEMPLATES}")
+            raise UserResumeServiceError(
+                f"Invalid template: {template}. Must be one of {self.VALID_TEMPLATES}",
+                code="invalid_template",
+            )
 
         payload = {
             "user_id": user_id,
@@ -291,7 +298,10 @@ class UserResumeService:
             return None
 
         if template is not None and template not in self.VALID_TEMPLATES:
-            raise UserResumeServiceError(f"Invalid template: {template}. Must be one of {self.VALID_TEMPLATES}")
+            raise UserResumeServiceError(
+                f"Invalid template: {template}. Must be one of {self.VALID_TEMPLATES}",
+                code="invalid_template",
+            )
 
         payload: Dict[str, Any] = {}
         if name is not None:
@@ -347,7 +357,7 @@ class UserResumeService:
         """Duplicate an existing resume."""
         existing = self.get_resume(user_id, resume_id)
         if not existing:
-            raise UserResumeServiceError("Resume not found.")
+            raise UserResumeServiceError("Resume not found.", code="resume_not_found")
 
         return self.create_resume(
             user_id,
@@ -371,7 +381,10 @@ class UserResumeService:
 
         normalized_ids = [item_id for item_id in item_ids if item_id]
         if not normalized_ids:
-            raise UserResumeServiceError("item_ids must include at least one resume item id.")
+            raise UserResumeServiceError(
+                "item_ids must include at least one resume item id.",
+                code="invalid_resume_item_ids",
+            )
 
         existing = self.get_resume(user_id, resume_id)
         if not existing:
@@ -629,14 +642,20 @@ class UserResumeService:
         if latex_content is None:
             record = self.get_resume(user_id, resume_id)
             if not record:
-                raise UserResumeServiceError("Resume not found.")
+                raise UserResumeServiceError("Resume not found.", code="resume_not_found")
             latex_content = record.get("latex_content")
 
         if not isinstance(latex_content, str) or not latex_content.strip():
-            raise UserResumeServiceError("No LaTeX content available for PDF export.")
+            raise UserResumeServiceError(
+                "No LaTeX content available for PDF export.",
+                code="missing_latex_content",
+            )
 
         if shutil.which("pdflatex") is None:
-            raise UserResumeServiceError("pdflatex is not installed on the server.")
+            raise UserResumeServiceError(
+                "pdflatex is not installed on the server.",
+                code="pdf_dependency_missing",
+            )
 
         try:
             with tempfile.TemporaryDirectory(prefix="resume_pdf_") as tmp_dir:
@@ -646,6 +665,7 @@ class UserResumeService:
 
                 command = [
                     "pdflatex",
+                    "-no-shell-escape",
                     "-interaction=nonstopmode",
                     "-halt-on-error",
                     "-output-directory",
@@ -661,14 +681,26 @@ class UserResumeService:
                 )
                 if process.returncode != 0:
                     error_message = (process.stderr or process.stdout or "LaTeX compilation failed").strip()
-                    raise UserResumeServiceError(f"PDF compilation failed: {error_message[-1000:]}")
+                    raise UserResumeServiceError(
+                        f"PDF compilation failed: {error_message[-1000:]}",
+                        code="pdf_compilation_failed",
+                    )
 
                 pdf_path = workdir / "resume.pdf"
                 if not pdf_path.exists():
-                    raise UserResumeServiceError("PDF generation failed: output file not found.")
+                    raise UserResumeServiceError(
+                        "PDF generation failed: output file not found.",
+                        code="pdf_generation_error",
+                    )
 
                 return pdf_path.read_bytes()
         except subprocess.TimeoutExpired as exc:
-            raise UserResumeServiceError("PDF compilation timed out.") from exc
+            raise UserResumeServiceError(
+                "PDF compilation timed out.",
+                code="pdf_compilation_timeout",
+            ) from exc
         except OSError as exc:
-            raise UserResumeServiceError(f"PDF generation failed: {exc}") from exc
+            raise UserResumeServiceError(
+                f"PDF generation failed: {exc}",
+                code="pdf_generation_error",
+            ) from exc

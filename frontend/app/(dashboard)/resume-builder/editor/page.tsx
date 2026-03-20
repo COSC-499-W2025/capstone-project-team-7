@@ -1101,7 +1101,7 @@ function FormEditor({ data, onChange, onAddResumeItems, onDetectSkills }: FormEd
                   <div key={item.id} className="border border-gray-200 rounded-lg p-3 space-y-2">
                     <div className="flex items-start justify-between gap-3">
                       <label className="flex items-start gap-2 cursor-pointer flex-1 min-w-0">
-                        <Checkbox checked={selected} onChange={() => toggleItemSelection(item.id)} />
+                        <Checkbox checked={selected} onCheckedChange={() => toggleItemSelection(item.id)} />
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-gray-900 truncate">{item.project_name}</p>
                           <p className="text-xs text-gray-500">

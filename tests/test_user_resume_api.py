@@ -197,7 +197,8 @@ def test_create_resume_with_custom_values(override_service):
 def test_create_resume_rejects_invalid_template(override_service):
     """Test that invalid templates are rejected."""
     override_service.create_resume.side_effect = UserResumeServiceError(
-        "Invalid template: bad_template"
+        "Invalid template: bad_template",
+        code="invalid_template",
     )
     
     response = client.post(
@@ -366,7 +367,8 @@ def test_duplicate_resume_with_custom_name(override_service):
 def test_duplicate_resume_not_found(override_service):
     """Test duplicating a non-existent resume."""
     override_service.duplicate_resume.side_effect = UserResumeServiceError(
-        "Resume not found."
+        "Resume not found.",
+        code="resume_not_found",
     )
     
     response = client.post("/api/user-resumes/nonexistent/duplicate", json={})
@@ -427,6 +429,19 @@ def test_add_items_to_resume_rejects_empty_item_ids(override_service):
     assert payload["detail"]["code"] == "invalid_payload"
 
 
+def test_add_items_to_resume_not_found(override_service):
+    override_service.add_resume_items_to_resume.return_value = None
+
+    response = client.post(
+        "/api/user-resumes/nonexistent/add-items",
+        json={"item_ids": ["item-1"]},
+    )
+
+    assert response.status_code == 404
+    payload = response.json()
+    assert payload["detail"]["code"] == "resume_not_found"
+
+
 def test_detect_skills_for_resume_success(override_service):
     override_service.detect_skills_from_resume_projects.return_value = {
         "id": "resume-1",
@@ -455,6 +470,16 @@ def test_detect_skills_for_resume_success(override_service):
     override_service.detect_skills_from_resume_projects.assert_called_once_with("user-123", "resume-1")
 
 
+def test_detect_skills_for_resume_not_found(override_service):
+    override_service.detect_skills_from_resume_projects.return_value = None
+
+    response = client.post("/api/user-resumes/nonexistent/detect-skills")
+
+    assert response.status_code == 404
+    payload = response.json()
+    assert payload["detail"]["code"] == "resume_not_found"
+
+
 def test_export_resume_pdf_success(override_service):
     override_service.render_pdf_bytes.return_value = b"%PDF-1.4\nmock"
 
@@ -471,7 +496,8 @@ def test_export_resume_pdf_success(override_service):
 
 def test_export_resume_pdf_rejects_missing_latex(override_service):
     override_service.render_pdf_bytes.side_effect = UserResumeServiceError(
-        "No LaTeX content available for PDF export."
+        "No LaTeX content available for PDF export.",
+        code="missing_latex_content",
     )
 
     response = client.post("/api/user-resumes/resume-1/pdf", json={})
@@ -479,6 +505,19 @@ def test_export_resume_pdf_rejects_missing_latex(override_service):
     assert response.status_code == 422
     payload = response.json()
     assert payload["detail"]["code"] == "invalid_payload"
+
+
+def test_export_resume_pdf_not_found(override_service):
+    override_service.render_pdf_bytes.side_effect = UserResumeServiceError(
+        "Resume not found.",
+        code="resume_not_found",
+    )
+
+    response = client.post("/api/user-resumes/nonexistent/pdf", json={})
+
+    assert response.status_code == 404
+    payload = response.json()
+    assert payload["detail"]["code"] == "resume_not_found"
 
 
 # ============================================================================

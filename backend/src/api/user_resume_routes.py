@@ -182,6 +182,37 @@ def _build_resume_summary(record: Dict[str, Any]) -> UserResumeSummary:
     )
 
 
+def _translate_service_error(
+    exc: UserResumeServiceError,
+    *,
+    default_status: int,
+    default_code: str,
+) -> HTTPException:
+    error_map = {
+        "invalid_template": (
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "invalid_template",
+        ),
+        "invalid_resume_item_ids": (
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "invalid_payload",
+        ),
+        "resume_not_found": (
+            status.HTTP_404_NOT_FOUND,
+            "resume_not_found",
+        ),
+        "missing_latex_content": (
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "invalid_payload",
+        ),
+    }
+    status_code, code = error_map.get(exc.code, (default_status, default_code))
+    return HTTPException(
+        status_code=status_code,
+        detail={"code": code, "message": str(exc)},
+    )
+
+
 # ============================================================================
 # Routes
 # ============================================================================
@@ -260,15 +291,11 @@ def create_user_resume(
             metadata=payload.metadata,
         )
     except UserResumeServiceError as exc:
-        if "Invalid template" in str(exc):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail={"code": "invalid_template", "message": str(exc)},
-            ) from exc
         logger.exception("Failed to create user resume")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"code": "resume_create_error", "message": str(exc)},
+        raise _translate_service_error(
+            exc,
+            default_status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            default_code="resume_create_error",
         ) from exc
 
     return _build_resume_record(record)
@@ -338,7 +365,7 @@ def update_user_resume(
         ]
     ):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={"code": "invalid_payload", "message": "No fields provided for update."},
         )
 
@@ -355,15 +382,11 @@ def update_user_resume(
             metadata=payload.metadata,
         )
     except UserResumeServiceError as exc:
-        if "Invalid template" in str(exc):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail={"code": "invalid_template", "message": str(exc)},
-            ) from exc
         logger.exception("Failed to update user resume")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"code": "resume_update_error", "message": str(exc)},
+        raise _translate_service_error(
+            exc,
+            default_status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            default_code="resume_update_error",
         ) from exc
 
     if not record:
@@ -429,15 +452,11 @@ def duplicate_user_resume(
         service.apply_access_token(auth.access_token)
         record = service.duplicate_resume(auth.user_id, resume_id, payload.new_name)
     except UserResumeServiceError as exc:
-        if "not found" in str(exc).lower():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail={"code": "resume_not_found", "message": str(exc)},
-            ) from exc
         logger.exception("Failed to duplicate user resume")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"code": "resume_duplicate_error", "message": str(exc)},
+        raise _translate_service_error(
+            exc,
+            default_status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            default_code="resume_duplicate_error",
         ) from exc
 
     return _build_resume_record(record)
@@ -461,7 +480,7 @@ def add_items_to_user_resume(
 ) -> UserResumeRecord:
     if not payload.item_ids:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={"code": "invalid_payload", "message": "item_ids is required."},
         )
 
@@ -473,15 +492,11 @@ def add_items_to_user_resume(
             item_ids=payload.item_ids,
         )
     except UserResumeServiceError as exc:
-        if "item_ids" in str(exc):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail={"code": "invalid_payload", "message": str(exc)},
-            ) from exc
         logger.exception("Failed to add resume items to user resume")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"code": "resume_update_error", "message": str(exc)},
+        raise _translate_service_error(
+            exc,
+            default_status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            default_code="resume_update_error",
         ) from exc
 
     if not record:
@@ -551,21 +566,11 @@ def export_user_resume_pdf(
             latex_content=payload.latex_content,
         )
     except UserResumeServiceError as exc:
-        lower = str(exc).lower()
-        if "not found" in lower:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail={"code": "resume_not_found", "message": str(exc)},
-            ) from exc
-        if "no latex content" in lower:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail={"code": "invalid_payload", "message": str(exc)},
-            ) from exc
         logger.exception("Failed to export user resume PDF")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"code": "resume_pdf_export_error", "message": str(exc)},
+        raise _translate_service_error(
+            exc,
+            default_status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            default_code="resume_pdf_export_error",
         ) from exc
 
     return Response(
