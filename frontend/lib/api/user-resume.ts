@@ -8,6 +8,7 @@ import type {
   UserResumeCreateRequest,
   UserResumeUpdateRequest,
   UserResumeDuplicateRequest,
+  UserResumeAddItemsRequest,
   TemplatesListResponse,
 } from "@/types/user-resume";
 
@@ -53,4 +54,27 @@ export async function deleteUserResume(token: string, id: string): Promise<void>
 
 export async function duplicateUserResume(token: string, id: string, body: UserResumeDuplicateRequest = {}): Promise<UserResumeRecord> {
   return call(`/api/user-resumes/${id}/duplicate`, { method: "POST", headers: authHeaders(token), body: JSON.stringify(body) }, "Failed to duplicate resume");
+}
+
+export async function addResumeItemsToResume(token: string, id: string, body: UserResumeAddItemsRequest): Promise<UserResumeRecord> {
+  return call(`/api/user-resumes/${id}/add-items`, { method: "POST", headers: authHeaders(token), body: JSON.stringify(body) }, "Failed to add resume items to resume");
+}
+
+export async function detectResumeSkills(token: string, id: string): Promise<UserResumeRecord> {
+  return call(`/api/user-resumes/${id}/detect-skills`, { method: "POST", headers: authHeaders(token), body: JSON.stringify({}) }, "Failed to auto-detect skills");
+}
+
+export async function downloadResumePdf(token: string, id: string, latexContent: string): Promise<Blob> {
+  const result = await request<Blob>(
+    `/api/user-resumes/${id}/pdf`,
+    {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify({ latex_content: latexContent }),
+    },
+    async (response) => response.blob(),
+  );
+
+  if (!result.ok) throw new Error(result.error ?? "Failed to export PDF");
+  return result.data;
 }
