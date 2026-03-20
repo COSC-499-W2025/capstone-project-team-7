@@ -90,6 +90,36 @@ ROLE_PROFILES: Dict[str, Dict[str, Any]] = {
             "Automated Testing": "recommended",
         },
     },
+    "ml_engineer": {
+        "label": "ML Engineer",
+        "description": "Production machine learning systems and model deployment",
+        "expected_skills": {
+            "Machine Learning (scikit-learn)": "critical",
+            "Data Analysis (pandas)": "critical",
+            "Numerical Computing (NumPy)": "critical",
+            "Deep Learning (PyTorch)": "recommended",
+            "Deep Learning (TensorFlow)": "recommended",
+            "Automated Testing": "recommended",
+            "SQL Database Queries": "recommended",
+            "Data Visualization (matplotlib)": "nice_to_have",
+            "Version Control (Git)": "nice_to_have",
+            "Logging": "nice_to_have",
+        },
+    },
+    "security_engineer": {
+        "label": "Security Engineer",
+        "description": "Application security, authentication, and secure coding practices",
+        "expected_skills": {
+            "Authentication & Authorization": "critical",
+            "Input Validation": "critical",
+            "Error Handling": "critical",
+            "Automated Testing": "recommended",
+            "Logging": "recommended",
+            "Middleware Pattern": "recommended",
+            "Static Typing": "nice_to_have",
+            "Code Documentation": "nice_to_have",
+        },
+    },
 }
 
 
