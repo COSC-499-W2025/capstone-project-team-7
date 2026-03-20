@@ -5,6 +5,7 @@ declare global {
     title?: string;
     filters?: Array<{ name: string; extensions: string[] }>;
     properties?: Array<"openFile" | "openDirectory" | "multiSelections" | "showHiddenFiles">;
+    pickZip?: boolean;
   };
 
   type DesktopFilePayload = {
