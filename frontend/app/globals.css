@@ -238,7 +238,6 @@
 
   .page-header {
     padding: 28px 30px;
-    border-bottom: 1px solid hsl(var(--border) / var(--opacity-border-strong));
     background:
       radial-gradient(circle at top right, hsl(var(--primary) / 0.08), transparent 24%),
       linear-gradient(180deg, hsl(var(--card) / 0.98), hsl(var(--background) / 0.72));
@@ -728,7 +727,6 @@
     align-items: center;
     gap: 14px;
     padding-bottom: 18px;
-    border-bottom: 1px solid hsl(0 0% 100% / 0.08);
   }
 
   .sidebar-brand-mark {
