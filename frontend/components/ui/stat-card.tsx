@@ -12,18 +12,18 @@ interface StatCardProps {
 export function StatCard({ label, value, variant = "card", className }: StatCardProps) {
   if (variant === "plain") {
     return (
-      <div className={cn("p-3 bg-white border border-gray-200 rounded", className)}>
-        <p className="text-xs text-gray-500">{label}</p>
-        <p className="text-lg font-semibold text-gray-900 mt-1">{value}</p>
+      <div className={cn("stat-block", className)}>
+        <p className="stat-label">{label}</p>
+        <p className="stat-value">{value}</p>
       </div>
     );
   }
 
   return (
-    <Card className={cn("bg-white border border-gray-200", className)}>
+    <Card className={cn(className)}>
       <CardContent className="p-4">
-        <p className="text-xs text-gray-500">{label}</p>
-        <p className="text-lg font-semibold text-gray-900 mt-1">{value}</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+        <p className="text-xl font-bold text-foreground mt-1">{value}</p>
       </CardContent>
     </Card>
   );

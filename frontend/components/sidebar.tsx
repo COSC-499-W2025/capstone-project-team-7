@@ -28,27 +28,23 @@ interface NavItemProps {
 
 const NavItem: React.FC<NavItemProps> = ({ href, icon, label }) => {
   const pathname = usePathname();
-  const isActive = pathname === href;
+  const isActive = href === "/" ? pathname === "/" : pathname.startsWith(href);
 
   return (
     <Link
       href={href as any}
-      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ${
-        isActive
-          ? 'bg-white/15 text-white font-medium'
-          : 'text-gray-400 hover:bg-white/10 hover:text-gray-200'
-      }`}
+      className={`sidebar-link text-sm font-medium ${isActive ? 'sidebar-link-active' : ''}`}
     >
       <span className="w-5 h-5 flex-shrink-0">{icon}</span>
-      <span className="text-sm">{label}</span>
+      <span>{label}</span>
     </Link>
   );
 };
 
 const SectionLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return (
-    <div className="px-3 mb-3 mt-1 first:mt-0">
-      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+    <div className="mb-2 mt-4 first:mt-0 px-1">
+      <span className="sidebar-group-label">
         {children}
       </span>
     </div>
@@ -120,62 +116,92 @@ export const Sidebar: React.FC = () => {
   }, [profile.avatarUrl]);
 
   return (
-    <div className="fixed left-0 top-0 h-screen w-[280px] bg-gradient-to-b from-gray-900 via-gray-950 to-black border-r border-gray-800/50 flex flex-col shadow-2xl">
-      <div className="flex-shrink-0 px-6 py-6 border-b border-gray-800/50">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center shadow-lg">
-            <span className="text-white font-bold text-base">L</span>
+    <aside className="sidebar-shell">
+      <div className="sidebar-rail flex-1 min-h-0">
+        <div className="sidebar-brand">
+          <div className="sidebar-brand-mark">L</div>
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+              Workspace
+            </p>
+            <div className="mt-1 flex items-center gap-2">
+              <span className="text-xl font-semibold tracking-tight text-white">Lumen</span>
+            </div>
           </div>
-          <span className="text-xl font-bold text-white tracking-tight">Lumen</span>
         </div>
-      </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-6">
-        <SectionLabel>Overview</SectionLabel>
-        <div className="space-y-1">
-          <NavItem
-            href="/"
-            icon={<LayoutDashboard size={20} />}
-            label="Dashboard"
-          />
-          <NavItem
-            href="/portfolio"
-            icon={<Folder size={20} />}
-            label="Portfolio"
-          />
-          <NavItem
-            href="/projects"
-            icon={<Briefcase size={20} />}
-            label="Projects"
-          />
-          <NavItem
-            href="/resume-builder"
-            icon={<FileText size={20} />}
-            label="Resumes"
-          />
+        <div className="rounded-[20px] border border-white/10 bg-white/6 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+              Workspace
+            </p>
+            <p className="mt-2 text-sm leading-6 text-neutral-200">
+              Projects, scans, and resume assets organized in one structured workspace.
+            </p>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <div className="rounded-2xl border border-white/8 bg-black/10 px-3 py-2.5">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                Routes
+              </p>
+              <p className="mt-1 text-sm font-medium text-white">All sections</p>
+            </div>
+            <div className="rounded-2xl border border-white/8 bg-black/10 px-3 py-2.5">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                Search
+              </p>
+              <p className="mt-1 text-sm font-medium text-white">Indexed</p>
+            </div>
+          </div>
         </div>
-      </div>
 
-      <div className="flex-shrink-0 border-t border-gray-800/50 px-4 py-5">
-        <div className="space-y-1 mb-4">
-          <NavItem
-            href="/settings"
-            icon={<Settings size={20} />}
-            label="Settings"
-          />
-          <NavItem
-            href="/search"
-            icon={<Search size={20} />}
-            label="Search"
-          />
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <SectionLabel>Overview</SectionLabel>
+          <div className="space-y-1">
+            <NavItem
+              href="/"
+              icon={<LayoutDashboard size={18} />}
+              label="Dashboard"
+            />
+            <NavItem
+              href="/portfolio"
+              icon={<Folder size={18} />}
+              label="Portfolio"
+            />
+            <NavItem
+              href="/projects"
+              icon={<Briefcase size={18} />}
+              label="Projects"
+            />
+            <NavItem
+              href="/resume-builder"
+              icon={<FileText size={18} />}
+              label="Resumes"
+            />
+          </div>
+
+          <SectionLabel>Utilities</SectionLabel>
+          <div className="space-y-1">
+            <NavItem
+              href="/settings"
+              icon={<Settings size={18} />}
+              label="Settings"
+            />
+            <NavItem
+              href="/search"
+              icon={<Search size={18} />}
+              label="Search"
+            />
+          </div>
         </div>
 
         <Link
           href="/profile"
-          className="bg-gradient-to-br from-gray-800/40 to-gray-900/40 rounded-xl p-3.5 border border-gray-700/30 backdrop-blur-sm block transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20"
+          className="sidebar-profile mt-auto block"
         >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-600 to-gray-800 flex items-center justify-center flex-shrink-0 shadow-md">
+            <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border border-white/12 bg-white/10">
               {profile.avatarUrl && !avatarLoadError ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -185,20 +211,20 @@ export const Sidebar: React.FC = () => {
                   onError={() => setAvatarLoadError(true)}
                 />
               ) : (
-                <span className="text-white font-semibold text-sm">{initials}</span>
+                <span className="text-sm font-semibold text-white">{initials}</span>
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-white truncate">{profile.displayName}</p>
+              <p className="truncate text-sm font-semibold text-white">{profile.displayName}</p>
               {profile.email ? (
-                <p className="text-xs text-gray-400 truncate">{profile.email}</p>
+                <p className="truncate text-xs text-neutral-400">{profile.email}</p>
               ) : (
-                <p className="text-xs text-gray-400 truncate">Sign in to view profile</p>
+                <p className="truncate text-xs text-neutral-400">Sign in to view profile</p>
               )}
             </div>
           </div>
         </Link>
       </div>
-    </div>
+    </aside>
   );
 };

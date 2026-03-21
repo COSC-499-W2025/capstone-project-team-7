@@ -22,9 +22,9 @@ import type {
 } from "@/types/project";
 
 const TIER_CONFIG: Record<SkillTier, { label: string; color: string }> = {
-  beginner: { label: "Beginner", color: "bg-gray-400" },
-  intermediate: { label: "Intermediate", color: "bg-blue-500" },
-  advanced: { label: "Advanced", color: "bg-emerald-500" },
+  beginner: { label: "Beginner", color: "bg-muted-foreground" },
+  intermediate: { label: "Intermediate", color: "bg-foreground" },
+  advanced: { label: "Advanced", color: "bg-foreground" },
 };
 
 function TierIndicator({ tier, breakdown }: { tier?: SkillTier; breakdown?: { beginner: number; intermediate: number; advanced: number } }) {
@@ -42,12 +42,12 @@ function TierIndicator({ tier, breakdown }: { tier?: SkillTier; breakdown?: { be
           <div
             key={t}
             title={`${cfg.label}: ${count} evidence`}
-            className={`h-2 w-3 rounded-sm transition-colors ${reached ? cfg.color : "bg-gray-200"}`}
+            className={`h-2 w-3 rounded-sm transition-colors ${reached ? cfg.color : "bg-muted"}`}
           />
         );
       })}
       <span className={`ml-1 text-xs font-medium ${
-        currentTier === "advanced" ? "text-emerald-600" : currentTier === "intermediate" ? "text-blue-600" : "text-gray-500"
+        currentTier === "advanced" ? "text-foreground" : currentTier === "intermediate" ? "text-foreground" : "text-muted-foreground"
       }`}>
         {TIER_CONFIG[currentTier].label}
       </span>
@@ -108,32 +108,32 @@ export function SkillsTab({
   return (
     <div className="space-y-6">
       {/* Highlighted Skills Section */}
-      <Card className="bg-white border border-gray-200">
-        <CardHeader className="border-b border-gray-200">
+      <Card className="bg-card border-2 border-border rounded-md">
+        <CardHeader className="border-b border-border">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-xl font-bold text-gray-900">
+            <CardTitle className="text-xl font-bold text-foreground">
               Highlighted Skills
             </CardTitle>
             {highlight.saveStatus === "success" && (
-              <span className="flex items-center gap-1.5 text-sm text-green-600 font-medium">
+              <span className="flex items-center gap-1.5 text-sm text-muted-foreground font-medium">
                 <Check size={16} />
                 Saved
               </span>
             )}
             {highlight.saveStatus === "error" && (
-              <span className="flex items-center gap-1.5 text-sm text-red-600 font-medium">
+              <span className="flex items-center gap-1.5 text-sm text-destructive font-medium">
                 <AlertCircle size={16} />
                 Save failed
               </span>
             )}
           </div>
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-sm text-muted-foreground mt-1">
             Select skills you want to emphasize on your resume or portfolio
           </p>
         </CardHeader>
         <CardContent className="p-6">
           {highlight.skills.length === 0 ? (
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-muted-foreground">
               No skills highlighted yet. Select skills below to highlight them.
             </p>
           ) : (
@@ -141,7 +141,7 @@ export function SkillsTab({
               {highlight.skills.map((skill) => (
                 <span
                   key={`highlighted-${skill}`}
-                  className="px-3 py-1.5 rounded-full bg-blue-600 text-white text-sm font-medium flex items-center gap-2"
+                  className="px-3 py-1.5 rounded-md bg-muted text-foreground border border-border text-sm font-medium flex items-center gap-2"
                 >
                   {skill}
                 </span>
@@ -152,17 +152,17 @@ export function SkillsTab({
       </Card>
 
       {/* All Skills with Selection */}
-      <Card className="bg-white border border-gray-200">
-        <CardHeader className="border-b border-gray-200">
+      <Card className="bg-card border-2 border-border rounded-md">
+        <CardHeader className="border-b border-border">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-xl font-bold text-gray-900">
+            <CardTitle className="text-xl font-bold text-foreground">
               Select Skills to Highlight
             </CardTitle>
             <Button
               onClick={() => highlight.save(highlight.skills)}
               disabled={highlight.isSaving}
               size="sm"
-              className="bg-gray-900 hover:bg-gray-800"
+              className="bg-foreground hover:bg-foreground/90"
             >
               {highlight.isSaving ? (
                 <>
@@ -180,14 +180,14 @@ export function SkillsTab({
         </CardHeader>
         <CardContent className="p-6 space-y-4">
           {skillsAnalysis.success === false && (
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-muted-foreground">
               Skills analysis did not complete for this scan.
             </p>
           )}
 
           {skillsAnalysis.success !== false &&
             Object.keys(skillsByCategory).length === 0 && (
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-muted-foreground">
                 No skills analysis available yet. Run a scan with skills extraction enabled.
               </p>
             )}
@@ -195,13 +195,13 @@ export function SkillsTab({
           {Object.keys(skillsByCategory).length > 0 && (
             <div className="space-y-6">
               <div className="flex flex-wrap gap-3">
-                <span className="px-3 py-1 rounded-full bg-gray-900 text-white text-xs font-semibold">
+                <span className="px-3 py-1 rounded-md bg-foreground text-background text-xs font-semibold">
                   Total skills · {totalSkills}
                 </span>
-                <span className="px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">
+                <span className="px-3 py-1 rounded-md bg-muted text-foreground border border-border text-xs font-semibold">
                   Highlighted · {highlight.skills.length}
                 </span>
-                <span className="px-3 py-1 rounded-full bg-gray-100 text-gray-700 text-xs font-semibold">
+                <span className="px-3 py-1 rounded-md bg-muted text-foreground border border-border text-xs font-semibold">
                   Categories · {Object.keys(skillsByCategory).length}
                 </span>
               </div>
@@ -215,15 +215,15 @@ export function SkillsTab({
                     .filter((v) => v > 0);
                   const avg = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
                   return (
-                    <div key={`avg-${category}`} className="bg-gray-50 rounded-lg p-3">
-                      <p className="text-xs font-medium text-gray-500 truncate">{categoryLabel(category)}</p>
-                      <div className="mt-1.5 w-full bg-gray-200 rounded-full h-2">
+                    <div key={`avg-${category}`} className="bg-muted rounded-md p-3">
+                      <p className="text-xs font-medium text-muted-foreground truncate">{categoryLabel(category)}</p>
+                      <div className="mt-1.5 w-full bg-muted rounded-md h-2">
                         <div
-                          className="bg-gray-900 h-2 rounded-full transition-all"
+                          className="bg-foreground h-2 rounded-md transition-all"
                           style={{ width: `${Math.round(avg * 100)}%` }}
                         />
                       </div>
-                      <p className="text-xs text-gray-400 mt-1">{Math.round(avg * 100)}%</p>
+                      <p className="text-xs text-muted-foreground mt-1">{Math.round(avg * 100)}%</p>
                     </div>
                   );
                 })}
@@ -241,7 +241,7 @@ export function SkillsTab({
                 <select
                   value={filter.categoryFilter}
                   onChange={(e) => filter.setCategoryFilter(e.target.value)}
-                  className="text-sm border border-gray-200 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  className="text-sm border border-border rounded-md px-3 py-2 bg-background focus:outline-none focus:ring-2 focus:ring-foreground"
                 >
                   <option value="all">All categories</option>
                   {Object.keys(skillsByCategory).map((cat) => (
@@ -251,8 +251,8 @@ export function SkillsTab({
               </div>
 
               {Object.entries(filter.filteredByCategory).map(([category, skills]) => (
-                <div key={category} className="rounded-lg bg-gray-50/70 p-4">
-                  <p className="text-sm font-semibold text-gray-700 mb-3">
+                <div key={category} className="rounded-md bg-muted/70 p-4">
+                  <p className="text-sm font-semibold text-foreground mb-3">
                     {categoryLabel(category)}
                   </p>
                   <div className="space-y-2">
@@ -273,8 +273,8 @@ export function SkillsTab({
                             key={`${category}-${skillName}`}
                             className={`rounded-md transition-colors ${
                               isHighlighted
-                                ? "bg-blue-50 ring-1 ring-blue-200"
-                                : "bg-white/80 hover:bg-white"
+                                ? "bg-muted ring-1 ring-border"
+                                : "bg-background/80 hover:bg-background"
                             }`}
                           >
                             <div className="flex items-center gap-3 p-2">
@@ -282,18 +282,18 @@ export function SkillsTab({
                                 id={`skill-${category}-${skillName}`}
                                 checked={isHighlighted}
                                 onChange={() => highlight.toggle(skillName)}
-                                className="border-gray-300"
+                                className="border-border"
                               />
                               <button
                                 type="button"
                                 onClick={() => filter.setExpandedSkillKey(isExpanded ? null : skillKey)}
                                 className="flex-1 text-left"
                               >
-                                <span className="text-sm font-medium text-gray-900">
+                                <span className="text-sm font-medium text-foreground">
                                   {skillName}
                                 </span>
                                 {description && (
-                                  <span className="block text-xs text-gray-500 mt-0.5">
+                                  <span className="block text-xs text-muted-foreground mt-0.5">
                                     {description}
                                   </span>
                                 )}
@@ -306,24 +306,24 @@ export function SkillsTab({
                                 {/* Proficiency bar */}
                                 {profScore > 0 && !highestTier && (
                                   <div className="flex items-center gap-1.5">
-                                    <div className="w-16 bg-gray-200 rounded-full h-1.5">
+                                    <div className="w-16 bg-muted rounded-md h-1.5">
                                       <div
                                         className={`h-1.5 rounded-full ${
-                                          profScore >= 0.8 ? "bg-green-500" : profScore >= 0.6 ? "bg-blue-500" : profScore >= 0.4 ? "bg-amber-500" : "bg-gray-400"
+                                          profScore >= 0.8 ? "bg-foreground" : profScore >= 0.6 ? "bg-foreground" : profScore >= 0.4 ? "bg-muted-foreground" : "bg-muted-foreground"
                                         }`}
                                         style={{ width: `${Math.round(profScore * 100)}%` }}
                                       />
                                     </div>
-                                    <span className="text-xs text-gray-400 w-8">{Math.round(profScore * 100)}%</span>
+                                    <span className="text-xs text-muted-foreground w-8">{Math.round(profScore * 100)}%</span>
                                   </div>
                                 )}
                                 {evidence.length > 0 && (
-                                  <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+                                  <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded-md">
                                     {evidence.length}
                                   </span>
                                 )}
                                 {isHighlighted && (
-                                  <Check size={16} className="text-blue-600" />
+                                  <Check size={16} className="text-foreground" />
                                 )}
                                 {evidence.length > 0 && (
                                   isExpanded ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />
@@ -332,14 +332,14 @@ export function SkillsTab({
                             </div>
                             {/* Evidence panel */}
                             {isExpanded && evidence.length > 0 && (
-                              <div className="mx-2 mb-2 rounded-md border-l-2 border-gray-200 bg-white px-8 py-2.5 space-y-1.5">
+                              <div className="mx-2 mb-2 rounded-md border-l-2 border-border bg-background px-8 py-2.5 space-y-1.5">
                                 {evidence.slice(0, 5).map((ev, idx) => (
-                                  <div key={`${ev.file ?? ""}:${ev.line ?? ""}:${idx}`} className="text-xs text-gray-600 flex items-start gap-2">
-                                    <span className="text-gray-300 mt-0.5">-</span>
+                                  <div key={`${ev.file ?? ""}:${ev.line ?? ""}:${idx}`} className="text-xs text-muted-foreground flex items-start gap-2">
+                                    <span className="text-muted-foreground mt-0.5">-</span>
                                     <div>
                                       <span>{ev.description || ev.type || "Evidence"}</span>
                                       {ev.file && (
-                                        <span className="ml-1 text-gray-400 font-mono">
+                                        <span className="ml-1 text-muted-foreground font-mono">
                                           {ev.file}{ev.line ? `:${ev.line}` : ""}
                                         </span>
                                       )}
@@ -347,7 +347,7 @@ export function SkillsTab({
                                   </div>
                                 ))}
                                 {evidence.length > 5 && (
-                                  <p className="text-xs text-gray-400 italic">
+                                  <p className="text-xs text-muted-foreground italic">
                                     + {evidence.length - 5} more evidence items
                                   </p>
                                 )}
@@ -367,12 +367,12 @@ export function SkillsTab({
 
       {/* Skill Adoption Timeline */}
       {skillAdoptionTimeline.length > 0 && (
-        <Card className="bg-white border border-gray-200">
-          <CardHeader className="border-b border-gray-200">
-            <CardTitle className="text-xl font-bold text-gray-900">
+        <Card className="bg-card border-2 border-border rounded-md">
+          <CardHeader className="border-b border-border">
+            <CardTitle className="text-xl font-bold text-foreground">
               Skill Adoption Timeline
             </CardTitle>
-            <p className="text-sm text-gray-500 mt-1">
+            <p className="text-sm text-muted-foreground mt-1">
               When each skill was first detected in the codebase
             </p>
           </CardHeader>
@@ -381,28 +381,28 @@ export function SkillsTab({
               {skillAdoptionTimeline.map((entry) => (
                 <div
                   key={`${entry.skill_name}::${entry.first_used_period ?? ""}`}
-                  className="flex items-center gap-4 py-2 border-b border-gray-100 last:border-0"
+                  className="flex items-center gap-4 py-2 border-b border-border last:border-0"
                 >
                   <span className="text-xs font-mono text-gray-400 w-20 shrink-0">
                     {entry.first_used_period || "Unknown"}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">
+                    <p className="text-sm font-medium text-foreground truncate">
                       {entry.skill_name}
                     </p>
-                    <p className="text-xs text-gray-500 truncate">
+                    <p className="text-xs text-muted-foreground truncate">
                       {categoryLabel(entry.category ?? "")}
                       {entry.file ? ` · ${entry.file}` : ""}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <div className="w-12 bg-gray-200 rounded-full h-1.5">
+                    <div className="w-12 bg-muted rounded-md h-1.5">
                       <div
-                        className="bg-gray-900 h-1.5 rounded-full"
+                        className="bg-foreground h-1.5 rounded-md"
                         style={{ width: `${Math.round((entry.current_proficiency ?? 0) * 100)}%` }}
                       />
                     </div>
-                    <span className="text-xs text-gray-400">
+                    <span className="text-xs text-muted-foreground">
                       {entry.total_usage ?? 0} uses
                     </span>
                   </div>
@@ -414,19 +414,19 @@ export function SkillsTab({
       )}
 
       {/* Gap Analysis */}
-      <Card className="bg-white border border-gray-200">
-        <CardHeader className="border-b border-gray-200">
-          <CardTitle className="text-xl font-bold text-gray-900">
+      <Card className="bg-card border-2 border-border rounded-md">
+        <CardHeader className="border-b border-border">
+          <CardTitle className="text-xl font-bold text-foreground">
             Skill Gap Analysis
           </CardTitle>
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-sm text-muted-foreground mt-1">
             Compare detected skills against a target role profile
           </p>
         </CardHeader>
         <CardContent className="p-6 space-y-4">
           <div className="flex items-center gap-3">
             <select
-              className="border border-gray-300 rounded-md px-3 py-2 text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"
+              className="border border-border rounded-md px-3 py-2 text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"
               value={gapAnalysis.selectedRole}
               onChange={(e) => gapAnalysis.run(e.target.value)}
             >
@@ -443,7 +443,7 @@ export function SkillsTab({
           </div>
 
           {gapAnalysis.error && (
-            <p className="text-sm text-red-600">{gapAnalysis.error}</p>
+            <p className="text-sm text-destructive">{gapAnalysis.error}</p>
           )}
 
           {gapAnalysis.result && (
@@ -470,7 +470,7 @@ export function SkillsTab({
                     style={{ width: `${gapAnalysis.result.weighted_coverage_percent ?? gapAnalysis.result.coverage_percent}%` }}
                   />
                 </div>
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-muted-foreground">
                   Critical skills are weighted 3x, recommended 2x, nice-to-have 1x
                 </p>
               </div>
@@ -488,12 +488,12 @@ export function SkillsTab({
                       return (
                         <span
                           key={name}
-                          className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-medium inline-flex items-center gap-1"
+                          className="px-2.5 py-1 rounded-md bg-muted text-foreground border border-border text-xs font-medium inline-flex items-center gap-1"
                         >
                           {name}
                           {importance && (
                             <span className={`text-[10px] font-semibold uppercase ${
-                              importance === "critical" ? "text-emerald-600" : importance === "recommended" ? "text-emerald-500" : "text-emerald-400"
+                              importance === "critical" ? "text-foreground" : importance === "recommended" ? "text-muted-foreground" : "text-muted-foreground"
                             }`}>
                               · {importance === "nice_to_have" ? "bonus" : importance}
                             </span>
@@ -519,7 +519,7 @@ export function SkillsTab({
                         <span
                           key={name}
                           className={`px-2.5 py-1 rounded-full text-xs font-medium inline-flex items-center gap-1 ${
-                            importance === "critical" ? "bg-red-100 text-red-800" : importance === "recommended" ? "bg-amber-100 text-amber-800" : "bg-gray-100 text-gray-600"
+                            importance === "critical" ? "bg-muted text-foreground border border-border" : importance === "recommended" ? "bg-muted text-foreground border border-border" : "bg-muted text-muted-foreground border border-border"
                           }`}
                         >
                           {name}
@@ -547,7 +547,7 @@ export function SkillsTab({
                     {gapAnalysis.result.extra.map((s) => (
                       <span
                         key={s}
-                        className="px-2.5 py-1 rounded-full bg-gray-100 text-gray-700 text-xs font-medium"
+                        className="px-2.5 py-1 rounded-md bg-muted text-foreground border border-border text-xs font-medium"
                       >
                         {s}
                       </span>

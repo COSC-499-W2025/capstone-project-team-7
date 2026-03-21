@@ -47,7 +47,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <>
       <Sidebar />
-      <main className="ml-[280px]">
+      <main className="dashboard-stage">
         {children}
       </main>
     </>
