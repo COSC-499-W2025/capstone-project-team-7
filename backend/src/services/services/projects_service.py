@@ -410,6 +410,39 @@ class ProjectsService:
         except Exception as exc:
             raise ProjectsServiceError(f"Failed to save AI analysis: {exc}") from exc
 
+    def patch_ai_batch(
+        self,
+        user_id: str,
+        project_id: str,
+        ai_batch: Dict[str, Any],
+    ) -> None:
+        """Persist batch AI intermediate result into scan_data[\"ai_batch\"] for a project."""
+        project = self.get_project_scan(user_id, project_id)
+        if not project:
+            raise ProjectsServiceError(f"Project {project_id} not found")
+
+        scan_data = project.get("scan_data") or {}
+        if not isinstance(scan_data, dict):
+            scan_data = {}
+        scan_data["ai_batch"] = ai_batch
+        encrypted = self._encrypt_scan_data(scan_data)
+
+        if self._use_local_store:
+            project_name = project.get("project_name", "")
+            local_store.upsert_project(user_id, project_name, {"scan_data": encrypted})
+            return
+
+        try:
+            response = self.client.table("projects").update(
+                {"scan_data": encrypted}
+            ).eq("id", project_id).eq("user_id", user_id).execute()
+            if not response.data:
+                raise ProjectsServiceError(f"Project {project_id} not found or access denied")
+        except ProjectsServiceError:
+            raise
+        except Exception as exc:
+            raise ProjectsServiceError(f"Failed to save AI batch result: {exc}") from exc
+
     def update_project_score(
         self,
         user_id: str,

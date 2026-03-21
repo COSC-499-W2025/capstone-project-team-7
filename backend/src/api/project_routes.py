@@ -99,6 +99,93 @@ _encryption_service: Optional[EncryptionService] = None
 _overrides_service: Optional[ProjectOverridesService] = None
 _encryption_service_lock = threading.Lock()
 _overrides_service_lock = threading.Lock()
+_ai_batch_progress: Dict[str, Dict[str, Any]] = {}
+_ai_batch_progress_lock = threading.Lock()
+
+
+def _batch_progress_key(user_id: str, project_id: str) -> str:
+    return f"{user_id}:{project_id}"
+
+
+def _init_batch_progress(user_id: str, project_id: str, status: str = "running") -> None:
+    key = _batch_progress_key(user_id, project_id)
+    with _ai_batch_progress_lock:
+        _ai_batch_progress[key] = {
+            "project_id": project_id,
+            "status": status,
+            "detail": None,
+            "status_messages": [],
+            "updated_at": datetime.now().isoformat(),
+        }
+
+
+def _append_batch_progress_message(user_id: str, project_id: str, message: str) -> None:
+    key = _batch_progress_key(user_id, project_id)
+    msg = (message or "").strip()
+    if not msg:
+        return
+    with _ai_batch_progress_lock:
+        entry = _ai_batch_progress.setdefault(
+            key,
+            {
+                "project_id": project_id,
+                "status": "running",
+                "detail": None,
+                "status_messages": [],
+                "updated_at": datetime.now().isoformat(),
+            },
+        )
+        messages = entry.setdefault("status_messages", [])
+        if isinstance(messages, list) and len(messages) < 300:
+            messages.append(msg)
+        entry["updated_at"] = datetime.now().isoformat()
+
+
+def _finalize_batch_progress(
+    user_id: str,
+    project_id: str,
+    status: str,
+    detail: Optional[str] = None,
+    status_messages: Optional[List[str]] = None,
+) -> None:
+    key = _batch_progress_key(user_id, project_id)
+    with _ai_batch_progress_lock:
+        entry = _ai_batch_progress.setdefault(
+            key,
+            {
+                "project_id": project_id,
+                "status": status,
+                "detail": detail,
+                "status_messages": [],
+                "updated_at": datetime.now().isoformat(),
+            },
+        )
+        entry["status"] = status
+        entry["detail"] = detail
+        if isinstance(status_messages, list):
+            entry["status_messages"] = status_messages[:300]
+        entry["updated_at"] = datetime.now().isoformat()
+
+
+def _get_batch_progress(user_id: str, project_id: str) -> Dict[str, Any]:
+    key = _batch_progress_key(user_id, project_id)
+    with _ai_batch_progress_lock:
+        entry = _ai_batch_progress.get(key)
+        if not isinstance(entry, dict):
+            return {
+                "project_id": project_id,
+                "status": "idle",
+                "detail": None,
+                "status_messages": [],
+                "updated_at": None,
+            }
+        return {
+            "project_id": project_id,
+            "status": entry.get("status") or "idle",
+            "detail": entry.get("detail"),
+            "status_messages": list(entry.get("status_messages") or []),
+            "updated_at": entry.get("updated_at"),
+        }
 
 
 def get_projects_service() -> ProjectsService:
@@ -2032,6 +2119,9 @@ class AiAnalysisCategoryResult(BaseModel):
 class AiAnalysisResult(BaseModel):
     overall_summary: Optional[str] = None
     categories: Optional[List[Dict[str, Any]]] = None
+    render_mode: Optional[str] = None
+    markdown_report: Optional[str] = None
+    key_files: Optional[List[Dict[str, Any]]] = None
     # Legacy fields kept for backward compat with already-cached results
     portfolio_overview: Optional[str] = None
     project_insights: Optional[List[str]] = None
@@ -2044,6 +2134,24 @@ class AiAnalysisResponse(BaseModel):
     result: AiAnalysisResult
     llm_status: str = "used"
     cached: bool = False
+    status_messages: Optional[List[str]] = None
+
+
+class AiBatchResponse(BaseModel):
+    project_id: str
+    status: str
+    cached: bool = False
+    result: Optional[Dict[str, Any]] = None
+    detail: Optional[str] = None
+    status_messages: Optional[List[str]] = None
+
+
+class AiBatchStatusResponse(BaseModel):
+    project_id: str
+    status: str = "idle"
+    detail: Optional[str] = None
+    status_messages: List[str] = Field(default_factory=list)
+    updated_at: Optional[str] = None
 
 
 def _build_categorized_ai_prompt(
@@ -2175,6 +2283,490 @@ def _build_categorized_ai_prompt(
     return "\n".join(lines)
 
 
+def _resolve_project_source_path(
+    project: Dict[str, Any],
+    scan_data: Dict[str, Any],
+) -> Optional[Path]:
+    """Resolve a trustworthy local project directory for batch analysis.
+
+    Priority order:
+    1) scan_data.project_source_path
+    2) project.project_path
+    3) scan_data.scan_path
+    4) scan_data.summary.scan_path
+    5) scan_data.target
+
+    A candidate is accepted only if it exists, is a directory, and at least one
+    known scanned file path resolves under it (when file metadata is available).
+    Path checks tolerate archive/root prefixes by also trying the path with the
+    first segment removed.
+    """
+    if not isinstance(scan_data, dict):
+        return None
+
+    summary = scan_data.get("summary") if isinstance(scan_data.get("summary"), dict) else {}
+    candidates: List[str] = []
+    for value in (
+        scan_data.get("project_source_path"),
+        project.get("project_path"),
+        scan_data.get("scan_path"),
+        summary.get("scan_path") if isinstance(summary, dict) else None,
+        scan_data.get("target"),
+    ):
+        if isinstance(value, str) and value.strip():
+            candidates.append(value.strip())
+
+    # Build a small list of relative file paths that we can validate against candidates.
+    scanned_files: List[str] = []
+    files = scan_data.get("files")
+    if isinstance(files, list):
+        for entry in files[:50]:
+            if not isinstance(entry, dict):
+                continue
+            path_val = entry.get("path")
+            if isinstance(path_val, str) and path_val and not Path(path_val).is_absolute():
+                scanned_files.append(path_val)
+
+    for candidate in candidates:
+        try:
+            candidate_path = Path(candidate).expanduser().resolve()
+        except Exception:
+            continue
+
+        if not candidate_path.exists() or not candidate_path.is_dir():
+            continue
+
+        if scanned_files:
+            matched = 0
+            for rel in scanned_files[:10]:
+                rel_path = Path(rel)
+                if (candidate_path / rel_path).exists():
+                    matched += 1
+                    break
+                # Some scans persist paths prefixed with the archive/root folder.
+                if len(rel_path.parts) > 1 and (candidate_path / Path(*rel_path.parts[1:])).exists():
+                    matched += 1
+                    break
+            if matched == 0:
+                continue
+
+        return candidate_path
+
+    return None
+
+
+def _build_relevant_files_for_batch(
+    scan_data: Dict[str, Any],
+    source_path: Optional[Path] = None,
+) -> List[Dict[str, Any]]:
+    files = scan_data.get("files") or []
+    if not isinstance(files, list):
+        return []
+
+    relevant: List[Dict[str, Any]] = []
+    for entry in files:
+        if not isinstance(entry, dict):
+            continue
+        path = entry.get("path")
+        if not path:
+            continue
+
+        normalized_path = str(path)
+        if source_path is not None:
+            path_obj = Path(normalized_path)
+            if not (source_path / path_obj).exists() and len(path_obj.parts) > 1:
+                stripped = Path(*path_obj.parts[1:])
+                if (source_path / stripped).exists():
+                    normalized_path = str(stripped)
+
+        relevant.append(
+            {
+                "path": normalized_path,
+                "size": entry.get("size_bytes", 0),
+                "mime_type": entry.get("mime_type", "") or "",
+                "media_info": entry.get("media_info"),
+            }
+        )
+    return relevant
+
+
+def _adapt_batch_to_ai_result(
+    batch_result: Dict[str, Any],
+    active_categories: List[tuple[str, str]],
+) -> Dict[str, Any]:
+    project_analysis = batch_result.get("project_analysis") or {}
+    project_analysis_text = project_analysis.get("analysis") if isinstance(project_analysis, dict) else None
+
+    file_summaries = batch_result.get("file_summaries") or []
+    if not isinstance(file_summaries, list):
+        file_summaries = []
+
+    media_briefings = batch_result.get("media_briefings") or []
+    if not isinstance(media_briefings, list):
+        media_briefings = []
+
+    categories_out: List[Dict[str, Any]] = []
+    for cat_key, cat_label in active_categories:
+        insights: List[str] = []
+        summary_text: Optional[str] = None
+
+        if cat_key == "code_analysis":
+            top_files = [
+                s for s in file_summaries
+                if isinstance(s, dict) and s.get("file_path")
+            ][:4]
+            if top_files:
+                summary_text = f"Analyzed {len(top_files)} representative code files via batch pipeline."
+                insights = [
+                    f"{f.get('file_path')}: {str(f.get('analysis', 'No analysis'))[:220]}"
+                    for f in top_files
+                ]
+
+        elif cat_key == "media_analysis":
+            if media_briefings:
+                summary_text = "Media assets were summarized during batch processing."
+                insights = [str(item) for item in media_briefings[:5] if item]
+
+        elif cat_key in ("git_analysis", "skills_analysis", "skills_progress", "pdf_analysis", "document_analysis"):
+            if project_analysis_text:
+                summary_text = f"{cat_label} synthesized from batch file summaries and project context."
+                insights = [str(project_analysis_text)[:240]]
+
+        if summary_text or insights:
+            categories_out.append(
+                {
+                    "category": cat_key,
+                    "label": cat_label,
+                    "summary": summary_text,
+                    "insights": insights or None,
+                }
+            )
+
+    overall_summary = (
+        str(project_analysis_text)
+        if project_analysis_text
+        else f"Batch analysis completed across {len(file_summaries)} files."
+    )
+
+    excluded_exts = {
+        ".md", ".markdown", ".txt", ".rst", ".log",
+        ".json", ".yml", ".yaml", ".toml", ".ini", ".cfg", ".conf",
+        ".css", ".scss", ".sass", ".less", ".xml", ".svg", ".lock",
+    }
+    preferred_logic_exts = {
+        ".py", ".ts", ".tsx", ".js", ".jsx", ".java", ".go", ".rs",
+        ".cs", ".cpp", ".c", ".h", ".hpp", ".kt", ".swift", ".rb", ".php",
+    }
+    excluded_basenames = {
+        "package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock",
+        "tsconfig.json", "jsconfig.json", "next.config.mjs", "next.config.js",
+        "vite.config.ts", "vite.config.js", "docker-compose.yml", "docker-compose.yaml",
+        "dockerfile", "readme.md",
+    }
+    excluded_path_markers = [
+        "/docs/", "/doc/", "/assets/", "/styles/", "/css/", "/migrations/",
+        "/scripts/", "/config/", "/settings/", "/.github/",
+    ]
+
+    def _is_logic_heavy_candidate(path_str: str) -> bool:
+        normalized = "/" + path_str.replace("\\", "/").lower().lstrip("/")
+        basename = Path(path_str).name.lower()
+        ext = Path(path_str).suffix.lower()
+
+        if basename.startswith("__init__") or basename == "init" or basename.startswith("init."):
+            return False
+
+        if basename in excluded_basenames:
+            return False
+        if ext in excluded_exts:
+            return False
+        if any(marker in normalized for marker in excluded_path_markers):
+            return False
+        if basename.endswith(".config.ts") or basename.endswith(".config.js"):
+            return False
+        return ext in preferred_logic_exts
+
+    candidate_entries: List[Dict[str, Any]] = []
+    fallback_entries: List[Dict[str, Any]] = []
+    for entry in file_summaries:
+        if not isinstance(entry, dict):
+            continue
+        path_val = entry.get("file_path")
+        analysis_val = entry.get("analysis")
+        if not path_val or not analysis_val:
+            continue
+
+        path_text = str(path_val)
+        item = {
+            "file_path": path_text,
+            "summary": str(analysis_val),
+        }
+        if _is_logic_heavy_candidate(path_text):
+            candidate_entries.append(item)
+        else:
+            fallback_entries.append(item)
+
+    key_files = candidate_entries[:3]
+    if len(key_files) < 3:
+        for item in fallback_entries:
+            if len(key_files) >= 3:
+                break
+            key_files.append(item)
+
+    return {
+        "overall_summary": overall_summary,
+        "categories": categories_out if categories_out else None,
+        "render_mode": "markdown_report" if project_analysis_text else "cards",
+        "markdown_report": str(project_analysis_text) if project_analysis_text else None,
+        "key_files": key_files or None,
+    }
+
+
+async def _run_or_get_batch_analysis(
+    service: ProjectsService,
+    user_id: str,
+    project_id: str,
+    project: Dict[str, Any],
+    scan_data: Dict[str, Any],
+    client: Any,
+    force: bool = False,
+) -> tuple[Optional[Dict[str, Any]], str, bool, Optional[str], List[str]]:
+    _init_batch_progress(user_id, project_id, status="running")
+    existing_batch = scan_data.get("ai_batch") if isinstance(scan_data, dict) else None
+    if existing_batch and not force:
+        cached_msgs = existing_batch.get("_status_messages") if isinstance(existing_batch, dict) else None
+        cached_list = cached_msgs if isinstance(cached_msgs, list) else []
+        _finalize_batch_progress(
+            user_id,
+            project_id,
+            status="used:batch_cached",
+            detail="Using cached batch analysis",
+            status_messages=cached_list,
+        )
+        return existing_batch, "used:batch_cached", True, None, cached_list
+
+    source_path = _resolve_project_source_path(project, scan_data)
+    if source_path is None:
+        reason = "No usable local source directory found in project_source_path/project_path/scan_path"
+        _append_batch_progress_message(user_id, project_id, reason)
+        _finalize_batch_progress(
+            user_id,
+            project_id,
+            status="fallback:snippets_batch_unavailable",
+            detail=reason,
+            status_messages=[reason],
+        )
+        return None, "fallback:snippets_batch_unavailable", False, reason, [reason]
+
+    relevant_files = _build_relevant_files_for_batch(scan_data, source_path=source_path)
+    if not relevant_files:
+        reason = "No indexed files available for batch analysis"
+        _append_batch_progress_message(user_id, project_id, reason)
+        _finalize_batch_progress(
+            user_id,
+            project_id,
+            status="fallback:snippets_batch_unavailable",
+            detail=reason,
+            status_messages=[reason],
+        )
+        return None, "fallback:snippets_batch_unavailable", False, reason, [reason]
+
+    summary = scan_data.get("summary") or {}
+    languages = scan_data.get("languages") or summary.get("languages") or []
+    scan_summary = {
+        "total_files": summary.get("total_files") or len(relevant_files),
+        "total_size_bytes": summary.get("total_size_bytes") or summary.get("bytes_processed") or 0,
+        "language_breakdown": languages if isinstance(languages, list) else [],
+        "scan_path": str(source_path),
+    }
+
+    status_messages: List[str] = []
+    _append_batch_progress_message(
+        user_id,
+        project_id,
+        f"Initializing analysis for {len(relevant_files)} files…",
+    )
+
+    def _progress_callback(message: str) -> None:
+        if not isinstance(message, str):
+            return
+        msg = message.strip()
+        if not msg:
+            return
+        # Keep a bounded list to avoid oversized payloads.
+        if len(status_messages) < 100:
+            status_messages.append(msg)
+        _append_batch_progress_message(user_id, project_id, msg)
+        logger.info(f"[AI Batch] {msg}")
+
+    def _call_batch() -> Dict[str, Any]:
+        return client.summarize_scan_with_ai(
+            scan_summary=scan_summary,
+            relevant_files=relevant_files,
+            scan_base_path=str(source_path),
+            progress_callback=_progress_callback,
+            include_media=False,
+        )
+
+    try:
+        batch_result = await asyncio.to_thread(_call_batch)
+        if not isinstance(batch_result, dict):
+            _finalize_batch_progress(
+                user_id,
+                project_id,
+                status="fallback:snippets_after_batch_error",
+                detail="Batch analysis returned invalid payload",
+                status_messages=status_messages,
+            )
+            return None, "fallback:snippets_after_batch_error", False, "Batch analysis returned invalid payload", status_messages
+
+        batch_result["_generated_at"] = datetime.now().isoformat()
+        batch_result["_status_messages"] = status_messages
+        await asyncio.to_thread(service.patch_ai_batch, user_id, project_id, batch_result)
+        _finalize_batch_progress(
+            user_id,
+            project_id,
+            status="used:batch",
+            detail=None,
+            status_messages=status_messages,
+        )
+        return batch_result, "used:batch", False, None, status_messages
+    except Exception as exc:
+        logger.warning(f"Batch analysis failed for project {project_id}: {exc}", exc_info=True)
+        _finalize_batch_progress(
+            user_id,
+            project_id,
+            status="fallback:snippets_after_batch_error",
+            detail=str(exc),
+            status_messages=status_messages,
+        )
+        return None, "fallback:snippets_after_batch_error", False, str(exc), status_messages
+
+
+@router.post(
+    "/{project_id}/ai-batch",
+    response_model=AiBatchResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def run_project_ai_batch(
+    project_id: str,
+    force: bool = False,
+    user_id: str = Depends(verify_auth_token),
+) -> AiBatchResponse:
+    """Run (or fetch cached) legacy batch-style AI summarization for a project."""
+    service = get_projects_service()
+    project = await asyncio.to_thread(service.get_project_scan, user_id, project_id)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found",
+        )
+
+    scan_data = project.get("scan_data") or {}
+
+    consent_validator = ConsentValidator()
+    try:
+        has_consent = consent_validator.validate_external_services_consent(user_id)
+    except Exception:
+        return AiBatchResponse(
+            project_id=project_id,
+            status="skipped:consent_check_failed",
+            detail="Consent check failed",
+        )
+
+    if not has_consent:
+        return AiBatchResponse(
+            project_id=project_id,
+            status="skipped:consent_not_granted",
+            detail="External services consent not granted",
+        )
+
+    access_token = get_request_access_token() or ""
+    client = await get_or_hydrate_llm_client(user_id, access_token)
+    if client is None:
+        return AiBatchResponse(
+            project_id=project_id,
+            status="skipped:no_api_key",
+            detail="No verified API key",
+        )
+
+    batch_result, batch_status, cached, detail, status_messages = await _run_or_get_batch_analysis(
+        service=service,
+        user_id=user_id,
+        project_id=project_id,
+        project=project,
+        scan_data=scan_data,
+        client=client,
+        force=force,
+    )
+
+    return AiBatchResponse(
+        project_id=project_id,
+        status=batch_status,
+        cached=cached,
+        result=batch_result,
+        detail=detail,
+        status_messages=status_messages,
+    )
+
+
+@router.get(
+    "/{project_id}/ai-batch/status",
+    response_model=AiBatchStatusResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def get_project_ai_batch_status(
+    project_id: str,
+    user_id: str = Depends(verify_auth_token),
+) -> AiBatchStatusResponse:
+    """Fetch in-progress batch status messages for real-time frontend polling."""
+    snapshot = _get_batch_progress(user_id, project_id)
+    return AiBatchStatusResponse(
+        project_id=project_id,
+        status=str(snapshot.get("status") or "idle"),
+        detail=snapshot.get("detail"),
+        status_messages=[str(m) for m in (snapshot.get("status_messages") or []) if m],
+        updated_at=snapshot.get("updated_at"),
+    )
+
+
+@router.get(
+    "/{project_id}/ai-batch",
+    response_model=AiBatchResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def get_project_ai_batch(
+    project_id: str,
+    user_id: str = Depends(verify_auth_token),
+) -> AiBatchResponse:
+    """Fetch the latest cached batch AI result for a project."""
+    service = get_projects_service()
+    project = await asyncio.to_thread(service.get_project_scan, user_id, project_id)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found",
+        )
+
+    scan_data = project.get("scan_data") or {}
+    cached_batch = scan_data.get("ai_batch") if isinstance(scan_data, dict) else None
+    if not cached_batch:
+        return AiBatchResponse(
+            project_id=project_id,
+            status="missing",
+            cached=False,
+            detail="No cached batch analysis",
+        )
+
+    return AiBatchResponse(
+        project_id=project_id,
+        status="used:batch_cached",
+        cached=True,
+        result=cached_batch,
+        status_messages=(cached_batch.get("_status_messages") if isinstance(cached_batch, dict) else None),
+    )
+
+
 @router.post(
     "/{project_id}/ai-analysis",
     response_model=AiAnalysisResponse,
@@ -2218,6 +2810,9 @@ async def run_project_ai_analysis(
                 result=AiAnalysisResult(
                     overall_summary=existing.get("overall_summary"),
                     categories=existing.get("categories"),
+                    render_mode=existing.get("render_mode"),
+                    markdown_report=existing.get("markdown_report"),
+                    key_files=existing.get("key_files"),
                     # legacy compat
                     portfolio_overview=existing.get("portfolio_overview"),
                     project_insights=existing.get("project_insights"),
@@ -2226,6 +2821,7 @@ async def run_project_ai_analysis(
                 ),
                 llm_status="used:cached",
                 cached=True,
+                status_messages=existing.get("status_messages") if isinstance(existing, dict) else None,
             )
 
         # Check consent
@@ -2251,6 +2847,16 @@ async def run_project_ai_analysis(
                 detail="No API key verified. Please verify your key in Settings.",
             )
 
+        batch_result, batch_status, _batch_cached, batch_detail, batch_status_messages = await _run_or_get_batch_analysis(
+            service=service,
+            user_id=user_id,
+            project_id=project_id,
+            project=project,
+            scan_data=scan_data,
+            client=client,
+            force=force,
+        )
+
         # ------------------------------------------------------------------
         # Determine which analysis categories exist in this project's data.
         # ------------------------------------------------------------------
@@ -2263,6 +2869,27 @@ async def run_project_ai_analysis(
         if not any(k == "code_analysis" for k, _ in active_categories):
             if scan_data.get("has_code_analysis"):
                 active_categories.insert(0, ("code_analysis", "Code Analysis"))
+
+        if batch_result:
+            ai_result = _adapt_batch_to_ai_result(batch_result, active_categories)
+            ai_result["status_messages"] = batch_status_messages
+            await asyncio.to_thread(service.patch_ai_analysis, user_id, project_id, ai_result)
+            return AiAnalysisResponse(
+                project_id=project_id,
+                result=AiAnalysisResult(
+                    overall_summary=ai_result.get("overall_summary"),
+                    categories=ai_result.get("categories"),
+                    render_mode=ai_result.get("render_mode"),
+                    markdown_report=ai_result.get("markdown_report"),
+                    key_files=ai_result.get("key_files"),
+                ),
+                llm_status=batch_status,
+                cached=False,
+                status_messages=batch_status_messages,
+            )
+
+        if batch_detail:
+            logger.info(f"Falling back to snippet prompt path for project {project_id}: {batch_detail}")
 
         # ------------------------------------------------------------------
         # Read file contents from the project's permanent source directory.
@@ -2342,6 +2969,10 @@ async def run_project_ai_analysis(
         ai_result = {
             "overall_summary": parsed.get("overall_summary"),
             "categories": categories_out if categories_out else None,
+            "render_mode": "cards",
+            "markdown_report": None,
+            "key_files": None,
+            "status_messages": batch_status_messages,
         }
 
         # Persist to scan_data["ai_analysis"]
@@ -2352,9 +2983,13 @@ async def run_project_ai_analysis(
             result=AiAnalysisResult(
                 overall_summary=ai_result.get("overall_summary"),
                 categories=ai_result.get("categories"),
+                render_mode=ai_result.get("render_mode"),
+                markdown_report=ai_result.get("markdown_report"),
+                key_files=ai_result.get("key_files"),
             ),
-            llm_status=llm_status_value,
+            llm_status=f"{batch_status}|{llm_status_value}" if batch_status.startswith("fallback:") else llm_status_value,
             cached=False,
+            status_messages=batch_status_messages,
         )
 
     except HTTPException:
