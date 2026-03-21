@@ -43,6 +43,12 @@
     --font-sans: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
     --font-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
 
+    /* Opacity standards */
+    --opacity-border-strong: 0.88;
+    --opacity-border-normal: 0.82;
+    --opacity-border-soft: 0.72;
+    --opacity-hover: 0.28;
+
     color-scheme: light;
   }
 
@@ -74,6 +80,10 @@
     --border: 221 17% 23%;
     --input: 221 17% 24%;
     --ring: 214 90% 63%;
+
+    --shadow-soft: 0 18px 42px rgba(0, 0, 0, 0.4);
+    --shadow-elevated: 0 26px 64px rgba(0, 0, 0, 0.5);
+    --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 
     color-scheme: dark;
   }
@@ -196,7 +206,7 @@
   .portfolio-shell {
     position: relative;
     overflow: hidden;
-    border: 1px solid hsl(var(--border) / 0.9);
+    border: 1px solid hsl(var(--border) / var(--opacity-border-strong));
     border-radius: 24px;
     background:
       linear-gradient(180deg, hsl(var(--card) / 0.98), hsl(var(--card) / 0.92)),
@@ -214,6 +224,12 @@
     opacity: 0.75;
   }
 
+  .dark .page-card::before,
+  .dark .portfolio-shell::before {
+    background: linear-gradient(180deg, hsl(var(--primary) / 0.1), transparent 18%);
+    opacity: 0.5;
+  }
+
   .page-card > *,
   .portfolio-shell > * {
     position: relative;
@@ -222,7 +238,7 @@
 
   .page-header {
     padding: 28px 30px;
-    border-bottom: 1px solid hsl(var(--border) / 0.85);
+    border-bottom: 1px solid hsl(var(--border) / var(--opacity-border-strong));
     background:
       radial-gradient(circle at top right, hsl(var(--primary) / 0.08), transparent 24%),
       linear-gradient(180deg, hsl(var(--card) / 0.98), hsl(var(--background) / 0.72));
@@ -273,17 +289,29 @@
   .split-callout-card,
   .portfolio-panel-subtle,
   .dashboard-card-subtle {
-    border: 1px solid hsl(var(--border) / 0.82);
+    border: 1px solid hsl(var(--border) / var(--opacity-border-normal));
     border-radius: 18px;
     background:
       linear-gradient(180deg, hsl(var(--card) / 0.88), hsl(var(--muted) / 0.72));
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+    box-shadow: var(--shadow-inset);
+  }
+
+  .dark .split-callout-card,
+  .dark .portfolio-panel-subtle,
+  .dark .dashboard-card-subtle {
+    background:
+      linear-gradient(180deg, hsl(var(--card) / 0.95), hsl(var(--muted) / 0.8));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   }
 
   .surface-subtle {
-    border: 1px solid hsl(var(--border) / 0.8);
+    border: 1px solid hsl(var(--border) / var(--opacity-border-soft));
     border-radius: 18px;
     background: linear-gradient(180deg, hsl(var(--card) / 0.9), hsl(var(--muted) / 0.65));
+  }
+
+  .dark .surface-subtle {
+    background: linear-gradient(180deg, hsl(var(--card) / 0.95), hsl(var(--muted) / 0.75));
   }
 
   .section-shell {
@@ -294,20 +322,26 @@
 
   .table-shell {
     overflow: hidden;
-    border: 1px solid hsl(var(--border) / 0.88);
+    border: 1px solid hsl(var(--border) / var(--opacity-border-strong));
     border-radius: 22px;
     background: hsl(var(--card) / 0.96);
     box-shadow: var(--shadow-soft);
   }
 
   .info-tile {
-    border: 1px solid hsl(var(--border) / 0.82);
+    border: 1px solid hsl(var(--border) / var(--opacity-border-normal));
     border-radius: 18px;
     background:
       radial-gradient(circle at top right, hsl(var(--primary) / 0.08), transparent 35%),
       linear-gradient(180deg, hsl(var(--card)), hsl(var(--background) / 0.84));
     padding: 18px;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+    box-shadow: var(--shadow-inset);
+  }
+
+  .dark .info-tile {
+    background:
+      radial-gradient(circle at top right, hsl(var(--primary) / 0.08), transparent 35%),
+      linear-gradient(180deg, hsl(var(--card)), hsl(var(--background) / 0.92));
   }
 
   .info-tile-kicker {
@@ -321,12 +355,18 @@
   .dashboard-hero-card {
     position: relative;
     overflow: hidden;
-    border: 1px solid hsl(var(--border) / 0.88);
+    border: 1px solid hsl(var(--border) / var(--opacity-border-strong));
     border-radius: 28px;
     background:
       radial-gradient(circle at top right, hsl(var(--primary) / 0.16), transparent 26%),
-      linear-gradient(135deg, hsl(var(--card)) 0%, hsl(216 40% 98%) 58%, hsl(var(--background)) 100%);
+      linear-gradient(135deg, hsl(var(--card)) 0%, hsl(220 35% 96%) 58%, hsl(var(--background)) 100%);
     box-shadow: var(--shadow-elevated);
+  }
+
+  .dark .dashboard-hero-card {
+    background:
+      radial-gradient(circle at top right, hsl(var(--primary) / 0.16), transparent 26%),
+      linear-gradient(135deg, hsl(var(--card)) 0%, hsl(224 20% 20%) 58%, hsl(var(--background)) 100%);
   }
 
   .dashboard-hero-card::after {
@@ -354,7 +394,7 @@
   .dashboard-panel {
     position: relative;
     overflow: hidden;
-    border: 1px solid hsl(var(--border) / 0.88);
+    border: 1px solid hsl(var(--border) / var(--opacity-border-strong));
     border-radius: 24px;
     background:
       linear-gradient(180deg, hsl(var(--card)), hsl(220 32% 98% / 0.96));
@@ -367,8 +407,12 @@
 
   .dashboard-panel:hover {
     transform: translateY(-2px);
-    border-color: hsl(var(--primary) / 0.28);
+    border-color: hsl(var(--primary) / var(--opacity-hover));
     box-shadow: 0 28px 60px rgba(15, 23, 42, 0.12);
+  }
+
+  .dark .dashboard-panel:hover {
+    box-shadow: 0 28px 60px rgba(0, 0, 0, 0.4);
   }
 
   .dashboard-stat-grid,
@@ -387,12 +431,18 @@
 
   .dashboard-stat,
   .dashboard-summary-card {
-    border: 1px solid hsl(var(--border) / 0.82);
+    border: 1px solid hsl(var(--border) / var(--opacity-border-normal));
     border-radius: 20px;
     background:
       linear-gradient(180deg, hsl(var(--card)), hsl(var(--muted) / 0.68));
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+    box-shadow: var(--shadow-inset);
     transition: transform 180ms ease, border-color 180ms ease;
+  }
+
+  .dark .dashboard-stat,
+  .dark .dashboard-summary-card {
+    background:
+      linear-gradient(180deg, hsl(var(--card)), hsl(var(--muted) / 0.8));
   }
 
   .dashboard-stat {
@@ -416,14 +466,20 @@
   .portfolio-panel-subtle:hover,
   .dashboard-card-subtle:hover {
     transform: translateY(-2px);
-    border-color: hsl(var(--primary) / 0.25);
+    border-color: hsl(var(--primary) / var(--opacity-hover));
   }
 
   .dashboard-stat-primary {
     background:
       radial-gradient(circle at top right, hsl(var(--primary) / 0.15), transparent 40%),
-      linear-gradient(180deg, hsl(var(--card)), hsl(213 100% 98%));
-    border-color: hsl(var(--primary) / 0.28);
+      linear-gradient(180deg, hsl(var(--card)), hsl(220 35% 96%));
+    border-color: hsl(var(--primary) / var(--opacity-hover));
+  }
+
+  .dark .dashboard-stat-primary {
+    background:
+      radial-gradient(circle at top right, hsl(var(--primary) / 0.15), transparent 40%),
+      linear-gradient(180deg, hsl(var(--card)), hsl(224 20% 18%));
   }
 
   .dashboard-chip,
@@ -432,7 +488,7 @@
     align-items: center;
     gap: 8px;
     padding: 7px 12px;
-    border: 1px solid hsl(var(--border) / 0.86);
+    border: 1px solid hsl(var(--border) / var(--opacity-border-strong));
     border-radius: 999px;
     background: hsl(var(--card) / 0.82);
     color: hsl(var(--foreground) / 0.84);
@@ -449,13 +505,13 @@
   .dashboard-chip:hover,
   .portfolio-chip:hover {
     transform: translateY(-1px);
-    border-color: hsl(var(--primary) / 0.3);
+    border-color: hsl(var(--primary) / var(--opacity-hover));
     background: hsl(var(--accent) / 0.72);
     color: hsl(var(--foreground));
   }
 
   .portfolio-chip-active {
-    border-color: hsl(var(--primary) / 0.32);
+    border-color: hsl(var(--primary) / var(--opacity-hover));
     background: hsl(var(--primary));
     color: hsl(var(--primary-foreground));
   }
@@ -467,9 +523,9 @@
     min-height: 60px;
     width: 100%;
     padding: 14px 16px;
-    border: 1px solid hsl(var(--border) / 0.82);
+    border: 1px solid hsl(var(--border) / var(--opacity-border-normal));
     border-radius: 18px;
-    background: hsl(220 20% 97%);
+    background: hsl(var(--muted));
     color: hsl(var(--foreground) / 0.8);
   }
 
@@ -480,12 +536,12 @@
   }
 
   .dashboard-summary-kv {
-    border-top: 1px solid hsl(var(--border) / 0.72);
+    border-top: 1px solid hsl(var(--border) / var(--opacity-border-soft));
     padding-top: 12px;
   }
 
   .portfolio-panel {
-    border: 1px solid hsl(var(--border) / 0.86);
+    border: 1px solid hsl(var(--border) / var(--opacity-border-strong));
     border-radius: 24px;
     background:
       linear-gradient(180deg, hsl(var(--card)), hsl(var(--background) / 0.72));
@@ -533,7 +589,7 @@
 
   .stat-block {
     padding: 16px;
-    border: 1px solid hsl(var(--border) / 0.82);
+    border: 1px solid hsl(var(--border) / var(--opacity-border-normal));
     border-radius: 18px;
     background:
       radial-gradient(circle at top right, hsl(var(--primary) / 0.08), transparent 38%),
@@ -594,7 +650,7 @@
     display: grid;
     grid-template-columns: minmax(280px, 0.94fr) minmax(360px, 0.74fr);
     overflow: hidden;
-    border: 1px solid hsl(var(--border) / 0.85);
+    border: 1px solid hsl(var(--border) / var(--opacity-border-strong));
     border-radius: 28px;
     background: hsl(var(--card));
     box-shadow: var(--shadow-elevated);
@@ -699,7 +755,11 @@
     font-family: var(--font-display);
     font-size: 22px;
     font-weight: 700;
-    box-shadow: 0 16px 28px hsl(var(--primary) / 0.28);
+    box-shadow: 0 16px 28px hsl(var(--primary) / var(--opacity-hover));
+  }
+
+  .dark .sidebar-brand-mark {
+    box-shadow: 0 16px 28px hsl(var(--primary) / 0.4);
   }
 
   .sidebar-group-label {
@@ -894,7 +954,7 @@
   }
 
   .hover\:border-gray-300:hover {
-    border-color: hsl(var(--primary) / 0.28);
+    border-color: hsl(var(--primary) / var(--opacity-hover));
   }
 
   .shadow-sm,
