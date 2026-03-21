@@ -62,22 +62,12 @@ export interface ProjectScanSummary extends Record<string, unknown> {
   languages?: ProjectScanLanguageEntry[];
 }
 
-export type SkillTier = "beginner" | "intermediate" | "advanced";
-
-export interface TierBreakdown {
-  beginner: number;
-  intermediate: number;
-  advanced: number;
-}
-
 export interface ProjectSkillCategoryItem extends Record<string, unknown> {
   name?: string;
   proficiency?: string | number;
   description?: string;
   proficiency_score?: number;
   category_label?: string;
-  highest_tier?: SkillTier;
-  tier_breakdown?: TierBreakdown;
 }
 
 export type ProjectSkillCategoryEntry = string | ProjectSkillCategoryItem;
@@ -93,8 +83,6 @@ export interface ProjectSkillsAnalysis extends Record<string, unknown> {
     category?: string;
     description?: string;
     proficiency_score?: number;
-    highest_tier?: SkillTier;
-    tier_breakdown?: TierBreakdown;
     evidence_count?: number;
     evidence?: SkillEvidenceItem[];
   }>;
@@ -157,6 +145,31 @@ export interface ProjectScanData extends Record<string, unknown> {
   duplicate_report?: ProjectDuplicateReport;
   files?: ProjectScanFile[];
   languages?: string[] | ProjectScanLanguageEntry[] | Record<string, unknown>;
+  ai_analysis?: ProjectAiAnalysis | null;
+}
+
+export interface ProjectAiAnalysisCategory {
+  category: string;
+  label: string;
+  summary?: string | null;
+  insights?: string[] | null;
+}
+
+export interface ProjectAiAnalysis {
+  overall_summary?: string | null;
+  categories?: ProjectAiAnalysisCategory[] | null;
+  // Legacy fields kept for backward compat with already-cached results
+  portfolio_overview?: string | null;
+  project_insights?: string[] | null;
+  key_achievements?: string[] | null;
+  recommendations?: string[] | null;
+}
+
+export interface AiAnalysisApiResponse {
+  project_id: string;
+  result: ProjectAiAnalysis;
+  llm_status: string;
+  cached: boolean;
 }
 
 export interface ProjectDetail extends ProjectMetadata {
@@ -274,7 +287,6 @@ export interface SkillEvidenceItem {
   line?: number | null;
   confidence?: number;
   timestamp?: string | null;
-  tier?: SkillTier;
 }
 
 export interface SkillAdoptionEntry {
@@ -292,19 +304,11 @@ export interface RoleProfile {
   description: string;
 }
 
-export type SkillImportance = "critical" | "recommended" | "nice_to_have";
-
-export interface WeightedSkillEntry {
-  name: string;
-  importance: SkillImportance;
-}
-
 export interface SkillGapAnalysis {
   role: string;
   role_label: string;
-  matched: WeightedSkillEntry[];
-  missing: WeightedSkillEntry[];
+  matched: string[];
+  missing: string[];
   extra: string[];
   coverage_percent: number;
-  weighted_coverage_percent: number;
 }

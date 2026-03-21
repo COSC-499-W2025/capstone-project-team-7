@@ -8,8 +8,11 @@ import {
   Folder,
   Briefcase,
   FileText,
+  FileEdit,
   Settings,
+  HelpCircle,
   Search,
+  Sparkles,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/hooks/use-auth';
@@ -149,9 +152,19 @@ export const Sidebar: React.FC = () => {
             label="Projects"
           />
           <NavItem
-            href="/resume-builder"
+            href="/resumes"
             icon={<FileText size={20} />}
             label="Resumes"
+          />
+          <NavItem
+            href="/ai-analysis"
+            icon={<Sparkles size={20} />}
+            label="AI Analysis"
+          />
+          <NavItem
+            href="/resume-builder"
+            icon={<FileEdit size={20} />}
+            label="Resume Builder"
           />
         </div>
       </div>
@@ -162,6 +175,11 @@ export const Sidebar: React.FC = () => {
             href="/settings"
             icon={<Settings size={20} />}
             label="Settings"
+          />
+          <NavItem
+            href="/help"
+            icon={<HelpCircle size={20} />}
+            label="Get Help"
           />
           <NavItem
             href="/search"

@@ -3,6 +3,7 @@ import {
   ProjectListResponse,
   ProjectDetail,
   ProjectOverrides,
+  ErrorResponse,
   SkillProgressTimelineResponse,
   SkillProgressSummaryResponse,
   AppendUploadResponse,
@@ -11,17 +12,66 @@ import {
   SkillsListResponse,
   RoleProfile,
   SkillGapAnalysis,
+  AiAnalysisApiResponse,
 } from "@/types/project";
-import { request } from "@/lib/api";
 
-function authHeaders(token: string): Record<string, string> {
-  return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+
+function firstNonEmptyString(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) return value;
+  return null;
 }
 
-async function call<T>(path: string, init: RequestInit, fallback: string): Promise<T> {
-  const result = await request<T>(path, init);
-  if (!result.ok) throw new Error(result.error ?? fallback);
-  return result.data;
+function extractErrorMessage(detail: unknown, fallback: string): string {
+  const direct = firstNonEmptyString(detail);
+  if (direct) return direct;
+
+  if (Array.isArray(detail)) {
+    for (const item of detail) {
+      const itemString = firstNonEmptyString(item);
+      if (itemString) return itemString;
+      if (item && typeof item === "object") {
+        const message = firstNonEmptyString(
+          (item as Record<string, unknown>).message
+        );
+        if (message) return message;
+      }
+    }
+  }
+
+  if (detail && typeof detail === "object") {
+    const record = detail as Record<string, unknown>;
+    const message =
+      firstNonEmptyString(record.message) ||
+      firstNonEmptyString(record.error) ||
+      firstNonEmptyString(record.detail);
+    if (message) return message;
+
+    if (Array.isArray(record.errors)) {
+      for (const item of record.errors) {
+        const itemString = firstNonEmptyString(item);
+        if (itemString) return itemString;
+        if (item && typeof item === "object") {
+          const itemMessage = firstNonEmptyString(
+            (item as Record<string, unknown>).message
+          );
+          if (itemMessage) return itemMessage;
+        }
+      }
+    }
+  }
+
+  return fallback;
+}
+
+function extractErrorFromResponse(error: unknown, fallback: string): string {
+  if (error && typeof error === "object" && "detail" in (error as Record<string, unknown>)) {
+    return extractErrorMessage(
+      (error as Record<string, unknown>).detail,
+      fallback
+    );
+  }
+  return fallback;
 }
 
 export interface SelectionResponse {
@@ -47,25 +97,60 @@ export interface SelectionUpdateRequest {
  * Fetch all projects for the authenticated user
  */
 export async function getProjects(token: string): Promise<ProjectListResponse> {
-  return call("/api/projects", { headers: authHeaders(token) }, "Failed to fetch projects");
+  const response = await fetch(`${API_BASE_URL}/api/projects`, {
+    method: "GET",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
+    throw new Error(extractErrorFromResponse(error, "Failed to fetch projects"));
+  }
+
+  return response.json();
 }
 
 /**
  * Fetch detailed information for a specific project
  */
 export async function getProjectById(token: string, projectId: string): Promise<ProjectDetail> {
-  return call(`/api/projects/${projectId}`, { headers: authHeaders(token) }, "Failed to fetch project details");
+  const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}`, {
+    method: "GET",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
+    throw new Error(
+      extractErrorFromResponse(error, "Failed to fetch project details")
+    );
+  }
+
+  return response.json();
 }
 
 /**
  * Delete a project
  */
 export async function deleteProject(token: string, projectId: string): Promise<void> {
-  const result = await request<Record<string, unknown>>(`/api/projects/${projectId}`, {
+  const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}`, {
     method: "DELETE",
-    headers: authHeaders(token),
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
   });
-  if (!result.ok) throw new Error(result.error ?? "Failed to delete project");
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
+    throw new Error(extractErrorFromResponse(error, "Failed to delete project"));
+  }
 }
 
 /**
@@ -77,11 +162,25 @@ export async function getProjectSkillTimeline(
   authorEmail?: string,
 ): Promise<SkillProgressTimelineResponse> {
   const query = authorEmail ? `?author_email=${encodeURIComponent(authorEmail)}` : "";
-  return call(
-    `/api/projects/${projectId}/skills/timeline${query}`,
-    { headers: authHeaders(token) },
-    "Failed to fetch skills timeline"
+  const response = await fetch(
+    `${API_BASE_URL}/api/projects/${projectId}/skills/timeline${query}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    }
   );
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
+    throw new Error(
+      extractErrorFromResponse(error, "Failed to fetch skills timeline")
+    );
+  }
+
+  return response.json();
 }
 
 /**
@@ -92,12 +191,19 @@ export async function updateProjectRole(
   projectId: string,
   role: string,
 ): Promise<void> {
-  const result = await request<Record<string, unknown>>(`/api/projects/${projectId}/overrides`, {
+  const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/overrides`, {
     method: "PATCH",
-    headers: authHeaders(token),
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify({ role }),
   });
-  if (!result.ok) throw new Error(result.error ?? "Failed to update role");
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
+    throw new Error(extractErrorFromResponse(error, "Failed to update role"));
+  }
 }
 
 /**
@@ -108,12 +214,21 @@ export async function updateProjectOverrides(
   projectId: string,
   overrides: Partial<ProjectOverrides>,
 ): Promise<void> {
-  const result = await request<Record<string, unknown>>(`/api/projects/${projectId}/overrides`, {
+  const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/overrides`, {
     method: "PATCH",
-    headers: authHeaders(token),
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify(overrides),
   });
-  if (!result.ok) throw new Error(result.error ?? "Failed to update project overrides");
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
+    throw new Error(
+      extractErrorFromResponse(error, "Failed to update project overrides")
+    );
+  }
 }
 
 /**
@@ -123,11 +238,22 @@ export async function generateProjectSkillSummary(
   token: string,
   projectId: string,
 ): Promise<SkillProgressSummaryResponse> {
-  return call(
-    `/api/projects/${projectId}/skills/summary`,
-    { method: "POST", headers: authHeaders(token) },
-    "Failed to generate skills summary"
-  );
+  const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/skills/summary`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
+    throw new Error(
+      extractErrorFromResponse(error, "Failed to generate skills summary")
+    );
+  }
+
+  return response.json();
 }
 
 /**
@@ -139,15 +265,26 @@ export async function appendUploadToProject(
   uploadId: string,
   options?: AppendUploadRequest
 ): Promise<AppendUploadResponse> {
-  return call(
-    `/api/projects/${projectId}/append-upload/${uploadId}`,
+  const response = await fetch(
+    `${API_BASE_URL}/api/projects/${projectId}/append-upload/${uploadId}`,
     {
       method: "POST",
-      headers: authHeaders(token),
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify(options ?? { skip_duplicates: true }),
-    },
-    "Failed to append files to project"
+    }
   );
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
+    throw new Error(
+      extractErrorFromResponse(error, "Failed to append files to project")
+    );
+  }
+
+  return response.json();
 }
 
 /**
@@ -170,11 +307,20 @@ export async function searchProjects(
   if (options?.limit) params.set("limit", String(options.limit));
   if (options?.offset) params.set("offset", String(options.offset));
 
-  return call(
-    `/api/projects/search?${params}`,
-    { headers: authHeaders(token) },
-    "Search failed"
-  );
+  const response = await fetch(`${API_BASE_URL}/api/projects/search?${params}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
+    throw new Error(extractErrorFromResponse(error, "Search failed"));
+  }
+
+  return response.json();
 }
 
 /**
@@ -185,13 +331,28 @@ export async function exportProjectHtml(
   token: string,
   projectId: string,
 ): Promise<string> {
-  // This endpoint returns HTML text, not JSON - use direct fetch with refresh wrapper
-  const result = await request<string>(`/api/projects/${projectId}/export-html`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!result.ok) throw new Error(result.error ?? "Failed to generate HTML report");
-  return result.data;
+  const response = await fetch(
+    `${API_BASE_URL}/api/projects/${projectId}/export-html`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+
+  if (!response.ok) {
+    let detail = "Failed to generate HTML report";
+    try {
+      const err = await response.json();
+      detail = err.detail || detail;
+    } catch {
+      // response wasn't JSON
+    }
+    throw new Error(detail);
+  }
+
+  return response.text();
 }
 
 /**
@@ -202,29 +363,78 @@ export async function getSkills(
   category?: string,
 ): Promise<SkillsListResponse> {
   const params = category ? `?category=${encodeURIComponent(category)}` : "";
-  return call(`/api/skills${params}`, { headers: authHeaders(token) }, "Failed to fetch skills");
+  const response = await fetch(`${API_BASE_URL}/api/skills${params}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
+    throw new Error(error.detail || "Failed to fetch skills");
+  }
+
+  return response.json();
 }
 
 export async function getSelection(token: string): Promise<SelectionResponse> {
-  return call("/api/selection", { headers: authHeaders(token) }, "Failed to fetch selection preferences");
+  const response = await fetch(`${API_BASE_URL}/api/selection`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
+    throw new Error(error.detail || "Failed to fetch selection preferences");
+  }
+
+  return response.json();
 }
 
 export async function saveSelection(
   token: string,
   payload: SelectionUpdateRequest,
 ): Promise<SelectionResponse> {
-  return call(
-    "/api/selection",
-    { method: "POST", headers: authHeaders(token), body: JSON.stringify(payload) },
-    "Failed to save selection preferences"
-  );
+  const response = await fetch(`${API_BASE_URL}/api/selection`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
+    throw new Error(error.detail || "Failed to save selection preferences");
+  }
+
+  return response.json();
 }
 
 /**
  * Fetch available role profiles for gap analysis
  */
 export async function getAvailableRoles(token: string): Promise<RoleProfile[]> {
-  return call("/api/projects/skills/roles", { headers: authHeaders(token) }, "Failed to fetch roles");
+  const response = await fetch(`${API_BASE_URL}/api/projects/skills/roles`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
+    throw new Error(extractErrorFromResponse(error, "Failed to fetch roles"));
+  }
+
+  return response.json();
 }
 
 /**
@@ -236,9 +446,50 @@ export async function getSkillGaps(
   role: string,
 ): Promise<SkillGapAnalysis> {
   const params = new URLSearchParams({ role });
-  return call(
-    `/api/projects/${projectId}/skills/gaps?${params}`,
-    { headers: authHeaders(token) },
-    "Failed to analyse skill gaps"
+  const response = await fetch(
+    `${API_BASE_URL}/api/projects/${projectId}/skills/gaps?${params}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    },
   );
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
+    throw new Error(extractErrorFromResponse(error, "Failed to analyse skill gaps"));
+  }
+
+  return response.json();
+}
+
+/**
+ * Run AI analysis for an existing project using its stored scan data.
+ * pass force=true to re-run even if a cached result exists.
+ */
+export async function runProjectAiAnalysis(
+  token: string,
+  projectId: string,
+  force = false,
+): Promise<AiAnalysisApiResponse> {
+  const params = force ? "?force=true" : "";
+  const response = await fetch(
+    `${API_BASE_URL}/api/projects/${projectId}/ai-analysis${params}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    },
+  );
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
+    throw new Error(extractErrorFromResponse(error, "Failed to run AI analysis"));
+  }
+
+  return response.json();
 }
