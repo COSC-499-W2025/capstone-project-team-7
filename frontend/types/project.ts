@@ -174,9 +174,17 @@ export interface ProjectAiAnalysisCategory {
   insights?: string[] | null;
 }
 
+export interface ProjectAiKeyFile {
+  file_path?: string | null;
+  summary?: string | null;
+}
+
 export interface ProjectAiAnalysis {
   overall_summary?: string | null;
   categories?: ProjectAiAnalysisCategory[] | null;
+  render_mode?: "cards" | "markdown_report" | null;
+  markdown_report?: string | null;
+  key_files?: ProjectAiKeyFile[] | null;
   // Legacy fields kept for backward compat with already-cached results
   portfolio_overview?: string | null;
   project_insights?: string[] | null;
@@ -189,6 +197,24 @@ export interface AiAnalysisApiResponse {
   result: ProjectAiAnalysis;
   llm_status: string;
   cached: boolean;
+  status_messages?: string[] | null;
+}
+
+export interface AiBatchApiResponse {
+  project_id: string;
+  status: string;
+  cached: boolean;
+  result?: Record<string, unknown> | null;
+  detail?: string | null;
+  status_messages?: string[] | null;
+}
+
+export interface AiBatchStatusApiResponse {
+  project_id: string;
+  status: string;
+  detail?: string | null;
+  status_messages: string[];
+  updated_at?: string | null;
 }
 
 export interface ProjectDetail extends ProjectMetadata {

@@ -12,6 +12,8 @@ import {
   RoleProfile,
   SkillGapAnalysis,
   AiAnalysisApiResponse,
+  AiBatchApiResponse,
+  AiBatchStatusApiResponse,
 } from "@/types/project";
 import { request } from "@/lib/api";
 
@@ -257,5 +259,49 @@ export async function runProjectAiAnalysis(
     `/api/projects/${projectId}/ai-analysis${params}`,
     { method: "POST", headers: authHeaders(token) },
     "Failed to run AI analysis"
+  );
+}
+
+/**
+ * Run or reuse project-scoped batch AI processing.
+ */
+export async function runProjectAiBatch(
+  token: string,
+  projectId: string,
+  force = false,
+): Promise<AiBatchApiResponse> {
+  const params = force ? "?force=true" : "";
+  return call(
+    `/api/projects/${projectId}/ai-batch${params}`,
+    { method: "POST", headers: authHeaders(token) },
+    "Failed to run AI batch analysis"
+  );
+}
+
+/**
+ * Fetch cached batch AI processing result for a project.
+ */
+export async function getProjectAiBatch(
+  token: string,
+  projectId: string,
+): Promise<AiBatchApiResponse> {
+  return call(
+    `/api/projects/${projectId}/ai-batch`,
+    { headers: authHeaders(token) },
+    "Failed to fetch AI batch analysis"
+  );
+}
+
+/**
+ * Fetch in-progress batch status messages for real-time polling.
+ */
+export async function getProjectAiBatchStatus(
+  token: string,
+  projectId: string,
+): Promise<AiBatchStatusApiResponse> {
+  return call(
+    `/api/projects/${projectId}/ai-batch/status`,
+    { headers: authHeaders(token) },
+    "Failed to fetch AI batch status"
   );
 }
