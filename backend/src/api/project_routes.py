@@ -1376,7 +1376,17 @@ async def create_project_from_upload(
                 scan_data["duplicate_report"] = duplicate_report
             else:
                 logger.warning("⚠️  No duplicate report data to save")
-            
+
+            # Project auto-categorization
+            from analyzer.project_classifier import safe_classify_project
+            cat_result = safe_classify_project(parse_result.files, languages)
+            if cat_result is not None:
+                scan_data["project_category"] = {
+                    "category": cat_result.category,
+                    "label": cat_result.label,
+                    "confidence": cat_result.confidence,
+                }
+
             logger.info(f"📦 Final scan_data keys: {list(scan_data.keys())}")
 
         project_path = request.project_path or upload_data.get("metadata", {}).get("original_filename") or storage_path.name

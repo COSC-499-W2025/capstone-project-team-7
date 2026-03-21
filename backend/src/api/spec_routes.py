@@ -1039,6 +1039,16 @@ def _run_scan_background(
             logger.info(f"💾 Saving duplicate report to scan_data")
             result_payload["duplicate_report"] = duplicate_report
 
+        # Project auto-categorization
+        from analyzer.project_classifier import safe_classify_project
+        cat_result = safe_classify_project(scan_result.parse_result.files, scan_result.languages)
+        if cat_result is not None:
+            result_payload["project_category"] = {
+                "category": cat_result.category,
+                "label": cat_result.label,
+                "confidence": cat_result.confidence,
+            }
+
         if temp_analysis_dir is not None:
             temp_analysis_dir.cleanup()
 
