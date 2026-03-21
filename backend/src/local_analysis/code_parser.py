@@ -997,7 +997,7 @@ class CodeAnalyzer:
                         suggested = f"CONST_{int(num_val)}"
                     else:
                         suggested = f"VALUE_{num.replace('.', '_')}"
-                except:
+                except (ValueError, TypeError):
                     suggested = "MAGIC_NUMBER"
                 
                 # Try to infer context
@@ -1594,7 +1594,7 @@ class CodeAnalyzer:
                     with open(sample_file, 'r', encoding='utf-8', errors='ignore') as f:
                         lines = f.readlines()
                     sample = ''.join(lines[sample_start-1:sample_end])[:200]
-                except:
+                except (IOError, OSError, IndexError):
                     sample = "[Could not read sample]"
                 
                 cross_file_dups.append(DuplicateBlock(
