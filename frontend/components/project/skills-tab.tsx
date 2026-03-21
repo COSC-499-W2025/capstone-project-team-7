@@ -1,13 +1,22 @@
 "use client";
 
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SearchInput } from "@/components/ui/search-input";
+import { Spinner } from "@/components/ui/spinner";
+import {
+  Section,
+  SectionActions,
+  SectionBody,
+  SectionDescription,
+  SectionHeader,
+  SectionHeading,
+  SectionInset,
+  SectionTitle,
+} from "@/components/ui/section";
 import {
   Check,
   AlertCircle,
-  Loader2,
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
@@ -27,28 +36,32 @@ const TIER_CONFIG: Record<SkillTier, { label: string; color: string }> = {
   advanced: { label: "Advanced", color: "bg-foreground" },
 };
 
-function TierIndicator({ tier, breakdown }: { tier?: SkillTier; breakdown?: { beginner: number; intermediate: number; advanced: number } }) {
+function TierIndicator({
+  tier,
+  breakdown,
+}: {
+  tier?: SkillTier;
+  breakdown?: { beginner: number; intermediate: number; advanced: number };
+}) {
   const currentTier = tier && tier in TIER_CONFIG ? tier : "beginner";
   const tiers: SkillTier[] = ["beginner", "intermediate", "advanced"];
   const reachedIndex = tiers.indexOf(currentTier);
 
   return (
     <div className="flex items-center gap-1">
-      {tiers.map((t, i) => {
-        const reached = i <= reachedIndex;
-        const cfg = TIER_CONFIG[t];
-        const count = breakdown?.[t] ?? 0;
+      {tiers.map((value, index) => {
+        const reached = index <= reachedIndex;
+        const config = TIER_CONFIG[value];
+        const count = breakdown?.[value] ?? 0;
         return (
           <div
-            key={t}
-            title={`${cfg.label}: ${count} evidence`}
-            className={`h-2 w-3 rounded-sm transition-colors ${reached ? cfg.color : "bg-muted"}`}
+            key={value}
+            title={`${config.label}: ${count} evidence`}
+            className={`h-2 w-3 rounded-sm transition-colors ${reached ? config.color : "bg-background"}`}
           />
         );
       })}
-      <span className={`ml-1 text-xs font-medium ${
-        currentTier === "advanced" ? "text-foreground" : currentTier === "intermediate" ? "text-foreground" : "text-muted-foreground"
-      }`}>
+      <span className="ml-1 text-xs font-medium text-muted-foreground">
         {TIER_CONFIG[currentTier].label}
       </span>
     </div>
@@ -94,6 +107,28 @@ interface SkillsTabProps {
   skillAdoptionTimeline: SkillAdoptionEntry[];
 }
 
+function SaveStatus({ status }: { status: SkillHighlightProps["saveStatus"] }) {
+  if (status === "success") {
+    return (
+      <span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+        <Check size={16} />
+        Saved
+      </span>
+    );
+  }
+
+  if (status === "error") {
+    return (
+      <span className="flex items-center gap-1.5 text-sm font-medium text-destructive">
+        <AlertCircle size={16} />
+        Save failed
+      </span>
+    );
+  }
+
+  return null;
+}
+
 export function SkillsTab({
   highlight,
   filter,
@@ -105,132 +140,126 @@ export function SkillsTab({
   getSkillEvidence,
   skillAdoptionTimeline,
 }: SkillsTabProps) {
+  const hasSkills = Object.keys(skillsByCategory).length > 0;
+
   return (
     <div className="space-y-6">
-      {/* Highlighted Skills Section */}
-      <Card className="bg-card border-2 border-border rounded-md">
-        <CardHeader className="border-b border-border">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-xl font-bold text-foreground">
-              Highlighted Skills
-            </CardTitle>
-            {highlight.saveStatus === "success" && (
-              <span className="flex items-center gap-1.5 text-sm text-muted-foreground font-medium">
-                <Check size={16} />
-                Saved
-              </span>
-            )}
-            {highlight.saveStatus === "error" && (
-              <span className="flex items-center gap-1.5 text-sm text-destructive font-medium">
-                <AlertCircle size={16} />
-                Save failed
-              </span>
-            )}
-          </div>
-          <p className="text-sm text-muted-foreground mt-1">
-            Select skills you want to emphasize on your resume or portfolio
-          </p>
-        </CardHeader>
-        <CardContent className="p-6">
-          {highlight.skills.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No skills highlighted yet. Select skills below to highlight them.
-            </p>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              {highlight.skills.map((skill) => (
-                <span
-                  key={`highlighted-${skill}`}
-                  className="px-3 py-1.5 rounded-md bg-muted text-foreground border border-border text-sm font-medium flex items-center gap-2"
-                >
-                  {skill}
-                </span>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* All Skills with Selection */}
-      <Card className="bg-card border-2 border-border rounded-md">
-        <CardHeader className="border-b border-border">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-xl font-bold text-foreground">
-              Select Skills to Highlight
-            </CardTitle>
+      <Section>
+        <SectionHeader>
+          <SectionHeading>
+            <SectionTitle>Skills Library</SectionTitle>
+            <SectionDescription>
+              Review detected skills, highlight the ones worth promoting, and inspect supporting evidence.
+            </SectionDescription>
+          </SectionHeading>
+          <SectionActions>
+            <SaveStatus status={highlight.saveStatus} />
             <Button
               onClick={() => highlight.save(highlight.skills)}
               disabled={highlight.isSaving}
               size="sm"
-              className="bg-foreground hover:bg-foreground/90"
             >
               {highlight.isSaving ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Spinner size="md" />
                   Saving...
                 </>
               ) : (
                 <>
-                  <Check className="mr-2 h-4 w-4" />
+                  <Check className="h-4 w-4" />
                   Save Highlights
                 </>
               )}
             </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="p-6 space-y-4">
+          </SectionActions>
+        </SectionHeader>
+
+        <SectionBody className="space-y-5 pt-0">
+          <SectionInset className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-foreground">Highlighted Skills</p>
+                <p className="text-sm text-muted-foreground">
+                  Skills selected for resume and portfolio emphasis.
+                </p>
+              </div>
+              <span className="rounded-full bg-background px-3 py-1 text-xs font-semibold text-muted-foreground">
+                {highlight.skills.length} selected
+              </span>
+            </div>
+
+            {highlight.skills.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No skills highlighted yet. Select skills below to highlight them.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {highlight.skills.map((skill) => (
+                  <span
+                    key={`highlighted-${skill}`}
+                    className="inline-flex items-center gap-2 rounded-full bg-background px-3 py-1.5 text-sm font-medium text-foreground"
+                  >
+                    {skill}
+                  </span>
+                ))}
+              </div>
+            )}
+          </SectionInset>
+
           {skillsAnalysis.success === false && (
             <p className="text-sm text-muted-foreground">
               Skills analysis did not complete for this scan.
             </p>
           )}
 
-          {skillsAnalysis.success !== false &&
-            Object.keys(skillsByCategory).length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                No skills analysis available yet. Run a scan with skills extraction enabled.
-              </p>
-            )}
+          {skillsAnalysis.success !== false && !hasSkills && (
+            <p className="text-sm text-muted-foreground">
+              No skills analysis available yet. Run a scan with skills extraction enabled.
+            </p>
+          )}
 
-          {Object.keys(skillsByCategory).length > 0 && (
-            <div className="space-y-6">
-              <div className="flex flex-wrap gap-3">
-                <span className="px-3 py-1 rounded-md bg-foreground text-background text-xs font-semibold">
+          {hasSkills && (
+            <div className="space-y-5">
+              <div className="flex flex-wrap gap-2">
+                <span className="rounded-full bg-foreground px-3 py-1 text-xs font-semibold text-background">
                   Total skills · {totalSkills}
                 </span>
-                <span className="px-3 py-1 rounded-md bg-muted text-foreground border border-border text-xs font-semibold">
+                <span className="rounded-full bg-muted px-3 py-1 text-xs font-semibold text-foreground">
                   Highlighted · {highlight.skills.length}
                 </span>
-                <span className="px-3 py-1 rounded-md bg-muted text-foreground border border-border text-xs font-semibold">
+                <span className="rounded-full bg-muted px-3 py-1 text-xs font-semibold text-foreground">
                   Categories · {Object.keys(skillsByCategory).length}
                 </span>
               </div>
 
-              {/* Category average proficiency bars */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 {Object.entries(skillsByCategory).map(([category, skills]) => {
-                  const items = skills;
-                  const scores = items
-                    .map((s) => (typeof s === "object" ? s.proficiency_score ?? 0 : 0))
-                    .filter((v) => v > 0);
-                  const avg = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+                  const scores = skills
+                    .map((skill) => (typeof skill === "object" ? skill.proficiency_score ?? 0 : 0))
+                    .filter((value) => value > 0);
+                  const average =
+                    scores.length > 0
+                      ? scores.reduce((sum, value) => sum + value, 0) / scores.length
+                      : 0;
+
                   return (
-                    <div key={`avg-${category}`} className="bg-muted rounded-md p-3">
-                      <p className="text-xs font-medium text-muted-foreground truncate">{categoryLabel(category)}</p>
-                      <div className="mt-1.5 w-full bg-muted rounded-md h-2">
+                    <SectionInset key={`avg-${category}`} className="space-y-2">
+                      <p className="truncate text-xs font-medium text-muted-foreground">
+                        {categoryLabel(category)}
+                      </p>
+                      <div className="h-2 w-full rounded-full bg-background">
                         <div
-                          className="bg-foreground h-2 rounded-md transition-all"
-                          style={{ width: `${Math.round(avg * 100)}%` }}
+                          className="h-2 rounded-full bg-foreground transition-all"
+                          style={{ width: `${Math.round(average * 100)}%` }}
                         />
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1">{Math.round(avg * 100)}%</p>
-                    </div>
+                      <p className="text-xs text-muted-foreground">{Math.round(average * 100)}%</p>
+                    </SectionInset>
                   );
                 })}
               </div>
 
-              {/* Search and filter */}
-              <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row">
                 <SearchInput
                   placeholder="Search skills..."
                   value={filter.searchQuery}
@@ -240,28 +269,38 @@ export function SkillsTab({
                 />
                 <select
                   value={filter.categoryFilter}
-                  onChange={(e) => filter.setCategoryFilter(e.target.value)}
-                  className="text-sm border border-border rounded-md px-3 py-2 bg-background focus:outline-none focus:ring-2 focus:ring-foreground"
+                  onChange={(event) => filter.setCategoryFilter(event.target.value)}
+                  className="h-10 rounded-[14px] border border-border/70 bg-background/80 px-3 text-sm text-foreground focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-ring/35"
                 >
                   <option value="all">All categories</option>
-                  {Object.keys(skillsByCategory).map((cat) => (
-                    <option key={cat} value={cat}>{categoryLabel(cat)}</option>
+                  {Object.keys(skillsByCategory).map((category) => (
+                    <option key={category} value={category}>
+                      {categoryLabel(category)}
+                    </option>
                   ))}
                 </select>
               </div>
 
-              {Object.entries(filter.filteredByCategory).map(([category, skills]) => (
-                <div key={category} className="rounded-md bg-muted/70 p-4">
-                  <p className="text-sm font-semibold text-foreground mb-3">
-                    {categoryLabel(category)}
-                  </p>
-                  <div className="space-y-2">
-                    {skills.map(
-                      (skill) => {
+              <div className="space-y-5">
+                {Object.entries(filter.filteredByCategory).map(([category, skills]) => (
+                  <div key={category} className="space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">
+                          {categoryLabel(category)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {skills.length} skill{skills.length === 1 ? "" : "s"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      {skills.map((skill) => {
                         const skillName = typeof skill === "string" ? skill : skill.name ?? "";
                         const isHighlighted = highlight.skills.includes(skillName);
                         const description = typeof skill === "object" ? skill.description : undefined;
-                        const profScore = typeof skill === "object" ? skill.proficiency_score ?? 0 : 0;
+                        const proficiency = typeof skill === "object" ? skill.proficiency_score ?? 0 : 0;
                         const highestTier = typeof skill === "object" ? skill.highest_tier : undefined;
                         const tierBreakdown = typeof skill === "object" ? skill.tier_breakdown : undefined;
                         const evidence = getSkillEvidence(skillName);
@@ -271,134 +310,138 @@ export function SkillsTab({
                         return (
                           <div
                             key={`${category}-${skillName}`}
-                            className={`rounded-md transition-colors ${
-                              isHighlighted
-                                ? "bg-muted ring-1 ring-border"
-                                : "bg-background/80 hover:bg-background"
+                            className={`rounded-[18px] p-3 transition-colors ${
+                              isHighlighted ? "bg-muted/75" : "bg-muted/45 hover:bg-muted/60"
                             }`}
                           >
-                            <div className="flex items-center gap-3 p-2">
+                            <div className="flex items-start gap-3">
                               <Checkbox
                                 id={`skill-${category}-${skillName}`}
                                 checked={isHighlighted}
                                 onChange={() => highlight.toggle(skillName)}
-                                className="border-border"
+                                className="mt-0.5 border-border"
                               />
+
                               <button
                                 type="button"
                                 onClick={() => filter.setExpandedSkillKey(isExpanded ? null : skillKey)}
-                                className="flex-1 text-left"
+                                className="min-w-0 flex-1 text-left"
                               >
-                                <span className="text-sm font-medium text-foreground">
+                                <span className="block text-sm font-medium text-foreground">
                                   {skillName}
                                 </span>
                                 {description && (
-                                  <span className="block text-xs text-muted-foreground mt-0.5">
+                                  <span className="mt-0.5 block text-xs text-muted-foreground">
                                     {description}
                                   </span>
                                 )}
                               </button>
-                              <div className="flex items-center gap-2">
-                                {/* Tier depth indicator */}
+
+                              <div className="flex flex-wrap items-center justify-end gap-2">
                                 {highestTier && (
                                   <TierIndicator tier={highestTier} breakdown={tierBreakdown} />
                                 )}
-                                {/* Proficiency bar */}
-                                {profScore > 0 && !highestTier && (
+                                {proficiency > 0 && !highestTier && (
                                   <div className="flex items-center gap-1.5">
-                                    <div className="w-16 bg-muted rounded-md h-1.5">
+                                    <div className="h-1.5 w-16 rounded-full bg-background">
                                       <div
-                                        className={`h-1.5 rounded-full ${
-                                          profScore >= 0.8 ? "bg-foreground" : profScore >= 0.6 ? "bg-foreground" : profScore >= 0.4 ? "bg-muted-foreground" : "bg-muted-foreground"
-                                        }`}
-                                        style={{ width: `${Math.round(profScore * 100)}%` }}
+                                        className="h-1.5 rounded-full bg-foreground"
+                                        style={{ width: `${Math.round(proficiency * 100)}%` }}
                                       />
                                     </div>
-                                    <span className="text-xs text-muted-foreground w-8">{Math.round(profScore * 100)}%</span>
+                                    <span className="w-8 text-xs text-muted-foreground">
+                                      {Math.round(proficiency * 100)}%
+                                    </span>
                                   </div>
                                 )}
                                 {evidence.length > 0 && (
-                                  <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded-md">
+                                  <span className="rounded-full bg-background px-2 py-0.5 text-xs text-muted-foreground">
                                     {evidence.length}
                                   </span>
                                 )}
                                 {isHighlighted && (
                                   <Check size={16} className="text-foreground" />
                                 )}
-                                {evidence.length > 0 && (
-                                  isExpanded ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />
-                                )}
+                                {evidence.length > 0 &&
+                                  (isExpanded ? (
+                                    <ChevronUp size={14} className="text-muted-foreground" />
+                                  ) : (
+                                    <ChevronDown size={14} className="text-muted-foreground" />
+                                  ))}
                               </div>
                             </div>
-                            {/* Evidence panel */}
+
                             {isExpanded && evidence.length > 0 && (
-                              <div className="mx-2 mb-2 rounded-md border-l-2 border-border bg-background px-8 py-2.5 space-y-1.5">
-                                {evidence.slice(0, 5).map((ev, idx) => (
-                                  <div key={`${ev.file ?? ""}:${ev.line ?? ""}:${idx}`} className="text-xs text-muted-foreground flex items-start gap-2">
-                                    <span className="text-muted-foreground mt-0.5">-</span>
-                                    <div>
-                                      <span>{ev.description || ev.type || "Evidence"}</span>
-                                      {ev.file && (
-                                        <span className="ml-1 text-muted-foreground font-mono">
-                                          {ev.file}{ev.line ? `:${ev.line}` : ""}
-                                        </span>
-                                      )}
+                              <div className="mt-3 ml-7 rounded-[14px] bg-background/80 px-4 py-3">
+                                <div className="space-y-1.5">
+                                  {evidence.slice(0, 5).map((item, index) => (
+                                    <div
+                                      key={`${item.file ?? ""}:${item.line ?? ""}:${index}`}
+                                      className="flex items-start gap-2 text-xs text-muted-foreground"
+                                    >
+                                      <span className="mt-0.5">-</span>
+                                      <div>
+                                        <span>{item.description || item.type || "Evidence"}</span>
+                                        {item.file && (
+                                          <span className="ml-1 font-mono text-muted-foreground">
+                                            {item.file}
+                                            {item.line ? `:${item.line}` : ""}
+                                          </span>
+                                        )}
+                                      </div>
                                     </div>
-                                  </div>
-                                ))}
-                                {evidence.length > 5 && (
-                                  <p className="text-xs text-muted-foreground italic">
-                                    + {evidence.length - 5} more evidence items
-                                  </p>
-                                )}
+                                  ))}
+                                  {evidence.length > 5 && (
+                                    <p className="text-xs italic text-muted-foreground">
+                                      + {evidence.length - 5} more evidence items
+                                    </p>
+                                  )}
+                                </div>
                               </div>
                             )}
                           </div>
                         );
-                      }
-                    )}
+                      })}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </SectionBody>
+      </Section>
 
-      {/* Skill Adoption Timeline */}
       {skillAdoptionTimeline.length > 0 && (
-        <Card className="bg-card border-2 border-border rounded-md">
-          <CardHeader className="border-b border-border">
-            <CardTitle className="text-xl font-bold text-foreground">
-              Skill Adoption Timeline
-            </CardTitle>
-            <p className="text-sm text-muted-foreground mt-1">
-              When each skill was first detected in the codebase
-            </p>
-          </CardHeader>
-          <CardContent className="p-6">
-            <div className="space-y-3">
+        <Section>
+          <SectionHeader>
+            <SectionHeading>
+              <SectionTitle>Skill Adoption Timeline</SectionTitle>
+              <SectionDescription>When each skill first appeared in the codebase.</SectionDescription>
+            </SectionHeading>
+          </SectionHeader>
+          <SectionBody className="pt-0">
+            <div className="[&>*+*]:mt-3">
               {skillAdoptionTimeline.map((entry) => (
-                <div
+                <SectionInset
                   key={`${entry.skill_name}::${entry.first_used_period ?? ""}`}
-                  className="flex items-center gap-4 py-2 border-b border-border last:border-0"
+                  className="flex items-center gap-4"
                 >
-                  <span className="text-xs font-mono text-gray-400 w-20 shrink-0">
+                  <span className="w-20 shrink-0 text-xs font-mono text-muted-foreground">
                     {entry.first_used_period || "Unknown"}
                   </span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-foreground">
                       {entry.skill_name}
                     </p>
-                    <p className="text-xs text-muted-foreground truncate">
+                    <p className="truncate text-xs text-muted-foreground">
                       {categoryLabel(entry.category ?? "")}
                       {entry.file ? ` · ${entry.file}` : ""}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <div className="w-12 bg-muted rounded-md h-1.5">
+                  <div className="flex shrink-0 items-center gap-2">
+                    <div className="h-1.5 w-12 rounded-full bg-background">
                       <div
-                        className="bg-foreground h-1.5 rounded-md"
+                        className="h-1.5 rounded-full bg-foreground"
                         style={{ width: `${Math.round((entry.current_proficiency ?? 0) * 100)}%` }}
                       />
                     </div>
@@ -406,59 +449,51 @@ export function SkillsTab({
                       {entry.total_usage ?? 0} uses
                     </span>
                   </div>
-                </div>
+                </SectionInset>
               ))}
             </div>
-          </CardContent>
-        </Card>
+          </SectionBody>
+        </Section>
       )}
 
-      {/* Gap Analysis */}
-      <Card className="bg-card border-2 border-border rounded-md">
-        <CardHeader className="border-b border-border">
-          <CardTitle className="text-xl font-bold text-foreground">
-            Skill Gap Analysis
-          </CardTitle>
-          <p className="text-sm text-muted-foreground mt-1">
-            Compare detected skills against a target role profile
-          </p>
-        </CardHeader>
-        <CardContent className="p-6 space-y-4">
+      <Section>
+        <SectionHeader>
+          <SectionHeading>
+            <SectionTitle>Skill Gap Analysis</SectionTitle>
+            <SectionDescription>Compare detected skills against a target role profile.</SectionDescription>
+          </SectionHeading>
+        </SectionHeader>
+        <SectionBody className="space-y-4 pt-0">
           <div className="flex items-center gap-3">
             <select
-              className="border border-border rounded-md px-3 py-2 text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"
+              className="h-10 rounded-[14px] border border-border/70 bg-background/80 px-3 text-sm text-foreground focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-ring/35"
               value={gapAnalysis.selectedRole}
-              onChange={(e) => gapAnalysis.run(e.target.value)}
+              onChange={(event) => gapAnalysis.run(event.target.value)}
             >
               <option value="">Select a role...</option>
-              {gapAnalysis.roles.map((r) => (
-                <option key={r.key} value={r.key}>
-                  {r.label}
+              {gapAnalysis.roles.map((role) => (
+                <option key={role.key} value={role.key}>
+                  {role.label}
                 </option>
               ))}
             </select>
-            {gapAnalysis.loading && (
-              <Loader2 size={16} className="animate-spin text-gray-400" />
-            )}
+            {gapAnalysis.loading && <Spinner size={16} className="text-muted-foreground" />}
           </div>
 
-          {gapAnalysis.error && (
-            <p className="text-sm text-destructive">{gapAnalysis.error}</p>
-          )}
+          {gapAnalysis.error && <p className="text-sm text-destructive">{gapAnalysis.error}</p>}
 
           {gapAnalysis.result && (
             <div className="space-y-4">
-              {/* Weighted coverage bar */}
-              <div className="space-y-1">
+              <SectionInset className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span className="font-medium text-gray-900">
+                  <span className="font-medium text-foreground">
                     Weighted Coverage for {gapAnalysis.result.role_label}
                   </span>
-                  <span className="text-gray-500">
+                  <span className="text-muted-foreground">
                     {gapAnalysis.result.weighted_coverage_percent ?? gapAnalysis.result.coverage_percent}%
                   </span>
                 </div>
-                <div className="w-full bg-gray-100 rounded-full h-3">
+                <div className="h-3 w-full rounded-full bg-background">
                   <div
                     className={`h-3 rounded-full transition-all ${
                       (gapAnalysis.result.weighted_coverage_percent ?? gapAnalysis.result.coverage_percent) >= 75
@@ -467,34 +502,33 @@ export function SkillsTab({
                           ? "bg-amber-500"
                           : "bg-red-500"
                     }`}
-                    style={{ width: `${gapAnalysis.result.weighted_coverage_percent ?? gapAnalysis.result.coverage_percent}%` }}
+                    style={{
+                      width: `${gapAnalysis.result.weighted_coverage_percent ?? gapAnalysis.result.coverage_percent}%`,
+                    }}
                   />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Critical skills are weighted 3x, recommended 2x, nice-to-have 1x
+                  Critical skills are weighted 3x, recommended 2x, nice-to-have 1x.
                 </p>
-              </div>
+              </SectionInset>
 
-              {/* Matched skills with importance badges */}
               {gapAnalysis.result.matched.length > 0 && (
-                <div>
-                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                <div className="space-y-2">
+                  <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
                     Matched ({gapAnalysis.result.matched.length})
                   </p>
                   <div className="flex flex-wrap gap-1.5">
-                    {gapAnalysis.result.matched.map((s) => {
-                      const name = typeof s === "string" ? s : s.name;
-                      const importance = typeof s === "object" ? s.importance : undefined;
+                    {gapAnalysis.result.matched.map((skill) => {
+                      const name = typeof skill === "string" ? skill : skill.name;
+                      const importance = typeof skill === "object" ? skill.importance : undefined;
                       return (
                         <span
                           key={name}
-                          className="px-2.5 py-1 rounded-md bg-muted text-foreground border border-border text-xs font-medium inline-flex items-center gap-1"
+                          className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-foreground"
                         >
                           {name}
                           {importance && (
-                            <span className={`text-[10px] font-semibold uppercase ${
-                              importance === "critical" ? "text-foreground" : importance === "recommended" ? "text-muted-foreground" : "text-muted-foreground"
-                            }`}>
+                            <span className="text-[10px] font-semibold uppercase text-muted-foreground">
                               · {importance === "nice_to_have" ? "bonus" : importance}
                             </span>
                           )}
@@ -505,28 +539,31 @@ export function SkillsTab({
                 </div>
               )}
 
-              {/* Missing skills with importance badges */}
               {gapAnalysis.result.missing.length > 0 && (
-                <div>
-                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                <div className="space-y-2">
+                  <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
                     Missing ({gapAnalysis.result.missing.length})
                   </p>
                   <div className="flex flex-wrap gap-1.5">
-                    {gapAnalysis.result.missing.map((s) => {
-                      const name = typeof s === "string" ? s : s.name;
-                      const importance = typeof s === "object" ? s.importance : undefined;
+                    {gapAnalysis.result.missing.map((skill) => {
+                      const name = typeof skill === "string" ? skill : skill.name;
+                      const importance = typeof skill === "object" ? skill.importance : undefined;
                       return (
                         <span
                           key={name}
-                          className={`px-2.5 py-1 rounded-full text-xs font-medium inline-flex items-center gap-1 ${
-                            importance === "critical" ? "bg-muted text-foreground border border-border" : importance === "recommended" ? "bg-muted text-foreground border border-border" : "bg-muted text-muted-foreground border border-border"
-                          }`}
+                          className="inline-flex items-center gap-1 rounded-full bg-background px-2.5 py-1 text-xs font-medium text-foreground"
                         >
                           {name}
                           {importance && (
-                            <span className={`text-[10px] font-semibold uppercase ${
-                              importance === "critical" ? "text-red-600" : importance === "recommended" ? "text-amber-600" : "text-gray-400"
-                            }`}>
+                            <span
+                              className={`text-[10px] font-semibold uppercase ${
+                                importance === "critical"
+                                  ? "text-red-600"
+                                  : importance === "recommended"
+                                    ? "text-amber-600"
+                                    : "text-muted-foreground"
+                              }`}
+                            >
                               · {importance === "nice_to_have" ? "bonus" : importance}
                             </span>
                           )}
@@ -537,19 +574,18 @@ export function SkillsTab({
                 </div>
               )}
 
-              {/* Extra skills */}
               {gapAnalysis.result.extra.length > 0 && (
-                <div>
-                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                <div className="space-y-2">
+                  <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
                     Additional Skills ({gapAnalysis.result.extra.length})
                   </p>
                   <div className="flex flex-wrap gap-1.5">
-                    {gapAnalysis.result.extra.map((s) => (
+                    {gapAnalysis.result.extra.map((skill) => (
                       <span
-                        key={s}
-                        className="px-2.5 py-1 rounded-md bg-muted text-foreground border border-border text-xs font-medium"
+                        key={skill}
+                        className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-foreground"
                       >
-                        {s}
+                        {skill}
                       </span>
                     ))}
                   </div>
@@ -559,12 +595,12 @@ export function SkillsTab({
           )}
 
           {!gapAnalysis.selectedRole && !gapAnalysis.result && (
-            <p className="text-sm text-gray-400">
+            <p className="text-sm text-muted-foreground">
               Select a role above to see how your project skills compare.
             </p>
           )}
-        </CardContent>
-      </Card>
+        </SectionBody>
+      </Section>
     </div>
   );
 }

@@ -167,8 +167,8 @@ function MediaAnalysisListSection({ title, items }: { title: string; items: Medi
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
-        <span className="text-xs text-gray-500">{items.length.toLocaleString()} items</span>
+        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+        <span className="text-xs text-muted-foreground">{items.length.toLocaleString()} items</span>
       </div>
       <MediaAnalysisList items={items} />
     </div>
@@ -178,8 +178,8 @@ function MediaAnalysisListSection({ title, items }: { title: string; items: Medi
 function MediaAnalysisList({ items }: { items: MediaListItem[] }) {
   if (items.length === 0) {
     return (
-      <Card className="bg-white border border-gray-200">
-        <CardContent className="p-10 text-center text-sm text-gray-500">
+      <Card>
+        <CardContent className="p-8 text-center text-sm text-muted-foreground">
           No media files analyzed.
         </CardContent>
       </Card>
@@ -189,21 +189,21 @@ function MediaAnalysisList({ items }: { items: MediaListItem[] }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       {items.map((item, idx) => (
-          <Card key={idx} className="bg-white border border-gray-200">
-            <CardContent className="p-4">
+          <Card key={idx}>
+            <CardContent className="p-5">
               <div className="flex items-start gap-3">
-                <div className="mt-1 text-gray-500">
+                <div className="mt-1 text-muted-foreground">
                   {item.type === "image" ? <FileImage size={18} /> : <Film size={18} />}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">
+                  <p className="truncate text-sm font-medium text-foreground">
                     {item.label || item.file_name || item.path || "Untitled"}
                   </p>
                   {item.analysis && (
-                    <p className="text-xs text-gray-600 mt-1">{item.analysis}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{item.analysis}</p>
                   )}
                   {item.metadata && (
-                    <div className="mt-2 text-xs text-gray-500 flex flex-wrap gap-2">
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
                       {typeof item.metadata.duration === "number" && (
                         <span>Duration: {item.metadata.duration}s</span>
                       )}
@@ -256,8 +256,8 @@ function MediaAnalysisSummaryView({
   const totalSize = summary.total_size_bytes ?? 0;
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard label="Total Media Files" value={totalFiles.toLocaleString()} />
         <StatCard label="Images" value={imageCount.toLocaleString()} />
         <StatCard label="Audio" value={audioCount.toLocaleString()} />
@@ -265,14 +265,14 @@ function MediaAnalysisSummaryView({
       </div>
 
       {totalSize > 0 && (
-        <Card className="bg-white border border-gray-200">
-          <CardContent className="p-4 text-sm text-gray-600">
-            Total media size: <span className="font-semibold text-gray-900">{formatBytes(totalSize)}</span>
+        <Card>
+          <CardContent className="p-4 text-sm text-muted-foreground">
+            Total media size: <span className="font-semibold text-foreground">{formatBytes(totalSize)}</span>
           </CardContent>
         </Card>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <MediaTypeCard
           title="Images"
           count={imageCount}
@@ -332,7 +332,7 @@ function MediaAnalysisSummaryView({
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <InsightCard title="Insights" items={payload.insights} emptyLabel="No insights available yet." />
         <InsightCard title="Issues" items={payload.issues} emptyLabel="No issues detected." />
       </div>
@@ -361,16 +361,16 @@ function MediaTypeCard({
   summaries?: Array<{ path: string; summary: string }>;
 }) {
   return (
-    <Card className="bg-white border border-gray-200">
-      <CardHeader className="border-b border-gray-200">
-        <CardTitle className="text-sm font-semibold text-gray-900">
+    <Card>
+      <CardHeader className="border-b border-border/70 p-5 pb-4">
+        <CardTitle className="text-sm font-semibold text-foreground">
           {title} ({count.toLocaleString()})
         </CardTitle>
       </CardHeader>
-      <CardContent className="p-4 space-y-3 text-sm text-gray-600">
+      <CardContent className="space-y-3 p-5 pt-4 text-sm text-muted-foreground">
         <div className="space-y-1">
           {details.filter(Boolean).length === 0 ? (
-            <p className="text-xs text-gray-400">No metrics available.</p>
+            <p className="text-xs text-muted-foreground">No metrics available.</p>
           ) : (
             details.filter(Boolean).map((line, idx) => (
               <p key={idx}>{line}</p>
@@ -382,7 +382,7 @@ function MediaTypeCard({
             {tags.slice(0, 5).map((tag) => (
               <span
                 key={tag}
-                className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full"
+                className="rounded-full border border-border bg-muted px-2.5 py-1 text-xs text-foreground"
               >
                 {tag}
               </span>
@@ -392,8 +392,8 @@ function MediaTypeCard({
         {summaries && summaries.length > 0 && (
           <div className="space-y-2">
             {summaries.slice(0, 3).map((entry) => (
-              <div key={`${entry.path}-${entry.summary}`} className="text-xs text-gray-500">
-                <span className="font-medium text-gray-700">{entry.path}:</span>{" "}
+              <div key={`${entry.path}-${entry.summary}`} className="text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">{entry.path}:</span>{" "}
                 {entry.summary}
               </div>
             ))}
@@ -414,15 +414,15 @@ function InsightCard({
   emptyLabel: string;
 }) {
   return (
-    <Card className="bg-white border border-gray-200">
-      <CardHeader className="border-b border-gray-200">
-        <CardTitle className="text-sm font-semibold text-gray-900">{title}</CardTitle>
+    <Card>
+      <CardHeader className="border-b border-border/70 p-5 pb-4">
+        <CardTitle className="text-sm font-semibold text-foreground">{title}</CardTitle>
       </CardHeader>
-      <CardContent className="p-4 text-sm text-gray-600 space-y-2">
+      <CardContent className="space-y-2 p-5 pt-4 text-sm text-muted-foreground">
         {items && items.length > 0 ? (
           items.map((item, idx) => <p key={`${title}-${idx}`}>• {item}</p>)
         ) : (
-          <p className="text-xs text-gray-400">{emptyLabel}</p>
+          <p className="text-xs text-muted-foreground">{emptyLabel}</p>
         )}
       </CardContent>
     </Card>

@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Loader2, FolderOpen } from "lucide-react";
+import { Plus, FolderOpen } from "lucide-react";
 import { ScanDialog } from "@/components/scan/scan-dialog";
 import { RecentScanCard } from "@/components/scan/recent-scan-card";
 import { getProjects, getProjectById } from "@/lib/api/projects";
 import { getStoredToken } from "@/lib/auth";
 import type { ProjectDetail } from "@/types/project";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 
 export default function HomePage() {
   const [scanDialogOpen, setScanDialogOpen] = useState(false);
@@ -135,7 +136,7 @@ export default function HomePage() {
           <div className="dashboard-panel p-6">
             <div className="flex min-h-[220px] flex-col items-center justify-center gap-4 text-center">
               <div className="flex h-14 w-14 items-center justify-center rounded-full border border-border bg-card">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                <Spinner size="lg" className="text-muted-foreground" />
               </div>
               <div className="space-y-1">
                 <p className="text-base font-medium text-foreground">Loading recent scan</p>

@@ -130,32 +130,6 @@ export const Sidebar: React.FC = () => {
           </div>
         </div>
 
-        <div className="rounded-[20px] border border-white/10 bg-white/6 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
-              Workspace
-            </p>
-            <p className="mt-2 text-sm leading-6 text-neutral-200">
-              Projects, scans, and resume assets organized in one structured workspace.
-            </p>
-          </div>
-
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            <div className="rounded-2xl border border-white/8 bg-black/10 px-3 py-2.5">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                Routes
-              </p>
-              <p className="mt-1 text-sm font-medium text-white">All sections</p>
-            </div>
-            <div className="rounded-2xl border border-white/8 bg-black/10 px-3 py-2.5">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                Search
-              </p>
-              <p className="mt-1 text-sm font-medium text-white">Indexed</p>
-            </div>
-          </div>
-        </div>
-
         <div className="flex-1 min-h-0 overflow-y-auto">
           <SectionLabel>Overview</SectionLabel>
           <div className="space-y-1">

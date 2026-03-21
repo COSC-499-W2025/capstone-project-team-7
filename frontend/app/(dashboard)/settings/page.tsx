@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -594,7 +595,7 @@ export default function SettingsPage() {
       {consentLoading && (
         <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-2 border-primary border-t-transparent mx-auto mb-4" />
+            <Spinner size={48} className="mx-auto mb-4 text-primary" />
             <p className="text-sm text-muted-foreground">Loading settings...</p>
           </div>
         </div>
@@ -687,11 +688,11 @@ export default function SettingsPage() {
           <TabsContent value="general" className="mt-6 border-0 bg-transparent p-0">
             <div className="space-y-6">
               <Card className="bg-background">
-                <CardHeader className="border-b border-border">
+                <CardHeader className="pb-5">
                   <CardTitle className="text-xl font-bold text-foreground">Appearance</CardTitle>
                   <CardDescription className="text-muted-foreground">Customize the look and feel of the application</CardDescription>
                 </CardHeader>
-                <CardContent className="p-6 space-y-6">
+                <CardContent className="p-6 space-y-0 [&>*+*]:mt-5 [&>*+*]:border-t [&>*+*]:border-border [&>*+*]:pt-5">
                   <div className="space-y-2">
                     <Label htmlFor="theme-select" className="text-sm font-medium text-foreground">Theme</Label>
                     <Select value={theme} onValueChange={(value) => handleThemeChange(value as Theme)}>
@@ -706,7 +707,7 @@ export default function SettingsPage() {
                     <p className="text-xs text-muted-foreground mt-1">Choose between light and dark theme</p>
                   </div>
 
-                  <div className="flex items-center justify-between py-3 border-t border-border">
+                  <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
                       <Label htmlFor="high-contrast" className="text-sm font-medium text-foreground">High Contrast Mode</Label>
                       <p className="text-xs text-muted-foreground">Increase contrast for better visibility</p>
@@ -721,11 +722,11 @@ export default function SettingsPage() {
               </Card>
 
               <Card className="bg-background">
-                <CardHeader className="border-b border-border">
+                <CardHeader className="pb-5">
                   <CardTitle className="text-xl font-bold text-foreground">Preferences</CardTitle>
                   <CardDescription className="text-muted-foreground">Application configuration and default settings</CardDescription>
                 </CardHeader>
-                <CardContent className="p-6 space-y-4">
+                <CardContent className="p-6 space-y-0 [&>*+*]:mt-5 [&>*+*]:border-t [&>*+*]:border-border [&>*+*]:pt-5">
                   <div className="space-y-2">
                     <Label htmlFor="save-path" className="text-sm font-medium text-foreground">Default save directory</Label>
                     <div className="flex gap-2">
@@ -743,7 +744,7 @@ export default function SettingsPage() {
                     <p className="text-xs text-muted-foreground mt-1">Where files will be saved by default</p>
                   </div>
 
-                  <div className="space-y-2 pt-2 border-t border-border">
+                  <div className="space-y-2">
                     <Label htmlFor="contribution-user-name" className="text-sm font-medium text-foreground">Contribution display name</Label>
                     <Input
                       id="contribution-user-name"
@@ -779,7 +780,7 @@ export default function SettingsPage() {
                     <p className="text-xs text-muted-foreground mt-1">Comma-separated emails to include in contribution matching</p>
                   </div>
                 </CardContent>
-                <CardFooter className="bg-muted border-t border-border p-6">
+                <CardFooter className="bg-muted/60 p-6">
                   <div className="flex items-center gap-3">
                     <Button onClick={onSave} className="">
                       Save Changes
@@ -798,14 +799,14 @@ export default function SettingsPage() {
           <TabsContent value="security" className="mt-6 border-0 bg-transparent p-0">
             <div className="space-y-6">
               <Card className="bg-background">
-                <CardHeader className="border-b border-border">
+                <CardHeader className="pb-5">
                   <CardTitle className="text-xl font-bold text-foreground">Security</CardTitle>
                   <CardDescription className="text-muted-foreground">Encryption status for sensitive data stored at rest</CardDescription>
                 </CardHeader>
                 <CardContent className="p-6 space-y-4">
                   {encryptionLoading ? (
                     <div className="flex items-center gap-3 text-muted-foreground">
-                      <div className="animate-spin rounded-full h-6 w-6 border-2 border-border border-t-transparent" />
+                      <Spinner size={24} />
                       <p className="text-sm">Checking encryption status...</p>
                     </div>
                   ) : encryptionError ? (
@@ -877,11 +878,11 @@ export default function SettingsPage() {
 
               {userSession && (
                 <Card className="bg-background">
-                  <CardHeader className="border-b border-border">
+                  <CardHeader className="pb-5">
                     <CardTitle className="text-xl font-bold text-foreground">External Services</CardTitle>
                     <CardDescription className="text-muted-foreground">Manage API keys for AI-powered features</CardDescription>
                   </CardHeader>
-                  <CardContent className="p-6 space-y-4">
+                  <CardContent className="p-6 space-y-0 [&>*+*]:mt-5 [&>*+*]:border-t [&>*+*]:border-border [&>*+*]:pt-5">
                     {!consentData.external_services ? (
                       <div className="bg-blue-50 border-2 border-blue-300 rounded-md p-4">
                         <p className="text-sm text-blue-800">
@@ -970,7 +971,7 @@ export default function SettingsPage() {
                       </div>
                     )}
                   </CardContent>
-                  <CardFooter className="bg-muted border-t border-border p-6">
+                  <CardFooter className="bg-muted/60 p-6">
                     <p className="text-xs text-muted-foreground">
                       API keys are encrypted at rest and never returned after saving.
                     </p>
@@ -979,7 +980,7 @@ export default function SettingsPage() {
               )}
 
               <Card className="bg-background">
-                <CardHeader className="border-b border-border">
+                <CardHeader className="pb-5">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <CardTitle className="text-xl font-bold text-foreground">Privacy & Consent</CardTitle>
@@ -1019,11 +1020,11 @@ export default function SettingsPage() {
             <div className="space-y-6">
               {userSession ? (
                 <Card className="bg-background">
-                  <CardHeader className="border-b border-border">
+                  <CardHeader className="pb-5">
                     <CardTitle className="text-xl font-bold text-foreground">Scan Configuration</CardTitle>
                     <CardDescription className="text-muted-foreground">Configure scan profiles and analysis settings</CardDescription>
                   </CardHeader>
-                  <CardContent className="p-6 space-y-4">
+                  <CardContent className="p-6 space-y-0 [&>*+*]:mt-5 [&>*+*]:border-t [&>*+*]:border-border [&>*+*]:pt-5">
                     {serverConfig ? (
                       <>
                         <div className="space-y-2">
@@ -1108,7 +1109,7 @@ export default function SettingsPage() {
                           <p className="text-xs text-muted-foreground mt-1">Skip files larger than this size</p>
                         </div>
 
-                        <div className="flex items-center justify-between py-3 border-t border-border">
+                        <div className="flex items-center justify-between">
                           <div className="space-y-0.5">
                             <Label htmlFor="follow-symlinks" className="text-sm font-medium text-foreground">Follow Symlinks</Label>
                             <p className="text-xs text-muted-foreground">Include symbolic links in file analysis</p>
@@ -1126,7 +1127,7 @@ export default function SettingsPage() {
                       </div>
                     )}
                   </CardContent>
-                  <CardFooter className="bg-muted border-t border-border p-6">
+                  <CardFooter className="bg-muted/60 p-6">
                     <div className="flex flex-col gap-2">
                       <div className="flex items-center gap-3">
                         <Button
@@ -1148,7 +1149,7 @@ export default function SettingsPage() {
                 </Card>
               ) : (
                 <Card className="bg-background">
-                  <CardHeader className="border-b border-border">
+                  <CardHeader className="pb-5">
                     <CardTitle className="text-xl font-bold text-foreground">Scan Configuration</CardTitle>
                     <CardDescription className="text-muted-foreground">Sign in to manage scan profiles and analysis behavior</CardDescription>
                   </CardHeader>

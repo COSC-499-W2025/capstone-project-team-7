@@ -630,11 +630,29 @@ function escapeLatex(text: string): string {
 /**
  * Format date range for display
  */
+function formatDateForLatex(dateStr: string | undefined): string {
+  if (!dateStr) return '';
+  try {
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return dateStr;
+    return date.toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  } catch {
+    return dateStr;
+  }
+}
+
 function formatDateRange(start?: string, end?: string): string {
   if (!start && !end) return '';
-  if (start && end) return `${start} -- ${end}`;
-  if (start) return `${start} -- Present`;
-  return end || '';
+  const formattedStart = formatDateForLatex(start);
+  const formattedEnd = formatDateForLatex(end);
+
+  if (formattedStart && formattedEnd) return `${formattedStart} -- ${formattedEnd}`;
+  if (formattedStart) return `${formattedStart} -- Present`;
+  return formattedEnd || '';
 }
 
 /**

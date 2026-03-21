@@ -4,11 +4,22 @@ import { useState, useEffect, useRef } from "react";
 import { ProjectsTable } from "@/components/projects/projects-table";
 import { getProjects, deleteProject, getProjectById, getSelection, saveSelection } from "@/lib/api/projects";
 import { ProjectMetadata, ProjectDetail } from "@/types/project";
-import { Loader2, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { getStoredToken } from "@/lib/auth";
 import { ProjectDetailModal } from "@/components/projects/project-detail-modal";
 import { formatOperationError } from "@/lib/error-utils";
 import { Button } from "@/components/ui/button";
+import { LoadingState } from "@/components/ui/loading-state";
+import { Spinner } from "@/components/ui/spinner";
+import {
+  Section,
+  SectionActions,
+  SectionBody,
+  SectionDescription,
+  SectionHeader,
+  SectionHeading,
+  SectionTitle,
+} from "@/components/ui/section";
 
 type ProjectsSortMode = "contribution" | "recency";
 
@@ -261,11 +272,8 @@ export default function ProjectsPage() {
   if (loading) {
     return (
       <div className="page-container">
-        <div className="page-card p-8">
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            <span className="ml-3 text-muted-foreground">Loading projects...</span>
-          </div>
+        <div className="mx-auto w-full max-w-[1500px]">
+          <LoadingState message="Loading projects..." />
         </div>
       </div>
     );
@@ -275,26 +283,22 @@ export default function ProjectsPage() {
     <div className="page-container">
       <section className="page-card page-hero">
         <div className="page-header">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="max-w-3xl">
               <p className="page-kicker">Evidence Library</p>
               <h1 className="text-foreground">Projects</h1>
               <p className="page-summary">
                 Ranked project evidence, contribution metadata, and scan coverage in one sortable view.
               </p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <span className="dashboard-chip">{projects.length} project{projects.length === 1 ? "" : "s"}</span>
-                <span className="dashboard-chip">Ranked by {rankingMode}</span>
-                {rankingSaveStatus === "saved" && <span className="dashboard-chip">Preference saved</span>}
+              <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
+                <span>{projects.length} project{projects.length === 1 ? "" : "s"}</span>
+                <span>Ranked by {rankingMode}</span>
+                {rankingSaveStatus === "saved" && <span className="text-foreground">Preference saved</span>}
               </div>
             </div>
 
-            <Button
-              onClick={handleRefresh}
-              disabled={refreshing || savingRankingMode}
-              variant="outline"
-            >
-              <RefreshCw size={18} className={refreshing ? "animate-spin" : ""} />
+            <Button onClick={handleRefresh} disabled={refreshing || savingRankingMode} variant="outline">
+              {refreshing ? <Spinner size={18} /> : <RefreshCw size={18} />}
               <span className="font-medium">Refresh</span>
             </Button>
           </div>
@@ -317,53 +321,50 @@ export default function ProjectsPage() {
         </div>
       )}
 
-      <section className="page-card page-body">
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-4 rounded-[20px] border border-border/80 bg-muted/45 p-4">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                Ranking Controls
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Switch the ordering without changing any project data.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-              <label htmlFor="projects-ranking-mode" className="text-sm font-medium text-foreground">
+      <Section>
+        <SectionHeader>
+          <SectionHeading>
+            <SectionTitle>Project Library</SectionTitle>
+            <SectionDescription>
+              Switch ordering and scan the table without the extra stacked wrappers.
+            </SectionDescription>
+          </SectionHeading>
+          <SectionActions className="gap-2">
+            <label htmlFor="projects-ranking-mode" className="text-sm font-medium text-foreground">
               Ranking
-              </label>
-              <select
-                id="projects-ranking-mode"
-                data-testid="projects-ranking-mode"
-                value={rankingMode}
-                onChange={(event) => handleRankingModeChange(event.target.value as ProjectsSortMode)}
-                disabled={savingRankingMode}
-                className="h-11 rounded-[14px] border border-border bg-card px-3.5 py-2 text-sm text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.75),0_8px_18px_rgba(15,23,42,0.04)] focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-ring/40"
-              >
-                <option value="recency">Recency</option>
-                <option value="contribution">Contribution</option>
-              </select>
-              {savingRankingMode && (
-                <p className="text-sm text-muted-foreground">Saving ranking preference...</p>
-              )}
-              {!savingRankingMode && rankingSaveStatus === "saved" && (
-                <p className="text-sm text-foreground">Ranking preference saved.</p>
-              )}
-            </div>
-          </div>
+            </label>
+            <select
+              id="projects-ranking-mode"
+              data-testid="projects-ranking-mode"
+              value={rankingMode}
+              onChange={(event) => handleRankingModeChange(event.target.value as ProjectsSortMode)}
+              disabled={savingRankingMode}
+              className="h-10 rounded-[14px] border border-border/70 bg-background/80 px-3.5 text-sm text-foreground focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-ring/35"
+            >
+              <option value="recency">Recency</option>
+              <option value="contribution">Contribution</option>
+            </select>
+            {savingRankingMode && <p className="text-sm text-muted-foreground">Saving...</p>}
+            {!savingRankingMode && rankingSaveStatus === "saved" && (
+              <p className="text-sm text-foreground">Ranking preference saved.</p>
+            )}
+          </SectionActions>
+        </SectionHeader>
+        <SectionBody className="pt-0">
           <ProjectsTable
             projects={projects}
             onDelete={handleDelete}
             onView={handleView}
             rankingMode={rankingMode}
           />
-      </section>
+        </SectionBody>
+      </Section>
 
       {/* Loading overlay when fetching project details */}
       {loadingDetail && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-card rounded-md border-2 border-border p-4 flex items-center gap-3">
-            <Loader2 className="h-6 w-6 animate-spin text-foreground" />
+            <Spinner size={24} className="text-foreground" />
             <span className="text-foreground">Loading project details...</span>
           </div>
         </div>

@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { Spinner } from "@/components/ui/spinner";
 
 interface LoadingStateProps {
   message?: string;
@@ -21,8 +22,8 @@ export function LoadingState({
       <div className="relative mx-auto flex min-h-[280px] max-w-xl flex-col items-center justify-center gap-5 px-8 py-12 text-center">
         <div className="relative flex h-16 w-16 items-center justify-center rounded-full border border-border bg-background/90">
           <div className="absolute inset-[10px] rounded-full border border-border/70" />
-          <div className="absolute inset-[10px] rounded-full border-2 border-transparent border-t-foreground/80 animate-spin" />
           <div className="absolute inset-[22px] rounded-full bg-muted/80" />
+          <Spinner size="lg" className="relative z-10 text-foreground/80" />
         </div>
         <div className="space-y-2">
           <p className="page-kicker mb-0 justify-center">Preparing View</p>

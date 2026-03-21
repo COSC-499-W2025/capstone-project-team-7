@@ -42,7 +42,7 @@ export function TabsList({ className, ...props }: React.HTMLAttributes<HTMLDivEl
   return (
     <div
       className={cn(
-        "inline-flex h-auto w-fit max-w-full items-center gap-1 rounded-[18px] border border-border/80 bg-[linear-gradient(180deg,hsl(var(--secondary)/0.9),hsl(var(--muted)/0.7))] p-1.5 text-muted-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]",
+        "inline-flex h-auto w-fit max-w-full items-center gap-1 rounded-[18px] border border-border/70 bg-background/75 p-1.5 text-muted-foreground backdrop-blur-sm",
         className
       )}
       {...props}
@@ -62,11 +62,11 @@ export function TabsTrigger({ className, value, ...props }: TabsTriggerProps) {
     <button
       type="button"
       className={cn(
-        "inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-[14px] border px-4 text-sm font-medium transition-[transform,background-color,color,border-color,box-shadow] duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+        "inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-[14px] border px-4 text-sm font-medium transition-[background-color,color,border-color,box-shadow] duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
         "ring-offset-background",
         isActive
-          ? "border-primary/15 bg-card text-foreground shadow-[0_10px_24px_rgba(15,23,42,0.08)]"
-          : "border-transparent bg-transparent text-muted-foreground hover:bg-card/75 hover:text-foreground hover:-translate-y-px",
+          ? "border-border bg-card text-foreground shadow-[0_6px_14px_rgba(15,23,42,0.05)]"
+          : "border-transparent bg-transparent text-muted-foreground hover:bg-card/70 hover:text-foreground",
         className
       )}
       onClick={() => ctx.setValue(value)}

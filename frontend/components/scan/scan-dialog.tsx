@@ -30,10 +30,10 @@ import {
   AlertTriangle,
   CheckCircle2,
   XCircle,
-  Loader2,
   Plus,
   FolderPlus,
 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 
 type ScanMode = "new" | "append";
 
@@ -333,7 +333,7 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
             <div className="space-y-4">
               <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
                 <div className="flex items-center gap-2 mb-3">
-                  <Loader2 className="h-4 w-4 animate-spin text-gray-600" />
+                  <Spinner size="md" className="text-gray-600" />
                   <span className="text-sm font-medium text-gray-700">
                     {scanMode === "append" ? "Scanning and merging..." : "Scanning in progress..."}
                   </span>
@@ -497,7 +497,7 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
                       disabled={!isAuthenticated || isBrowsing}
                     >
                       {isBrowsing ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        <Spinner size="md" className="mr-2" />
                       ) : (
                         <FolderOpen className="h-4 w-4 mr-2" />
                       )}

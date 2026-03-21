@@ -5,7 +5,6 @@ import {
   Briefcase,
   Calendar,
   Plus,
-  Loader2,
   Edit2,
   Trash2,
   RefreshCw,
@@ -55,6 +54,7 @@ import type { ProjectMetadata } from "@/types/project";
 import type { UserProfile } from "@/lib/api.types";
 import { PortfolioOverview } from "@/components/portfolio/portfolio-overview";
 import { LoadingState } from "@/components/ui/loading-state";
+import { Spinner } from "@/components/ui/spinner";
 
 interface FormState {
   title: string;
@@ -85,11 +85,30 @@ function formatDate(dateStr: string | null | undefined): string {
   }
 }
 
+function formatDateForDisplay(dateStr: string | null | undefined): string {
+  if (!dateStr) return "";
+  try {
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return dateStr;
+    return date.toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  } catch {
+    return dateStr;
+  }
+}
+
 function formatDateRange(start?: string | null, end?: string | null): string {
   if (!start && !end) return "Dates unknown";
-  if (start && end) return `${start} – ${end}`;
-  if (start) return `From ${start}`;
-  return `Until ${end}`;
+  const formattedStart = formatDateForDisplay(start);
+  const formattedEnd = formatDateForDisplay(end);
+
+  if (formattedStart && formattedEnd) return `${formattedStart} – ${formattedEnd}`;
+  if (formattedStart) return `From ${formattedStart}`;
+  if (formattedEnd) return `Until ${formattedEnd}`;
+  return "Dates unknown";
 }
 
 export default function PortfolioPage() {
@@ -377,7 +396,7 @@ export default function PortfolioPage() {
                   disabled={refreshing}
                   variant="outline"
                 >
-                  <RefreshCw size={18} className={refreshing ? "animate-spin" : ""} />
+                  {refreshing ? <Spinner size={18} /> : <RefreshCw size={18} />}
                   <span>{refreshing ? "Refreshing…" : "Refresh"}</span>
                 </Button>
                 <Button
@@ -722,7 +741,7 @@ export default function PortfolioPage() {
                       className="flex-shrink-0"
                     >
                       {generating ? (
-                        <Loader2 size={14} className="animate-spin" />
+                        <Spinner size={14} />
                       ) : (
                         <Sparkles size={14} />
                       )}

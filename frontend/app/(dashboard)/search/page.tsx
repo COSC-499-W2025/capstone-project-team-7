@@ -10,7 +10,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Loader2, Search, FileText, Sparkles } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
+import { Search, FileText, Sparkles } from "lucide-react";
 import { getStoredToken } from "@/lib/auth";
 import { searchProjects, getSkills } from "@/lib/api/projects";
 import { SearchResultItem } from "@/types/project";
@@ -194,7 +195,7 @@ export default function SearchPage() {
                     className="sm:min-w-[132px]"
                   >
                     {loading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <Spinner size="md" />
                     ) : (
                       <Search className="h-4 w-4" />
                     )}
@@ -224,7 +225,7 @@ export default function SearchPage() {
 
               {loading && (
                 <div className="flex items-center justify-center rounded-[22px] border border-border bg-muted/30 py-20">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  <Spinner size="xl" className="text-muted-foreground" />
                   <span className="ml-3 text-muted-foreground">Searching...</span>
                 </div>
               )}

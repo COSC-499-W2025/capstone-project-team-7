@@ -4,8 +4,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import {
+  Section,
+  SectionActions,
+  SectionBody,
+  SectionDescription,
+  SectionHeader,
+  SectionHeading,
+  SectionInset,
+  SectionTitle,
+} from "@/components/ui/section";
 import { DocumentAnalysisTab } from "@/components/project/document-analysis-tab";
 import { OverviewTab } from "@/components/project/overview-tab";
 import { LanguagesTab } from "@/components/project/languages-tab";
@@ -909,6 +919,12 @@ export default function ProjectPage() {
 
   const aiEligibilityReady =
     externalServicesConsentEnabled && openAiKeyValid;
+  const primaryTabsListClass =
+    "flex w-full flex-nowrap items-center gap-2 overflow-x-auto rounded-[20px] bg-muted/55 p-1.5";
+  const secondaryTabsListClass =
+    "flex w-full flex-nowrap items-center gap-1.5 overflow-x-auto rounded-[18px] bg-muted/45 p-1";
+  const mainTabTriggerClass = "px-5 text-sm";
+  const subTabTriggerClass = "h-9 px-3.5 text-sm";
 
   const projectHighlights = [
     { label: "Files", value: filesProcessedLabel },
@@ -950,45 +966,59 @@ export default function ProjectPage() {
 
   return (
     <div className="page-container">
-      <section className="page-card page-hero">
-        <div className="page-header">
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
-            <div>
-              <button
-                onClick={() => router.back()}
-                className="text-sm text-muted-foreground hover:text-foreground mb-2 inline-block"
-              >
-                ← Back
-              </button>
+      <section className="page-card">
+        <div className="page-body space-y-6">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.back()}
+              className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+            >
+              ← Back
+            </button>
+            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              Project Detail
+            </span>
+          </div>
 
-              <p className="page-kicker">Deep Analysis</p>
-              <h1 className="text-4xl font-bold text-foreground tracking-tight">
-                {hasProject ? projectName : "Project"}
-              </h1>
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)]">
+            <div className="min-w-0 space-y-4">
+              <div className="space-y-2">
+                <h1 className="text-[2.2rem] font-semibold tracking-[-0.04em] text-foreground md:text-[2.5rem]">
+                  {hasProject ? projectName : "Project"}
+                </h1>
+                <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
+                  Review scan metadata, analysis outputs, and project tools in one workspace.
+                </p>
+              </div>
 
-              <p className="page-summary">
-                Scanned project analysis, contribution evidence, and export tooling in one structured workspace.
-              </p>
-
-              <div className="mt-5 flex flex-wrap gap-2">
-                <span className="portfolio-chip">Path: {projectPath || "Unavailable"}</span>
-                <span className="portfolio-chip">Scan: {scanTimestamp}</span>
-                <span className="portfolio-chip">Duration: {scanDurationLabel}</span>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="info-tile p-4 sm:col-span-2">
+                  <p className="info-tile-kicker">Path</p>
+                  <p className="mt-2 break-all text-sm font-medium leading-6 text-foreground">
+                    {projectPath || "Unavailable"}
+                  </p>
+                </div>
+                <div className="info-tile p-4">
+                  <p className="info-tile-kicker">Scanned</p>
+                  <p className="mt-2 text-sm font-medium text-foreground">{scanTimestamp}</p>
+                </div>
+                <div className="info-tile p-4">
+                  <p className="info-tile-kicker">Duration</p>
+                  <p className="mt-2 text-sm font-medium text-foreground">{scanDurationLabel}</p>
+                </div>
               </div>
 
               {projectLoading && (
-                <p className="text-xs text-muted-foreground mt-3">Loading project data…</p>
+                <p className="text-xs text-muted-foreground">Loading project data…</p>
               )}
-              {projectError && <p className="text-xs text-red-600 mt-3">{projectError}</p>}
+              {projectError && <p className="text-xs text-red-600">{projectError}</p>}
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
               {projectHighlights.map((item) => (
-                <div key={item.label} className="split-callout-card">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                    {item.label}
-                  </p>
-                  <p className="mt-2 text-lg font-semibold text-foreground break-words">{item.value}</p>
+                <div key={item.label} className="info-tile p-4">
+                  <p className="info-tile-kicker">{item.label}</p>
+                  <p className="mt-2 break-words text-lg font-semibold text-foreground">{item.value}</p>
                 </div>
               ))}
             </div>
@@ -1033,14 +1063,14 @@ export default function ProjectPage() {
           onValueChange={(value) => setActiveMainTab(value as MainTabValue)}
           className="space-y-6"
         >
-          <TabsList className="flex w-full justify-start gap-2 overflow-x-auto rounded-[16px] border-2 border-border bg-card/85 p-2">
+          <TabsList className={primaryTabsListClass}>
             {mainTabs.map((tab) => {
               const Icon = tab.icon;
               return (
                 <TabsTrigger
                   key={tab.value}
                   value={tab.value}
-                  className="text-sm px-5 py-2.5 font-medium"
+                  className={mainTabTriggerClass}
                 >
                   <Icon size={18} className="mr-2" />
                   {tab.label}
@@ -1054,14 +1084,14 @@ export default function ProjectPage() {
           ============================================ */}
           <TabsContent value="overview" className="mt-0 border-0 bg-transparent p-0">
             <Tabs defaultValue="overview-main" className="space-y-6">
-              <TabsList className="flex w-full justify-start gap-2 overflow-x-auto rounded-[14px] border border-border bg-card/70 p-1.5">
+              <TabsList className={secondaryTabsListClass}>
                 {overviewSubTabs.map((tab) => {
                   const Icon = tab.icon;
                   return (
                     <TabsTrigger
                       key={tab.value}
                       value={tab.value}
-                      className="text-xs px-4 py-2"
+                      className={subTabTriggerClass}
                     >
                       <Icon size={14} className="mr-1.5" />
                       {tab.label}
@@ -1103,14 +1133,14 @@ export default function ProjectPage() {
           ============================================ */}
           <TabsContent value="skills" className="mt-0 border-0 bg-transparent p-0">
             <Tabs defaultValue="skills-main" className="space-y-6">
-              <TabsList className="flex w-full justify-start gap-2 overflow-x-auto rounded-[14px] border border-border bg-card/70 p-1.5">
+              <TabsList className={secondaryTabsListClass}>
                 {skillsSubTabs.map((tab) => {
                   const Icon = tab.icon;
                   return (
                     <TabsTrigger
                       key={tab.value}
                       value={tab.value}
-                      className="text-xs px-4 py-2"
+                      className={subTabTriggerClass}
                     >
                       <Icon size={14} className="mr-1.5" />
                       {tab.label}
@@ -1176,26 +1206,27 @@ export default function ProjectPage() {
           </TabsContent>
 
           <TabsContent value="ai-analysis" className="mt-0 space-y-6 border-0 bg-transparent p-0">
-            <Card className="bg-card border-2 border-border rounded-md">
-              <CardHeader className="border-b border-border">
-                <CardTitle className="text-xl font-bold text-foreground">
-                  AI Analysis Status
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6 space-y-4">
+            <Section>
+              <SectionHeader>
+                <SectionHeading>
+                  <SectionTitle>AI Analysis Status</SectionTitle>
+                  <SectionDescription>Consent and API-key checks required before AI features can run.</SectionDescription>
+                </SectionHeading>
+              </SectionHeader>
+              <SectionBody className="space-y-4 pt-0">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="rounded-md border border-border bg-muted p-4">
+                  <SectionInset className="space-y-2">
                     <p className="text-xs font-semibold text-muted-foreground uppercase">External Data Consent</p>
                     <p className={`mt-2 text-sm font-medium ${externalServicesConsentEnabled ? "text-green-700" : "text-muted-foreground"}`}>
                       {externalServicesConsentEnabled ? "Enabled" : "Not enabled"}
                     </p>
-                  </div>
-                  <div className="rounded-md border border-border bg-muted p-4">
+                  </SectionInset>
+                  <SectionInset className="space-y-2">
                     <p className="text-xs font-semibold text-muted-foreground uppercase">OpenAI API Key</p>
                     <p className={`mt-2 text-sm font-medium ${openAiKeyValid ? "text-green-700" : "text-muted-foreground"}`}>
                       {openAiKeyValid ? "Verified" : "Missing or invalid"}
                     </p>
-                  </div>
+                  </SectionInset>
                 </div>
 
                 <div className="flex items-center gap-3">
@@ -1220,39 +1251,37 @@ export default function ProjectPage() {
                 )}
 
                 {aiEligibilityChecked && !aiEligibilityReady && (
-                  <div className="rounded-md border-2 border-amber-200 bg-amber-50 p-4">
+                  <SectionInset className="bg-amber-50">
                     <p className="text-sm text-amber-800">
                       {aiEligibilityMessage ||
                         "AI analysis is currently blocked. Enable External Data consent and verify your OpenAI API key in Settings."}
                     </p>
-                  </div>
+                  </SectionInset>
                 )}
-              </CardContent>
-            </Card>
+              </SectionBody>
+            </Section>
 
-            <Card className="bg-card border-2 border-border rounded-md">
-              <CardHeader className="border-b border-border flex flex-row items-center justify-between">
-                <div>
-                  <CardTitle className="text-xl font-bold text-foreground">
-                    AI Summary
-                  </CardTitle>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Summarize skill growth from the timeline.
-                  </p>
-                </div>
-                <button
+            <Section>
+              <SectionHeader>
+                <SectionHeading>
+                  <SectionTitle>AI Summary</SectionTitle>
+                  <SectionDescription>Summarize skill growth from the timeline.</SectionDescription>
+                </SectionHeading>
+                <SectionActions>
+                  <Button
                   onClick={handleGenerateSummary}
                   disabled={summaryLoading || aiEligibilityLoading || !aiEligibilityReady}
-                  className="px-3 py-2 text-xs font-semibold rounded-md bg-foreground text-background disabled:opacity-60"
+                  size="sm"
                 >
                   {summaryLoading
                     ? "Generating..."
                     : skillsSummary
                     ? "Regenerate"
                     : "Generate"}
-                </button>
-              </CardHeader>
-              <CardContent className="p-6 space-y-4">
+                  </Button>
+                </SectionActions>
+              </SectionHeader>
+              <SectionBody className="space-y-4 pt-0">
                 {skillsNote && <p className="text-sm text-muted-foreground">{skillsNote}</p>}
                 {!aiEligibilityReady && (
                   <p className="text-sm text-muted-foreground">
@@ -1324,8 +1353,8 @@ export default function ProjectPage() {
                     </div>
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </SectionBody>
+            </Section>
           </TabsContent>
 
           {/* ============================================
@@ -1333,14 +1362,14 @@ export default function ProjectPage() {
           ============================================ */}
           <TabsContent value="content" className="mt-0 border-0 bg-transparent p-0">
             <Tabs defaultValue="documents" className="space-y-6">
-              <TabsList className="flex w-full justify-start gap-2 overflow-x-auto rounded-[14px] border border-border bg-card/70 p-1.5">
+              <TabsList className={secondaryTabsListClass}>
                 {contentSubTabs.map((tab) => {
                   const Icon = tab.icon;
                   return (
                     <TabsTrigger
                       key={tab.value}
                       value={tab.value}
-                      className="text-xs px-4 py-2"
+                      className={subTabTriggerClass}
                     >
                       <Icon size={14} className="mr-1.5" />
                       {tab.label}
@@ -1398,14 +1427,14 @@ export default function ProjectPage() {
               onValueChange={(value) => setActiveToolsTab(value as ToolsTabValue)}
               className="space-y-6"
             >
-              <TabsList className="flex w-full justify-start gap-2 overflow-x-auto rounded-[14px] border border-border bg-card/70 p-1.5">
+              <TabsList className={secondaryTabsListClass}>
                 {toolsSubTabs.map((tab) => {
                   const Icon = tab.icon;
                   return (
                     <TabsTrigger
                       key={tab.value}
                       value={tab.value}
-                      className="text-xs px-4 py-2"
+                      className={subTabTriggerClass}
                     >
                       <Icon size={14} className="mr-1.5" />
                       {tab.label}
@@ -1432,13 +1461,16 @@ export default function ProjectPage() {
               </TabsContent>
 
               <TabsContent value="file-browser" className="mt-0 space-y-4 border-0 bg-transparent p-0">
-                <Card className="rounded-[18px]">
-                  <CardHeader className="border-b border-border flex flex-row items-center justify-between">
-                    <CardTitle className="text-xl font-bold text-foreground flex items-center gap-2">
+                <Section>
+                  <SectionHeader>
+                    <SectionHeading>
+                      <SectionTitle className="flex items-center gap-2">
                       <FileText size={18} />
                       Files Explorer
-                    </CardTitle>
-                    <Button
+                      </SectionTitle>
+                    </SectionHeading>
+                    <SectionActions>
+                      <Button
                       type="button"
                       variant="outline"
                       size="sm"
@@ -1446,10 +1478,11 @@ export default function ProjectPage() {
                     >
                       Back to Overview
                     </Button>
-                  </CardHeader>
-                  <CardContent className="p-6">
+                    </SectionActions>
+                  </SectionHeader>
+                  <SectionBody className="pt-0">
                     <Tabs defaultValue="tree-browser" className="space-y-4">
-                      <TabsList className="h-auto w-fit gap-2 border border-border bg-background p-1.5">
+                      <TabsList className="h-auto w-fit gap-2 bg-muted/55 p-1">
                         <TabsTrigger value="tree-browser" className="px-3 py-1.5 text-xs">
                           Tree Browser
                         </TabsTrigger>
@@ -1471,18 +1504,21 @@ export default function ProjectPage() {
                         />
                       </TabsContent>
                     </Tabs>
-                  </CardContent>
-                </Card>
+                  </SectionBody>
+                </Section>
               </TabsContent>
 
               <TabsContent value="git-analysis" className="mt-0 space-y-4 border-0 bg-transparent p-0">
-                <Card className="rounded-[18px]">
-                  <CardHeader className="border-b border-border flex flex-row items-center justify-between">
-                    <CardTitle className="text-xl font-bold text-foreground flex items-center gap-2">
+                <Section>
+                  <SectionHeader>
+                    <SectionHeading>
+                      <SectionTitle className="flex items-center gap-2">
                       <GitBranch size={18} />
                       Git Analysis
-                    </CardTitle>
-                    <Button
+                      </SectionTitle>
+                    </SectionHeading>
+                    <SectionActions>
+                      <Button
                       type="button"
                       variant="outline"
                       size="sm"
@@ -1490,26 +1526,30 @@ export default function ProjectPage() {
                     >
                       Back to Overview
                     </Button>
-                  </CardHeader>
-                  <CardContent className="p-6">
+                    </SectionActions>
+                  </SectionHeader>
+                  <SectionBody className="pt-0">
                     <GitAnalysisTab
                       loading={projectLoading}
                       error={projectError}
                       gitAnalysis={scanData.git_analysis}
                       onRetry={loadProject}
                     />
-                  </CardContent>
-                </Card>
+                  </SectionBody>
+                </Section>
               </TabsContent>
 
               <TabsContent value="duplicate-finder" className="mt-0 space-y-4 border-0 bg-transparent p-0">
-                <Card className="rounded-[18px]">
-                  <CardHeader className="border-b border-border flex flex-row items-center justify-between">
-                    <CardTitle className="text-xl font-bold text-foreground flex items-center gap-2">
+                <Section>
+                  <SectionHeader>
+                    <SectionHeading>
+                      <SectionTitle className="flex items-center gap-2">
                       <Copy size={18} />
                       Duplicate Finder
-                    </CardTitle>
-                    <Button
+                      </SectionTitle>
+                    </SectionHeading>
+                    <SectionActions>
+                      <Button
                       type="button"
                       variant="outline"
                       size="sm"
@@ -1517,16 +1557,17 @@ export default function ProjectPage() {
                     >
                       Back to Overview
                     </Button>
-                  </CardHeader>
-                  <CardContent className="p-6">
+                    </SectionActions>
+                  </SectionHeader>
+                  <SectionBody className="pt-0">
                     <DuplicateFinderTab
                       duplicateReport={scanData.duplicate_report}
                       isLoading={projectLoading}
                       errorMessage={projectError}
                       onRetry={loadProject}
                     />
-                  </CardContent>
-                </Card>
+                  </SectionBody>
+                </Section>
               </TabsContent>
             </Tabs>
           </TabsContent>

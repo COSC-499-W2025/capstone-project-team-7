@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus,
-  Loader2,
   FileText,
   Copy,
   Trash2,
@@ -16,6 +15,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { LoadingState } from "@/components/ui/loading-state";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Dialog,
   DialogContent,
@@ -191,11 +192,8 @@ export default function ResumeBuilderPage() {
   if (loading) {
     return (
       <div className="page-container">
-        <div className="page-card p-8">
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            <span className="ml-3 text-muted-foreground">Loading resumes...</span>
-          </div>
+        <div className="mx-auto w-full max-w-[1500px]">
+          <LoadingState message="Loading resumes..." />
         </div>
       </div>
     );
@@ -222,7 +220,7 @@ export default function ResumeBuilderPage() {
                 disabled={refreshing}
                 className="flex items-center gap-2 px-4 py-2 border-2 border-border bg-muted text-foreground rounded-md hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <RefreshCw size={18} className={refreshing ? "animate-spin" : ""} />
+                {refreshing ? <Spinner size={18} /> : <RefreshCw size={18} />}
                 <span className="font-medium">Refresh</span>
               </button>
               <button
@@ -435,7 +433,7 @@ export default function ResumeBuilderPage() {
             <Button onClick={handleCreate} disabled={creating}>
               {creating ? (
                 <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  <Spinner size="md" className="mr-2" />
                   Creating...
                 </>
               ) : (

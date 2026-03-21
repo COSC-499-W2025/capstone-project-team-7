@@ -14,11 +14,11 @@ import {
   GitCommit,
   Globe,
   Lock,
-  Loader2,
   Sparkles,
   Trophy,
   User,
 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { getStoredToken } from "@/lib/auth";
 import { publishPortfolio } from "@/lib/api/portfolio";
 import type { PortfolioChronology, PortfolioSettings } from "@/types/portfolio";
@@ -330,41 +330,74 @@ export function PortfolioOverview({
                 into a tighter dashboard so the strongest signals are visible quickly.
               </p>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleTogglePublish}
-                  disabled={publishing}
-                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                    pubSettings?.is_public
-                      ? "border-primary/20 bg-primary/10 text-[hsl(var(--accent-foreground))] hover:bg-primary/15"
-                      : "border-border bg-white text-muted-foreground hover:bg-muted"
-                  } disabled:cursor-not-allowed disabled:opacity-50`}
-                >
-                  {publishing ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : pubSettings?.is_public ? (
-                    <Globe className="h-3.5 w-3.5" />
-                  ) : (
-                    <Lock className="h-3.5 w-3.5" />
-                  )}
-                  {pubSettings?.is_public ? "Public" : "Private"}
-                </button>
+              {publishError && (
+                <div className="rounded-[12px] border border-red-300 bg-red-50/80 px-3 py-2 text-xs text-red-700">
+                  {publishError}
+                </div>
+              )}
 
-                {pubSettings?.is_public && pubSettings.share_token && (
-                  <button
-                    type="button"
-                    onClick={handleCopyLink}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted"
-                  >
-                    {copied ? (
-                      <Check className="h-3.5 w-3.5 text-foreground" />
-                    ) : (
-                      <Copy className="h-3.5 w-3.5" />
+              <div className="rounded-[16px] border border-primary/25 bg-primary/5 p-3 shadow-[0_4px_12px_rgba(15,23,42,0.04)]">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground mb-0.5">
+                      Visibility
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {pubSettings?.is_public
+                        ? "Public • Share with anyone"
+                        : "Private • Link only"}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={handleTogglePublish}
+                      disabled={publishing}
+                      className={`inline-flex items-center gap-1.5 rounded-[12px] border px-3.5 py-2 text-xs font-semibold transition-all ${
+                        pubSettings?.is_public
+                          ? "border-primary bg-primary text-primary-foreground shadow-[0_6px_16px_hsl(var(--primary)/0.25)] hover:shadow-[0_8px_20px_hsl(var(--primary)/0.3)]"
+                          : "border-border bg-card text-foreground hover:bg-muted hover:border-primary/30 shadow-[0_2px_8px_rgba(15,23,42,0.04)]"
+                      } disabled:cursor-not-allowed disabled:opacity-50`}
+                    >
+                      {publishing ? (
+                        <>
+                          <Spinner size={14} />
+                          Updating...
+                        </>
+                      ) : pubSettings?.is_public ? (
+                        <>
+                          <Globe className="h-3.5 w-3.5" />
+                          Make Private
+                        </>
+                      ) : (
+                        <>
+                          <Globe className="h-3.5 w-3.5" />
+                          Make Public
+                        </>
+                      )}
+                    </button>
+
+                    {pubSettings?.is_public && pubSettings.share_token && (
+                      <button
+                        type="button"
+                        onClick={handleCopyLink}
+                        className="inline-flex items-center gap-1.5 rounded-[12px] border border-primary/30 bg-primary/10 px-3.5 py-2 text-xs font-semibold text-primary transition-all hover:bg-primary/15 hover:border-primary/50 shadow-[0_2px_8px_rgba(15,23,42,0.04)]"
+                      >
+                        {copied ? (
+                          <>
+                            <Check className="h-3.5 w-3.5" />
+                            Copied!
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="h-3.5 w-3.5" />
+                            Copy Link
+                          </>
+                        )}
+                      </button>
                     )}
-                    {copied ? "Copied!" : "Copy Link"}
-                  </button>
-                )}
+                  </div>
+                </div>
               </div>
 
               <div className="flex flex-wrap gap-2">

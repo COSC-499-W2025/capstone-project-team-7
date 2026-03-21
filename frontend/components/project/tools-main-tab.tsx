@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import {
   FileText,
   GitBranch,
@@ -10,7 +11,6 @@ import {
   Search,
   FileJson,
   FileCode2,
-  Loader2,
   Check,
   AlertCircle,
   Download,
@@ -53,10 +53,10 @@ export function ToolsMainTab({
   handleExportHtml,
 }: ToolsMainTabProps) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      <Card className="rounded-[18px]">
-        <CardHeader className="border-b border-border">
-          <CardTitle className="text-base font-bold text-foreground">
+    <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+      <Card>
+        <CardHeader className="border-b border-border/70 p-5 pb-4">
+          <CardTitle className="text-base font-semibold text-foreground">
             <button
               type="button"
               onClick={() => openToolsTab("file-browser")}
@@ -67,11 +67,11 @@ export function ToolsMainTab({
             </button>
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-6 space-y-4">
+        <CardContent className="flex h-full flex-col gap-5 p-5 pt-4">
           <p className="text-sm text-muted-foreground">
             Browse and filter indexed project files in one full view.
           </p>
-          <div className="stat-block">
+          <div className="stat-block p-4">
             <p className="text-xs text-muted-foreground">Indexed files</p>
             <p className="mt-1 text-lg font-semibold text-foreground">
               {formatCount(projectFilesCount)}
@@ -88,9 +88,9 @@ export function ToolsMainTab({
         </CardContent>
       </Card>
 
-      <Card className="rounded-[18px]">
-        <CardHeader className="border-b border-border">
-          <CardTitle className="text-base font-bold text-foreground">
+      <Card>
+        <CardHeader className="border-b border-border/70 p-5 pb-4">
+          <CardTitle className="text-base font-semibold text-foreground">
             <button
               type="button"
               onClick={() => openToolsTab("git-analysis")}
@@ -101,18 +101,18 @@ export function ToolsMainTab({
             </button>
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-6 space-y-4">
+        <CardContent className="flex h-full flex-col gap-5 p-5 pt-4">
           <p className="text-sm text-muted-foreground">
             Compact view of repositories and commit activity.
           </p>
           <div className="grid grid-cols-2 gap-3">
-            <div className="stat-block">
+            <div className="stat-block p-4">
               <p className="text-xs text-muted-foreground">Repositories</p>
               <p className="mt-1 text-lg font-semibold text-foreground">
                 {gitRepoTotal}
               </p>
             </div>
-            <div className="stat-block">
+            <div className="stat-block p-4">
               <p className="text-xs text-muted-foreground">Commits</p>
               <p className="mt-1 text-lg font-semibold text-foreground">
                 {formatCount(gitCommitTotal)}
@@ -130,9 +130,9 @@ export function ToolsMainTab({
         </CardContent>
       </Card>
 
-      <Card className="rounded-[18px]">
-        <CardHeader className="border-b border-border">
-          <CardTitle className="text-base font-bold text-foreground">
+      <Card>
+        <CardHeader className="border-b border-border/70 p-5 pb-4">
+          <CardTitle className="text-base font-semibold text-foreground">
             <button
               type="button"
               onClick={() => openToolsTab("duplicate-finder")}
@@ -143,18 +143,18 @@ export function ToolsMainTab({
             </button>
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-6 space-y-4">
+        <CardContent className="flex h-full flex-col gap-5 p-5 pt-4">
           <p className="text-sm text-muted-foreground">
             Quick snapshot of duplicate groups and storage waste.
           </p>
           <div className="grid grid-cols-2 gap-3">
-            <div className="stat-block">
+            <div className="stat-block p-4">
               <p className="text-xs text-muted-foreground">Groups</p>
               <p className="mt-1 text-lg font-semibold text-foreground">
                 {duplicateOverview?.totalGroups ?? 0}
               </p>
             </div>
-            <div className="stat-block">
+            <div className="stat-block p-4">
               <p className="text-xs text-muted-foreground">Wasted</p>
               <p className="mt-1 text-lg font-semibold text-foreground">
                 {formatBytes(duplicateOverview?.totalWastedBytes ?? 0)}
@@ -173,34 +173,34 @@ export function ToolsMainTab({
       </Card>
 
       {/* Search & Filter */}
-      <Card className="rounded-[18px]">
-        <CardHeader className="border-b border-border">
-          <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
+      <Card>
+        <CardHeader className="border-b border-border/70 p-5 pb-4">
+          <CardTitle className="flex items-center gap-2 text-base font-semibold text-foreground">
             <Search size={18} />
             Global Search
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-6">
-          <p className="mb-4 text-sm text-muted-foreground">
+        <CardContent className="flex h-full flex-col gap-5 p-5 pt-4">
+          <p className="text-sm text-muted-foreground">
             Use the dedicated search workspace to query files and skills across all projects.
           </p>
           <Link
             href="/search"
-            className="inline-flex items-center rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
+            className="inline-flex h-9 shrink-0 items-center justify-center rounded-[14px] border border-border bg-card px-3.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
           >
             Open Search
           </Link>
         </CardContent>
       </Card>
 
-      <Card className="rounded-[18px]">
-        <CardHeader className="border-b border-border">
-          <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
+      <Card>
+        <CardHeader className="border-b border-border/70 p-5 pb-4">
+          <CardTitle className="flex items-center gap-2 text-base font-semibold text-foreground">
             <FileJson size={18} />
             Export Options
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-6 space-y-3">
+        <CardContent className="space-y-4 p-5 pt-4">
           <p className="text-sm text-muted-foreground">
             Export project analysis in various formats.
           </p>
@@ -221,7 +221,7 @@ export function ToolsMainTab({
               ].join(" ")}
             >
               {exportStatus === "exporting" ? (
-                <><Loader2 size={14} className="animate-spin" /> Exporting…</>
+                <><Spinner size={14} /> Exporting…</>
               ) : exportStatus === "success" ? (
                 <><Check size={14} /> Downloaded!</>
               ) : exportStatus === "error" ? (
@@ -245,7 +245,7 @@ export function ToolsMainTab({
               ].join(" ")}
             >
               {htmlExportStatus === "exporting" ? (
-                <><Loader2 size={14} className="animate-spin" /> Exporting…</>
+                <><Spinner size={14} /> Exporting…</>
               ) : htmlExportStatus === "success" ? (
                 <><Check size={14} /> Downloaded!</>
               ) : htmlExportStatus === "error" ? (

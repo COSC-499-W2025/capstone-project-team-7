@@ -1,6 +1,13 @@
 "use client";
 
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import {
+  Section,
+  SectionBody,
+  SectionDescription,
+  SectionHeader,
+  SectionHeading,
+  SectionTitle,
+} from "@/components/ui/section";
 
 interface LanguageEntry {
   name: string;
@@ -13,13 +20,14 @@ interface LanguagesTabProps {
 
 export function LanguagesTab({ topLanguages }: LanguagesTabProps) {
   return (
-    <Card className="rounded-[18px]">
-      <CardHeader className="border-b border-border">
-        <CardTitle className="text-xl font-bold text-foreground">
-          Language Breakdown
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="p-6">
+    <Section>
+      <SectionHeader>
+        <SectionHeading>
+          <SectionTitle>Language Breakdown</SectionTitle>
+          <SectionDescription>Relative language share across the scanned codebase.</SectionDescription>
+        </SectionHeading>
+      </SectionHeader>
+      <SectionBody className="pt-0">
         {topLanguages.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             No language data available for this project.
@@ -27,7 +35,7 @@ export function LanguagesTab({ topLanguages }: LanguagesTabProps) {
         ) : (
           <div className="space-y-4">
             {topLanguages.map((lang) => (
-              <div key={lang.name} className="space-y-2 rounded-[14px] border border-border bg-muted/70 p-4">
+              <div key={lang.name} className="space-y-2 rounded-[16px] bg-muted/55 p-4">
                 <div className="flex justify-between text-sm">
                   <span className="font-medium text-foreground">{lang.name}</span>
                   <span className="text-muted-foreground">{lang.percentage}%</span>
@@ -42,7 +50,7 @@ export function LanguagesTab({ topLanguages }: LanguagesTabProps) {
             ))}
           </div>
         )}
-      </CardContent>
-    </Card>
+      </SectionBody>
+    </Section>
   );
 }

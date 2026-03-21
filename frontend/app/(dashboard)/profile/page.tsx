@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import type { UserProfile, UpdateProfileRequest } from "@/lib/api.types";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { LoadingState } from "@/components/ui/loading-state";
 import { Input } from "@/components/ui/input";
 import { Avatar } from "@/components/ui/avatar";
 import { Label } from "@/components/ui/label";
@@ -287,8 +288,8 @@ export default function ProfilePage() {
   // ---- render ----
   if (loading) {
     return (
-      <main className="flex items-center justify-center py-24">
-        <p className="text-sm text-muted-foreground">Loading profile...</p>
+      <main className="page-container py-6">
+        <LoadingState message="Loading profile..." className="min-h-[22rem]" />
       </main>
     );
   }

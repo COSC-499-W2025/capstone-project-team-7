@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Loader2, FileText, Edit2, Trash2, RefreshCw } from "lucide-react";
+import { Plus, FileText, Edit2, Trash2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { LoadingState } from "@/components/ui/loading-state";
+import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -38,14 +40,33 @@ const EMPTY_FORM: FormState = {
   bulletsText: "",
 };
 
+function formatDateForDisplay(dateStr: string | null | undefined): string {
+  if (!dateStr) return "";
+  try {
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return dateStr;
+    return date.toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  } catch {
+    return dateStr;
+  }
+}
+
 function formatDateRange(
   start?: string | null,
   end?: string | null
 ): string {
   if (!start && !end) return "No dates set";
-  if (start && end) return `${start} – ${end}`;
-  if (start) return `From ${start}`;
-  return `Until ${end}`;
+  const formattedStart = formatDateForDisplay(start);
+  const formattedEnd = formatDateForDisplay(end);
+
+  if (formattedStart && formattedEnd) return `${formattedStart} – ${formattedEnd}`;
+  if (formattedStart) return `From ${formattedStart}`;
+  if (formattedEnd) return `Until ${formattedEnd}`;
+  return "No dates set";
 }
 
 function parseBullets(text: string): string[] {
@@ -208,11 +229,8 @@ export default function ResumesPage() {
   if (loading) {
     return (
       <div className="page-container">
-        <div className="page-card p-8">
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            <span className="ml-3 text-muted-foreground">Loading resume items...</span>
-          </div>
+        <div className="mx-auto w-full max-w-[1500px]">
+          <LoadingState message="Loading resume items..." />
         </div>
       </div>
     );
@@ -242,7 +260,7 @@ export default function ResumesPage() {
                 disabled={refreshing}
                 variant="outline"
               >
-                <RefreshCw size={18} className={refreshing ? "animate-spin" : ""} />
+                {refreshing ? <Spinner size={18} /> : <RefreshCw size={18} />}
                 <span className="font-medium">Refresh</span>
               </Button>
               <Button
@@ -341,7 +359,7 @@ export default function ResumesPage() {
                       size="sm"
                     >
                       {loadingDetail ? (
-                        <Loader2 size={14} className="animate-spin" />
+                        <Spinner size={14} />
                       ) : (
                         <Edit2 size={14} />
                       )}
@@ -365,7 +383,7 @@ export default function ResumesPage() {
       {loadingDetail && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-[20px] p-4 flex items-center gap-3 shadow-[0_28px_60px_rgba(15,23,42,0.18)]">
-            <Loader2 className="h-5 w-5 animate-spin text-gray-600" />
+            <Spinner size="lg" className="text-gray-600" />
             <span className="text-sm text-gray-700">Loading item...</span>
           </div>
         </div>

@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   Save,
-  Loader2,
   Download,
   Eye,
   Code,
@@ -14,6 +13,8 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { LoadingState } from "@/components/ui/loading-state";
+import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -237,8 +238,8 @@ function ResumeEditorPageInner() {
 
   if (loading) {
     return (
-      <div className="h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="page-container py-6">
+        <LoadingState message="Loading resume editor..." className="min-h-[calc(100vh-3rem)]" />
       </div>
     );
   }
@@ -285,7 +286,7 @@ function ResumeEditorPageInner() {
             <span className="text-xs text-muted-foreground">
               {saving ? (
                 <span className="flex items-center gap-1">
-                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <Spinner size={12} />
                   Saving...
                 </span>
               ) : lastSaved ? (

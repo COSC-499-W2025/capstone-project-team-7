@@ -79,49 +79,49 @@ export function ProjectsTable({ projects, onDelete, onView, rankingMode }: Proje
 
   return (
     <div className="table-shell overflow-x-auto">
-      <table className="min-w-full table-fixed">
-        <thead className="bg-muted/70">
+      <table className="min-w-full table-fixed" aria-label={`Projects ranked by ${rankingMode}`}>
+        <thead className="bg-muted/45">
           <tr>
-            <th scope="col" className="w-[18rem] px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            <th scope="col" className="w-[18rem] px-6 py-3.5 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
               Project Name
             </th>
-            <th scope="col" className="w-[22rem] px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            <th scope="col" className="w-[22rem] px-6 py-3.5 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
               Path
             </th>
-            <th scope="col" className="w-[16rem] px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            <th scope="col" className="w-[16rem] px-6 py-3.5 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
               Languages
             </th>
-            <th scope="col" className="w-[7rem] px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            <th scope="col" className="w-[7rem] px-6 py-3.5 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
               Files
             </th>
-            <th scope="col" className="w-[7rem] px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            <th scope="col" className="w-[7rem] px-6 py-3.5 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
               Lines
             </th>
-            <th scope="col" className="w-[9rem] px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            <th scope="col" className="w-[9rem] px-6 py-3.5 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
               Role
             </th>
-            <th scope="col" className="w-[10rem] px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            <th scope="col" className="w-[10rem] px-6 py-3.5 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
               Contribution Score
             </th>
-            <th scope="col" className="w-[10rem] px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            <th scope="col" className="w-[10rem] px-6 py-3.5 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
               Scanned
             </th>
-            <th scope="col" className="relative w-[7rem] px-6 py-4">
+            <th scope="col" className="relative w-[7rem] px-6 py-3.5">
               <span className="sr-only">Actions</span>
             </th>
           </tr>
         </thead>
-        <tbody className="bg-card">
+        <tbody className="bg-card [&_tr+tr]:border-t [&_tr+tr]:border-border/60">
           {projects.map((project) => {
             const projectData = getProjectData(project);
 
             return (
             <tr
               key={project.id}
-              className="border-b border-border/75 transition-colors hover:bg-accent/40"
+              className="transition-colors hover:bg-accent/30"
             >
               <td 
-                className="px-6 py-5 cursor-pointer align-top"
+                className="cursor-pointer px-6 py-[18px] align-top"
                 onClick={() => router.push(`/project?projectId=${project.id}`)}
               >
                 <div className="space-y-1">
@@ -133,18 +133,18 @@ export function ProjectsTable({ projects, onDelete, onView, rankingMode }: Proje
                   </div>
                 </div>
               </td>
-              <td className="px-6 py-5 align-top">
+              <td className="px-6 py-[18px] align-top">
                 <div className="max-w-[20rem] truncate text-sm text-muted-foreground" title={project.project_path}>
                   {project.project_path}
                 </div>
               </td>
-              <td className="px-6 py-5 align-top">
+              <td className="px-6 py-[18px] align-top">
                 <div className="flex max-w-[16rem] flex-wrap gap-1.5">
                   {projectData.languages && projectData.languages.length > 0 ? (
                     projectData.languages.slice(0, 3).map((lang) => (
                       <span
                         key={lang}
-                        className="inline-flex items-center rounded-full border border-border bg-muted px-2.5 py-1 text-[11px] font-medium text-foreground"
+                        className="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-[11px] font-medium text-foreground"
                       >
                         {lang}
                       </span>
@@ -153,28 +153,28 @@ export function ProjectsTable({ projects, onDelete, onView, rankingMode }: Proje
                     <span className="text-sm text-muted-foreground">None</span>
                   )}
                   {projectData.languages && projectData.languages.length > 3 && (
-                    <span className="inline-flex items-center rounded-full border border-border bg-card px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+                    <span className="inline-flex items-center rounded-full bg-background px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
                       +{projectData.languages.length - 3}
                     </span>
                   )}
                 </div>
               </td>
-              <td className="px-6 py-5 align-top text-sm font-medium text-foreground">
+              <td className="px-6 py-[18px] align-top text-sm font-medium text-foreground">
                 {formatNumber(projectData.totalFiles)}
               </td>
-              <td className="px-6 py-5 align-top text-sm text-muted-foreground">
+              <td className="px-6 py-[18px] align-top text-sm text-muted-foreground">
                 {formatNumber(projectData.totalLines)}
               </td>
-              <td className="px-6 py-5 align-top">
+              <td className="px-6 py-[18px] align-top">
                 {project.role ? (
-                  <span className="inline-flex items-center rounded-full border border-border bg-card px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  <span className="inline-flex items-center rounded-full bg-background px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                     {project.role}
                   </span>
                 ) : (
                   <span className="text-sm text-muted-foreground">-</span>
                 )}
               </td>
-              <td className="px-6 py-5 align-top text-sm text-muted-foreground">
+              <td className="px-6 py-[18px] align-top text-sm text-muted-foreground">
                 <div className="space-y-1">
                   <span className={project.contribution_score === undefined || project.contribution_score === null ? "text-muted-foreground" : "font-medium text-foreground"}>
                     {formatContributionScore(project.contribution_score)}
@@ -186,21 +186,21 @@ export function ProjectsTable({ projects, onDelete, onView, rankingMode }: Proje
                   )}
                 </div>
               </td>
-              <td className="px-6 py-5 align-top text-sm text-muted-foreground">
+              <td className="px-6 py-[18px] align-top text-sm text-muted-foreground">
                 {formatDate(project.created_at || project.scan_timestamp)}
               </td>
-              <td className="px-6 py-5 text-right align-top text-sm font-medium">
+              <td className="px-6 py-[18px] text-right align-top text-sm font-medium">
                 <div className="flex items-center justify-end gap-2">
                   <button
                     onClick={() => onView(project.id)}
-                    className="rounded-full border border-border bg-card p-2 text-foreground transition-colors hover:border-primary/20 hover:bg-accent/70"
+                    className="rounded-full border border-border/70 bg-background/80 p-2 text-foreground transition-colors hover:border-primary/20 hover:bg-accent/70"
                     title="View details"
                   >
                     <Eye size={18} />
                   </button>
                   <button
                     onClick={() => onDelete(project.id)}
-                    className="rounded-full border border-red-200 bg-red-50 p-2 text-destructive transition-colors hover:bg-red-100"
+                    className="rounded-full border border-red-200/80 bg-red-50/80 p-2 text-destructive transition-colors hover:bg-red-100"
                     title="Delete project"
                   >
                     <Trash2 size={18} />
