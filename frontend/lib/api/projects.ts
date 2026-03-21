@@ -13,6 +13,8 @@ import {
   RoleProfile,
   SkillGapAnalysis,
   AiAnalysisApiResponse,
+  AiBatchApiResponse,
+  AiBatchStatusApiResponse,
 } from "@/types/project";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
@@ -489,6 +491,86 @@ export async function runProjectAiAnalysis(
   if (!response.ok) {
     const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
     throw new Error(extractErrorFromResponse(error, "Failed to run AI analysis"));
+  }
+
+  return response.json();
+}
+
+/**
+ * Run or reuse project-scoped batch AI processing.
+ */
+export async function runProjectAiBatch(
+  token: string,
+  projectId: string,
+  force = false,
+): Promise<AiBatchApiResponse> {
+  const params = force ? "?force=true" : "";
+  const response = await fetch(
+    `${API_BASE_URL}/api/projects/${projectId}/ai-batch${params}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    },
+  );
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
+    throw new Error(extractErrorFromResponse(error, "Failed to run AI batch analysis"));
+  }
+
+  return response.json();
+}
+
+/**
+ * Fetch cached batch AI processing result for a project.
+ */
+export async function getProjectAiBatch(
+  token: string,
+  projectId: string,
+): Promise<AiBatchApiResponse> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/projects/${projectId}/ai-batch`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    },
+  );
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
+    throw new Error(extractErrorFromResponse(error, "Failed to fetch AI batch analysis"));
+  }
+
+  return response.json();
+}
+
+/**
+ * Fetch in-progress batch status messages for real-time polling.
+ */
+export async function getProjectAiBatchStatus(
+  token: string,
+  projectId: string,
+): Promise<AiBatchStatusApiResponse> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/projects/${projectId}/ai-batch/status`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    },
+  );
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({}) as ErrorResponse);
+    throw new Error(extractErrorFromResponse(error, "Failed to fetch AI batch status"));
   }
 
   return response.json();
