@@ -429,15 +429,15 @@ def _serialize_contribution_metrics(metrics: Any) -> Dict[str, Any]:
 def _extract_archive_for_analysis(
     storage_path: Path,
     temp_path: Path,
-    preferences=None,
+    preferences: Optional[ScanPreferences] = None,
 ) -> Path:
     """Extract a ZIP for analysis, skipping directories listed in preferences.
 
     Uses the same exclusion list as ``archive_utils._derive_excluded_dirs`` so
     heavy directories (``.git``, ``node_modules``, etc.) are never extracted.
     """
-    from services.archive_utils import _derive_excluded_dirs
-    skip_dirs = _derive_excluded_dirs(preferences)
+    from services.archive_utils import derive_excluded_dirs
+    skip_dirs = derive_excluded_dirs(preferences)
 
     with zipfile.ZipFile(storage_path, "r") as zf:
         for member in zf.namelist():

@@ -527,7 +527,11 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
                         onClick={() => handleBrowse(true)}
                         disabled={!isAuthenticated || isBrowsing}
                       >
-                        <FileArchive className="h-4 w-4 mr-1.5" />
+                        {isBrowsing ? (
+                          <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                        ) : (
+                          <FileArchive className="h-4 w-4 mr-1.5" />
+                        )}
                         ZIP
                       </Button>
                     </>

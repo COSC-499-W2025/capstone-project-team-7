@@ -1085,8 +1085,15 @@ def _run_scan_background(
         # ------------------------------------------------------------------
         # MULTI-PROJECT PATH: 2+ detected sub-projects (parallel)
         # ------------------------------------------------------------------
+        MAX_DETECTED_PROJECTS = 10
         if len(detected_projects) > 1:
             import concurrent.futures
+
+            if len(detected_projects) > MAX_DETECTED_PROJECTS:
+                logger.warning(
+                    f"Detected {len(detected_projects)} projects, capping at {MAX_DETECTED_PROJECTS}"
+                )
+                detected_projects = detected_projects[:MAX_DETECTED_PROJECTS]
 
             total_projects = len(detected_projects)
             logger.info(f"Multi-project scan: {total_projects} projects detected, running in parallel")
@@ -1173,7 +1180,7 @@ def _run_scan_background(
                 "summary": {
                     "total_files": total_files,
                     "bytes_processed": total_bytes,
-                    "issues_count": 0,
+                    "issues_count": sum(r["summary"].get("issues_count", 0) for r in payloads),
                 },
                 "languages": all_languages,
                 "has_media_files": any(r.get("has_media_files") for r in payloads),
