@@ -206,7 +206,6 @@
   .portfolio-shell {
     position: relative;
     overflow: hidden;
-    border: 1px solid hsl(var(--border) / var(--opacity-border-strong));
     border-radius: 24px;
     background:
       linear-gradient(180deg, hsl(var(--card) / 0.98), hsl(var(--card) / 0.92)),
@@ -288,7 +287,6 @@
   .split-callout-card,
   .portfolio-panel-subtle,
   .dashboard-card-subtle {
-    border: 1px solid hsl(var(--border) / var(--opacity-border-normal));
     border-radius: 18px;
     background:
       linear-gradient(180deg, hsl(var(--card) / 0.88), hsl(var(--muted) / 0.72));
@@ -304,7 +302,6 @@
   }
 
   .surface-subtle {
-    border: 1px solid hsl(var(--border) / var(--opacity-border-soft));
     border-radius: 18px;
     background: linear-gradient(180deg, hsl(var(--card) / 0.9), hsl(var(--muted) / 0.65));
   }
@@ -321,14 +318,12 @@
 
   .table-shell {
     overflow: hidden;
-    border: 1px solid hsl(var(--border) / var(--opacity-border-strong));
     border-radius: 22px;
     background: hsl(var(--card) / 0.96);
     box-shadow: var(--shadow-soft);
   }
 
   .info-tile {
-    border: 1px solid hsl(var(--border) / var(--opacity-border-normal));
     border-radius: 18px;
     background:
       radial-gradient(circle at top right, hsl(var(--primary) / 0.08), transparent 35%),
@@ -354,7 +349,6 @@
   .dashboard-hero-card {
     position: relative;
     overflow: hidden;
-    border: 1px solid hsl(var(--border) / var(--opacity-border-strong));
     border-radius: 28px;
     background:
       radial-gradient(circle at top right, hsl(var(--primary) / 0.16), transparent 26%),
@@ -393,15 +387,13 @@
   .dashboard-panel {
     position: relative;
     overflow: hidden;
-    border: 1px solid hsl(var(--border) / var(--opacity-border-strong));
     border-radius: 24px;
     background:
       linear-gradient(180deg, hsl(var(--card)), hsl(220 32% 98% / 0.96));
     box-shadow: var(--shadow-soft);
     transition:
       transform 180ms ease,
-      box-shadow 180ms ease,
-      border-color 180ms ease;
+      box-shadow 180ms ease;
   }
 
   .dashboard-panel:hover {
@@ -430,12 +422,11 @@
 
   .dashboard-stat,
   .dashboard-summary-card {
-    border: 1px solid hsl(var(--border) / var(--opacity-border-normal));
     border-radius: 20px;
     background:
       linear-gradient(180deg, hsl(var(--card)), hsl(var(--muted) / 0.68));
     box-shadow: var(--shadow-inset);
-    transition: transform 180ms ease, border-color 180ms ease;
+    transition: transform 180ms ease;
   }
 
   .dark .dashboard-stat,
@@ -487,7 +478,6 @@
     align-items: center;
     gap: 8px;
     padding: 7px 12px;
-    border: 1px solid hsl(var(--border) / var(--opacity-border-strong));
     border-radius: 999px;
     background: hsl(var(--card) / 0.82);
     color: hsl(var(--foreground) / 0.84);
@@ -496,7 +486,6 @@
     font-weight: 600;
     transition:
       transform 160ms ease,
-      border-color 160ms ease,
       background-color 160ms ease,
       color 160ms ease;
   }
@@ -504,13 +493,11 @@
   .dashboard-chip:hover,
   .portfolio-chip:hover {
     transform: translateY(-1px);
-    border-color: hsl(var(--primary) / var(--opacity-hover));
     background: hsl(var(--accent) / 0.72);
     color: hsl(var(--foreground));
   }
 
   .portfolio-chip-active {
-    border-color: hsl(var(--primary) / var(--opacity-hover));
     background: hsl(var(--primary));
     color: hsl(var(--primary-foreground));
   }
@@ -522,7 +509,6 @@
     min-height: 60px;
     width: 100%;
     padding: 14px 16px;
-    border: 1px solid hsl(var(--border) / var(--opacity-border-normal));
     border-radius: 18px;
     background: hsl(var(--muted));
     color: hsl(var(--foreground) / 0.8);
@@ -540,43 +526,37 @@
   }
 
   .portfolio-panel {
-    border: 1px solid hsl(var(--border) / var(--opacity-border-strong));
     border-radius: 24px;
     background:
       linear-gradient(180deg, hsl(var(--card)), hsl(var(--background) / 0.72));
     box-shadow: var(--shadow-soft);
-    transition: transform 180ms ease, border-color 180ms ease;
+    transition: transform 180ms ease;
   }
 
 
   .alert {
     border-radius: 18px;
-    border: 1px solid;
     padding: 16px 18px;
     box-shadow: var(--shadow-soft);
   }
 
   .alert-error {
-    border-color: hsl(0 75% 85%);
     background: linear-gradient(180deg, hsl(0 100% 98%), hsl(0 100% 97%));
     color: hsl(0 57% 38%);
   }
 
   .alert-success {
-    border-color: hsl(142 56% 79%);
     background: linear-gradient(180deg, hsl(140 73% 97%), hsl(142 76% 96%));
     color: hsl(145 54% 28%);
   }
 
   .alert-warning {
-    border-color: hsl(38 88% 76%);
     background: linear-gradient(180deg, hsl(44 100% 97%), hsl(38 100% 95%));
     color: hsl(31 72% 31%);
   }
 
   .stat-block {
     padding: 16px;
-    border: 1px solid hsl(var(--border) / var(--opacity-border-normal));
     border-radius: 18px;
     background:
       radial-gradient(circle at top right, hsl(var(--primary) / 0.08), transparent 38%),
@@ -676,7 +656,6 @@
 
   .auth-metric {
     padding: 14px 16px;
-    border: 1px solid hsl(0 0% 100% / 0.16);
     border-radius: 16px;
     background: hsl(0 0% 100% / 0.08);
     backdrop-filter: blur(14px);
