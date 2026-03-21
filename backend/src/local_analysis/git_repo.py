@@ -71,7 +71,7 @@ def _lines_changed_by_email(repo_dir: str) -> Dict[str, Dict[str, int]]:
     """
     try:
         raw = _git(
-            ["log", "--all", "--numstat", "--format=COMMIT_SEP%aE"],
+            ["log", "--all", "--numstat", "--format=COMMIT_SEP%aE", "--max-count=10000"],
             repo_dir,
         )
     except CalledProcessError:

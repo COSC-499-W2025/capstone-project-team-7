@@ -853,18 +853,14 @@ async def analyze_portfolio(
 
             # 8. Project auto-categorization
             project_category_info = None
-            try:
-                from analyzer.project_classifier import classify_project
-                file_paths = [f.path for f in parse_result.files if hasattr(f, "path")]
-                cat_result = classify_project(file_paths, languages)
-                if cat_result.category != "unknown":
-                    project_category_info = ProjectCategoryInfo(
-                        category=cat_result.category,
-                        label=cat_result.label,
-                        confidence=cat_result.confidence,
-                    )
-            except Exception as e:
-                logger.warning(f"Project categorization failed: {e}")
+            from analyzer.project_classifier import safe_classify_project
+            cat_result = safe_classify_project(parse_result.files, languages)
+            if cat_result is not None:
+                project_category_info = ProjectCategoryInfo(
+                    category=cat_result.category,
+                    label=cat_result.label,
+                    confidence=cat_result.confidence,
+                )
             
             # === Check LLM Availability ===
             llm_available, llm_status, llm_client = _check_llm_availability(

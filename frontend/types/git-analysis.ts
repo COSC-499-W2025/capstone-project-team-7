@@ -53,12 +53,3 @@ export interface GitRepoAnalysis {
   branches: string[];
   timeline: GitTimelineEntry[];
 }
-
-/**
- * Auto-detected project category (e.g. Web Application, API, Data Science).
- */
-export interface ProjectCategoryInfo {
-  category: string;
-  label: string;
-  confidence: number;
-}

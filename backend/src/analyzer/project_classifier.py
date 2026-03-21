@@ -155,6 +155,33 @@ _RULES: Dict[str, Dict[str, Any]] = {
     },
 }
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def safe_classify_project(
+    files: list,
+    languages: Optional[List[Dict[str, Any]]] = None,
+) -> Optional[CategoryResult]:
+    """
+    Classify a project, returning ``None`` on failure or if the category is
+    unknown.  Logs a warning on error.  This is the shared entry-point that
+    route handlers should call instead of duplicating try/except blocks.
+    """
+    try:
+        file_paths = [f.path for f in files if hasattr(f, "path")]
+        result = classify_project(file_paths, languages)
+        if result.category != "unknown":
+            logger.info(
+                "Project categorized as: %s (confidence=%s)",
+                result.label, result.confidence,
+            )
+            return result
+    except Exception as e:
+        logger.warning("Project categorization failed: %s", e)
+    return None
+
 
 def classify_project(
     file_paths: List[str],
