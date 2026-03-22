@@ -85,6 +85,38 @@ class PortfolioTimelineService:
             "skills": self.get_skills_timeline(user_id),
         }
 
+    def get_project_evolution(self, user_id: str, project_ids: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        """Return per-project monthly evolution data for the given projects.
+
+        Each entry contains the project id/name and a list of monthly periods
+        with commits, skill count, languages, and cumulative lines.
+        """
+        try:
+            projects = self._projects_service.get_user_projects_with_scan_data(user_id)
+        except ProjectsServiceError as exc:
+            raise PortfolioTimelineServiceError(str(exc)) from exc
+
+        results: List[Dict[str, Any]] = []
+        for project in projects:
+            pid = project.get("id")
+            if project_ids and pid not in project_ids:
+                continue
+
+            scan_data = project.get("scan_data") or {}
+            periods = _extract_project_evolution_periods(scan_data)
+            if not periods:
+                continue
+
+            results.append({
+                "project_id": pid,
+                "project_name": project.get("project_name") or pid or "unknown",
+                "total_commits": project.get("total_commits") or 0,
+                "total_lines": project.get("total_lines") or 0,
+                "periods": periods,
+            })
+
+        return results
+
 
 def _duration_days(start_date: Optional[str], end_date: Optional[str]) -> Optional[int]:
     start_dt = _parse_datetime(start_date)
@@ -137,6 +169,57 @@ def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
     if parsed.tzinfo is not None:
         parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
     return parsed
+
+
+def _extract_project_evolution_periods(scan_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Extract monthly evolution periods from a single project's scan data.
+
+    Uses skills_progress.timeline (preferred) or skills_analysis.chronological_overview.
+    Returns sorted list of {period_label, commits, skill_count, languages, activity_types}.
+    """
+    periods: List[Dict[str, Any]] = []
+
+    skills_progress = scan_data.get("skills_progress")
+    if isinstance(skills_progress, dict):
+        timeline = skills_progress.get("timeline")
+        if isinstance(timeline, list):
+            for entry in timeline:
+                if not isinstance(entry, dict):
+                    continue
+                period = entry.get("period_label")
+                if not period:
+                    continue
+                languages = entry.get("period_languages") or entry.get("languages") or {}
+                periods.append({
+                    "period_label": period,
+                    "commits": int(entry.get("commits") or 0),
+                    "skill_count": int(entry.get("skill_count") or 0),
+                    "languages": languages if isinstance(languages, dict) else {},
+                    "activity_types": entry.get("activity_types") or [],
+                })
+
+    if not periods:
+        skills_analysis = scan_data.get("skills_analysis")
+        if isinstance(skills_analysis, dict):
+            overview = skills_analysis.get("chronological_overview")
+            if isinstance(overview, list):
+                for entry in overview:
+                    if not isinstance(entry, dict):
+                        continue
+                    period = entry.get("period")
+                    if not period:
+                        continue
+                    skills_list = entry.get("skills_exercised") or []
+                    periods.append({
+                        "period_label": period,
+                        "commits": 0,
+                        "skill_count": len(skills_list),
+                        "languages": {},
+                        "activity_types": [],
+                    })
+
+    periods.sort(key=lambda p: _parse_period_label(p.get("period_label", "")))
+    return periods
 
 
 def _extract_skill_timeline_entries(scan_data: Dict[str, Any]) -> List[Dict[str, Any]]:
