@@ -9,73 +9,125 @@ import type { GitBranchInfo } from "@/types/git-analysis";
 /* ------------------------------------------------------------------ */
 
 const COLORS = [
-  "#22c55e", // green
-  "#3b82f6", // blue
-  "#f59e0b", // amber
-  "#ec4899", // pink
-  "#8b5cf6", // violet
-  "#06b6d4", // cyan
-  "#f97316", // orange
-  "#14b8a6", // teal
-  "#e11d48", // rose
-  "#6366f1", // indigo
+  "#22c55e", "#3b82f6", "#f59e0b", "#ec4899", "#8b5cf6",
+  "#06b6d4", "#f97316", "#14b8a6", "#e11d48", "#6366f1",
 ];
 
-const MAIN_COLOR = "#6b7280"; // gray-500
-const ROW_HEIGHT = 36;
-const LANE_WIDTH = 24;
-const MAIN_X = 28;
-const DOT_RADIUS = 5;
-const LABEL_X_OFFSET = 16;
-
-/* ------------------------------------------------------------------ */
-/*  Types                                                             */
-/* ------------------------------------------------------------------ */
-
-interface BranchRow {
-  branch: GitBranchInfo;
-  lane: number;
-  color: string;
-  shortName: string;
-  sortDate: string;
-}
+const MAIN_COLOR = "#6b7280";
+const MAIN_X = 20;
+const DOT_R = 4;
+const SMALL_R = 3;
+const ROW_H = 24;
+const LANE_W = 18;
+const GRAPH_PAD_TOP = 28;
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                           */
 /* ------------------------------------------------------------------ */
 
-function getShortName(name: string): string {
+function shortName(name: string) {
   return name.replace(/^origin\//, "");
 }
 
-function formatDate(value: string | null | undefined): string {
-  if (!value) return "";
-  return value.slice(0, 10);
+function fmtDate(v: string | null | undefined) {
+  return v ? v.slice(0, 10) : "";
 }
 
-/**
- * Deduplicate branches: if both "foo" and "origin/foo" exist,
- * keep whichever has more data (prefer local).
- */
-function deduplicateBranches(branches: GitBranchInfo[]): GitBranchInfo[] {
-  const map = new Map<string, GitBranchInfo>();
+function dedup(branches: GitBranchInfo[]): GitBranchInfo[] {
+  const m = new Map<string, GitBranchInfo>();
   for (const b of branches) {
-    const short = getShortName(b.name);
-    const existing = map.get(short);
-    if (!existing) {
-      map.set(short, b);
+    const s = shortName(b.name);
+    const ex = m.get(s);
+    if (!ex) {
+      m.set(s, { ...b, name: s });
     } else {
-      // Merge info from both entries — if either says merged, it's merged
-      const merged: GitBranchInfo = {
-        name: short, // use short name as canonical
-        created_date: existing.created_date || b.created_date,
-        is_merged: existing.is_merged || b.is_merged,
-        merge_date: existing.merge_date || b.merge_date,
-      };
-      map.set(short, merged);
+      m.set(s, {
+        name: s,
+        created_date: ex.created_date || b.created_date,
+        is_merged: ex.is_merged || b.is_merged,
+        merge_date: ex.merge_date || b.merge_date,
+        commit_count: Math.max(ex.commit_count, b.commit_count),
+      });
     }
   }
-  return Array.from(map.values());
+  return Array.from(m.values());
+}
+
+/* ------------------------------------------------------------------ */
+/*  Layout engine                                                     */
+/*                                                                    */
+/*  Each branch occupies vertical rows from startRow to endRow.       */
+/*  Merged branches release their lane at endRow.                     */
+/*  The number of rows a branch spans = max(1, scaled commit_count).  */
+/*  Lanes are reused greedily so the graph stays narrow.              */
+/* ------------------------------------------------------------------ */
+
+interface LaidOut {
+  branch: GitBranchInfo;
+  sName: string;
+  lane: number;
+  startRow: number;
+  endRow: number;
+  color: string;
+}
+
+function layout(branches: GitBranchInfo[], filter: "all" | "merged" | "open") {
+  let list = dedup(branches).filter((b) => {
+    const s = shortName(b.name);
+    return s !== "main" && s !== "master";
+  });
+  if (filter === "merged") list = list.filter((b) => b.is_merged);
+  if (filter === "open") list = list.filter((b) => !b.is_merged);
+
+  // Sort by creation/merge date
+  list.sort((a, b) => {
+    const da = a.created_date || a.merge_date || "9999";
+    const db = b.created_date || b.merge_date || "9999";
+    return da < db ? -1 : da > db ? 1 : a.name.localeCompare(b.name);
+  });
+
+  // Scale commit counts to row spans
+  const maxC = Math.max(1, ...list.map((b) => b.commit_count || 1));
+  const MAX_SPAN = 5;
+
+  // laneEnd[i] = the row index at which lane i becomes free
+  const laneEnd: number[] = [];
+  let row = 0;
+  let maxLane = 0;
+  const items: LaidOut[] = [];
+
+  for (const branch of list) {
+    const c = branch.commit_count || 1;
+    const span = Math.max(1, Math.ceil((c / maxC) * MAX_SPAN));
+
+    // Find first free lane
+    let lane = -1;
+    for (let i = 0; i < laneEnd.length; i++) {
+      if (laneEnd[i] <= row) { lane = i; break; }
+    }
+    if (lane === -1) { lane = laneEnd.length; laneEnd.push(0); }
+
+    const startRow = row;
+    const endRow = row + span;
+
+    // Reserve lane until branch ends (merged frees lane, open holds it)
+    laneEnd[lane] = branch.is_merged ? endRow : Infinity;
+    if (lane > maxLane) maxLane = lane;
+
+    items.push({
+      branch,
+      sName: shortName(branch.name),
+      lane,
+      startRow,
+      endRow,
+      color: COLORS[lane % COLORS.length],
+    });
+
+    row++;
+  }
+
+  const totalRows = items.length > 0 ? Math.max(...items.map((i) => i.endRow)) + 1 : 0;
+  return { items, totalRows, maxLane };
 }
 
 /* ------------------------------------------------------------------ */
@@ -85,279 +137,142 @@ function deduplicateBranches(branches: GitBranchInfo[]): GitBranchInfo[] {
 export function BranchDiagram({ branches }: { branches: GitBranchInfo[] }) {
   const [filter, setFilter] = useState<"all" | "merged" | "open">("all");
 
-  const { rows, maxLane } = useMemo(() => {
-    // Deduplicate and filter out main/master (they ARE the main line)
-    let filtered = deduplicateBranches(branches).filter((b) => {
-      const short = getShortName(b.name);
-      return short !== "main" && short !== "master";
-    });
+  const { items, totalRows, maxLane } = useMemo(
+    () => layout(branches, filter),
+    [branches, filter]
+  );
 
-    // Apply filter
-    if (filter === "merged") filtered = filtered.filter((b) => b.is_merged);
-    if (filter === "open") filtered = filtered.filter((b) => !b.is_merged);
-
-    // Sort by created_date (earliest first), then merge_date, then name
-    filtered.sort((a, b) => {
-      const dateA = a.created_date || a.merge_date || "9999";
-      const dateB = b.created_date || b.merge_date || "9999";
-      if (dateA !== dateB) return dateA.localeCompare(dateB);
-      return a.name.localeCompare(b.name);
-    });
-
-    // Assign lanes — simple greedy allocation
-    // Track which lanes are "in use" (branch started but not yet merged)
-    const activeLanes = new Set<number>();
-    let maxLaneUsed = 0;
-    const builtRows: BranchRow[] = [];
-
-    for (const branch of filtered) {
-      // Find the first free lane (starting from 1; lane 0 is main)
-      let lane = 1;
-      while (activeLanes.has(lane)) lane++;
-      activeLanes.add(lane);
-      if (lane > maxLaneUsed) maxLaneUsed = lane;
-
-      builtRows.push({
-        branch,
-        lane,
-        color: COLORS[(lane - 1) % COLORS.length],
-        shortName: getShortName(branch.name),
-        sortDate: branch.created_date || branch.merge_date || "",
-      });
-
-      // If merged, free the lane for reuse
-      if (branch.is_merged) {
-        activeLanes.delete(lane);
-      }
-    }
-
-    return { rows: builtRows, maxLane: maxLaneUsed };
-  }, [branches, filter]);
-
-  const mergedCount = useMemo(
-    () =>
-      deduplicateBranches(branches).filter((b) => {
-        const short = getShortName(b.name);
-        return short !== "main" && short !== "master" && b.is_merged;
-      }).length,
+  const mergedN = useMemo(
+    () => dedup(branches).filter((b) => shortName(b.name) !== "main" && shortName(b.name) !== "master" && b.is_merged).length,
     [branches]
   );
-  const openCount = useMemo(
-    () =>
-      deduplicateBranches(branches).filter((b) => {
-        const short = getShortName(b.name);
-        return short !== "main" && short !== "master" && !b.is_merged;
-      }).length,
+  const openN = useMemo(
+    () => dedup(branches).filter((b) => shortName(b.name) !== "main" && shortName(b.name) !== "master" && !b.is_merged).length,
     [branches]
   );
 
-  if (rows.length === 0 && filter === "all") {
-    return null;
-  }
+  if (items.length === 0 && filter === "all") return null;
 
-  const svgWidth = MAIN_X + (maxLane + 1) * LANE_WIDTH + LABEL_X_OFFSET + 420;
-  const svgHeight = rows.length * ROW_HEIGHT + ROW_HEIGHT;
-  const labelStartX = MAIN_X + (maxLane + 1) * LANE_WIDTH + LABEL_X_OFFSET;
+  const graphW = MAIN_X + (maxLane + 2) * LANE_W + 8;
+  const svgH = GRAPH_PAD_TOP + totalRows * ROW_H + 12;
+  const yOf = (r: number) => GRAPH_PAD_TOP + r * ROW_H + ROW_H / 2;
+  const xOf = (l: number) => MAIN_X + (l + 1) * LANE_W;
 
   return (
     <Card className="bg-white border border-gray-200">
       <CardHeader className="border-b border-gray-200">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-semibold text-gray-900">
-            Branch Graph ({rows.length})
+            Branch Graph ({items.length})
           </CardTitle>
           <div className="flex items-center gap-1 rounded-lg bg-gray-100 p-0.5">
-            <button
-              className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                filter === "all"
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "text-gray-500 hover:text-gray-700"
-              }`}
-              onClick={() => setFilter("all")}
-            >
-              All
-            </button>
-            <button
-              className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                filter === "merged"
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "text-gray-500 hover:text-gray-700"
-              }`}
-              onClick={() => setFilter("merged")}
-            >
-              Merged ({mergedCount})
-            </button>
-            <button
-              className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                filter === "open"
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "text-gray-500 hover:text-gray-700"
-              }`}
-              onClick={() => setFilter("open")}
-            >
-              Open ({openCount})
-            </button>
+            {(["all", "merged", "open"] as const).map((f) => (
+              <button
+                key={f}
+                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                  filter === f ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                }`}
+                onClick={() => setFilter(f)}
+              >
+                {f === "all" ? "All" : f === "merged" ? `Merged (${mergedN})` : `Open (${openN})`}
+              </button>
+            ))}
           </div>
         </div>
       </CardHeader>
       <CardContent className="p-4 overflow-x-auto">
-        {rows.length === 0 ? (
-          <p className="text-sm text-gray-400 py-4 text-center">
-            No branches match this filter.
-          </p>
+        {items.length === 0 ? (
+          <p className="text-sm text-gray-400 py-4 text-center">No branches match this filter.</p>
         ) : (
-          <svg
-            width={svgWidth}
-            height={svgHeight}
-            viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-            className="block"
-          >
-            {/* Main branch vertical line */}
-            <line
-              x1={MAIN_X}
-              y1={0}
-              x2={MAIN_X}
-              y2={svgHeight}
-              stroke={MAIN_COLOR}
-              strokeWidth={2}
-            />
-
-            {rows.map((row, idx) => {
-              const y = (idx + 0.5) * ROW_HEIGHT + ROW_HEIGHT * 0.5;
-              const branchX = MAIN_X + row.lane * LANE_WIDTH;
-
-              return (
-                <g key={row.branch.name}>
-                  {/* Fork line: main -> branch */}
-                  <path
-                    d={`M ${MAIN_X} ${y - ROW_HEIGHT * 0.4} C ${MAIN_X} ${y}, ${branchX} ${y - ROW_HEIGHT * 0.4}, ${branchX} ${y}`}
-                    fill="none"
-                    stroke={row.color}
-                    strokeWidth={2}
-                    opacity={0.7}
-                  />
-
-                  {/* Branch dot */}
-                  <circle
-                    cx={branchX}
-                    cy={y}
-                    r={DOT_RADIUS}
-                    fill={row.color}
-                  />
-
-                  {/* Merge line back to main (if merged) */}
-                  {row.branch.is_merged && (
-                    <path
-                      d={`M ${branchX} ${y} C ${branchX} ${y + ROW_HEIGHT * 0.4}, ${MAIN_X} ${y}, ${MAIN_X} ${y + ROW_HEIGHT * 0.4}`}
-                      fill="none"
-                      stroke={row.color}
-                      strokeWidth={2}
-                      opacity={0.7}
-                    />
-                  )}
-
-                  {/* Open branch indicator (dashed line extending down) */}
-                  {!row.branch.is_merged && (
-                    <line
-                      x1={branchX}
-                      y1={y}
-                      x2={branchX}
-                      y2={y + ROW_HEIGHT * 0.5}
-                      stroke={row.color}
-                      strokeWidth={2}
-                      strokeDasharray="3,3"
-                      opacity={0.5}
-                    />
-                  )}
-
-                  {/* Main branch dot at fork point */}
-                  <circle
-                    cx={MAIN_X}
-                    cy={y - ROW_HEIGHT * 0.4}
-                    r={3}
-                    fill={MAIN_COLOR}
-                  />
-
-                  {/* Main branch dot at merge point */}
-                  {row.branch.is_merged && (
-                    <circle
-                      cx={MAIN_X}
-                      cy={y + ROW_HEIGHT * 0.4}
-                      r={3}
-                      fill={MAIN_COLOR}
-                    />
-                  )}
-
-                  {/* Branch name label */}
-                  <text
-                    x={labelStartX}
-                    y={y + 4}
-                    fontSize={12}
-                    fontFamily="ui-monospace, monospace"
-                    fill="#374151"
-                  >
-                    {row.shortName}
-                  </text>
-
-                  {/* Status badge */}
-                  <g
-                    transform={`translate(${labelStartX + Math.min(row.shortName.length * 7.2, 280) + 8}, ${y - 7})`}
-                  >
-                    <rect
-                      width={row.branch.is_merged ? 52 : 38}
-                      height={16}
-                      rx={8}
-                      fill={row.branch.is_merged ? "#dcfce7" : "#fef9c3"}
-                    />
-                    <text
-                      x={row.branch.is_merged ? 26 : 19}
-                      y={12}
-                      fontSize={10}
-                      fontFamily="system-ui, sans-serif"
-                      fontWeight={600}
-                      fill={row.branch.is_merged ? "#166534" : "#854d0e"}
-                      textAnchor="middle"
-                    >
-                      {row.branch.is_merged ? "merged" : "open"}
-                    </text>
-                  </g>
-
-                  {/* Date label */}
-                  {(row.branch.created_date || row.branch.merge_date) && (
-                    <text
-                      x={
-                        labelStartX +
-                        Math.min(row.shortName.length * 7.2, 280) +
-                        8 +
-                        (row.branch.is_merged ? 60 : 46)
-                      }
-                      y={y + 4}
-                      fontSize={11}
-                      fontFamily="system-ui, sans-serif"
-                      fill="#9ca3af"
-                    >
-                      {row.branch.merge_date
-                        ? `merged ${formatDate(row.branch.merge_date)}`
-                        : `created ${formatDate(row.branch.created_date)}`}
-                    </text>
-                  )}
-                </g>
-              );
-            })}
-
-            {/* Main branch label at top */}
-            <circle cx={MAIN_X} cy={ROW_HEIGHT * 0.5} r={DOT_RADIUS + 1} fill={MAIN_COLOR} />
-            <text
-              x={MAIN_X + 12}
-              y={ROW_HEIGHT * 0.5 + 4}
-              fontSize={12}
-              fontWeight={700}
-              fontFamily="ui-monospace, monospace"
-              fill="#374151"
+          <div className="flex gap-0">
+            {/* SVG graph */}
+            <svg
+              width={graphW}
+              height={svgH}
+              viewBox={`0 0 ${graphW} ${svgH}`}
+              className="block flex-shrink-0"
             >
-              main
-            </text>
-          </svg>
+              {/* Main vertical line */}
+              <line x1={MAIN_X} y1={0} x2={MAIN_X} y2={svgH} stroke={MAIN_COLOR} strokeWidth={2} />
+              <circle cx={MAIN_X} cy={12} r={DOT_R + 1} fill={MAIN_COLOR} />
+
+              {items.map((it) => {
+                const fy = yOf(it.startRow);
+                const my = yOf(it.endRow);
+                const bx = xOf(it.lane);
+                const cx1 = MAIN_X + (bx - MAIN_X) * 0.4;
+                const cx2 = bx - (bx - MAIN_X) * 0.2;
+
+                return (
+                  <g key={it.sName}>
+                    {/* Fork curve from main */}
+                    <path
+                      d={`M ${MAIN_X} ${fy} C ${cx1} ${fy}, ${cx2} ${fy + 6}, ${bx} ${fy + 10}`}
+                      fill="none" stroke={it.color} strokeWidth={2} opacity={0.75}
+                    />
+                    {/* Branch vertical line */}
+                    {it.endRow > it.startRow && (
+                      <line
+                        x1={bx} y1={fy + 10} x2={bx}
+                        y2={it.branch.is_merged ? my - 10 : my}
+                        stroke={it.color} strokeWidth={2} opacity={0.75}
+                        strokeDasharray={it.branch.is_merged ? undefined : "3,3"}
+                      />
+                    )}
+                    {/* Merge curve back to main */}
+                    {it.branch.is_merged && (
+                      <path
+                        d={`M ${bx} ${my - 10} C ${cx2} ${my - 6}, ${cx1} ${my}, ${MAIN_X} ${my}`}
+                        fill="none" stroke={it.color} strokeWidth={2} opacity={0.75}
+                      />
+                    )}
+                    {/* Dots */}
+                    <circle cx={MAIN_X} cy={fy} r={SMALL_R} fill={MAIN_COLOR} />
+                    <circle cx={bx} cy={fy + 10} r={DOT_R} fill={it.color} />
+                    {it.branch.is_merged && (
+                      <circle cx={MAIN_X} cy={my} r={SMALL_R} fill={MAIN_COLOR} />
+                    )}
+                  </g>
+                );
+              })}
+            </svg>
+
+            {/* Labels aligned to each branch's start */}
+            <div className="relative flex-1 min-w-0" style={{ height: svgH }}>
+              {items.map((it) => (
+                <div
+                  key={it.sName}
+                  className="absolute left-1 flex items-center gap-1.5 h-5"
+                  style={{ top: yOf(it.startRow) + 10 - 10 }}
+                >
+                  <span
+                    className="text-[11px] font-mono truncate max-w-[260px] font-semibold"
+                    style={{ color: it.color }}
+                    title={it.sName}
+                  >
+                    {it.sName}
+                  </span>
+                  <span
+                    className={`flex-shrink-0 px-1.5 py-px rounded-full text-[9px] font-semibold leading-tight ${
+                      it.branch.is_merged ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"
+                    }`}
+                  >
+                    {it.branch.is_merged ? "merged" : "open"}
+                  </span>
+                  {it.branch.commit_count > 0 && (
+                    <span className="flex-shrink-0 text-[10px] text-gray-400">
+                      {it.branch.commit_count}c
+                    </span>
+                  )}
+                  {(it.branch.merge_date || it.branch.created_date) && (
+                    <span className="flex-shrink-0 text-[10px] text-gray-400">
+                      {fmtDate(it.branch.merge_date || it.branch.created_date)}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
         )}
       </CardContent>
     </Card>

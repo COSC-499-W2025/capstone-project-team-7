@@ -47,6 +47,7 @@ export interface GitBranchInfo {
   created_date: string | null;
   is_merged: boolean;
   merge_date: string | null;
+  commit_count: number;
 }
 
 /**

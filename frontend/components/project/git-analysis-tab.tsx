@@ -50,7 +50,7 @@ function normalizeBranches(raw: unknown): GitBranchInfo[] {
   return raw.map((item) => {
     if (typeof item === "string") {
       // Legacy format: just a branch name string
-      return { name: item, created_date: null, is_merged: false, merge_date: null };
+      return { name: item, created_date: null, is_merged: false, merge_date: null, commit_count: 0 };
     }
     if (item && typeof item === "object") {
       const obj = item as Record<string, unknown>;
@@ -59,9 +59,10 @@ function normalizeBranches(raw: unknown): GitBranchInfo[] {
         created_date: typeof obj.created_date === "string" ? obj.created_date : null,
         is_merged: typeof obj.is_merged === "boolean" ? obj.is_merged : false,
         merge_date: typeof obj.merge_date === "string" ? obj.merge_date : null,
+        commit_count: typeof obj.commit_count === "number" ? obj.commit_count : 0,
       };
     }
-    return { name: "unknown", created_date: null, is_merged: false, merge_date: null };
+    return { name: "unknown", created_date: null, is_merged: false, merge_date: null, commit_count: 0 };
   });
 }
 

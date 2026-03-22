@@ -279,23 +279,36 @@ def _analyze_branches(repo_dir: str) -> List[Dict[str, Any]]:
         except CalledProcessError:
             pass
 
-    # Build merge date index from merge commits on the default branch
+    # Build merge date + commit count index from merge commits on default branch
     merge_dates: Dict[str, str] = {}
+    merge_commit_counts: Dict[str, int] = {}
     try:
+        # Get merge commit SHAs, dates, and subjects
         merge_log = _git(
-            ["log", default_sha, "--merges", "--format=%aI\t%s", "--max-count=2000"],
+            ["log", default_sha, "--merges", "--format=%H\t%aI\t%s", "--max-count=2000"],
             repo_dir,
         ).splitlines()
         for line in merge_log:
-            if "\t" not in line:
+            parts = line.split("\t", 2)
+            if len(parts) < 3:
                 continue
-            date_str, subject = line.split("\t", 1)
-            # Match "Merge branch 'name'" or "Merge pull request ... from org/name"
+            sha, date_str, subject = parts
             m = re.search(r"Merge (?:branch '([^']+)'|pull request .+ from .+/(.+))", subject)
             if m:
                 branch_name = (m.group(1) or m.group(2) or "").strip()
-                if branch_name and branch_name not in merge_dates:
-                    merge_dates[branch_name] = date_str
+                if branch_name:
+                    if branch_name not in merge_dates:
+                        merge_dates[branch_name] = date_str
+                    # Count commits brought in by this merge (branch side)
+                    if branch_name not in merge_commit_counts:
+                        try:
+                            count_str = _git(
+                                ["rev-list", "--count", f"{sha}^1..{sha}^2"],
+                                repo_dir,
+                            ).strip()
+                            merge_commit_counts[branch_name] = int(count_str) if count_str else 1
+                        except (CalledProcessError, ValueError):
+                            merge_commit_counts[branch_name] = 1
     except CalledProcessError:
         pass
 
@@ -315,6 +328,23 @@ def _analyze_branches(repo_dir: str) -> List[Dict[str, Any]]:
             if name and date_str:
                 branch_created[name] = date_str
     except CalledProcessError:
+        pass
+
+    # Count commits per branch (unique to branch, not on default)
+    branch_commits: Dict[str, int] = {}
+    try:
+        for branch in all_branches:
+            if branch.endswith("/HEAD"):
+                continue
+            try:
+                count_str = _git(
+                    ["rev-list", "--count", f"{default_sha}..{branch}"],
+                    repo_dir,
+                ).strip()
+                branch_commits[branch] = int(count_str) if count_str else 0
+            except (CalledProcessError, ValueError):
+                branch_commits[branch] = 0
+    except Exception:
         pass
 
     # Build short-name lookup for merged_set (handles origin/ prefix matching)
@@ -337,11 +367,16 @@ def _analyze_branches(repo_dir: str) -> List[Dict[str, Any]]:
         if short_name == default_short or short_name == "HEAD":
             continue
         is_merged = branch in merged_short or short_name in merged_short
+        # For merged branches, use the merge commit count; for open, use rev-list count
+        commits = branch_commits.get(branch, 0)
+        if is_merged and commits == 0:
+            commits = merge_commit_counts.get(short_name, 1)
         result.append({
             "name": branch,
             "created_date": branch_created.get(branch),
             "is_merged": is_merged,
             "merge_date": merge_dates.get(short_name),
+            "commit_count": max(commits, 1),  # at least 1
         })
 
     return result
