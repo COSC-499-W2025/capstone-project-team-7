@@ -107,6 +107,11 @@ class PortfolioTimelineService:
             if not periods:
                 continue
 
+            # Skip projects where no period has commit data (fallback path
+            # produces commits=0 for every period, rendering a flat line).
+            if all(p.get("commits", 0) == 0 for p in periods):
+                continue
+
             results.append({
                 "project_id": pid,
                 "project_name": project.get("project_name") or pid or "unknown",
