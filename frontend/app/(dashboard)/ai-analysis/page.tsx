@@ -26,9 +26,9 @@ import {
 } from "lucide-react";
 import { EligibilityBadge } from "@/components/ai-analysis/eligibility-badge";
 import { CategoryCard } from "@/components/ai-analysis/category-card";
-import { MarkdownReport } from "../../../components/ai-analysis/markdown-report";
-import { KeyFileSummary } from "../../../components/ai-analysis/key-file-summary";
-import { formatDate } from "../../../components/ai-analysis/render-inline-markdown";
+import { MarkdownReport } from "@/components/ai-analysis/markdown-report";
+import { KeyFileSummary } from "@/components/ai-analysis/key-file-summary";
+import { formatDate } from "@/components/ai-analysis/render-inline-markdown";
 import { useAiEligibility } from "@/hooks/use-ai-eligibility";
 
 // ─── main page ───────────────────────────────────────────────────────────────
