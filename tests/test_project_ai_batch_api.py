@@ -85,6 +85,9 @@ class FakeClient:
     def _make_llm_call(self, *_args, **_kwargs):
         return json.dumps(self.llm_json)
 
+    def make_llm_call(self, *_args, **_kwargs):
+        return self._make_llm_call(*_args, **_kwargs)
+
 
 @pytest.fixture
 def setup_project_service(monkeypatch, tmp_path: Path):
@@ -179,9 +182,8 @@ def test_ai_batch_status_endpoint_reports_live_snapshot(setup_project_service):
     )
     assert after_resp.status_code == 200
     after_data = after_resp.json()
-    assert after_data["status"] in ("used:batch", "used:batch_cached")
-    assert isinstance(after_data["status_messages"], list)
-    assert any("Batch" in msg or "Initializing" in msg for msg in after_data["status_messages"])
+    assert after_data["status"] == "idle"
+    assert after_data["status_messages"] == []
 
 
 def test_ai_analysis_uses_cached_batch_result(monkeypatch, tmp_path: Path):

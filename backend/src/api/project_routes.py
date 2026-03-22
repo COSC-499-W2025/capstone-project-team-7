@@ -150,6 +150,12 @@ def _finalize_batch_progress(
 ) -> None:
     key = _batch_progress_key(user_id, project_id)
     with _ai_batch_progress_lock:
+        # Ephemeral lifecycle: keep progress only while running.
+        # Terminal states are removed immediately to avoid unbounded growth.
+        if status != "running":
+            _ai_batch_progress.pop(key, None)
+            return
+
         entry = _ai_batch_progress.setdefault(
             key,
             {
@@ -2581,12 +2587,6 @@ async def _run_or_get_batch_analysis(
     }
 
     status_messages: List[str] = []
-    _append_batch_progress_message(
-        user_id,
-        project_id,
-        f"Initializing analysis for {len(relevant_files)} files…",
-    )
-
     def _progress_callback(message: str) -> None:
         if not isinstance(message, str):
             return
