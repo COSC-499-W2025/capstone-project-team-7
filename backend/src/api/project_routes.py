@@ -31,6 +31,7 @@ try:
     )
     from auth.consent_validator import ConsentValidator
     from api.llm_routes import get_user_client
+    from api.settings_routes import get_or_hydrate_llm_client
     from services.services.export_service import ExportService
 except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
     from backend.src.services.services.projects_service import ProjectsService, ProjectsServiceError
@@ -42,6 +43,7 @@ except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fal
     )
     from backend.src.auth.consent_validator import ConsentValidator
     from backend.src.api.llm_routes import get_user_client
+    from backend.src.api.settings_routes import get_or_hydrate_llm_client
     from backend.src.services.services.export_service import ExportService
 
 try:
@@ -72,7 +74,7 @@ try:
 except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
     from backend.src.api.request_context import get_request_access_token, set_request_access_token
 
-logger = logging.getLogger("uvicorn.error")
+logger = logging.getLogger(__name__)
 
 # Human-friendly labels for skill categories
 CATEGORY_LABELS = {
@@ -84,6 +86,7 @@ CATEGORY_LABELS = {
     "frameworks": "Frameworks",
     "databases": "Databases",
     "architecture": "Architecture",
+    "ml_data": "ML & Data Science",
 }
 
 # Create router for project endpoints
@@ -377,6 +380,8 @@ def _build_skills_analysis(service: SkillsAnalysisService) -> Dict[str, Any]:
                 "description": skill.get("description", ""),
                 "proficiency_score": float(skill.get("proficiency_score", 0.0)),
                 "category_label": CATEGORY_LABELS.get(category, category.replace("_", " ").title()),
+                "highest_tier": skill.get("highest_tier"),
+                "tier_breakdown": skill.get("tier_breakdown"),
             }
         )
     return {
@@ -456,11 +461,7 @@ def _extract_archive_for_analysis(storage_path: Path, temp_path: Path) -> Path:
     return temp_path
 
 
-@contextmanager
-def _permanent_dir(path: Path):
-    """Context manager that creates a directory and yields it, unlike TemporaryDirectory it does NOT delete on exit."""
-    path.mkdir(parents=True, exist_ok=True)
-    yield path
+
 
 
 def _run_media_analysis(parse_result: Any) -> Optional[Dict[str, Any]]:
@@ -1278,10 +1279,8 @@ async def create_project_from_upload(
             preferences=preferences,
         )
 
-        # Extract ZIP to a permanent directory so AI analysis can re-read files later.
-        # _permanent_dir creates the directory and yields it without deleting on exit.
-        _projects_base = storage_path.parent.parent / "projects"
-        with _permanent_dir(_projects_base / upload_id) as temp_dir:
+        with tempfile.TemporaryDirectory() as _td:
+            temp_dir = Path(_td)
             analysis_target = _extract_archive_for_analysis(storage_path, temp_dir)
             languages = summarize_languages(parse_result.files)
             summary: Dict[str, Any] = dict(parse_result.summary)
@@ -1883,7 +1882,7 @@ async def generate_project_skill_summary(
         from analyzer.llm.skill_progress_summary import summarize_skill_progress
 
         def call_model(prompt: str) -> str:
-            return client._make_llm_call(
+            return client.make_llm_call(
                 [{"role": "user", "content": prompt}],
                 max_tokens=1200,
                 temperature=0.6,
@@ -2302,7 +2301,7 @@ async def run_project_ai_analysis(
         )
 
         def call_llm() -> str:
-            return client._make_llm_call(
+            return client.make_llm_call(
                 [{"role": "user", "content": prompt}],
                 max_tokens=2000,
                 temperature=0.5,
@@ -2394,13 +2393,19 @@ class RoleProfileItem(BaseModel):
     description: str
 
 
+class WeightedSkillEntry(BaseModel):
+    name: str
+    importance: str
+
+
 class SkillGapAnalysisResponse(BaseModel):
     role: str
     role_label: str
-    matched: List[str]
-    missing: List[str]
+    matched: List[WeightedSkillEntry]
+    missing: List[WeightedSkillEntry]
     extra: List[str]
     coverage_percent: float
+    weighted_coverage_percent: float
 
 
 @router.get(
