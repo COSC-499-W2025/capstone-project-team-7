@@ -182,7 +182,9 @@ class UserResumeService:
         self, user_id: str, *, limit: int = 20, offset: int = 0
     ) -> tuple[List[Dict[str, Any]], int]:
         """List resumes for a user with pagination.
-        
+
+        Profile records (metadata.is_profile == True) are excluded from this list.
+
         Returns:
             Tuple of (records, total_count) for the requested page.
         """
@@ -190,28 +192,59 @@ class UserResumeService:
             return [], 0
 
         try:
-            # Get total count first
-            count_response = (
-                self.client.table("user_resumes")
-                .select("id", count="exact")
-                .eq("user_id", user_id)
-                .execute()
-            )
-            total = count_response.count if hasattr(count_response, 'count') and count_response.count is not None else 0
-
-            # Get paginated records
+            # Fetch all records and filter out the profile record in Python,
+            # since PostgREST JSONB path filtering has limited type coercion.
             response = (
                 self.client.table("user_resumes")
                 .select("id, name, template, is_latex_mode, metadata, created_at, updated_at")
                 .eq("user_id", user_id)
                 .order("updated_at", desc=True)
-                .range(offset, offset + limit - 1)
                 .execute()
             )
-            records = self._handle_response(response.data)
-            return records, total
+            all_records = self._handle_response(response.data)
+            # Exclude the profile record
+            records = [r for r in all_records if not (r.get("metadata") or {}).get("is_profile")]
+            total = len(records)
+            paginated = records[offset: offset + limit]
+            return paginated, total
         except Exception as exc:
             raise UserResumeServiceError(f"Failed to list resumes: {exc}") from exc
+
+    def get_profile(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch the user's resume profile record, or None if it doesn't exist."""
+        if not user_id:
+            return None
+        try:
+            response = (
+                self.client.table("user_resumes")
+                .select("*")
+                .eq("user_id", user_id)
+                .order("created_at", desc=False)
+                .execute()
+            )
+            all_records = self._handle_response(response.data)
+            for r in all_records:
+                if (r.get("metadata") or {}).get("is_profile"):
+                    return r
+            return None
+        except Exception as exc:
+            raise UserResumeServiceError(f"Failed to fetch resume profile: {exc}") from exc
+
+    def save_profile(
+        self, user_id: str, structured_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Create or update the user's resume profile with the given structured data."""
+        existing = self.get_profile(user_id)
+        if existing:
+            return self.update_resume(user_id, existing["id"], structured_data=structured_data)
+        return self.create_resume(
+            user_id,
+            name="Resume Profile",
+            template="jake",
+            is_latex_mode=False,
+            structured_data=structured_data,
+            metadata={"is_profile": True},
+        )
 
     def get_resume(self, user_id: str, resume_id: str) -> Optional[Dict[str, Any]]:
         """Fetch a single resume with full content."""
