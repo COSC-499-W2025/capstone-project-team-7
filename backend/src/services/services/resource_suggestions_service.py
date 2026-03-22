@@ -102,7 +102,7 @@ def get_suggestions(
 
     aggregated = _aggregate_user_skills(projects)
     if not aggregated:
-        return []
+        return {"suggestions": [], "role": role, "role_label": None}
 
     # Load role profile for importance weighting (optional)
     importance_map: Dict[str, str] = {}
