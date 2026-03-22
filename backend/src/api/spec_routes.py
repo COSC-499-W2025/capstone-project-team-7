@@ -17,7 +17,10 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+if TYPE_CHECKING:
+    from src.scanner.models import ScanPreferences
 
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
@@ -58,6 +61,7 @@ logger = logging.getLogger(__name__)
 
 # Configuration constants
 MAX_FILES_IN_RESPONSE = 100  # Maximum number of files to include in scan response
+MAX_DETECTED_PROJECTS = 10  # Upper bound on sub-projects in a single scan
 _use_api_mode = os.getenv("USE_API_MODE", "false").lower() in ("true", "1", "yes")
 
 
@@ -681,7 +685,7 @@ def _default_config() -> Dict[str, Any]:
 def _run_analysis_pipeline(
     analysis_target: Path,
     scan_result,
-    preferences,
+    preferences: Optional["ScanPreferences"],
     compact: bool = False,
 ) -> Dict[str, Any]:
     """Run all analysis phases on a single project directory.
@@ -1015,6 +1019,34 @@ def _persist_project(
         return None
 
 
+def _scan_single_subproject(
+    proj_info,
+    scan_service,
+    relevance_only: bool,
+    preferences: Optional["ScanPreferences"],
+) -> tuple:
+    """Scan and analyse one sub-project.
+
+    Extracted to module level so it can be tested in isolation and has
+    explicit dependencies instead of capturing outer-scope variables.
+    """
+    logger.info(f"Starting sub-project: {proj_info.name} ({proj_info.project_type})")
+    sub_scan_result = scan_service.run_scan(
+        target=proj_info.path,
+        relevant_only=relevance_only,
+        preferences=preferences,
+    )
+    payload = _run_analysis_pipeline(
+        analysis_target=proj_info.path,
+        scan_result=sub_scan_result,
+        preferences=preferences,
+        compact=True,
+    )
+    payload["detected_project_type"] = proj_info.project_type
+    logger.info(f"Finished sub-project: {proj_info.name}")
+    return proj_info.name, str(proj_info.path), payload
+
+
 def _run_scan_background(
     scan_id: str,
     source_path: str,
@@ -1085,7 +1117,6 @@ def _run_scan_background(
         # ------------------------------------------------------------------
         # MULTI-PROJECT PATH: 2+ detected sub-projects (parallel)
         # ------------------------------------------------------------------
-        MAX_DETECTED_PROJECTS = 10
         if len(detected_projects) > 1:
             import concurrent.futures
 
@@ -1106,32 +1137,14 @@ def _run_scan_background(
                 ),
             )
 
-            def _scan_single_subproject(proj_info):
-                """Scan + analyse one sub-project (runs inside thread pool)."""
-                logger.info(f"Starting sub-project: {proj_info.name} ({proj_info.project_type})")
-                sub_scan_result = scan_service.run_scan(
-                    target=proj_info.path,
-                    relevant_only=relevance_only,
-                    preferences=preferences,
-                )
-                # Let the pipeline decide whether to run git analysis based on
-                # whether .git actually exists in the sub-project directory.
-                payload = _run_analysis_pipeline(
-                    analysis_target=proj_info.path,
-                    scan_result=sub_scan_result,
-                    preferences=preferences,
-                    compact=True,
-                )
-                payload["detected_project_type"] = proj_info.project_type
-                logger.info(f"Finished sub-project: {proj_info.name}")
-                return proj_info.name, str(proj_info.path), payload
-
             # Cap parallelism to avoid overwhelming the machine
             all_project_results: List[tuple] = []
             max_parallel = min(total_projects, 2)
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_parallel) as pool:
                 future_to_proj = {
-                    pool.submit(_scan_single_subproject, pi): pi
+                    pool.submit(
+                        _scan_single_subproject, pi, scan_service, relevance_only, preferences,
+                    ): pi
                     for pi in detected_projects
                 }
                 for future in concurrent.futures.as_completed(future_to_proj):

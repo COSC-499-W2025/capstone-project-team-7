@@ -324,12 +324,12 @@ class SkillsExtractor:
                 'typescript': [r'import.*from\s+["\']react["\']', r'useState', r'useEffect', r'FC<', r'\.tsx'],
             },
             'react_intermediate': {
-                'javascript': (_react_int := [r'useReducer', r'useContext', r'React\.memo', r'useMemo', r'useCallback', r'createContext']),
-                'typescript': _react_int,
+                'javascript': [r'useReducer', r'useContext', r'React\.memo', r'useMemo', r'useCallback', r'createContext'],
+                'typescript': [r'useReducer', r'useContext', r'React\.memo', r'useMemo', r'useCallback', r'createContext'],
             },
             'react_advanced': {
-                'javascript': (_react_adv := [r'React\.lazy', r'Suspense', r'forwardRef', r'createPortal', r'useImperativeHandle']),
-                'typescript': _react_adv,
+                'javascript': [r'React\.lazy', r'Suspense', r'forwardRef', r'createPortal', r'useImperativeHandle'],
+                'typescript': [r'React\.lazy', r'Suspense', r'forwardRef', r'createPortal', r'useImperativeHandle'],
             },
             # Vue — only basic tier; Vue's advanced patterns (Composition API,
             # Pinia, etc.) need template-aware parsing beyond regex scope.
@@ -398,12 +398,12 @@ class SkillsExtractor:
                 'typescript': [r'import.*from\s+["\']next', r'getServerSideProps', r'getStaticProps'],
             },
             'nextjs_intermediate': {
-                'javascript': (_nextjs_int := [r'getStaticPaths', r'useRouter', r'next/image', r'next/head']),
-                'typescript': _nextjs_int,
+                'javascript': [r'getStaticPaths', r'useRouter', r'next/image', r'next/head'],
+                'typescript': [r'getStaticPaths', r'useRouter', r'next/image', r'next/head'],
             },
             'nextjs_advanced': {
-                'javascript': (_nextjs_adv := [r'generateMetadata', r'revalidatePath', r'unstable_cache', r'generateStaticParams']),
-                'typescript': _nextjs_adv,
+                'javascript': [r'generateMetadata', r'revalidatePath', r'unstable_cache', r'generateStaticParams'],
+                'typescript': [r'generateMetadata', r'revalidatePath', r'unstable_cache', r'generateStaticParams'],
             },
         }
 
