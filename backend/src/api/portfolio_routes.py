@@ -90,6 +90,26 @@ class PortfolioChronology(BaseModel):
     projects: List[TimelineItem] = Field(default_factory=list)
     skills: List[SkillsTimelineItem] = Field(default_factory=list)
 
+class ProjectEvolutionPeriod(BaseModel):
+    period_label: str
+    commits: int = 0
+    skill_count: int = 0
+    languages: Dict[str, Any] = Field(default_factory=dict)
+    activity_types: List[str] = Field(default_factory=list)
+
+
+class ProjectEvolutionItem(BaseModel):
+    project_id: str
+    project_name: str
+    total_commits: int = 0
+    total_lines: int = 0
+    periods: List[ProjectEvolutionPeriod] = Field(default_factory=list)
+
+
+class ProjectEvolutionResponse(BaseModel):
+    items: List[ProjectEvolutionItem] = Field(default_factory=list)
+
+
 class SkillsListResponse(BaseModel):
     """Response for GET /api/skills endpoint."""
     skills: List[str] = Field(default_factory=list, description="Unique skills sorted alphabetically")
@@ -176,6 +196,37 @@ def get_portfolio_chronology(
     return PortfolioChronology(
         projects=[TimelineItem(**item) for item in chronology.get("projects", [])],
         skills=[SkillsTimelineItem(**item) for item in chronology.get("skills", [])],
+    )
+
+
+@router.get(
+    "/api/portfolio/project-evolution",
+    response_model=ProjectEvolutionResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        500: {"model": ErrorResponse, "description": "Evolution retrieval failed"},
+    },
+)
+def get_project_evolution(
+    project_ids: Optional[str] = None,
+    auth: AuthContext = Depends(get_auth_context),
+    service: PortfolioTimelineService = Depends(get_portfolio_timeline_service),
+) -> ProjectEvolutionResponse:
+    """Return per-project monthly evolution data.
+
+    Optionally filter by comma-separated project IDs.
+    """
+    ids_list = [pid.strip() for pid in project_ids.split(",") if pid.strip()] if project_ids else None
+    try:
+        items = service.get_project_evolution(auth.user_id, project_ids=ids_list)
+    except PortfolioTimelineServiceError as exc:
+        logger.exception("Failed to build project evolution")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "evolution_error", "message": str(exc)},
+        ) from exc
+    return ProjectEvolutionResponse(
+        items=[ProjectEvolutionItem(**item) for item in items],
     )
 
 

@@ -5,7 +5,7 @@
  * Users can select a base template and customize it.
  */
 
-import type { ResumeTemplate, ResumeStructuredData } from "@/types/user-resume";
+import type { ResumeTemplate, ResumeStructuredData, ResumeAwardEntry } from "@/types/user-resume";
 
 // ============================================================================
 // Jake's Resume Template (MIT License)
@@ -574,6 +574,26 @@ export function generateLatexFromStructuredData(data: ResumeStructuredData): str
       }
     }
     lines.push(`    \\resumeSubHeadingListEnd
+`);
+  }
+
+  // Awards
+  if (data.awards && data.awards.length > 0) {
+    lines.push(`\\section{Awards \\& Honors}
+  \\resumeSubHeadingListStart`);
+    for (const award of data.awards) {
+      const dateStr = award.date ? escapeLatex(award.date) : '';
+      const issuerStr = award.issuer ? escapeLatex(award.issuer) : '';
+      lines.push(`    \\resumeSubheading
+      {${escapeLatex(award.title)}}{${dateStr}}
+      {${issuerStr}}{}`);
+      if (award.description) {
+        lines.push(`      \\resumeItemListStart
+        \\resumeItem{${escapeLatex(award.description)}}
+      \\resumeItemListEnd`);
+      }
+    }
+    lines.push(`  \\resumeSubHeadingListEnd
 `);
   }
 

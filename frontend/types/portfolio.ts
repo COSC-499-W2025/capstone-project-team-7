@@ -63,6 +63,22 @@ export interface PortfolioChronology {
   skills: SkillsTimelineItem[];
 }
 
+export interface ProjectEvolutionPeriod {
+  period_label: string;
+  commits: number;
+  skill_count: number;
+  languages: Record<string, number>;
+  activity_types: string[];
+}
+
+export interface ProjectEvolutionItem {
+  project_id: string;
+  project_name: string;
+  total_commits: number;
+  total_lines: number;
+  periods: ProjectEvolutionPeriod[];
+}
+
 export interface DuplicateFileInfo {
   path: string;
   project_id: string;

@@ -20,12 +20,13 @@ import {
   User,
 } from "lucide-react";
 import { getStoredToken } from "@/lib/auth";
-import { publishPortfolio } from "@/lib/api/portfolio";
-import type { PortfolioChronology, PortfolioSettings } from "@/types/portfolio";
+import { publishPortfolio, getProjectEvolution } from "@/lib/api/portfolio";
+import type { PortfolioChronology, PortfolioSettings, ProjectEvolutionItem } from "@/types/portfolio";
 import type { ProjectMetadata } from "@/types/project";
 import type { UserProfile } from "@/lib/api.types";
 import { ActivityHeatmap } from "@/components/portfolio/activity-heatmap";
 import { SkillsTimeline } from "@/components/portfolio/skills-timeline";
+import { ProjectEvolution } from "@/components/portfolio/project-evolution";
 
 interface PortfolioOverviewProps {
   profile: UserProfile | null;
@@ -218,10 +219,24 @@ export function PortfolioOverview({
   const [copied, setCopied] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
 
+  // Project evolution data
+  const [evolutionData, setEvolutionData] = useState<ProjectEvolutionItem[]>([]);
+
   // Sync if parent re-fetches settings
   useEffect(() => {
     if (initialSettings) setPubSettings(initialSettings);
   }, [initialSettings]);
+
+  // Fetch evolution data for top projects
+  useEffect(() => {
+    const topIds = getTopProjects(projects, 4).map((p) => p.id);
+    if (topIds.length === 0) return;
+    const token = getStoredToken();
+    if (!token) return;
+    getProjectEvolution(token, topIds)
+      .then(setEvolutionData)
+      .catch(() => setEvolutionData([]));
+  }, [projects]);
 
   const handleTogglePublish = useCallback(async () => {
     const token = getStoredToken();
@@ -611,6 +626,7 @@ export function PortfolioOverview({
                   No projects available yet. Scan and rank your projects to see the top showcase.
                 </p>
               ) : (
+                <>
                 <div className="mt-5 grid gap-3 2xl:grid-cols-2">
                   {topProjects.map((project, index) => {
                     const shareLabel = formatShare(project.user_commit_share);
@@ -690,6 +706,25 @@ export function PortfolioOverview({
                     );
                   })}
                 </div>
+
+                {/* Project Evolution Timeline */}
+                {evolutionData.length > 0 && (
+                  <div className="mt-5">
+                    <div className="mb-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                        Evolution
+                      </p>
+                      <h3 className="mt-1 text-base font-semibold tracking-tight text-slate-950">
+                        Project Growth Over Time
+                      </h3>
+                      <p className="mt-1 text-sm text-slate-500">
+                        Monthly commit activity showing how each project evolved.
+                      </p>
+                    </div>
+                    <ProjectEvolution data={evolutionData} />
+                  </div>
+                )}
+                </>
               )}
             </article>
           )}
