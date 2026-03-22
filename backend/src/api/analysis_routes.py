@@ -111,30 +111,40 @@ class LLMAnalysisResult(BaseModel):
     recommendations: Optional[List[str]] = None
 
 
+class ProjectCategoryInfo(BaseModel):
+    """Auto-detected project category"""
+    category: str = Field(description="Category key (e.g. 'web_app', 'data_science')")
+    label: str = Field(description="Human-readable label (e.g. 'Web Application')")
+    confidence: float = Field(description="Confidence score 0.0 – 1.0")
+
+
 class AnalysisResponse(BaseModel):
     """Portfolio analysis response"""
     upload_id: Optional[str] = None
     project_id: Optional[str] = None
     status: str = "completed"
-    
+
     analysis_started_at: str
     analysis_completed_at: str
-    
+
     llm_status: str = Field(
         description="LLM analysis status: 'used', 'skipped', or 'failed' with reason"
     )
-    
+
     project_type: str = Field(description="'individual', 'collaborative', or 'unknown'")
+    project_category: Optional[ProjectCategoryInfo] = Field(
+        None, description="Auto-detected project category (web app, API, data science, etc.)"
+    )
     languages: List[LanguageStats] = Field(default_factory=list)
     git_analysis: Optional[List[GitAnalysisResult]] = None
     code_metrics: Optional[CodeMetrics] = None
     skills: List[SkillInfo] = Field(default_factory=list)
     contribution_metrics: Optional[ContributionMetrics] = None
     duplicates: List[DuplicateInfo] = Field(default_factory=list)
-    
+
     total_files: int = 0
     total_size_bytes: int = 0
-    
+
     # LLM analysis (optional, only when use_llm=true and successful)
     llm_analysis: Optional[LLMAnalysisResult] = None
 
@@ -559,6 +569,16 @@ def _analysis_response_from_project(
     )
     total_files = int(project.get("total_files") or summary.get("total_files") or len(file_rows))
 
+    # Restore project category from saved scan data
+    project_category_info = None
+    cat_raw = scan_data.get("project_category")
+    if isinstance(cat_raw, dict) and cat_raw.get("category"):
+        project_category_info = ProjectCategoryInfo(
+            category=str(cat_raw.get("category", "unknown")),
+            label=str(cat_raw.get("label", "Unknown")),
+            confidence=float(cat_raw.get("confidence", 0.0)),
+        )
+
     analysis_completed = datetime.utcnow()
     llm_status = "skipped:not_requested"
     if request.use_llm:
@@ -571,6 +591,7 @@ def _analysis_response_from_project(
         analysis_completed_at=analysis_completed.isoformat() + "Z",
         llm_status=llm_status,
         project_type=_determine_project_type(git_analysis_rows, contribution_metrics),
+        project_category=project_category_info,
         languages=[
             LanguageStats(
                 name=lang.get("name", "Unknown"),
@@ -829,6 +850,17 @@ async def analyze_portfolio(
             
             # 7. Determine project type
             project_type = _determine_project_type(git_analysis, contribution_metrics)
+
+            # 8. Project auto-categorization
+            project_category_info = None
+            from analyzer.project_classifier import safe_classify_project
+            cat_result = safe_classify_project(parse_result.files, languages)
+            if cat_result is not None:
+                project_category_info = ProjectCategoryInfo(
+                    category=cat_result.category,
+                    label=cat_result.label,
+                    confidence=cat_result.confidence,
+                )
             
             # === Check LLM Availability ===
             llm_available, llm_status, llm_client = _check_llm_availability(
@@ -870,6 +902,7 @@ async def analyze_portfolio(
             analysis_completed_at=analysis_completed.isoformat() + "Z",
             llm_status=llm_status,
             project_type=project_type,
+            project_category=project_category_info,
             languages=[
                 LanguageStats(
                     name=lang.get("name", lang.get("language", "Unknown")),

@@ -1386,8 +1386,20 @@ async def create_project_from_upload(
             else:
                 logger.warning("⚠️  No duplicate report data to save")
 
-            # Collect file snippets now and store in scan_data so AI analysis
-            # can use them even if the source directory is gone later.
+            # Project auto-categorization
+            try:
+                from analyzer.project_classifier import safe_classify_project
+                cat_result = safe_classify_project(parse_result.files, languages)
+                if cat_result is not None:
+                    scan_data["project_category"] = {
+                        "category": cat_result.category,
+                        "label": cat_result.label,
+                        "confidence": cat_result.confidence,
+                    }
+            except Exception as e:
+                logger.warning(f"⚠️  Project auto-categorization failed: {e}")
+
+            # File snippets for AI analysis (stored at scan time for reliability)
             file_snippets_for_ai = _collect_files_for_ai(analysis_target)
             if file_snippets_for_ai:
                 scan_data["file_snippets"] = file_snippets_for_ai
