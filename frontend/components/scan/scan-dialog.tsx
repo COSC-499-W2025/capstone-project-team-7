@@ -27,6 +27,7 @@ import { getStoredToken } from "@/lib/auth";
 import type { ProjectMetadata } from "@/types/project";
 import {
   FolderOpen,
+  FileArchive,
   AlertTriangle,
   CheckCircle2,
   XCircle,
@@ -121,7 +122,7 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
     }
   }, [open, resetNewScan, resetAppendScan]);
 
-  const handleBrowse = async () => {
+  const handleBrowse = async (pickZip = false) => {
     const selectScanSource = window.desktop?.selectScanSource;
     const selectDirectory = window.desktop?.selectDirectory;
     if (!selectScanSource && !selectDirectory) return;
@@ -130,9 +131,7 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
     try {
       let paths: string[] = [];
       if (selectScanSource) {
-        paths = await selectScanSource({
-          title: "Select folder or ZIP archive to scan",
-        });
+        paths = await selectScanSource({ pickZip });
       } else if (selectDirectory) {
         paths = await selectDirectory({
           title: "Select folder to scan",
@@ -248,12 +247,30 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
                 <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
                 <div className="text-sm">
                   <p className="font-medium text-green-800">Scan completed successfully</p>
-                  <p className="text-green-700 mt-1">
-                    Processed {newScan.result.summary.total_files.toLocaleString()} files
-                    {newScan.result.languages.length > 0 && (
-                      <> • {newScan.result.languages.length} languages detected</>
-                    )}
-                  </p>
+                  {newScan.result.projects_created && newScan.result.projects_created > 1 ? (
+                    <div className="text-green-700 mt-1 space-y-1">
+                      <p>
+                        Created <span className="font-medium">{newScan.result.projects_created}</span> projects
+                        {" "}&bull; {newScan.result.summary.total_files.toLocaleString()} total files
+                      </p>
+                      {newScan.result.detected_projects && (
+                        <ul className="list-disc list-inside text-xs mt-1">
+                          {newScan.result.detected_projects.map((p) => (
+                            <li key={p.name}>
+                              {p.name} <span className="text-green-600">({p.type})</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-green-700 mt-1">
+                      Processed {newScan.result.summary.total_files.toLocaleString()} files
+                      {newScan.result.languages.length > 0 && (
+                        <> &bull; {newScan.result.languages.length} languages detected</>
+                      )}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -490,19 +507,34 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
                     className="flex-1"
                   />
                   {isElectron && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleBrowse}
-                      disabled={!isAuthenticated || isBrowsing}
-                    >
-                      {isBrowsing ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      ) : (
-                        <FolderOpen className="h-4 w-4 mr-2" />
-                      )}
-                      {isBrowsing ? "Opening..." : "Browse"}
-                    </Button>
+                    <>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => handleBrowse(false)}
+                        disabled={!isAuthenticated || isBrowsing}
+                      >
+                        {isBrowsing ? (
+                          <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                        ) : (
+                          <FolderOpen className="h-4 w-4 mr-1.5" />
+                        )}
+                        Folder
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => handleBrowse(true)}
+                        disabled={!isAuthenticated || isBrowsing}
+                      >
+                        {isBrowsing ? (
+                          <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                        ) : (
+                          <FileArchive className="h-4 w-4 mr-1.5" />
+                        )}
+                        ZIP
+                      </Button>
+                    </>
                   )}
                 </div>
               </div>

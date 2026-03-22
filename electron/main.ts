@@ -9,6 +9,10 @@ const shouldOpenDevTools =
   process.env.ELECTRON_OPEN_DEVTOOLS === "1" ||
   process.env.ELECTRON_OPEN_DEVTOOLS === "true";
 
+type ScanSourceDialogOptions = Electron.OpenDialogOptions & {
+  pickZip?: boolean;
+};
+
 const inferMimeType = (filePath: string) => {
   const ext = path.extname(filePath).toLowerCase();
   switch (ext) {
@@ -111,28 +115,42 @@ app.whenReady().then(() => {
     return result.filePaths;
   });
 
-  ipcMain.handle(IPC_CHANNELS.SELECT_SCAN_SOURCE, async (_event, options: Electron.OpenDialogOptions | undefined) => {
+  ipcMain.handle(IPC_CHANNELS.SELECT_SCAN_SOURCE, async (_event, options: ScanSourceDialogOptions | undefined) => {
     const { properties: _ignoredProperties, filters: _ignoredFilters, ...dialogOptions } = options ?? {};
-    const result = await dialog.showOpenDialog({
-      ...dialogOptions,
-      properties: ["openDirectory", "openFile"],
-      filters: [{ name: "ZIP Archives", extensions: ["zip"] }],
-    });
-    if (result.canceled) return [];
-    if (result.filePaths.length === 0) return [];
 
-    const selectedPath = result.filePaths[0];
-    try {
-      const stat = await fsPromises.stat(selectedPath);
-      if (stat.isDirectory()) return result.filePaths;
-      if (stat.isFile() && path.extname(selectedPath).toLowerCase() === ".zip") {
-        return result.filePaths;
+    // On Windows, openFile + openDirectory cannot be combined — it always becomes
+    // directory-only.  The frontend controls which mode to use via options.pickZip.
+    const pickZip = options?.pickZip === true;
+
+    if (pickZip) {
+      const result = await dialog.showOpenDialog({
+        ...dialogOptions,
+        title: dialogOptions.title ?? "Select a ZIP archive to scan",
+        properties: ["openFile"],
+        filters: [{ name: "ZIP Archives", extensions: ["zip"] }],
+      });
+      if (result.canceled || result.filePaths.length === 0) return [];
+
+      const selectedPath = result.filePaths[0];
+      try {
+        const stat = await fsPromises.stat(selectedPath);
+        if (stat.isFile() && path.extname(selectedPath).toLowerCase() === ".zip") {
+          return result.filePaths;
+        }
+      } catch {
+        return [];
       }
-    } catch {
       return [];
     }
 
-    return [];
+    // Default: directory picker
+    const result = await dialog.showOpenDialog({
+      ...dialogOptions,
+      title: dialogOptions.title ?? "Select a folder to scan",
+      properties: ["openDirectory"],
+    });
+    if (result.canceled) return [];
+    return result.filePaths;
   });
 
   // Persist settings to a file under the user's application data directory

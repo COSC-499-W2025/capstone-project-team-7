@@ -426,7 +426,19 @@ def _serialize_contribution_metrics(metrics: Any) -> Dict[str, Any]:
     return payload
 
 
-def _extract_archive_for_analysis(storage_path: Path, temp_path: Path) -> Path:
+def _extract_archive_for_analysis(
+    storage_path: Path,
+    temp_path: Path,
+    preferences: Optional[ScanPreferences] = None,
+) -> Path:
+    """Extract a ZIP for analysis, skipping directories listed in preferences.
+
+    Uses the same exclusion list as ``archive_utils._derive_excluded_dirs`` so
+    heavy directories (``.git``, ``node_modules``, etc.) are never extracted.
+    """
+    from services.archive_utils import derive_excluded_dirs
+    skip_dirs = derive_excluded_dirs(preferences)
+
     with zipfile.ZipFile(storage_path, "r") as zf:
         for member in zf.namelist():
             member_path = PurePosixPath(member)
@@ -440,6 +452,10 @@ def _extract_archive_for_analysis(storage_path: Path, temp_path: Path) -> Path:
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Archive contains invalid path traversal",
                 )
+
+            # Skip directories excluded by scan preferences
+            if any(part in skip_dirs for part in member_path.parts):
+                continue
 
             target_path_member = temp_path / member
             try:
@@ -1274,7 +1290,7 @@ async def create_project_from_upload(
         )
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            analysis_target = _extract_archive_for_analysis(storage_path, Path(temp_dir))
+            analysis_target = _extract_archive_for_analysis(storage_path, Path(temp_dir), preferences=preferences)
             languages = summarize_languages(parse_result.files)
             summary: Dict[str, Any] = dict(parse_result.summary)
             summary["languages"] = languages
