@@ -847,8 +847,8 @@ def generate_linkedin_post(
         settings = settings_service.get_settings(auth.user_id)
         if settings and settings.get("is_public") and settings.get("share_token"):
             share_url = settings["share_token"]
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Failed to resolve public share URL for LinkedIn post: %s", exc)
 
     if body.scope == "project" and body.project_id:
         project = next((p for p in projects if p.get("id") == body.project_id), None)
