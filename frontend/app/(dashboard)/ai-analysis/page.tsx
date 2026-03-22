@@ -5,30 +5,23 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { getStoredToken } from "@/lib/auth";
-import { consent as consentApi, secrets as secretsApi } from "@/lib/api";
 import { getProjects, getProjectById, runProjectAiAnalysis } from "@/lib/api/projects";
 import type {
   ProjectMetadata,
   ProjectAiAnalysis,
-  ProjectAiAnalysisCategory,
   AiAnalysisApiResponse,
 } from "@/types/project";
 import {
   Sparkles,
-  CheckCircle2,
-  XCircle,
   Loader2,
   RefreshCw,
   ChevronRight,
   Calendar,
   AlertCircle,
-  Code2,
-  GitBranch,
-  FileText,
-  Image as ImageIcon,
-  BookOpen,
-  Lightbulb,
 } from "lucide-react";
+import { EligibilityBadge } from "@/components/ai-analysis/eligibility-badge";
+import { CategoryCard } from "@/components/ai-analysis/category-card";
+import { useAiEligibility } from "@/hooks/use-ai-eligibility";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -43,53 +36,6 @@ function formatDate(ts?: string | null): string {
   } catch {
     return ts;
   }
-}
-
-// ─── sub-components ─────────────────────────────────────────────────────────
-
-function EligibilityBadge({ ok }: { ok: boolean | null }) {
-  if (ok === null)
-    return <span className="text-xs text-gray-400">Not checked</span>;
-  return ok ? (
-    <span className="flex items-center gap-1 text-xs text-green-700 font-medium">
-      <CheckCircle2 size={13} /> Ready
-    </span>
-  ) : (
-    <span className="flex items-center gap-1 text-xs text-amber-700 font-medium">
-      <XCircle size={13} /> Not ready
-    </span>
-  );
-}
-
-const CATEGORY_ICONS: Record<string, React.ReactNode> = {
-  code_analysis:     <Code2 size={15} />,
-  git_analysis:      <GitBranch size={15} />,
-  pdf_analysis:      <FileText size={15} />,
-  document_analysis: <BookOpen size={15} />,
-  media_analysis:    <ImageIcon size={15} />,
-  skills_analysis:   <Lightbulb size={15} />,
-  skills_progress:   <Lightbulb size={15} />,
-};
-
-function CategoryCard({ cat }: { cat: ProjectAiAnalysisCategory }) {
-  const icon = CATEGORY_ICONS[cat.category] ?? <Sparkles size={15} />;
-  return (
-    <div className="rounded-lg border border-gray-100 bg-gray-50 p-4 space-y-2">
-      <p className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
-        {icon} {cat.label}
-      </p>
-      {cat.summary && (
-        <p className="text-sm text-gray-600 leading-relaxed">{cat.summary}</p>
-      )}
-      {cat.insights && cat.insights.length > 0 && (
-        <ul className="space-y-1 list-disc list-inside text-sm text-gray-700">
-          {cat.insights.map((ins, i) => (
-            <li key={i}>{ins}</li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
 }
 
 // ─── main page ───────────────────────────────────────────────────────────────
@@ -110,12 +56,15 @@ export default function AiAnalysisPage() {
   const [loadingDetail, setLoadingDetail] = useState(false);
 
   // eligibility
-  const [externalConsent, setExternalConsent] = useState<boolean | null>(null);
-  const [apiKeyValid, setApiKeyValid] = useState<boolean | null>(null);
-  const [eligibilityChecked, setEligibilityChecked] = useState(false);
-  const [eligibilityLoading, setEligibilityLoading] = useState(false);
-  const [eligibilityMessage, setEligibilityMessage] = useState<string | null>(null);
-  const aiReady = externalConsent === true && apiKeyValid === true;
+  const {
+    externalConsent,
+    apiKeyValid,
+    eligibilityChecked,
+    eligibilityLoading,
+    eligibilityMessage,
+    aiReady,
+    checkEligibility,
+  } = useAiEligibility();
 
   // run-analysis state
   const [runningFor, setRunningFor] = useState<string | null>(null);
@@ -157,77 +106,6 @@ export default function AiAnalysisPage() {
       cancelled = true;
     };
   }, []);
-
-  // ── eligibility check ──────────────────────────────────────────────────────
-  const checkEligibility = useCallback(async (): Promise<boolean> => {
-    const token = getStoredToken();
-    if (!token) {
-      setExternalConsent(false);
-      setApiKeyValid(false);
-      setEligibilityMessage("You are not logged in. Sign in from Settings.");
-      setEligibilityChecked(true);
-      return false;
-    }
-    setEligibilityLoading(true);
-    setEligibilityMessage(null);
-    try {
-      const consentRes = await consentApi.get();
-      if (!consentRes.ok) {
-        setExternalConsent(false);
-        setApiKeyValid(false);
-        setEligibilityMessage(
-          consentRes.status === 401 || consentRes.status === 403
-            ? "Session expired. Log in again from Settings."
-            : consentRes.error ?? "Unable to check consent status."
-        );
-        return false;
-      }
-      const hasConsent = Boolean(consentRes.data.external_services);
-      setExternalConsent(hasConsent);
-      if (!hasConsent) {
-        setApiKeyValid(false);
-        setEligibilityMessage(
-          "External Data consent is not enabled. Enable it in Settings > Consent."
-        );
-        return false;
-      }
-
-      const verifyRes = await secretsApi.verify();
-      if (!verifyRes.ok) {
-        setApiKeyValid(false);
-        setEligibilityMessage(
-          "Your OpenAI API key is missing or invalid. Verify it in Settings."
-        );
-        return false;
-      }
-      if (!verifyRes.data.valid) {
-        setApiKeyValid(false);
-        setEligibilityMessage(
-          verifyRes.data.message ??
-            "Your OpenAI API key is missing or invalid. Verify it in Settings."
-        );
-        return false;
-      }
-      setApiKeyValid(true);
-      setEligibilityMessage(null);
-      return true;
-    } catch (err) {
-      setExternalConsent(false);
-      setApiKeyValid(false);
-      setEligibilityMessage(
-        err instanceof Error ? err.message : "Failed to check AI requirements."
-      );
-      return false;
-    } finally {
-      setEligibilityLoading(false);
-      setEligibilityChecked(true);
-    }
-  }, []);
-
-  // run eligibility check on first mount
-  useEffect(() => {
-    void checkEligibility();
-  }, [checkEligibility]);
 
   // ── load existing analysis when project is selected ────────────────────────
   const handleSelectProject = useCallback(
