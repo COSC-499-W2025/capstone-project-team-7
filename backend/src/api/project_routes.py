@@ -17,7 +17,6 @@ import uuid
 import tempfile
 import threading
 import zipfile
-from contextlib import contextmanager
 from pathlib import PurePosixPath
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
