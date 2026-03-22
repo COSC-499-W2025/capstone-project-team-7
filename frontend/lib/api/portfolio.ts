@@ -8,6 +8,7 @@ import type {
   PortfolioRefreshResponse,
   PortfolioSettings,
   PublicPortfolioResponse,
+  ProjectEvolutionItem,
 } from "@/types/portfolio";
 import { request } from "@/lib/api";
 
@@ -87,6 +88,16 @@ export async function refreshPortfolio(
 
 export async function getPortfolioChronology(token: string): Promise<PortfolioChronology> {
   return call("/api/portfolio/chronology", { headers: authHeaders(token) }, "Failed to fetch portfolio chronology");
+}
+
+export async function getProjectEvolution(token: string, projectIds?: string[]): Promise<ProjectEvolutionItem[]> {
+  const params = projectIds?.length ? `?project_ids=${projectIds.join(",")}` : "";
+  const response = await call<{ items: ProjectEvolutionItem[] }>(
+    `/api/portfolio/project-evolution${params}`,
+    { headers: authHeaders(token) },
+    "Failed to fetch project evolution"
+  );
+  return response.items;
 }
 
 // ── Portfolio Settings ──────────────────────────────────────────────────
