@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any, cast
 from datetime import datetime
 import asyncio
+import json
 import logging
 import sys
 import os
@@ -459,9 +460,6 @@ def _extract_archive_for_analysis(storage_path: Path, temp_path: Path) -> Path:
     if len(content_dirs) == 1 and content_dirs[0].is_dir():
         return content_dirs[0]
     return temp_path
-
-
-
 
 
 def _run_media_analysis(parse_result: Any) -> Optional[Dict[str, Any]]:
@@ -1858,25 +1856,22 @@ async def generate_project_skill_summary(
         try:
             has_consent = consent_validator.validate_external_services_consent(user_id)
         except Exception:
-            return SkillProgressSummaryResponse(
-                project_id=project_id,
-                note="Consent check failed. Please retry.",
-                llm_status="skipped:consent_check_failed",
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Consent check failed. Please retry.",
             )
 
         if not has_consent:
-            return SkillProgressSummaryResponse(
-                project_id=project_id,
-                note="External services consent not granted.",
-                llm_status="skipped:consent_not_granted",
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="External services consent not granted.",
             )
 
         client = get_user_client(user_id)
         if client is None:
-            return SkillProgressSummaryResponse(
-                project_id=project_id,
-                note="No API key verified. Please verify your key in Settings.",
-                llm_status="skipped:no_api_key",
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="No API key verified. Please verify your key in Settings.",
             )
 
         from analyzer.llm.skill_progress_summary import summarize_skill_progress
@@ -2148,7 +2143,6 @@ def _build_categorized_ai_prompt(
             lines.append(f"\n### {s['path']}\n```\n{s['content']}\n```")
 
     # --- task / JSON spec ---
-    category_keys = [cat_key for cat_key, _ in active_categories]
     json_fields_doc = '\n'.join(
         f'  "{cat_key}": {{"summary": "1-3 sentence summary for {cat_label}", "insights": ["insight 1", "insight 2", "insight 3"]}}'
         for cat_key, cat_label in active_categories
@@ -2228,25 +2222,22 @@ async def run_project_ai_analysis(
         try:
             has_consent = consent_validator.validate_external_services_consent(user_id)
         except Exception:
-            return AiAnalysisResponse(
-                project_id=project_id,
-                result=AiAnalysisResult(),
-                llm_status="skipped:consent_check_failed",
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Consent check failed. Please retry.",
             )
         if not has_consent:
-            return AiAnalysisResponse(
-                project_id=project_id,
-                result=AiAnalysisResult(),
-                llm_status="skipped:consent_not_granted",
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="External services consent not granted.",
             )
 
         access_token = get_request_access_token() or ""
         client = await get_or_hydrate_llm_client(user_id, access_token)
         if client is None:
-            return AiAnalysisResponse(
-                project_id=project_id,
-                result=AiAnalysisResult(),
-                llm_status="skipped:no_api_key",
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="No API key verified. Please verify your key in Settings.",
             )
 
         # ------------------------------------------------------------------
@@ -2310,10 +2301,10 @@ async def run_project_ai_analysis(
 
         raw = await asyncio.to_thread(call_llm)
 
-        import json as _json
         try:
-            parsed = _json.loads(raw) if isinstance(raw, str) else (raw or {})
+            parsed = json.loads(raw) if isinstance(raw, str) else (raw or {})
         except Exception:
+            logger.warning("Failed to parse LLM response as JSON; treating as empty result")
             parsed = {}
 
         def _to_str_list(val: Any) -> Optional[List[str]]:
