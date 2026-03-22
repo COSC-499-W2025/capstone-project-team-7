@@ -10,7 +10,6 @@ import {
   FileText,
   FileEdit,
   Settings,
-  HelpCircle,
   Search,
   Sparkles,
 } from 'lucide-react';
@@ -152,7 +151,7 @@ export const Sidebar: React.FC = () => {
             label="Projects"
           />
           <NavItem
-            href="/resumes"
+            href="/resume-builder"
             icon={<FileText size={20} />}
             label="Resumes"
           />
@@ -175,11 +174,6 @@ export const Sidebar: React.FC = () => {
             href="/settings"
             icon={<Settings size={20} />}
             label="Settings"
-          />
-          <NavItem
-            href="/help"
-            icon={<HelpCircle size={20} />}
-            label="Get Help"
           />
           <NavItem
             href="/search"
