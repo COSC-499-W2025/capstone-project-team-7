@@ -52,6 +52,7 @@ import type {
   ResumeEducationEntry,
   ResumeExperienceEntry,
   ResumeProjectEntry,
+  ResumeAwardEntry,
 } from "@/types/user-resume";
 import type { ResumeItemSummary, ResumeItemRecord } from "@/types/resume";
 
@@ -584,6 +585,26 @@ function FormEditor({ data, onChange, onAddResumeItems, onDetectSkills }: FormEd
     onChange({ projects: updated });
   };
 
+  const addAward = () => {
+    const newEntry: ResumeAwardEntry = {
+      id: generateId(),
+      title: "",
+    };
+    onChange({ awards: [...(data.awards || []), newEntry] });
+  };
+
+  const updateAward = (index: number, updates: Partial<ResumeAwardEntry>) => {
+    const updated = [...(data.awards || [])];
+    updated[index] = { ...updated[index], ...updates };
+    onChange({ awards: updated });
+  };
+
+  const removeAward = (index: number) => {
+    const updated = [...(data.awards || [])];
+    updated.splice(index, 1);
+    onChange({ awards: updated });
+  };
+
   const openAddItemsDialog = async () => {
     const token = getStoredToken();
     if (!token) {
@@ -677,6 +698,7 @@ function FormEditor({ data, onChange, onAddResumeItems, onDetectSkills }: FormEd
             <TabsTrigger value="experience" className="text-xs">Experience</TabsTrigger>
             <TabsTrigger value="projects" className="text-xs">Projects</TabsTrigger>
             <TabsTrigger value="skills" className="text-xs">Skills</TabsTrigger>
+            <TabsTrigger value="awards" className="text-xs">Awards</TabsTrigger>
           </TabsList>
 
           <div className="flex-1 overflow-auto p-4">
@@ -1058,6 +1080,61 @@ function FormEditor({ data, onChange, onAddResumeItems, onDetectSkills }: FormEd
                 />
               </div>
             </TabsContent>
+
+            <TabsContent value="awards" className="mt-0 space-y-4">
+              {(data.awards || []).map((award, idx) => (
+                <div key={award.id} className="p-4 border border-gray-200 rounded-lg space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Award #{idx + 1}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeAward(idx)}
+                      className="text-red-600 hover:text-red-700"
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Award Title</Label>
+                    <Input
+                      value={award.title}
+                      onChange={(e) => updateAward(idx, { title: e.target.value })}
+                      placeholder="Dean's List, Hackathon Winner, etc."
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label>Issuer / Organization</Label>
+                      <Input
+                        value={award.issuer || ""}
+                        onChange={(e) => updateAward(idx, { issuer: e.target.value })}
+                        placeholder="University, Company, etc."
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Date</Label>
+                      <Input
+                        value={award.date || ""}
+                        onChange={(e) => updateAward(idx, { date: e.target.value })}
+                        placeholder="May 2024"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Description (optional)</Label>
+                    <Input
+                      value={award.description || ""}
+                      onChange={(e) => updateAward(idx, { description: e.target.value })}
+                      placeholder="Brief description of the award"
+                    />
+                  </div>
+                </div>
+              ))}
+              <Button variant="outline" onClick={addAward} className="w-full">
+                + Add Award
+              </Button>
+            </TabsContent>
           </div>
         </Tabs>
       </div>
@@ -1344,6 +1421,29 @@ function FormPreview({ data }: { data: ResumeStructuredData }) {
         </section>
       )}
 
+      {/* Awards */}
+      {data.awards && data.awards.length > 0 && (
+        <section>
+          <h2 className="text-lg font-bold border-b border-gray-300 pb-1 mb-2">Awards & Honors</h2>
+          {data.awards.map((award) => (
+            <div key={award.id} className="mb-2">
+              <div className="flex justify-between">
+                <span className="font-semibold">{award.title}</span>
+                <span className="text-gray-600">{award.date}</span>
+              </div>
+              {award.issuer && (
+                <div className="text-sm italic text-gray-600">{award.issuer}</div>
+              )}
+              {award.description && (
+                <ul className="list-disc list-inside mt-1 text-sm space-y-0.5">
+                  <li>{award.description}</li>
+                </ul>
+              )}
+            </div>
+          ))}
+        </section>
+      )}
+
       {/* Skills */}
       {data.skills && (
         <section>
@@ -1384,6 +1484,7 @@ function FormPreview({ data }: { data: ResumeStructuredData }) {
         (!data.education || data.education.length === 0) &&
         (!data.experience || data.experience.length === 0) &&
         (!data.projects || data.projects.length === 0) &&
+        (!data.awards || data.awards.length === 0) &&
         !data.skills && (
           <div className="text-center text-gray-400 py-12">
             <p>Start adding content using the form on the left</p>
