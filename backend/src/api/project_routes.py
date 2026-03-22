@@ -11,6 +11,7 @@ import json
 import logging
 import sys
 import os
+import time
 from pathlib import Path
 from dataclasses import asdict, is_dataclass
 import uuid
@@ -89,6 +90,32 @@ CATEGORY_LABELS = {
     "ml_data": "ML & Data Science",
 }
 
+# Keep terminal status snapshots briefly so polling clients can observe completion.
+AI_BATCH_PROGRESS_TERMINAL_TTL_SEC = max(
+    0,
+    int(os.getenv("AI_BATCH_PROGRESS_TERMINAL_TTL_SEC", "30") or "30"),
+)
+
+AI_BATCH_LOGIC_EXCLUDED_EXTS = {
+    ".md", ".markdown", ".txt", ".rst", ".log",
+    ".json", ".yml", ".yaml", ".toml", ".ini", ".cfg", ".conf",
+    ".css", ".scss", ".sass", ".less", ".xml", ".svg", ".lock",
+}
+AI_BATCH_LOGIC_PREFERRED_EXTS = {
+    ".py", ".ts", ".tsx", ".js", ".jsx", ".java", ".go", ".rs",
+    ".cs", ".cpp", ".c", ".h", ".hpp", ".kt", ".swift", ".rb", ".php",
+}
+AI_BATCH_LOGIC_EXCLUDED_BASENAMES = {
+    "package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock",
+    "tsconfig.json", "jsconfig.json", "next.config.mjs", "next.config.js",
+    "vite.config.ts", "vite.config.js", "docker-compose.yml", "docker-compose.yaml",
+    "dockerfile", "readme.md",
+}
+AI_BATCH_LOGIC_EXCLUDED_PATH_MARKERS = (
+    "/docs/", "/doc/", "/assets/", "/styles/", "/css/", "/migrations/",
+    "/scripts/", "/config/", "/settings/", "/.github/",
+)
+
 # Create router for project endpoints
 router = APIRouter(prefix="/api/projects", tags=["Projects"])
 
@@ -103,6 +130,28 @@ _ai_batch_progress: Dict[str, Dict[str, Any]] = {}
 _ai_batch_progress_lock = threading.Lock()
 
 
+def _prune_expired_batch_progress_locked(now_epoch: Optional[float] = None) -> None:
+    now_ts = now_epoch if now_epoch is not None else time.time()
+    stale_keys: List[str] = []
+    for key, entry in _ai_batch_progress.items():
+        if not isinstance(entry, dict):
+            stale_keys.append(key)
+            continue
+        expires_at = entry.get("expires_at")
+        if expires_at is None:
+            continue
+        try:
+            expires_ts = float(expires_at)
+        except (TypeError, ValueError):
+            stale_keys.append(key)
+            continue
+        if expires_ts <= now_ts:
+            stale_keys.append(key)
+
+    for key in stale_keys:
+        _ai_batch_progress.pop(key, None)
+
+
 def _batch_progress_key(user_id: str, project_id: str) -> str:
     return f"{user_id}:{project_id}"
 
@@ -110,12 +159,14 @@ def _batch_progress_key(user_id: str, project_id: str) -> str:
 def _init_batch_progress(user_id: str, project_id: str, status: str = "running") -> None:
     key = _batch_progress_key(user_id, project_id)
     with _ai_batch_progress_lock:
+        _prune_expired_batch_progress_locked()
         _ai_batch_progress[key] = {
             "project_id": project_id,
             "status": status,
             "detail": None,
             "status_messages": [],
             "updated_at": datetime.now().isoformat(),
+            "expires_at": None,
         }
 
 
@@ -125,6 +176,7 @@ def _append_batch_progress_message(user_id: str, project_id: str, message: str) 
     if not msg:
         return
     with _ai_batch_progress_lock:
+        _prune_expired_batch_progress_locked()
         entry = _ai_batch_progress.setdefault(
             key,
             {
@@ -133,6 +185,7 @@ def _append_batch_progress_message(user_id: str, project_id: str, message: str) 
                 "detail": None,
                 "status_messages": [],
                 "updated_at": datetime.now().isoformat(),
+                "expires_at": None,
             },
         )
         messages = entry.setdefault("status_messages", [])
@@ -150,11 +203,7 @@ def _finalize_batch_progress(
 ) -> None:
     key = _batch_progress_key(user_id, project_id)
     with _ai_batch_progress_lock:
-        # Ephemeral lifecycle: keep progress only while running.
-        # Terminal states are removed immediately to avoid unbounded growth.
-        if status != "running":
-            _ai_batch_progress.pop(key, None)
-            return
+        _prune_expired_batch_progress_locked()
 
         entry = _ai_batch_progress.setdefault(
             key,
@@ -171,11 +220,17 @@ def _finalize_batch_progress(
         if isinstance(status_messages, list):
             entry["status_messages"] = status_messages[:300]
         entry["updated_at"] = datetime.now().isoformat()
+        entry["expires_at"] = (
+            None
+            if status == "running"
+            else (time.time() + AI_BATCH_PROGRESS_TERMINAL_TTL_SEC)
+        )
 
 
 def _get_batch_progress(user_id: str, project_id: str) -> Dict[str, Any]:
     key = _batch_progress_key(user_id, project_id)
     with _ai_batch_progress_lock:
+        _prune_expired_batch_progress_locked()
         entry = _ai_batch_progress.get(key)
         if not isinstance(entry, dict):
             return {
@@ -2454,26 +2509,6 @@ def _adapt_batch_to_ai_result(
         else f"Batch analysis completed across {len(file_summaries)} files."
     )
 
-    excluded_exts = {
-        ".md", ".markdown", ".txt", ".rst", ".log",
-        ".json", ".yml", ".yaml", ".toml", ".ini", ".cfg", ".conf",
-        ".css", ".scss", ".sass", ".less", ".xml", ".svg", ".lock",
-    }
-    preferred_logic_exts = {
-        ".py", ".ts", ".tsx", ".js", ".jsx", ".java", ".go", ".rs",
-        ".cs", ".cpp", ".c", ".h", ".hpp", ".kt", ".swift", ".rb", ".php",
-    }
-    excluded_basenames = {
-        "package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock",
-        "tsconfig.json", "jsconfig.json", "next.config.mjs", "next.config.js",
-        "vite.config.ts", "vite.config.js", "docker-compose.yml", "docker-compose.yaml",
-        "dockerfile", "readme.md",
-    }
-    excluded_path_markers = [
-        "/docs/", "/doc/", "/assets/", "/styles/", "/css/", "/migrations/",
-        "/scripts/", "/config/", "/settings/", "/.github/",
-    ]
-
     def _is_logic_heavy_candidate(path_str: str) -> bool:
         normalized = "/" + path_str.replace("\\", "/").lower().lstrip("/")
         basename = Path(path_str).name.lower()
@@ -2482,15 +2517,15 @@ def _adapt_batch_to_ai_result(
         if basename.startswith("__init__") or basename == "init" or basename.startswith("init."):
             return False
 
-        if basename in excluded_basenames:
+        if basename in AI_BATCH_LOGIC_EXCLUDED_BASENAMES:
             return False
-        if ext in excluded_exts:
+        if ext in AI_BATCH_LOGIC_EXCLUDED_EXTS:
             return False
-        if any(marker in normalized for marker in excluded_path_markers):
+        if any(marker in normalized for marker in AI_BATCH_LOGIC_EXCLUDED_PATH_MARKERS):
             return False
         if basename.endswith(".config.ts") or basename.endswith(".config.js"):
             return False
-        return ext in preferred_logic_exts
+        return ext in AI_BATCH_LOGIC_PREFERRED_EXTS
 
     candidate_entries: List[Dict[str, Any]] = []
     fallback_entries: List[Dict[str, Any]] = []
@@ -2668,26 +2703,23 @@ async def run_project_ai_batch(
     try:
         has_consent = consent_validator.validate_external_services_consent(user_id)
     except Exception:
-        return AiBatchResponse(
-            project_id=project_id,
-            status="skipped:consent_check_failed",
-            detail="Consent check failed",
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Consent check failed. Please retry.",
         )
 
     if not has_consent:
-        return AiBatchResponse(
-            project_id=project_id,
-            status="skipped:consent_not_granted",
-            detail="External services consent not granted",
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="External services consent not granted.",
         )
 
     access_token = get_request_access_token() or ""
     client = await get_or_hydrate_llm_client(user_id, access_token)
     if client is None:
-        return AiBatchResponse(
-            project_id=project_id,
-            status="skipped:no_api_key",
-            detail="No verified API key",
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="No API key verified. Please verify your key in Settings.",
         )
 
     batch_result, batch_status, cached, detail, status_messages = await _run_or_get_batch_analysis(
