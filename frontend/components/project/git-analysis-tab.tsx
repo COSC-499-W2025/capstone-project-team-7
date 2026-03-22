@@ -205,7 +205,7 @@ function RepoSelector({
 
 function SummaryStats({ repo }: { repo: GitRepoAnalysis }) {
   const dateLabel = repo.date_range
-    ? `${formatDate(repo.date_range.start)} – ${formatDate(repo.date_range.end)}`
+    ? `${formatDateSlash(repo.date_range.start)} - ${formatDateSlash(repo.date_range.end)}`
     : "N/A";
 
   return (
@@ -222,7 +222,7 @@ function SummaryStats({ repo }: { repo: GitRepoAnalysis }) {
 type ContributorSortKey = "commits" | "lines_changed";
 
 function ContributorsTable({ contributors }: { contributors: GitContributor[] }) {
-  const [sortBy, setSortBy] = useState<ContributorSortKey>("commits");
+  const [sortBy, setSortBy] = useState<ContributorSortKey>("lines_changed");
 
   const hasLinesData = contributors.some((c) => (c.lines_changed ?? 0) > 0);
 
@@ -466,6 +466,12 @@ function ActivityTimeline({ timeline }: { timeline: GitTimelineEntry[] }) {
 function formatDate(value: string | null | undefined): string {
   if (!value) return "—";
   return value.slice(0, 10);
+}
+
+/** Format as YYYY/MM/DD */
+function formatDateSlash(value: string | null | undefined): string {
+  if (!value) return "—";
+  return value.slice(0, 10).replace(/-/g, "/");
 }
 
 function formatMonthLabel(value: string): string {
