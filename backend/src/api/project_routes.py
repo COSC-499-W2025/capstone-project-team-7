@@ -95,6 +95,7 @@ AI_BATCH_PROGRESS_TERMINAL_TTL_SEC = max(
     0,
     int(os.getenv("AI_BATCH_PROGRESS_TERMINAL_TTL_SEC", "30") or "30"),
 )
+AI_BATCH_STATUS_MESSAGES_MAX = 300
 
 AI_BATCH_LOGIC_EXCLUDED_EXTS = {
     ".md", ".markdown", ".txt", ".rst", ".log",
@@ -189,7 +190,7 @@ def _append_batch_progress_message(user_id: str, project_id: str, message: str) 
             },
         )
         messages = entry.setdefault("status_messages", [])
-        if isinstance(messages, list) and len(messages) < 300:
+        if isinstance(messages, list) and len(messages) < AI_BATCH_STATUS_MESSAGES_MAX:
             messages.append(msg)
         entry["updated_at"] = datetime.now().isoformat()
 
@@ -218,7 +219,7 @@ def _finalize_batch_progress(
         entry["status"] = status
         entry["detail"] = detail
         if isinstance(status_messages, list):
-            entry["status_messages"] = status_messages[:300]
+            entry["status_messages"] = status_messages[:AI_BATCH_STATUS_MESSAGES_MAX]
         entry["updated_at"] = datetime.now().isoformat()
         entry["expires_at"] = (
             None
@@ -2629,7 +2630,7 @@ async def _run_or_get_batch_analysis(
         if not msg:
             return
         # Keep a bounded list to avoid oversized payloads.
-        if len(status_messages) < 100:
+        if len(status_messages) < AI_BATCH_STATUS_MESSAGES_MAX:
             status_messages.append(msg)
         _append_batch_progress_message(user_id, project_id, msg)
         logger.info(f"[AI Batch] {msg}")
