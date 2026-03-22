@@ -9,6 +9,9 @@ import type {
   PortfolioSettings,
   PublicPortfolioResponse,
   ProjectEvolutionItem,
+  ResourceSuggestionsResponse,
+  LinkedInPostRequest,
+  LinkedInPostResponse,
 } from "@/types/portfolio";
 import { request } from "@/lib/api";
 
@@ -142,4 +145,31 @@ export async function getPublicPortfolio(shareToken: string): Promise<PublicPort
     throw new Error(result.error ?? "Failed to load public portfolio");
   }
   return result.data;
+}
+
+// ── Resource Suggestions ────────────────────────────────────────────
+
+export async function getResourceSuggestions(
+  token: string,
+  role?: string,
+): Promise<ResourceSuggestionsResponse> {
+  const params = role ? `?role=${encodeURIComponent(role)}` : "";
+  return call(
+    `/api/portfolio/resource-suggestions${params}`,
+    { headers: authHeaders(token) },
+    "Failed to fetch resource suggestions",
+  );
+}
+
+// ── LinkedIn Post ───────────────────────────────────────────────────
+
+export async function generateLinkedInPost(
+  token: string,
+  body: LinkedInPostRequest,
+): Promise<LinkedInPostResponse> {
+  return call(
+    "/api/portfolio/linkedin-post",
+    { method: "POST", headers: authHeaders(token), body: JSON.stringify(body) },
+    "Failed to generate LinkedIn post",
+  );
 }
