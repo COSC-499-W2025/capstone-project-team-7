@@ -65,13 +65,14 @@ function deduplicateBranches(branches: GitBranchInfo[]): GitBranchInfo[] {
     if (!existing) {
       map.set(short, b);
     } else {
-      // Prefer the entry with more data
-      const existingScore =
-        (existing.created_date ? 1 : 0) + (existing.merge_date ? 1 : 0);
-      const newScore = (b.created_date ? 1 : 0) + (b.merge_date ? 1 : 0);
-      if (newScore > existingScore) {
-        map.set(short, b);
-      }
+      // Merge info from both entries — if either says merged, it's merged
+      const merged: GitBranchInfo = {
+        name: short, // use short name as canonical
+        created_date: existing.created_date || b.created_date,
+        is_merged: existing.is_merged || b.is_merged,
+        merge_date: existing.merge_date || b.merge_date,
+      };
+      map.set(short, merged);
     }
   }
   return Array.from(map.values());
