@@ -20,11 +20,6 @@ export interface ScanResultSummary {
   issues_count: number;
 }
 
-export interface DetectedProject {
-  name: string;
-  type: string;
-}
-
 export interface ScanResult {
   summary: ScanResultSummary;
   languages: Array<{ name: string; count: number; lines: number }>;
@@ -34,10 +29,6 @@ export interface ScanResult {
   git_repos_count: number;
   files: Array<Record<string, unknown>>;
   timings: Array<[string, number]>;
-  // Multi-project fields (present when a ZIP contains multiple projects)
-  project_ids?: string[];
-  projects_created?: number;
-  detected_projects?: DetectedProject[];
 }
 
 export interface ScanStatusResponse {

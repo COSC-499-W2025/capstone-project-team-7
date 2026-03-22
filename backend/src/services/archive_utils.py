@@ -27,7 +27,7 @@ _ZIP_EXCLUDE_DIRS = {
 _ZIP_EXCLUDE_FILES = {".DS_Store"}
 
 
-def derive_excluded_dirs(preferences: ScanPreferences | None) -> Set[str]:
+def _derive_excluded_dirs(preferences: ScanPreferences | None) -> Set[str]:
     if preferences and preferences.excluded_dirs is not None:
         # Treat user configuration as authoritative; always keep tmp archive cache out.
         return set(preferences.excluded_dirs) | {".tmp_archives"}
@@ -52,7 +52,7 @@ def ensure_zip(target: Path, *, preferences: ScanPreferences | None = None) -> P
     archive_path = archive_base.with_suffix(".zip")
     metadata_path = archive_base.with_suffix(".json")
 
-    exclude_dirs = derive_excluded_dirs(preferences)
+    exclude_dirs = _derive_excluded_dirs(preferences)
     follow_symlinks = (
         preferences.follow_symlinks
         if preferences and preferences.follow_symlinks is not None
