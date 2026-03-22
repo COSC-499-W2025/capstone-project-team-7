@@ -130,6 +130,15 @@ def setup_project_service(monkeypatch, tmp_path: Path):
     return fake_service
 
 
+@pytest.fixture(autouse=True)
+def clear_batch_progress_state():
+    with project_routes._ai_batch_progress_lock:
+        project_routes._ai_batch_progress.clear()
+    yield
+    with project_routes._ai_batch_progress_lock:
+        project_routes._ai_batch_progress.clear()
+
+
 def test_run_ai_batch_and_fetch_cached(setup_project_service):
     token = _make_token("user-1")
     project_id = setup_project_service.project["id"]
@@ -182,8 +191,40 @@ def test_ai_batch_status_endpoint_reports_live_snapshot(setup_project_service):
     )
     assert after_resp.status_code == 200
     after_data = after_resp.json()
-    assert after_data["status"] == "idle"
-    assert after_data["status_messages"] == []
+    assert after_data["status"] == "used:batch"
+    assert isinstance(after_data["status_messages"], list)
+    assert any("Batch" in msg or "Initializing" in msg for msg in after_data["status_messages"])
+
+
+def test_ai_batch_status_terminal_snapshot_expires_after_ttl(setup_project_service, monkeypatch):
+    token = _make_token("user-status-ttl")
+    project_id = setup_project_service.project["id"]
+
+    clock = {"now": 1000.0}
+    monkeypatch.setattr(project_routes, "AI_BATCH_PROGRESS_TERMINAL_TTL_SEC", 30)
+    monkeypatch.setattr(project_routes.time, "time", lambda: clock["now"])
+
+    run_resp = client.post(
+        f"/api/projects/{project_id}/ai-batch",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert run_resp.status_code == 200
+
+    clock["now"] = 1010.0
+    during_ttl_resp = client.get(
+        f"/api/projects/{project_id}/ai-batch/status",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert during_ttl_resp.status_code == 200
+    assert during_ttl_resp.json()["status"] == "used:batch"
+
+    clock["now"] = 1031.0
+    expired_resp = client.get(
+        f"/api/projects/{project_id}/ai-batch/status",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert expired_resp.status_code == 200
+    assert expired_resp.json()["status"] == "idle"
 
 
 def test_ai_analysis_uses_cached_batch_result(monkeypatch, tmp_path: Path):
@@ -293,6 +334,59 @@ def test_run_ai_batch_missing_cached_result_returns_missing(monkeypatch):
     data = resp.json()
     assert data["status"] == "missing"
     assert data["cached"] is False
+
+
+def test_run_ai_batch_returns_403_when_consent_not_granted(setup_project_service, monkeypatch):
+    class DeniedConsentValidator:
+        def validate_external_services_consent(self, _user_id: str) -> bool:
+            return False
+
+    monkeypatch.setattr(project_routes, "ConsentValidator", DeniedConsentValidator)
+
+    token = _make_token("user-consent-denied")
+    project_id = setup_project_service.project["id"]
+    resp = client.post(
+        f"/api/projects/{project_id}/ai-batch",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert resp.status_code == 403
+    assert resp.json().get("detail") == "External services consent not granted."
+
+
+def test_run_ai_batch_returns_422_when_consent_check_fails(setup_project_service, monkeypatch):
+    class BrokenConsentValidator:
+        def validate_external_services_consent(self, _user_id: str) -> bool:
+            raise RuntimeError("consent backend unavailable")
+
+    monkeypatch.setattr(project_routes, "ConsentValidator", BrokenConsentValidator)
+
+    token = _make_token("user-consent-error")
+    project_id = setup_project_service.project["id"]
+    resp = client.post(
+        f"/api/projects/{project_id}/ai-batch",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert resp.status_code == 422
+    assert resp.json().get("detail") == "Consent check failed. Please retry."
+
+
+def test_run_ai_batch_returns_422_when_api_key_missing(setup_project_service, monkeypatch):
+    async def fake_hydrate_none(_user_id: str, _access_token: str):
+        return None
+
+    monkeypatch.setattr(project_routes, "get_or_hydrate_llm_client", fake_hydrate_none)
+
+    token = _make_token("user-no-key")
+    project_id = setup_project_service.project["id"]
+    resp = client.post(
+        f"/api/projects/{project_id}/ai-batch",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert resp.status_code == 422
+    assert resp.json().get("detail") == "No API key verified. Please verify your key in Settings."
 
 
 def test_resolve_project_source_path_falls_back_to_project_path(tmp_path: Path):
