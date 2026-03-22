@@ -998,8 +998,14 @@ class ProjectsService:
     # --- Encryption helpers -------------------------------------------------
 
     def _encrypt_scan_data(self, scan_data: Dict[str, Any]) -> Any:
-        """Encryption disabled — return scan data as-is."""
-        return scan_data
+        """Encrypt full scan payload when encryption is available."""
+        if not self._encryption:
+            return scan_data
+        try:
+            envelope = self._encryption.encrypt_json(scan_data)
+            return envelope.to_dict()
+        except Exception as exc:
+            raise ProjectsServiceError(f"Failed to encrypt scan data: {exc}") from exc
 
     def _decrypt_scan_data(self, scan_data: Any) -> Any:
         """Attempt to decrypt legacy encrypted scan_data; fall back to original on failure."""
