@@ -8,7 +8,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import type { ProjectContributionMetrics } from "@/types/project";
+import type { ProjectContributionMetrics, ProjectCategoryInfo } from "@/types/project";
 
 interface OverviewTabProps {
   projectName: string;
@@ -24,6 +24,7 @@ interface OverviewTabProps {
   pdfDocs: number;
   otherDocs: number;
   contributionMetrics?: Pick<ProjectContributionMetrics, "total_commits" | "total_contributors"> | null;
+  projectCategory?: ProjectCategoryInfo | null;
 }
 
 export function OverviewTab({
@@ -40,6 +41,7 @@ export function OverviewTab({
   pdfDocs,
   otherDocs,
   contributionMetrics,
+  projectCategory,
 }: OverviewTabProps) {
   return (
     <div className="space-y-6">
@@ -79,6 +81,19 @@ export function OverviewTab({
               </p>
               <p className="text-sm text-gray-900 mt-1">{scanDurationLabel}</p>
             </div>
+            {projectCategory && (
+              <div>
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Project Category
+                </p>
+                <p className="text-sm font-semibold text-gray-900 mt-1">
+                  {projectCategory.label}
+                </p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {Math.round(projectCategory.confidence * 100)}% confidence
+                </p>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
