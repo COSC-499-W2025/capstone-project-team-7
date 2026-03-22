@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any, cast
 from datetime import datetime
 import asyncio
+import json
 import logging
 import sys
 import os
@@ -30,6 +31,7 @@ try:
     )
     from auth.consent_validator import ConsentValidator
     from api.llm_routes import get_user_client
+    from api.settings_routes import get_or_hydrate_llm_client
     from services.services.export_service import ExportService
 except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
     from backend.src.services.services.projects_service import ProjectsService, ProjectsServiceError
@@ -41,6 +43,7 @@ except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fal
     )
     from backend.src.auth.consent_validator import ConsentValidator
     from backend.src.api.llm_routes import get_user_client
+    from backend.src.api.settings_routes import get_or_hydrate_llm_client
     from backend.src.services.services.export_service import ExportService
 
 try:
@@ -1273,8 +1276,9 @@ async def create_project_from_upload(
             preferences=preferences,
         )
 
-        with tempfile.TemporaryDirectory() as temp_dir:
-            analysis_target = _extract_archive_for_analysis(storage_path, Path(temp_dir))
+        with tempfile.TemporaryDirectory() as _td:
+            temp_dir = Path(_td)
+            analysis_target = _extract_archive_for_analysis(storage_path, temp_dir)
             languages = summarize_languages(parse_result.files)
             summary: Dict[str, Any] = dict(parse_result.summary)
             summary["languages"] = languages
@@ -1335,8 +1339,12 @@ async def create_project_from_upload(
             logger.info("✨ All analysis pipelines completed")
             logger.info("=" * 50)
 
+            # Preserve the original local path the user selected (from upload metadata).
+            # This persists across restarts and is used as the primary source for AI analysis.
+            original_local_path = upload_data.get("metadata", {}).get("source_path")
+
             scan_data: Dict[str, Any] = {
-                "archive": str(storage_path),
+                "project_source_path": original_local_path or str(analysis_target),
                 "summary": summary,
                 "files": _serialize_parse_files(parse_result.files),
                 "issues": _serialize_parse_issues(parse_result.issues),
@@ -1376,7 +1384,26 @@ async def create_project_from_upload(
                 scan_data["duplicate_report"] = duplicate_report
             else:
                 logger.warning("⚠️  No duplicate report data to save")
-            
+
+            # Project auto-categorization
+            try:
+                from analyzer.project_classifier import safe_classify_project
+                cat_result = safe_classify_project(parse_result.files, languages)
+                if cat_result is not None:
+                    scan_data["project_category"] = {
+                        "category": cat_result.category,
+                        "label": cat_result.label,
+                        "confidence": cat_result.confidence,
+                    }
+            except Exception as e:
+                logger.warning(f"⚠️  Project auto-categorization failed: {e}")
+
+            # File snippets for AI analysis (stored at scan time for reliability)
+            file_snippets_for_ai = _collect_files_for_ai(analysis_target)
+            if file_snippets_for_ai:
+                scan_data["file_snippets"] = file_snippets_for_ai
+                logger.info(f"💾 Saving {len(file_snippets_for_ai)} file snippets for AI analysis")
+
             logger.info(f"📦 Final scan_data keys: {list(scan_data.keys())}")
 
         project_path = request.project_path or upload_data.get("metadata", {}).get("original_filename") or storage_path.name
@@ -1840,31 +1867,28 @@ async def generate_project_skill_summary(
         try:
             has_consent = consent_validator.validate_external_services_consent(user_id)
         except Exception:
-            return SkillProgressSummaryResponse(
-                project_id=project_id,
-                note="Consent check failed. Please retry.",
-                llm_status="skipped:consent_check_failed",
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Consent check failed. Please retry.",
             )
 
         if not has_consent:
-            return SkillProgressSummaryResponse(
-                project_id=project_id,
-                note="External services consent not granted.",
-                llm_status="skipped:consent_not_granted",
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="External services consent not granted.",
             )
 
         client = get_user_client(user_id)
         if client is None:
-            return SkillProgressSummaryResponse(
-                project_id=project_id,
-                note="No API key verified. Please verify your key in Settings.",
-                llm_status="skipped:no_api_key",
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="No API key verified. Please verify your key in Settings.",
             )
 
         from analyzer.llm.skill_progress_summary import summarize_skill_progress
 
         def call_model(prompt: str) -> str:
-            return client._make_llm_call(
+            return client.make_llm_call(
                 [{"role": "user", "content": prompt}],
                 max_tokens=1200,
                 temperature=0.6,
@@ -1898,6 +1922,454 @@ async def generate_project_skill_summary(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred",
+        )
+
+
+# ---------------------------------------------------------------------------
+# AI analysis helpers
+# ---------------------------------------------------------------------------
+
+_AI_MAX_FILES = 50          # max files to include in the prompt
+_AI_MAX_FILE_CHARS = 2500   # max chars per file (rest truncated)
+_AI_MAX_TOTAL_CHARS = 55_000  # total content budget across all files
+
+_TEXT_EXTENSIONS = {
+    ".py", ".js", ".ts", ".tsx", ".jsx", ".java", ".go", ".rs",
+    ".c", ".cpp", ".h", ".hpp", ".cs", ".rb", ".php", ".swift",
+    ".kt", ".scala", ".r", ".sql", ".sh", ".bash", ".yml", ".yaml",
+    ".json", ".toml", ".ini", ".cfg", ".md", ".css", ".html",
+    ".vue", ".svelte", ".txt",
+}
+_TEXT_MIME_PREFIXES = ("text/",)
+_TEXT_MIME_EXACT = {
+    "application/json", "application/xml", "application/javascript",
+    "application/typescript",
+}
+
+# Maps scan_data key → (display label, requested JSON key in prompt)
+_AI_CATEGORY_MAP: List[tuple[str, str]] = [
+    ("code_analysis",     "Code Analysis"),
+    ("git_analysis",      "Git Analysis"),
+    ("pdf_analysis",      "PDF Analysis"),
+    ("document_analysis", "Document Analysis"),
+    ("media_analysis",    "Media Analysis"),
+    ("skills_analysis",   "Skills Analysis"),
+    ("skills_progress",   "Skills Progress"),
+]
+
+
+def _is_text_file(path_str: str, mime_type: str) -> bool:
+    ext = Path(path_str).suffix.lower()
+    return (
+        ext in _TEXT_EXTENSIONS
+        or (mime_type and (
+            any(mime_type.startswith(p) for p in _TEXT_MIME_PREFIXES)
+            or mime_type in _TEXT_MIME_EXACT
+        ))
+    )
+
+
+def _collect_files_for_ai(
+    source_path: Path,
+    max_files: int = _AI_MAX_FILES,
+) -> List[Dict[str, str]]:
+    """
+    Read text/code file contents from a directory for LLM context.
+
+    Returns a list of {path, content} dicts where each content is truncated
+    to _AI_MAX_FILE_CHARS.  Total content is capped at _AI_MAX_TOTAL_CHARS.
+    """
+    results: List[Dict[str, str]] = []
+    total_chars = 0
+
+    if not source_path.exists() or not source_path.is_dir():
+        return results
+
+    source_resolved = source_path.resolve()
+
+    for fpath in sorted(source_path.rglob("*")):
+        if len(results) >= max_files or total_chars >= _AI_MAX_TOTAL_CHARS:
+            break
+
+        if not fpath.is_file():
+            continue
+
+        path_str = str(fpath.relative_to(source_path))
+        if not _is_text_file(path_str, ""):
+            continue
+
+        # Security: must stay within source directory
+        try:
+            fpath.resolve().relative_to(source_resolved)
+        except ValueError:
+            continue
+
+        try:
+            content = fpath.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+
+        content = content.strip()
+        if not content:
+            continue
+
+        if len(content) > _AI_MAX_FILE_CHARS:
+            content = content[:_AI_MAX_FILE_CHARS] + "\n... [truncated]"
+
+        results.append({"path": path_str, "content": content})
+        total_chars += len(content)
+
+    return results
+
+
+class AiAnalysisCategoryResult(BaseModel):
+    category: str
+    label: str
+    summary: Optional[str] = None
+    insights: Optional[List[str]] = None
+
+
+class AiAnalysisResult(BaseModel):
+    overall_summary: Optional[str] = None
+    categories: Optional[List[Dict[str, Any]]] = None
+    # Legacy fields kept for backward compat with already-cached results
+    portfolio_overview: Optional[str] = None
+    project_insights: Optional[List[str]] = None
+    key_achievements: Optional[List[str]] = None
+    recommendations: Optional[List[str]] = None
+
+
+class AiAnalysisResponse(BaseModel):
+    project_id: str
+    result: AiAnalysisResult
+    llm_status: str = "used"
+    cached: bool = False
+
+
+def _build_categorized_ai_prompt(
+    project_name: str,
+    scan_data: Dict[str, Any],
+    file_snippets: List[Dict[str, str]],
+    active_categories: List[tuple[str, str]],
+) -> str:
+    """
+    Build a prompt that feeds real file content + structured metadata for each
+    detected analysis category and requests per-category JSON output.
+    """
+    summary = scan_data.get("summary") or {}
+    total_files = summary.get("total_files") or scan_data.get("total_files") or 0
+    total_lines = summary.get("total_lines") or scan_data.get("total_lines") or 0
+
+    raw_langs = scan_data.get("languages") or summary.get("languages") or []
+    if isinstance(raw_langs, list):
+        lang_names = [
+            (l.get("name") or l.get("language") or str(l)) if isinstance(l, dict) else str(l)
+            for l in raw_langs[:8]
+        ]
+    elif isinstance(raw_langs, dict):
+        lang_names = list(raw_langs.keys())[:8]
+    else:
+        lang_names = []
+    languages_str = ", ".join(lang_names) if lang_names else "not detected"
+
+    lines: List[str] = [
+        "You are a technical analyst writing portfolio content for a software developer.",
+        "",
+        f"Project name: {project_name}",
+        f"Languages: {languages_str}",
+        f"Total files: {total_files}, Total lines: {total_lines}",
+        "",
+        "=== ANALYSIS DATA ===",
+    ]
+
+    # --- per-category metadata context ---
+    for cat_key, cat_label in active_categories:
+        data = scan_data.get(cat_key)
+        if not data:
+            continue
+        lines.append(f"\n[[ {cat_label.upper()} ]]")
+
+        if cat_key == "code_analysis" and isinstance(data, dict):
+            lines.append(f"  Files: {data.get('total_files', 0)}, Lines: {data.get('total_lines', 0)}")
+            lines.append(f"  Functions: {data.get('functions', 0)}, Classes: {data.get('classes', 0)}")
+            lines.append(f"  Avg complexity: {data.get('avg_complexity', 'N/A')}")
+            lines.append(f"  Magic values: {data.get('magic_values', 0)}, Naming issues: {data.get('naming_issues', 0)}")
+            dc = data.get("dead_code") or {}
+            if isinstance(dc, dict):
+                lines.append(f"  Dead code: {dc.get('total', 0)} (unused fns: {dc.get('unused_functions', 0)}, unused imports: {dc.get('unused_imports', 0)})")
+            langs = data.get("languages") or {}
+            if isinstance(langs, dict) and langs:
+                top_langs = ", ".join(list(langs.keys())[:6])
+                lines.append(f"  Code languages: {top_langs}")
+
+        elif cat_key == "git_analysis" and isinstance(data, list) and data:
+            g = data[0]
+            lines.append(f"  Commits: {g.get('commit_count', 0)}")
+            contributors = g.get("contributors") or []
+            if contributors:
+                names = ", ".join(c.get("name", "?") for c in contributors[:5])
+                lines.append(f"  Contributors: {names}")
+            timeline = g.get("timeline") or []
+            if timeline:
+                lines.append(f"  Active months: {len(timeline)}")
+            branches = g.get("branches") or []
+            if branches:
+                lines.append(f"  Branches: {', '.join(str(b) for b in branches[:5])}")
+
+        elif cat_key == "pdf_analysis" and isinstance(data, list) and data:
+            for pdf in data[:5]:
+                lines.append(f"  PDF: {pdf.get('file_name', '?')}")
+                if pdf.get("summary"):
+                    lines.append(f"    Summary: {str(pdf['summary'])[:300]}")
+                if pdf.get("key_topics"):
+                    lines.append(f"    Topics: {', '.join(str(t) for t in pdf['key_topics'][:5])}")
+
+        elif cat_key == "document_analysis" and isinstance(data, list) and data:
+            for doc in data[:5]:
+                lines.append(f"  Doc: {doc.get('file_name', '?')} ({doc.get('file_type', '?')})")
+                if doc.get("summary"):
+                    lines.append(f"    Summary: {str(doc['summary'])[:300]}")
+
+        elif cat_key == "media_analysis" and isinstance(data, dict):
+            lines.append(f"  Media files: {data.get('total_media_files', data.get('file_count', '?'))}")
+            types = data.get("media_types") or data.get("file_types") or {}
+            if types:
+                lines.append(f"  Types: {', '.join(str(k) for k in list(types.keys())[:5])}")
+
+        elif cat_key in ("skills_analysis", "skills_progress") and isinstance(data, dict):
+            skills_by_cat = data.get("skills_by_category") or {}
+            for scat, entries in list(skills_by_cat.items())[:6]:
+                if not isinstance(entries, list):
+                    continue
+                names = [
+                    (e.get("name") if isinstance(e, dict) else str(e))
+                    for e in entries[:5]
+                ]
+                lines.append(f"  {scat}: {', '.join(n for n in names if n)}")
+
+    # --- file content section ---
+    if file_snippets:
+        lines.append(f"\n=== FILE CONTENTS ({len(file_snippets)} representative files) ===")
+        for s in file_snippets:
+            lines.append(f"\n### {s['path']}\n```\n{s['content']}\n```")
+
+    # --- task / JSON spec ---
+    json_fields_doc = '\n'.join(
+        f'  "{cat_key}": {{"summary": "1-3 sentence summary for {cat_label}", "insights": ["insight 1", "insight 2", "insight 3"]}}'
+        for cat_key, cat_label in active_categories
+    )
+
+    lines += [
+        "",
+        "=== TASK ===",
+        "Based on the analysis data and file contents above, produce a JSON object with exactly these keys:",
+        '  "overall_summary": "3-5 sentence portfolio-ready paragraph about the entire project",',
+        json_fields_doc,
+        "",
+        "Rules:",
+        "- Each category 'insights' list must have 3-5 concise bullet-style strings backed by evidence.",
+        "- Only include keys listed above.",
+        "- Return only valid JSON. No markdown fences, no extra text.",
+    ]
+
+    return "\n".join(lines)
+
+
+@router.post(
+    "/{project_id}/ai-analysis",
+    response_model=AiAnalysisResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Project not found"},
+        500: {"model": ErrorResponse, "description": "Server error"},
+    },
+)
+async def run_project_ai_analysis(
+    project_id: str,
+    force: bool = False,
+    user_id: str = Depends(verify_auth_token),
+) -> AiAnalysisResponse:
+    """
+    Run LLM-based portfolio analysis for an existing project using stored scan_data.
+
+    - Requires External Data consent and a verified OpenAI API key in Settings.
+    - If AI analysis already exists in scan_data and force=False, returns cached result.
+    - Saves the result to scan_data["ai_analysis"] for future retrieval.
+    """
+    try:
+        service = get_projects_service()
+        project = await asyncio.to_thread(service.get_project_scan, user_id, project_id)
+
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Project {project_id} not found",
+            )
+
+        scan_data = project.get("scan_data") or {}
+        project_name = project.get("project_name") or "Unnamed Project"
+
+        # Return cached result if available and not forced
+        existing = scan_data.get("ai_analysis") if isinstance(scan_data, dict) else None
+        if existing and not force:
+            return AiAnalysisResponse(
+                project_id=project_id,
+                result=AiAnalysisResult(
+                    overall_summary=existing.get("overall_summary"),
+                    categories=existing.get("categories"),
+                    # legacy compat
+                    portfolio_overview=existing.get("portfolio_overview"),
+                    project_insights=existing.get("project_insights"),
+                    key_achievements=existing.get("key_achievements"),
+                    recommendations=existing.get("recommendations"),
+                ),
+                llm_status="used:cached",
+                cached=True,
+            )
+
+        # Check consent
+        consent_validator = ConsentValidator()
+        try:
+            has_consent = consent_validator.validate_external_services_consent(user_id)
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Consent check failed. Please retry.",
+            )
+        if not has_consent:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="External services consent not granted.",
+            )
+
+        access_token = get_request_access_token() or ""
+        client = await get_or_hydrate_llm_client(user_id, access_token)
+        if client is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="No API key verified. Please verify your key in Settings.",
+            )
+
+        # ------------------------------------------------------------------
+        # Determine which analysis categories exist in this project's data.
+        # ------------------------------------------------------------------
+        active_categories: List[tuple[str, str]] = [
+            (cat_key, cat_label)
+            for cat_key, cat_label in _AI_CATEGORY_MAP
+            if scan_data.get(cat_key)
+        ]
+        # Always include code_analysis context if we have it via has_* flag
+        if not any(k == "code_analysis" for k, _ in active_categories):
+            if scan_data.get("has_code_analysis"):
+                active_categories.insert(0, ("code_analysis", "Code Analysis"))
+
+        # ------------------------------------------------------------------
+        # Read file contents from the project's permanent source directory.
+        # Falls back to metadata-only if the path no longer exists on disk.
+        # ------------------------------------------------------------------
+        # Use file snippets stored in scan_data at scan time (reliable across
+        # restarts, environments, and Docker — no disk path dependency).
+        file_snippets: List[Dict[str, str]] = []
+
+        # 1. Try the original local path first (works in Electron/local installs
+        #    where the user's project folder still exists on disk).
+        source_path_str = scan_data.get("project_source_path") if isinstance(scan_data, dict) else None
+        file_source = "none"
+        if source_path_str:
+            source_path = Path(source_path_str)
+            if source_path.exists() and source_path.is_dir():
+                file_snippets = await asyncio.to_thread(_collect_files_for_ai, source_path)
+                file_source = f"live:{source_path_str}"
+            else:
+                logger.info(f"[AI Analysis] source path not on disk: {source_path_str}")
+
+        # 2. Fall back to snapshots stored in Supabase at scan time.
+        if not file_snippets:
+            file_snippets = scan_data.get("file_snippets") or []
+            if file_snippets:
+                file_source = "stored_snapshot"
+
+        logger.info(f"[AI Analysis] {project_id}: file_source={file_source}, files={len(file_snippets)}")
+
+        llm_status_value = (
+            f"used:path({len(file_snippets)} files)"
+            if file_snippets
+            else "used:metadata_only"
+        )
+
+        prompt = _build_categorized_ai_prompt(
+            project_name, scan_data, file_snippets, active_categories
+        )
+
+        def call_llm() -> str:
+            return client.make_llm_call(
+                [{"role": "user", "content": prompt}],
+                max_tokens=2000,
+                temperature=0.5,
+                response_format={"type": "json_object"},
+            )
+
+        raw = await asyncio.to_thread(call_llm)
+
+        try:
+            parsed = json.loads(raw) if isinstance(raw, str) else (raw or {})
+        except Exception:
+            logger.warning("Failed to parse LLM response as JSON; treating as empty result")
+            parsed = {}
+
+        def _to_str_list(val: Any) -> Optional[List[str]]:
+            if not isinstance(val, list):
+                return None
+            return [str(item) for item in val if item]
+
+        # Build per-category results from the LLM response
+        categories_out: List[Dict[str, Any]] = []
+        for cat_key, cat_label in active_categories:
+            cat_data = parsed.get(cat_key) or {}
+            if not isinstance(cat_data, dict):
+                continue
+            insights = _to_str_list(cat_data.get("insights"))
+            summary_text = cat_data.get("summary")
+            if insights or summary_text:
+                categories_out.append({
+                    "category": cat_key,
+                    "label": cat_label,
+                    "summary": str(summary_text) if summary_text else None,
+                    "insights": insights,
+                })
+
+        ai_result = {
+            "overall_summary": parsed.get("overall_summary"),
+            "categories": categories_out if categories_out else None,
+        }
+
+        # Persist to scan_data["ai_analysis"]
+        await asyncio.to_thread(service.patch_ai_analysis, user_id, project_id, ai_result)
+
+        return AiAnalysisResponse(
+            project_id=project_id,
+            result=AiAnalysisResult(
+                overall_summary=ai_result.get("overall_summary"),
+                categories=ai_result.get("categories"),
+            ),
+            llm_status=llm_status_value,
+            cached=False,
+        )
+
+    except HTTPException:
+        raise
+    except ProjectsServiceError as exc:
+        logger.error(f"Projects service error in ai-analysis: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to run AI analysis: {str(exc)}",
+        )
+    except Exception:
+        logger.exception("Unexpected error in run_project_ai_analysis")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while running AI analysis.",
         )
 
 

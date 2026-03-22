@@ -144,6 +144,12 @@ export interface ProjectDuplicateReport extends Record<string, unknown> {
   total_wasted_mb?: number;
 }
 
+export interface ProjectCategoryInfo {
+  category: string;
+  label: string;
+  confidence: number;
+}
+
 export interface ProjectScanData extends Record<string, unknown> {
   summary?: ProjectScanSummary;
   skills_analysis?: ProjectSkillsAnalysis;
@@ -157,6 +163,32 @@ export interface ProjectScanData extends Record<string, unknown> {
   duplicate_report?: ProjectDuplicateReport;
   files?: ProjectScanFile[];
   languages?: string[] | ProjectScanLanguageEntry[] | Record<string, unknown>;
+  project_category?: ProjectCategoryInfo;
+  ai_analysis?: ProjectAiAnalysis | null;
+}
+
+export interface ProjectAiAnalysisCategory {
+  category: string;
+  label: string;
+  summary?: string | null;
+  insights?: string[] | null;
+}
+
+export interface ProjectAiAnalysis {
+  overall_summary?: string | null;
+  categories?: ProjectAiAnalysisCategory[] | null;
+  // Legacy fields kept for backward compat with already-cached results
+  portfolio_overview?: string | null;
+  project_insights?: string[] | null;
+  key_achievements?: string[] | null;
+  recommendations?: string[] | null;
+}
+
+export interface AiAnalysisApiResponse {
+  project_id: string;
+  result: ProjectAiAnalysis;
+  llm_status: string;
+  cached: boolean;
 }
 
 export interface ProjectDetail extends ProjectMetadata {

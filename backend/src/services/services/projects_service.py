@@ -370,6 +370,46 @@ class ProjectsService:
                 return self._save_scan_local(user_id, project_name, project_path, scan_data, role)
             raise ProjectsServiceError(f"Failed to save scan: {exc}") from exc
     
+    def patch_ai_analysis(
+        self,
+        user_id: str,
+        project_id: str,
+        ai_analysis: Dict[str, Any],
+    ) -> None:
+        """
+        Persist AI analysis result into scan_data["ai_analysis"] for a project.
+
+        Args:
+            user_id: User's UUID
+            project_id: Project's UUID
+            ai_analysis: Dict with portfolio_overview, project_insights, key_achievements, recommendations
+        """
+        project = self.get_project_scan(user_id, project_id)
+        if not project:
+            raise ProjectsServiceError(f"Project {project_id} not found")
+
+        scan_data = project.get("scan_data") or {}
+        if not isinstance(scan_data, dict):
+            scan_data = {}
+        scan_data["ai_analysis"] = ai_analysis
+        encrypted = self._encrypt_scan_data(scan_data)
+
+        if self._use_local_store:
+            project_name = project.get("project_name", "")
+            local_store.upsert_project(user_id, project_name, {"scan_data": encrypted})
+            return
+
+        try:
+            response = self.client.table("projects").update(
+                {"scan_data": encrypted}
+            ).eq("id", project_id).eq("user_id", user_id).execute()
+            if not response.data:
+                raise ProjectsServiceError(f"Project {project_id} not found or access denied")
+        except ProjectsServiceError:
+            raise
+        except Exception as exc:
+            raise ProjectsServiceError(f"Failed to save AI analysis: {exc}") from exc
+
     def update_project_score(
         self,
         user_id: str,
@@ -968,7 +1008,7 @@ class ProjectsService:
             raise ProjectsServiceError(f"Failed to encrypt scan data: {exc}") from exc
 
     def _decrypt_scan_data(self, scan_data: Any) -> Any:
-        """Attempt to decrypt scan_data; fall back to original on failure."""
+        """Attempt to decrypt legacy encrypted scan_data; fall back to original on failure."""
         if not scan_data or not self._encryption:
             return scan_data
         if isinstance(scan_data, dict) and {"v", "iv", "ct"} <= set(scan_data.keys()):

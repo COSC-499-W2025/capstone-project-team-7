@@ -1053,6 +1053,15 @@ def _run_scan_background(
         if file_snippets:
             logger.info(f"Saving {len(file_snippets)} file snippets for AI analysis")
             result_payload["file_snippets"] = file_snippets
+        # Project auto-categorization
+        from analyzer.project_classifier import safe_classify_project
+        cat_result = safe_classify_project(scan_result.parse_result.files, scan_result.languages)
+        if cat_result is not None:
+            result_payload["project_category"] = {
+                "category": cat_result.category,
+                "label": cat_result.label,
+                "confidence": cat_result.confidence,
+            }
 
         if temp_analysis_dir is not None:
             temp_analysis_dir.cleanup()
