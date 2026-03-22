@@ -680,7 +680,24 @@ class LLMClient:
                 raise LLMError(f"Request timed out. Please check your internet connection and try again: {str(e)}")
             else:
                 raise LLMError(f"LLM call failed: {str(e)}")
-    
+
+    def make_llm_call(
+        self,
+        messages: List[Dict[str, str]],
+        model: Optional[str] = None,
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+        response_format: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """Public wrapper around _make_llm_call for external callers."""
+        return self._make_llm_call(
+            messages,
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            response_format=response_format,
+        )
+
     def chunk_and_summarize(self, text: str, file_type: str = "", 
                            chunk_size: int = 2000, overlap: int = 100) -> Dict[str, Any]:
         """
