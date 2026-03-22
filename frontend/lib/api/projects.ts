@@ -25,65 +25,6 @@ async function call<T>(path: string, init: RequestInit, fallback: string): Promi
   return result.data;
 }
 
-// Legacy helpers kept to avoid breaking any callers that import them directly.
-// New code should use call() / request() above.
-function firstNonEmptyString(value: unknown): string | null {
-  if (typeof value === "string" && value.trim()) return value;
-  return null;
-}
-
-function extractErrorMessage(detail: unknown, fallback: string): string {
-  const direct = firstNonEmptyString(detail);
-  if (direct) return direct;
-
-  if (Array.isArray(detail)) {
-    for (const item of detail) {
-      const itemString = firstNonEmptyString(item);
-      if (itemString) return itemString;
-      if (item && typeof item === "object") {
-        const message = firstNonEmptyString(
-          (item as Record<string, unknown>).message
-        );
-        if (message) return message;
-      }
-    }
-  }
-
-  if (detail && typeof detail === "object") {
-    const record = detail as Record<string, unknown>;
-    const message =
-      firstNonEmptyString(record.message) ||
-      firstNonEmptyString(record.error) ||
-      firstNonEmptyString(record.detail);
-    if (message) return message;
-
-    if (Array.isArray(record.errors)) {
-      for (const item of record.errors) {
-        const itemString = firstNonEmptyString(item);
-        if (itemString) return itemString;
-        if (item && typeof item === "object") {
-          const itemMessage = firstNonEmptyString(
-            (item as Record<string, unknown>).message
-          );
-          if (itemMessage) return itemMessage;
-        }
-      }
-    }
-  }
-
-  return fallback;
-}
-
-function extractErrorFromResponse(error: unknown, fallback: string): string {
-  if (error && typeof error === "object" && "detail" in (error as Record<string, unknown>)) {
-    return extractErrorMessage(
-      (error as Record<string, unknown>).detail,
-      fallback
-    );
-  }
-  return fallback;
-}
-
 export interface SelectionResponse {
   user_id: string;
   project_order: string[];
