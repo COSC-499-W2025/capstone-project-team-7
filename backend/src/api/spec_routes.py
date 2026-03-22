@@ -17,10 +17,7 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 import uuid
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
-
-if TYPE_CHECKING:
-    from src.scanner.models import ScanPreferences
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
@@ -61,7 +58,6 @@ logger = logging.getLogger(__name__)
 
 # Configuration constants
 MAX_FILES_IN_RESPONSE = 100  # Maximum number of files to include in scan response
-MAX_DETECTED_PROJECTS = 10  # Upper bound on sub-projects in a single scan
 _use_api_mode = os.getenv("USE_API_MODE", "false").lower() in ("true", "1", "yes")
 
 
@@ -682,371 +678,6 @@ def _default_config() -> Dict[str, Any]:
     }
 
 
-def _run_analysis_pipeline(
-    analysis_target: Path,
-    scan_result,
-    preferences: Optional["ScanPreferences"],
-    compact: bool = False,
-) -> Dict[str, Any]:
-    """Run all analysis phases on a single project directory.
-
-    Args:
-        analysis_target: Path to analyse.
-        scan_result: Output of scan_service.run_scan().
-        preferences: ScanPreferences instance.
-        compact: Use shorter timeouts and smaller thread pools — intended for
-                 multi-project scans where each sub-project is smaller.
-
-    Returns a result_payload dict containing scan summary and all analysis data.
-    """
-    import concurrent.futures
-
-    # Shorter timeouts and smaller pools in compact mode (multi-project sub-scans)
-    git_timeout = 60 if compact else 120
-    media_timeout = 30 if compact else 60
-    pdf_timeout = 45 if compact else 90
-    doc_timeout = 30 if compact else 60
-    code_max_timeout = 120 if compact else 300
-    skills_timeout = 60 if compact else 120
-    contrib_timeout = 45 if compact else 90
-    dupes_timeout = 30 if compact else 60
-    phase1_workers = 2 if compact else 4
-    phase3_workers = 2 if compact else 3
-
-    has_git_dir = (analysis_target / ".git").is_dir()
-
-    logger.info(
-        f"Analysis pipeline for: {analysis_target.name} "
-        f"(compact={compact}, has_git={has_git_dir})"
-    )
-
-    # PHASE 1: Run independent analyses in parallel
-    git_analysis = None
-    media_analysis = None
-    pdf_analysis = None
-    document_analysis = None
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=phase1_workers) as executor:
-        futures = {}
-        if has_git_dir:
-            futures["git"] = executor.submit(_run_git_analysis_for_path, analysis_target)
-        futures["media"] = executor.submit(_run_media_analysis, scan_result.parse_result)
-        futures["pdf"] = executor.submit(_run_pdf_analysis, analysis_target, scan_result.parse_result)
-        futures["doc"] = executor.submit(_run_document_analysis, analysis_target, scan_result.parse_result)
-
-        if "git" in futures:
-            try:
-                git_analysis = futures["git"].result(timeout=git_timeout)
-            except Exception as e:
-                logger.warning(f"Git analysis failed: {e}")
-        try:
-            media_analysis = futures["media"].result(timeout=media_timeout)
-        except Exception as e:
-            logger.warning(f"Media analysis failed: {e}")
-        try:
-            pdf_analysis = futures["pdf"].result(timeout=pdf_timeout)
-        except Exception as e:
-            logger.warning(f"PDF analysis failed: {e}")
-        try:
-            document_analysis = futures["doc"].result(timeout=doc_timeout)
-        except Exception as e:
-            logger.warning(f"Document analysis failed: {e}")
-
-    git_data = git_analysis[0] if git_analysis else None
-
-    # PHASE 2: Code Analysis
-    code_analysis = None
-    try:
-        total_files = len(scan_result.parse_result.files) if scan_result and scan_result.parse_result else 0
-        base_timeout = 30 if compact else 60
-        file_based_timeout = max(base_timeout, base_timeout + (total_files // 100) * 10)
-        timeout_seconds = min(file_based_timeout, code_max_timeout)
-
-        logger.info(f"Code analysis starting (timeout={timeout_seconds}s, {total_files} files)...")
-
-        result_container = [None]
-        exception_container = [None]
-
-        def run_with_exception_handling():
-            try:
-                result_container[0] = _run_code_analysis_for_path(analysis_target, preferences)
-            except Exception as e:
-                exception_container[0] = e
-
-        thread = threading.Thread(target=run_with_exception_handling, daemon=True)
-        thread.start()
-        thread.join(timeout=timeout_seconds)
-
-        if thread.is_alive():
-            logger.warning(f"Code analysis timed out after {timeout_seconds}s - skipping")
-        elif exception_container[0]:
-            logger.warning(f"Code analysis error: {exception_container[0]} - skipping")
-        else:
-            code_analysis = result_container[0]
-            if code_analysis:
-                logger.info(f"Code analysis completed: {list(code_analysis.keys())}")
-    except Exception as e:
-        logger.warning(f"Code analysis setup error: {e} - skipping")
-
-    # PHASE 3: Run dependent analyses in parallel
-    skills_analysis = None
-    contribution_metrics_payload = None
-    metrics_obj = None
-    duplicate_report = None
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=phase3_workers) as executor:
-        def run_skills_analysis():
-            try:
-                from services.services.skills_analysis_service import SkillsAnalysisService
-                skills_service = SkillsAnalysisService()
-                skills_service.extract_skills(
-                    target_path=analysis_target,
-                    code_analysis_result=code_analysis,
-                    git_analysis_result=git_data,
-                )
-                return _build_skills_analysis(skills_service)
-            except Exception as e:
-                logger.error(f"Skills analysis failed: {e}", exc_info=True)
-                return None
-
-        def run_contribution_metrics():
-            if not git_data:
-                return None, None
-            try:
-                from services.services.contribution_analysis_service import ContributionAnalysisService
-                metrics = ContributionAnalysisService().analyze_contributions(
-                    git_analysis=git_data,
-                    code_analysis=code_analysis,
-                    parse_result=scan_result.parse_result,
-                )
-                payload = _serialize_contribution_metrics(metrics)
-                return payload, metrics
-            except Exception as e:
-                logger.error(f"Contribution analysis failed: {e}", exc_info=True)
-                return None, None
-
-        def run_duplicate_detection():
-            try:
-                return _run_duplicate_detection(scan_result.parse_result)
-            except Exception as e:
-                logger.warning(f"Duplicate detection failed: {e}")
-                return None
-
-        future_skills = executor.submit(run_skills_analysis)
-        future_contrib = executor.submit(run_contribution_metrics)
-        future_dupes = executor.submit(run_duplicate_detection)
-
-        try:
-            skills_analysis = future_skills.result(timeout=skills_timeout)
-        except Exception as e:
-            logger.warning(f"Skills analysis timeout/error: {e}")
-        try:
-            contribution_metrics_payload, metrics_obj = future_contrib.result(timeout=contrib_timeout)
-        except Exception as e:
-            logger.warning(f"Contribution metrics timeout/error: {e}")
-        try:
-            duplicate_report = future_dupes.result(timeout=dupes_timeout)
-        except Exception as e:
-            logger.warning(f"Duplicate detection timeout/error: {e}")
-
-    # PHASE 4: Skills Progress Timeline
-    skills_progress = None
-    if skills_analysis:
-        chronological = skills_analysis.get("chronological_overview") or []
-        if chronological:
-            try:
-                from local_analysis.skill_progress_timeline import build_skill_progression
-                progression = build_skill_progression(chronological, metrics_obj)
-                from api.project_routes import _period_to_dict
-                skills_progress = {
-                    "timeline": [_period_to_dict(period) for period in progression.timeline],
-                }
-            except Exception as e:
-                logger.error(f"Skills progress failed: {e}", exc_info=True)
-
-    logger.info(f"Analysis complete for: {analysis_target.name}")
-
-    # Build result payload
-    parse_summary = dict(scan_result.parse_result.summary) if scan_result.parse_result else {}
-    files_data = []
-    for meta in scan_result.parse_result.files[:MAX_FILES_IN_RESPONSE]:
-        files_data.append({
-            "path": meta.path,
-            "size_bytes": meta.size_bytes,
-            "mime_type": meta.mime_type,
-            "file_hash": meta.file_hash,
-        })
-
-    result_payload: Dict[str, Any] = {
-        "summary": {
-            "total_files": parse_summary.get("files_processed", len(scan_result.parse_result.files)),
-            "bytes_processed": parse_summary.get("bytes_processed", 0),
-            "issues_count": parse_summary.get("issues_count", 0),
-        },
-        "languages": scan_result.languages,
-        "has_media_files": scan_result.has_media_files,
-        "pdf_count": len(scan_result.pdf_candidates),
-        "document_count": len(scan_result.document_candidates),
-        "git_repos_count": len(scan_result.git_repos),
-        "files": files_data,
-        "timings": scan_result.timings,
-    }
-
-    if git_analysis:
-        result_payload["git_analysis"] = git_analysis
-    if code_analysis:
-        result_payload["code_analysis"] = code_analysis
-    if skills_analysis:
-        result_payload["skills_analysis"] = skills_analysis
-    if contribution_metrics_payload:
-        result_payload["contribution_metrics"] = contribution_metrics_payload
-    if skills_progress:
-        result_payload["skills_progress"] = skills_progress
-    if media_analysis:
-        result_payload["media_analysis"] = media_analysis
-    if pdf_analysis:
-        result_payload["pdf_analysis"] = pdf_analysis
-    if document_analysis:
-        result_payload["document_analysis"] = document_analysis
-    if duplicate_report:
-        result_payload["duplicate_report"] = duplicate_report
-
-    # Convert all sets to lists for JSON serialization
-    def convert_sets_to_lists(obj):
-        if isinstance(obj, set):
-            return list(obj)
-        elif isinstance(obj, dict):
-            return {k: convert_sets_to_lists(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [convert_sets_to_lists(item) for item in obj]
-        else:
-            return obj
-
-    return convert_sets_to_lists(result_payload)
-
-
-def _persist_project(
-    result_payload: Dict[str, Any],
-    project_name: str,
-    project_path: str,
-    profile_id: str,
-    access_token: Optional[str],
-) -> Optional[str]:
-    """Persist a single project to the database and auto-generate portfolio/resume items.
-
-    Returns the project_id on success, None on failure.
-    """
-    logger.info(f"Persisting project '{project_name}' (user_id={profile_id})")
-    try:
-        projects_service = ProjectsService()
-        if access_token and hasattr(projects_service, "apply_access_token"):
-            projects_service.apply_access_token(access_token)
-
-        saved = projects_service.save_scan(
-            user_id=profile_id,
-            project_name=project_name,
-            project_path=project_path,
-            scan_data=result_payload,
-        )
-        project_id = saved.get("id")
-        result_payload["project_id"] = project_id
-        logger.info(f"Project saved: project_id={project_id}")
-
-        # Auto-generate portfolio item
-        try:
-            from services.services.portfolio_item_service import PortfolioItemService
-            from api.portfolio_routes import generate_portfolio_content_from_project
-
-            portfolio_service = PortfolioItemService()
-            portfolio_result = generate_portfolio_content_from_project(
-                project=saved,
-                persist=True,
-                user_id=profile_id,
-                portfolio_service=portfolio_service,
-            )
-            if portfolio_result.get("id"):
-                logger.info(f"Portfolio item auto-generated: {portfolio_result['id']}")
-                result_payload["portfolio_item_id"] = portfolio_result["id"]
-        except Exception as portfolio_err:
-            logger.warning(f"Failed to auto-generate portfolio item: {portfolio_err}", exc_info=True)
-            result_payload["portfolio_generation_warning"] = str(portfolio_err)
-
-        # Auto-rank project by contribution score
-        try:
-            contribution_metrics = result_payload.get("contribution_metrics")
-            if contribution_metrics:
-                from services.services.contribution_analysis_service import ContributionAnalysisService
-                ranking_service = ContributionAnalysisService()
-                ranking = ranking_service.compute_contribution_score(contribution_metrics)
-                projects_service.update_project_score(
-                    user_id=profile_id,
-                    project_id=project_id,
-                    contribution_score=ranking["score"],
-                    user_commit_share=ranking.get("user_commit_share", 0),
-                    total_commits=contribution_metrics.get("total_commits", 0),
-                )
-                logger.info(f"Project ranked: score={ranking['score']}")
-        except Exception as rank_err:
-            logger.warning(f"Failed to auto-rank project: {rank_err}", exc_info=True)
-            result_payload["ranking_warning"] = str(rank_err)
-
-        # Auto-generate resume item
-        try:
-            from services.services.resume_storage_service import ResumeStorageService
-            from api.resume_routes import generate_resume_content_from_project
-
-            resume_service = ResumeStorageService()
-            if access_token:
-                resume_service.apply_access_token(access_token)
-            resume_result = generate_resume_content_from_project(
-                project=saved,
-                persist=True,
-                user_id=profile_id,
-                resume_service=resume_service,
-            )
-            if resume_result.get("id"):
-                logger.info(f"Resume item auto-generated: {resume_result['id']}")
-                result_payload["resume_item_id"] = resume_result["id"]
-        except Exception as resume_err:
-            logger.warning(f"Failed to auto-generate resume item: {resume_err}", exc_info=True)
-            result_payload["resume_generation_warning"] = str(resume_err)
-
-        return project_id
-
-    except Exception as persist_err:
-        logger.error(f"Failed to persist project '{project_name}': {persist_err}", exc_info=True)
-        result_payload["persist_warning"] = str(persist_err)
-        return None
-
-
-def _scan_single_subproject(
-    proj_info,
-    scan_service,
-    relevance_only: bool,
-    preferences: Optional["ScanPreferences"],
-) -> tuple:
-    """Scan and analyse one sub-project.
-
-    Extracted to module level so it can be tested in isolation and has
-    explicit dependencies instead of capturing outer-scope variables.
-    """
-    logger.info(f"Starting sub-project: {proj_info.name} ({proj_info.project_type})")
-    sub_scan_result = scan_service.run_scan(
-        target=proj_info.path,
-        relevant_only=relevance_only,
-        preferences=preferences,
-    )
-    payload = _run_analysis_pipeline(
-        analysis_target=proj_info.path,
-        scan_result=sub_scan_result,
-        preferences=preferences,
-        compact=True,
-    )
-    payload["detected_project_type"] = proj_info.project_type
-    logger.info(f"Finished sub-project: {proj_info.name}")
-    return proj_info.name, str(proj_info.path), payload
-
-
 def _run_scan_background(
     scan_id: str,
     source_path: str,
@@ -1057,6 +688,7 @@ def _run_scan_background(
 ) -> None:
     """Background task that executes the scan pipeline."""
     try:
+        # Update status to running
         _update_scan_status(
             scan_id,
             JobState.running,
@@ -1075,156 +707,7 @@ def _run_scan_background(
             )
             return
 
-        # Set up scan service
-        from src.scanner.models import ScanPreferences
-        preferences = ScanPreferences()
-        if _use_api_mode and access_token:
-            from services.services.scan_service import ScanService
-            scan_service = ScanService(use_api=True)
-            scan_service.set_auth_token(access_token)
-        else:
-            scan_service = _get_scan_service()
-
-        # Detect sub-projects (works for both directories and ZIPs)
-        is_zip = target.is_file() and target.suffix.lower() == ".zip"
-        temp_analysis_dir: Optional[tempfile.TemporaryDirectory[str]] = None
-        detected_projects = []
-
-        if is_zip:
-            _update_scan_status(
-                scan_id,
-                JobState.running,
-                progress=Progress(percent=8.0, message="Extracting ZIP archive..."),
-            )
-            temp_analysis_dir = tempfile.TemporaryDirectory(prefix="scan-analysis-")
-            detection_root = _extract_archive_for_analysis(target, Path(temp_analysis_dir.name), preferences=preferences)
-        else:
-            detection_root = target
-
-        # Detect sub-projects within the source
-        try:
-            from analyzer.project_detector import ProjectDetector
-            detector = ProjectDetector()
-            detected_projects = detector.detect_projects(detection_root)
-            logger.info(
-                f"Detected {len(detected_projects)} project(s) in source: "
-                f"{[p.name for p in detected_projects]}"
-            )
-        except Exception as e:
-            logger.warning(f"Project detection failed, treating as single project: {e}")
-            detected_projects = []
-
-        # ------------------------------------------------------------------
-        # MULTI-PROJECT PATH: 2+ detected sub-projects (parallel)
-        # ------------------------------------------------------------------
-        if len(detected_projects) > 1:
-            import concurrent.futures
-
-            if len(detected_projects) > MAX_DETECTED_PROJECTS:
-                logger.warning(
-                    f"Detected {len(detected_projects)} projects, capping at {MAX_DETECTED_PROJECTS}"
-                )
-                detected_projects = detected_projects[:MAX_DETECTED_PROJECTS]
-
-            total_projects = len(detected_projects)
-            logger.info(f"Multi-project scan: {total_projects} projects detected, running in parallel")
-            _update_scan_status(
-                scan_id,
-                JobState.running,
-                progress=Progress(
-                    percent=10.0,
-                    message=f"Scanning {total_projects} projects in parallel...",
-                ),
-            )
-
-            # Cap parallelism to avoid overwhelming the machine
-            all_project_results: List[tuple] = []
-            max_parallel = min(total_projects, 2)
-            with concurrent.futures.ThreadPoolExecutor(max_workers=max_parallel) as pool:
-                future_to_proj = {
-                    pool.submit(
-                        _scan_single_subproject, pi, scan_service, relevance_only, preferences,
-                    ): pi
-                    for pi in detected_projects
-                }
-                for future in concurrent.futures.as_completed(future_to_proj):
-                    proj_info = future_to_proj[future]
-                    try:
-                        all_project_results.append(future.result())
-                    except Exception as e:
-                        logger.error(f"Sub-project '{proj_info.name}' failed: {e}", exc_info=True)
-
-            _update_scan_status(
-                scan_id,
-                JobState.running,
-                progress=Progress(percent=90.0, message="Saving projects..."),
-            )
-
-            # Persist sequentially (database writes)
-            all_project_ids: List[str] = []
-            if persist_project and profile_id:
-                for proj_name, proj_path, rp in all_project_results:
-                    pid = _persist_project(
-                        result_payload=rp,
-                        project_name=proj_name,
-                        project_path=proj_path,
-                        profile_id=profile_id,
-                        access_token=access_token,
-                    )
-                    if pid:
-                        all_project_ids.append(pid)
-
-            if temp_analysis_dir is not None:
-                temp_analysis_dir.cleanup()
-
-            # Build aggregated result for the scan status
-            payloads = [payload for _, _, payload in all_project_results]
-            total_files = sum(r["summary"]["total_files"] for r in payloads)
-            total_bytes = sum(r["summary"]["bytes_processed"] for r in payloads)
-            all_languages: List[Dict[str, Any]] = []
-            seen_langs = set()
-            for r in payloads:
-                for lang in r.get("languages", []):
-                    if lang.get("name") not in seen_langs:
-                        all_languages.append(lang)
-                        seen_langs.add(lang.get("name"))
-
-            aggregated_result: Dict[str, Any] = {
-                "summary": {
-                    "total_files": total_files,
-                    "bytes_processed": total_bytes,
-                    "issues_count": sum(r["summary"].get("issues_count", 0) for r in payloads),
-                },
-                "languages": all_languages,
-                "has_media_files": any(r.get("has_media_files") for r in payloads),
-                "pdf_count": sum(r.get("pdf_count", 0) for r in payloads),
-                "document_count": sum(r.get("document_count", 0) for r in payloads),
-                "git_repos_count": sum(r.get("git_repos_count", 0) for r in payloads),
-                "files": [],
-                "timings": [],
-                "project_ids": all_project_ids,
-                "projects_created": len(all_project_ids),
-                "detected_projects": [
-                    {"name": p.name, "type": p.project_type}
-                    for p in detected_projects
-                ],
-            }
-
-            _update_scan_status(
-                scan_id,
-                JobState.succeeded,
-                progress=Progress(
-                    percent=100.0,
-                    message=f"Scan completed: {len(all_project_ids)} projects created",
-                ),
-                result=aggregated_result,
-                project_id=all_project_ids[0] if all_project_ids else None,
-            )
-            return
-
-        # ------------------------------------------------------------------
-        # SINGLE-PROJECT PATH: directory or ZIP with 0-1 detected projects
-        # ------------------------------------------------------------------
+        # Progress callback for scan service
         def progress_callback(payload):
             if isinstance(payload, str):
                 _update_scan_status(
@@ -1245,18 +728,15 @@ def _run_scan_background(
                     ),
                 )
 
-        # Determine the analysis target
-        if is_zip and temp_analysis_dir is not None:
-            # Single project inside ZIP (or detection found exactly 1 project)
-            extracted_root = Path(temp_analysis_dir.name)
-            if len(detected_projects) == 1:
-                analysis_target = detected_projects[0].path
-            else:
-                analysis_target = extracted_root
+        # Run the scan
+        from src.scanner.models import ScanPreferences
+        preferences = ScanPreferences()
+        if _use_api_mode and access_token:
+            from services.services.scan_service import ScanService
+            scan_service = ScanService(use_api=True)
+            scan_service.set_auth_token(access_token)
         else:
-            analysis_target = target
-
-        # Run file scan
+            scan_service = _get_scan_service()
         scan_result = scan_service.run_scan(
             target=target,
             relevant_only=relevance_only,
@@ -1264,18 +744,300 @@ def _run_scan_background(
             progress_callback=progress_callback,
         )
 
+        analysis_target = target
+        temp_analysis_dir: Optional[tempfile.TemporaryDirectory[str]] = None
+
+        if target.is_file() and target.suffix.lower() == ".zip":
+            temp_analysis_dir = tempfile.TemporaryDirectory(prefix="scan-analysis-")
+            _extract_archive_for_analysis(target, Path(temp_analysis_dir.name))
+            analysis_target = Path(temp_analysis_dir.name)
+
+        # ========================================
+        # RUN ALL ANALYSES (optimized with parallel execution)
+        # ========================================
+        logger.info("=" * 50)
+        logger.info("🚀 Starting all analysis pipelines (parallel mode)...")
+        logger.info("=" * 50)
+        
         _update_scan_status(
             scan_id,
             JobState.running,
-            progress=Progress(percent=40.0, message="Running analyses..."),
+            progress=Progress(percent=40.0, message="Running parallel analyses..."),
         )
+        
+        # PHASE 1: Run independent analyses in parallel
+        # Git, Media, PDF, Document can all run simultaneously
+        import concurrent.futures
+        import threading
+        
+        git_analysis = None
+        media_analysis = None
+        pdf_analysis = None
+        document_analysis = None
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            logger.info("🔄 Phase 1: Running independent analyses in parallel...")
+            
+            # Submit all independent analyses
+            future_git = executor.submit(_run_git_analysis_for_path, analysis_target)
+            future_media = executor.submit(_run_media_analysis, scan_result.parse_result)
+            future_pdf = executor.submit(_run_pdf_analysis, analysis_target, scan_result.parse_result)
+            future_document = executor.submit(_run_document_analysis, analysis_target, scan_result.parse_result)
+            
+            # Collect results as they complete
+            try:
+                git_analysis = future_git.result(timeout=120)
+                logger.info("✅ Git analysis completed")
+            except Exception as e:
+                logger.warning(f"⚠️  Git analysis failed: {e}")
+            
+            try:
+                media_analysis = future_media.result(timeout=60)
+                logger.info("✅ Media analysis completed")
+            except Exception as e:
+                logger.warning(f"⚠️  Media analysis failed: {e}")
+            
+            try:
+                pdf_analysis = future_pdf.result(timeout=90)
+                logger.info("✅ PDF analysis completed")
+            except Exception as e:
+                logger.warning(f"⚠️  PDF analysis failed: {e}")
+            
+            try:
+                document_analysis = future_document.result(timeout=60)
+                logger.info("✅ Document analysis completed")
+            except Exception as e:
+                logger.warning(f"⚠️  Document analysis failed: {e}")
+        
+        logger.info("✨ Phase 1 complete")
+        
+        git_data = git_analysis[0] if git_analysis else None
+        
+        # PHASE 2: Code Analysis (with timeout to prevent hanging)
+        _update_scan_status(
+            scan_id,
+            JobState.running,
+            progress=Progress(percent=50.0, message="Running code analysis..."),
+        )
+        
+        code_analysis = None
+        try:
+            # Calculate timeout based on file count (minimum 60s, +10s per 100 files)
+            total_files = len(scan_result.parse_result.files) if scan_result and scan_result.parse_result else 0
+            base_timeout = 60
+            file_based_timeout = max(base_timeout, base_timeout + (total_files // 100) * 10)
+            timeout_seconds = min(file_based_timeout, 300)  # Cap at 5 minutes
+            
+            logger.info(f"🔄 Phase 2: Code analysis starting...")
+            logger.info(f"   Target: {analysis_target}")
+            logger.info(f"   Timeout: {timeout_seconds}s for {total_files} files")
+            
+            # Run code analysis with dynamic timeout
+            result_container = [None]
+            exception_container = [None]
+            
+            def run_with_exception_handling():
+                try:
+                    logger.info(f"   Starting code analysis thread...")
+                    result_container[0] = _run_code_analysis_for_path(analysis_target, preferences)
+                    logger.info(f"   Code analysis thread completed")
+                except Exception as e:
+                    logger.error(f"   Code analysis thread error: {e}")
+                    exception_container[0] = e
+            
+            thread = threading.Thread(target=run_with_exception_handling, daemon=True)
+            thread.start()
+            logger.info(f"   Waiting for code analysis (max {timeout_seconds}s)...")
+            thread.join(timeout=timeout_seconds)
+            
+            if thread.is_alive():
+                logger.warning(f"⚠️  Code analysis timed out after {timeout_seconds} seconds - skipping")
+                code_analysis = None
+            elif exception_container[0]:
+                logger.warning(f"⚠️  Code analysis error: {exception_container[0]} - skipping")
+                code_analysis = None
+            else:
+                code_analysis = result_container[0]
+                if code_analysis:
+                    logger.info(f"✅ Code analysis completed: {list(code_analysis.keys())}")
+                else:
+                    logger.info("⚠️  Code analysis returned None")
+        except Exception as e:
+            logger.warning(f"⚠️  Code analysis setup error: {e} - skipping")
+            code_analysis = None
+        
+        logger.info("✨ Phase 2 complete")
+        
+        # PHASE 3: Run dependent analyses in parallel
+        # Skills, Contribution Metrics, and Duplicate Detection can run together
+        _update_scan_status(
+            scan_id,
+            JobState.running,
+            progress=Progress(percent=65.0, message="Running dependent analyses..."),
+        )
+        
+        skills_analysis = None
+        contribution_metrics_payload = None
+        metrics_obj = None
+        duplicate_report = None
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+            logger.info("🔄 Phase 3: Running dependent analyses in parallel...")
+            
+            # Skills Analysis
+            def run_skills_analysis():
+                try:
+                    from services.services.skills_analysis_service import SkillsAnalysisService
+                    skills_service = SkillsAnalysisService()
+                    skills_service.extract_skills(
+                        target_path=analysis_target,
+                        code_analysis_result=code_analysis,
+                        git_analysis_result=git_data,
+                    )
+                    return _build_skills_analysis(skills_service)
+                except Exception as e:
+                    logger.error(f"❌ Skills analysis failed: {e}", exc_info=True)
+                    return None
+            
+            # Contribution Metrics
+            def run_contribution_metrics():
+                if not git_data:
+                    return None, None
+                try:
+                    from services.services.contribution_analysis_service import ContributionAnalysisService
+                    metrics = ContributionAnalysisService().analyze_contributions(
+                        git_analysis=git_data,
+                        code_analysis=code_analysis,
+                        parse_result=scan_result.parse_result,
+                    )
+                    payload = _serialize_contribution_metrics(metrics)
+                    return payload, metrics
+                except Exception as e:
+                    logger.error(f"❌ Contribution analysis failed: {e}", exc_info=True)
+                    return None, None
+            
+            # Duplicate Detection
+            def run_duplicate_detection():
+                try:
+                    return _run_duplicate_detection(scan_result.parse_result)
+                except Exception as e:
+                    logger.warning(f"⚠️  Duplicate detection failed: {e}")
+                    return None
+            
+            # Submit parallel tasks
+            future_skills = executor.submit(run_skills_analysis)
+            future_contrib = executor.submit(run_contribution_metrics)
+            future_dupes = executor.submit(run_duplicate_detection)
+            
+            # Collect results
+            try:
+                skills_analysis = future_skills.result(timeout=120)
+                if skills_analysis:
+                    logger.info("✅ Skills analysis completed")
+            except Exception as e:
+                logger.warning(f"⚠️  Skills analysis timeout/error: {e}")
+            
+            try:
+                contribution_metrics_payload, metrics_obj = future_contrib.result(timeout=90)
+                if contribution_metrics_payload:
+                    logger.info("✅ Contribution metrics completed")
+            except Exception as e:
+                logger.warning(f"⚠️  Contribution metrics timeout/error: {e}")
+            
+            try:
+                duplicate_report = future_dupes.result(timeout=60)
+                if duplicate_report:
+                    logger.info("✅ Duplicate detection completed")
+            except Exception as e:
+                logger.warning(f"⚠️  Duplicate detection timeout/error: {e}")
+        
+        logger.info("✨ Phase 3 complete")
+        
+        # PHASE 4: Skills Progress Timeline (depends on skills analysis)
+        skills_progress = None
+        if skills_analysis:
+            chronological = skills_analysis.get("chronological_overview") or []
+            if chronological:
+                try:
+                    logger.info("🔄 Phase 4: Building skills progress timeline...")
+                    from local_analysis.skill_progress_timeline import build_skill_progression
+                    progression = build_skill_progression(chronological, metrics_obj)
+                    from api.project_routes import _period_to_dict
+                    skills_progress = {
+                        "timeline": [_period_to_dict(period) for period in progression.timeline],
+                    }
+                    logger.info("✅ Skills progress timeline completed")
+                except Exception as e:
+                    logger.error(f"❌ Skills progress failed: {e}", exc_info=True)
+        
+        logger.info("=" * 50)
+        logger.info("✨ All analysis pipelines completed")
+        logger.info("=" * 50)
 
-        # Run full analysis pipeline
-        result_payload = _run_analysis_pipeline(
-            analysis_target=analysis_target,
-            scan_result=scan_result,
-            preferences=preferences,
-        )
+        # Build result payload with all analyses
+        parse_summary = dict(scan_result.parse_result.summary) if scan_result.parse_result else {}
+        files_data = []
+        for meta in scan_result.parse_result.files[:MAX_FILES_IN_RESPONSE]:
+            files_data.append({
+                "path": meta.path,
+                "size_bytes": meta.size_bytes,
+                "mime_type": meta.mime_type,
+                "file_hash": meta.file_hash,
+            })
+
+        result_payload = {
+            "summary": {
+                "total_files": parse_summary.get("files_processed", len(scan_result.parse_result.files)),
+                "bytes_processed": parse_summary.get("bytes_processed", 0),
+                "issues_count": parse_summary.get("issues_count", 0),
+            },
+            "languages": scan_result.languages,
+            "has_media_files": scan_result.has_media_files,
+            "pdf_count": len(scan_result.pdf_candidates),
+            "document_count": len(scan_result.document_candidates),
+            "git_repos_count": len(scan_result.git_repos),
+            "files": files_data,
+            "timings": scan_result.timings,
+        }
+        
+        # Add all analyses to the result payload
+        if git_analysis:
+            logger.info(f"💾 Saving git analysis to scan_data ({len(git_analysis)} repos)")
+            result_payload["git_analysis"] = git_analysis
+        
+        if code_analysis:
+            logger.info(f"💾 Saving code analysis to scan_data")
+            result_payload["code_analysis"] = code_analysis
+        else:
+            logger.warning("⚠️  No code analysis data to save")
+        
+        if skills_analysis:
+            logger.info(f"💾 Saving skills analysis to scan_data")
+            result_payload["skills_analysis"] = skills_analysis
+        
+        if contribution_metrics_payload:
+            logger.info(f"💾 Saving contribution metrics to scan_data")
+            result_payload["contribution_metrics"] = contribution_metrics_payload
+        
+        if skills_progress:
+            logger.info(f"💾 Saving skills progress to scan_data")
+            result_payload["skills_progress"] = skills_progress
+        
+        if media_analysis:
+            logger.info(f"💾 Saving media analysis to scan_data")
+            result_payload["media_analysis"] = media_analysis
+        
+        if pdf_analysis:
+            logger.info(f"💾 Saving PDF analysis to scan_data ({len(pdf_analysis)} PDFs)")
+            result_payload["pdf_analysis"] = pdf_analysis
+        
+        if document_analysis:
+            logger.info(f"💾 Saving document analysis to scan_data ({len(document_analysis)} documents)")
+            result_payload["document_analysis"] = document_analysis
+        
+        if duplicate_report:
+            logger.info(f"💾 Saving duplicate report to scan_data")
+            result_payload["duplicate_report"] = duplicate_report
 
         # Project auto-categorization
         from analyzer.project_classifier import safe_classify_project
@@ -1290,24 +1052,124 @@ def _run_scan_background(
         if temp_analysis_dir is not None:
             temp_analysis_dir.cleanup()
 
-        # Persist
-        project_id = None
-        project_name = target.stem if is_zip else (target.name or "scan")
-        if len(detected_projects) == 1:
-            project_name = detected_projects[0].name
+        # Convert all sets to lists for JSON serialization
+        def convert_sets_to_lists(obj):
+            """Recursively convert all sets to lists in a data structure."""
+            if isinstance(obj, set):
+                return list(obj)
+            elif isinstance(obj, dict):
+                return {k: convert_sets_to_lists(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_sets_to_lists(item) for item in obj]
+            else:
+                return obj
+        
+        result_payload = convert_sets_to_lists(result_payload)
+        logger.info("✅ Converted all sets to lists for JSON serialization")
 
+        # Optionally persist to database
+        project_id = None
         if persist_project and profile_id:
-            project_id = _persist_project(
-                result_payload=result_payload,
-                project_name=project_name,
-                project_path=str(target),
-                profile_id=profile_id,
-                access_token=access_token,
-            )
+            logger.info(f"📝 Attempting to save project to database (user_id={profile_id}, project_name={target.name})")
+            try:
+                projects_service = ProjectsService()
+                if access_token and hasattr(projects_service, "apply_access_token"):
+                    projects_service.apply_access_token(access_token)
+                project_name = target.name or "scan"
+                saved = projects_service.save_scan(
+                    user_id=profile_id,
+                    project_name=project_name,
+                    project_path=str(target),
+                    scan_data=result_payload,
+                )
+                project_id = saved.get("id")
+                result_payload["project_id"] = project_id
+                logger.info(f"✅ Project saved successfully! project_id={project_id}")
+                
+                # Auto-generate portfolio item using the shared helper function
+                try:
+                    logger.info(f"📋 Auto-generating portfolio item for project {project_id}...")
+                    from services.services.portfolio_item_service import PortfolioItemService
+                    from api.portfolio_routes import generate_portfolio_content_from_project
+                    
+                    portfolio_service = PortfolioItemService()
+                    
+                    # Generate and persist portfolio item
+                    portfolio_result = generate_portfolio_content_from_project(
+                        project=saved,
+                        persist=True,
+                        user_id=profile_id,
+                        portfolio_service=portfolio_service
+                    )
+                    
+                    if portfolio_result.get('id'):
+                        logger.info(f"✅ Portfolio item auto-generated! portfolio_item_id={portfolio_result['id']}")
+                        result_payload["portfolio_item_id"] = portfolio_result['id']
+                    else:
+                        logger.warning("⚠️ Portfolio generation succeeded but no ID returned")
+                    
+                except Exception as portfolio_err:
+                    logger.warning(f"⚠️ Failed to auto-generate portfolio item: {portfolio_err}", exc_info=True)
+                    # Don't fail the scan if portfolio generation fails
+                    result_payload["portfolio_generation_warning"] = str(portfolio_err)
+
+                # Auto-rank project by contribution score
+                try:
+                    contribution_metrics = result_payload.get("contribution_metrics")
+                    if contribution_metrics:
+                        logger.info(f"📊 Auto-ranking project {project_id}...")
+                        from services.services.contribution_analysis_service import ContributionAnalysisService
+                        ranking_service = ContributionAnalysisService()
+                        ranking = ranking_service.compute_contribution_score(contribution_metrics)
+                        projects_service.update_project_score(
+                            user_id=profile_id,
+                            project_id=project_id,
+                            contribution_score=ranking["score"],
+                            user_commit_share=ranking.get("user_commit_share", 0),
+                            total_commits=contribution_metrics.get("total_commits", 0),
+                        )
+                        logger.info(f"✅ Project ranked! score={ranking['score']}")
+                except Exception as rank_err:
+                    logger.warning(f"⚠️ Failed to auto-rank project: {rank_err}", exc_info=True)
+                    result_payload["ranking_warning"] = str(rank_err)
+
+                # Auto-generate resume item using the shared helper function
+                try:
+                    logger.info(f"📝 Auto-generating resume item for project {project_id}...")
+                    from services.services.resume_storage_service import ResumeStorageService
+                    from api.resume_routes import generate_resume_content_from_project
+                    
+                    resume_service = ResumeStorageService()
+                    # Apply access token if available for RLS
+                    if access_token:
+                        resume_service.apply_access_token(access_token)
+                    
+                    # Generate and persist resume item
+                    resume_result = generate_resume_content_from_project(
+                        project=saved,
+                        persist=True,
+                        user_id=profile_id,
+                        resume_service=resume_service
+                    )
+                    
+                    if resume_result.get('id'):
+                        logger.info(f"✅ Resume item auto-generated! resume_item_id={resume_result['id']}")
+                        result_payload["resume_item_id"] = resume_result['id']
+                    else:
+                        logger.warning("⚠️ Resume generation succeeded but no ID returned")
+                    
+                except Exception as resume_err:
+                    logger.warning(f"⚠️ Failed to auto-generate resume item: {resume_err}", exc_info=True)
+                    # Don't fail the scan if resume generation fails
+                    result_payload["resume_generation_warning"] = str(resume_err)
+                
+            except Exception as persist_err:
+                logger.error(f"❌ Failed to persist scan to database: {persist_err}", exc_info=True)
+                result_payload["persist_warning"] = str(persist_err)
         elif not persist_project:
-            logger.warning("Project NOT saved: persist_project=False")
+            logger.warning(f"⚠️  Project NOT saved: persist_project=False")
         elif not profile_id:
-            logger.warning("Project NOT saved: profile_id is None")
+            logger.warning(f"⚠️  Project NOT saved: profile_id is None")
 
         _update_scan_status(
             scan_id,
