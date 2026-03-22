@@ -13,6 +13,7 @@ import {
   EyeOff,
   GitCommit,
   Globe,
+  Linkedin,
   Lock,
   Loader2,
   Sparkles,
@@ -34,6 +35,7 @@ interface PortfolioOverviewProps {
   projects: ProjectMetadata[];
   skills: string[];
   initialSettings?: PortfolioSettings | null;
+  onShareLinkedIn?: () => void;
 }
 
 interface SectionVisibility {
@@ -205,6 +207,7 @@ export function PortfolioOverview({
   projects,
   skills,
   initialSettings,
+  onShareLinkedIn,
 }: PortfolioOverviewProps) {
   const [visibility, setVisibility] = useState<SectionVisibility>({
     heatmap: true,
@@ -378,6 +381,17 @@ export function PortfolioOverview({
                       <Copy className="h-3.5 w-3.5" />
                     )}
                     {copied ? "Copied!" : "Copy Link"}
+                  </button>
+                )}
+
+                {onShareLinkedIn && (
+                  <button
+                    type="button"
+                    onClick={onShareLinkedIn}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-[#0A66C2]/30 bg-white px-3 py-1.5 text-xs font-medium text-[#0A66C2] transition-colors hover:bg-[#0A66C2]/5"
+                  >
+                    <Linkedin className="h-3.5 w-3.5" />
+                    Share on LinkedIn
                   </button>
                 )}
               </div>
