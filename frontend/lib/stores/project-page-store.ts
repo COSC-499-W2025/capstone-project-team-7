@@ -4,10 +4,13 @@ import { create } from "zustand";
 import type { ProjectDetail } from "@/types/project";
 
 export type MainTabValue = "overview" | "skills" | "content" | "ai-analysis" | "tools";
+export type OverviewTabValue =
+  | "overview-main"
+  | "languages"
+  | "git-analysis";
 export type ToolsTabValue =
   | "tools-main"
   | "file-browser"
-  | "git-analysis"
   | "duplicate-finder";
 
 type RetryLoadProject = (() => Promise<void> | void) | null;
@@ -18,6 +21,7 @@ type ProjectPageStore = {
   projectError: string | null;
   projectLoading: boolean;
   activeMainTab: MainTabValue;
+  activeOverviewTab: OverviewTabValue;
   activeToolsTab: ToolsTabValue;
   retryLoadProject: RetryLoadProject;
   setProjectId: (projectId: string | null) => void;
@@ -25,6 +29,7 @@ type ProjectPageStore = {
   setProjectError: (projectError: string | null) => void;
   setProjectLoading: (projectLoading: boolean) => void;
   setActiveMainTab: (tab: MainTabValue) => void;
+  setActiveOverviewTab: (tab: OverviewTabValue) => void;
   setActiveToolsTab: (tab: ToolsTabValue) => void;
   setRetryLoadProject: (callback: RetryLoadProject) => void;
 };
@@ -37,6 +42,7 @@ export const useProjectPageStore = create<ProjectPageStore>()((set) => ({
   projectError: null,
   projectLoading: true,
   activeMainTab: "overview",
+  activeOverviewTab: "overview-main",
   activeToolsTab: "tools-main",
   retryLoadProject: null,
   setProjectId: (projectId) => set({ projectId }),
@@ -44,6 +50,7 @@ export const useProjectPageStore = create<ProjectPageStore>()((set) => ({
   setProjectError: (projectError) => set({ projectError }),
   setProjectLoading: (projectLoading) => set({ projectLoading }),
   setActiveMainTab: (activeMainTab) => set({ activeMainTab }),
+  setActiveOverviewTab: (activeOverviewTab) => set({ activeOverviewTab }),
   setActiveToolsTab: (activeToolsTab) => set({ activeToolsTab }),
   setRetryLoadProject: (retryLoadProject) => set({ retryLoadProject }),
 }));
@@ -54,6 +61,7 @@ export const projectPageSelectors = {
   projectError: (state: ProjectPageStore) => state.projectError,
   projectLoading: (state: ProjectPageStore) => state.projectLoading,
   activeMainTab: (state: ProjectPageStore) => state.activeMainTab,
+  activeOverviewTab: (state: ProjectPageStore) => state.activeOverviewTab,
   activeToolsTab: (state: ProjectPageStore) => state.activeToolsTab,
   hasProject: (state: ProjectPageStore) => Boolean(state.project),
   scanData: (state: ProjectPageStore) =>
@@ -65,6 +73,7 @@ export const projectPageSelectors = {
   setProjectError: (state: ProjectPageStore) => state.setProjectError,
   setProjectLoading: (state: ProjectPageStore) => state.setProjectLoading,
   setActiveMainTab: (state: ProjectPageStore) => state.setActiveMainTab,
+  setActiveOverviewTab: (state: ProjectPageStore) => state.setActiveOverviewTab,
   setActiveToolsTab: (state: ProjectPageStore) => state.setActiveToolsTab,
   setRetryLoadProject: (state: ProjectPageStore) => state.setRetryLoadProject,
 };

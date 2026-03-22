@@ -7,7 +7,8 @@ import { StatCard } from "@/components/ui/stat-card";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
-import type { GitRepoAnalysis, GitContributor, GitTimelineEntry } from "@/types/git-analysis";
+import type { GitRepoAnalysis, GitContributor, GitTimelineEntry, GitBranchInfo } from "@/types/git-analysis";
+import { BranchDiagram } from "@/components/project/branch-diagram";
 import { formatContributorEmail } from "@/lib/git-email";
 import {
   projectPageSelectors,
@@ -43,6 +44,27 @@ export function normalizeGitAnalysis(raw: unknown): GitRepoAnalysis[] {
   return [];
 }
 
+/** Handle both legacy string[] and new GitBranchInfo[] formats */
+function normalizeBranches(raw: unknown): GitBranchInfo[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((item) => {
+    if (typeof item === "string") {
+      // Legacy format: just a branch name string
+      return { name: item, created_date: null, is_merged: false, merge_date: null };
+    }
+    if (item && typeof item === "object") {
+      const obj = item as Record<string, unknown>;
+      return {
+        name: typeof obj.name === "string" ? obj.name : "unknown",
+        created_date: typeof obj.created_date === "string" ? obj.created_date : null,
+        is_merged: typeof obj.is_merged === "boolean" ? obj.is_merged : false,
+        merge_date: typeof obj.merge_date === "string" ? obj.merge_date : null,
+      };
+    }
+    return { name: "unknown", created_date: null, is_merged: false, merge_date: null };
+  });
+}
+
 export function normalizeRepo(value: unknown): GitRepoAnalysis | null {
   if (!value || typeof value !== "object") return null;
   const r = value as Record<string, unknown>;
@@ -61,9 +83,7 @@ export function normalizeRepo(value: unknown): GitRepoAnalysis | null {
       r.date_range && typeof r.date_range === "object"
         ? (r.date_range as GitRepoAnalysis["date_range"])
         : null,
-    branches: Array.isArray(r.branches)
-      ? (r.branches as string[])
-      : [],
+    branches: normalizeBranches(r.branches),
     timeline: Array.isArray(r.timeline)
       ? (r.timeline as GitTimelineEntry[])
       : [],
@@ -134,9 +154,9 @@ export function GitAnalysisTab({
         <ContributorsTable contributors={repo.contributors} />
       )}
 
-      {/* Branches */}
+      {/* Branch Diagram */}
       {repo.branches.length > 0 && (
-        <BranchesList branches={repo.branches} />
+        <BranchDiagram branches={repo.branches} />
       )}
 
       {/* Timeline */}
@@ -335,29 +355,6 @@ function ContributorsTable({ contributors }: { contributors: GitContributor[] })
   );
 }
 
-function BranchesList({ branches }: { branches: string[] }) {
-  return (
-    <Card className="bg-white border border-gray-200">
-      <CardHeader className="border-b border-gray-200">
-        <CardTitle className="text-sm font-semibold text-gray-900">
-          Branches ({branches.length})
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="p-4">
-        <div className="flex flex-wrap gap-2">
-          {branches.map((branch) => (
-            <span
-              key={branch}
-              className="px-2.5 py-1 rounded-full bg-gray-100 text-gray-700 text-xs font-semibold border border-gray-200"
-            >
-              {branch}
-            </span>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
 
 function ActivityTimeline({ timeline }: { timeline: GitTimelineEntry[] }) {
   return (

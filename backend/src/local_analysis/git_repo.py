@@ -205,6 +205,148 @@ def _is_vendor_path(path: str) -> bool:
     return any(token in parts for token in _VENDOR_DIR_HINTS)
 
 
+def _resolve_default_branch(repo_dir: str) -> str:
+    """
+    Find a resolvable ref for the default branch.
+    Tries: symbolic HEAD, then local main/master, then origin/main, origin/master.
+    """
+    # 1. Try symbolic-ref for origin HEAD
+    try:
+        head_ref = _git(["symbolic-ref", "refs/remotes/origin/HEAD"], repo_dir)
+        short = head_ref.split("/")[-1]
+        # Verify it resolves
+        _git(["rev-parse", "--verify", short], repo_dir)
+        return short
+    except CalledProcessError:
+        pass
+
+    # 2. Try common names — local then remote
+    for candidate in ("main", "master", "origin/main", "origin/master"):
+        try:
+            _git(["rev-parse", "--verify", candidate], repo_dir)
+            return candidate
+        except CalledProcessError:
+            continue
+
+    return "HEAD"
+
+
+def _analyze_branches(repo_dir: str) -> List[Dict[str, Any]]:
+    """
+    Return rich branch info: name, created_date, is_merged, merge_date.
+    Detects which branches have been merged into the default branch.
+    """
+    default_ref = _resolve_default_branch(repo_dir)
+
+    # Resolve to SHA so all downstream commands work reliably
+    try:
+        default_sha = _git(["rev-parse", default_ref], repo_dir).strip()
+    except CalledProcessError:
+        default_sha = None
+
+    if not default_sha:
+        # Fallback: return flat branch list with no merge info
+        try:
+            branches_raw = _git(
+                ["branch", "--format=%(refname:short)", "--all"], repo_dir
+            ).splitlines()
+            return [
+                {"name": b.strip(), "created_date": None, "is_merged": False, "merge_date": None}
+                for b in branches_raw if b.strip() and not b.strip().endswith("/HEAD")
+            ]
+        except CalledProcessError:
+            return []
+
+    # Get all branch names
+    try:
+        branches_raw = _git(
+            ["branch", "--format=%(refname:short)", "--all"], repo_dir
+        ).splitlines()
+        all_branches = [b.strip() for b in branches_raw if b.strip()]
+    except CalledProcessError:
+        return []
+
+    # Get merged branches using the resolved SHA (works for both local and remote refs)
+    merged_set: Set[str] = set()
+    for flag in ["--merged"]:
+        try:
+            merged_raw = _git(
+                ["branch", "-a", flag, default_sha, "--format=%(refname:short)"],
+                repo_dir,
+            ).splitlines()
+            merged_set = {b.strip() for b in merged_raw if b.strip()}
+            break
+        except CalledProcessError:
+            pass
+
+    # Build merge date index from merge commits on the default branch
+    merge_dates: Dict[str, str] = {}
+    try:
+        merge_log = _git(
+            ["log", default_sha, "--merges", "--format=%aI\t%s", "--max-count=2000"],
+            repo_dir,
+        ).splitlines()
+        for line in merge_log:
+            if "\t" not in line:
+                continue
+            date_str, subject = line.split("\t", 1)
+            # Match "Merge branch 'name'" or "Merge pull request ... from org/name"
+            m = re.search(r"Merge (?:branch '([^']+)'|pull request .+ from .+/(.+))", subject)
+            if m:
+                branch_name = (m.group(1) or m.group(2) or "").strip()
+                if branch_name and branch_name not in merge_dates:
+                    merge_dates[branch_name] = date_str
+    except CalledProcessError:
+        pass
+
+    # Get first commit date per branch (creation proxy) — batch via for-each-ref
+    branch_created: Dict[str, str] = {}
+    try:
+        ref_info = _git(
+            ["for-each-ref", "--format=%(refname:short)\t%(creatordate:iso8601)", "refs/heads/", "refs/remotes/"],
+            repo_dir,
+        ).splitlines()
+        for line in ref_info:
+            if "\t" not in line:
+                continue
+            name, date_str = line.split("\t", 1)
+            name = name.strip()
+            date_str = date_str.strip()
+            if name and date_str:
+                branch_created[name] = date_str
+    except CalledProcessError:
+        pass
+
+    # Build short-name lookup for merged_set (handles origin/ prefix matching)
+    merged_short: Set[str] = set()
+    for b in merged_set:
+        merged_short.add(b)
+        if b.startswith("origin/"):
+            merged_short.add(b[len("origin/"):])
+        else:
+            merged_short.add("origin/" + b)
+
+    # Filter out remote HEAD pointers like "origin/HEAD"
+    default_short = default_ref.replace("origin/", "") if default_ref.startswith("origin/") else default_ref
+    result: List[Dict[str, Any]] = []
+    for branch in all_branches:
+        if branch.endswith("/HEAD"):
+            continue
+        short_name = branch.replace("origin/", "") if branch.startswith("origin/") else branch
+        # Skip the default branch itself
+        if short_name == default_short or short_name == "HEAD":
+            continue
+        is_merged = branch in merged_short or short_name in merged_short
+        result.append({
+            "name": branch,
+            "created_date": branch_created.get(branch),
+            "is_merged": is_merged,
+            "merge_date": merge_dates.get(short_name),
+        })
+
+    return result
+
+
 def analyze_git_repo(repo_dir: str) -> dict:
     repo_dir = str(repo_dir)
     path_obj = Path(repo_dir)
@@ -332,11 +474,7 @@ def analyze_git_repo(repo_dir: str) -> dict:
         last = None
 
     # ---------- branches ----------
-    try:
-        branches_raw = _git(["branch", "--format=%(refname:short)", "--all"], repo_dir).splitlines()
-        branches = [b for b in branches_raw if b]
-    except CalledProcessError:
-        branches = []
+    branches = _analyze_branches(repo_dir)
 
     # ---------- timeline ----------
     try:
