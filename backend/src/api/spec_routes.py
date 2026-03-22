@@ -35,6 +35,7 @@ try:
         _run_document_analysis,
         _run_duplicate_detection,
         _extract_archive_for_analysis,
+        _collect_files_for_ai,
     )
 except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
     from backend.src.api.dependencies import AuthContext, get_auth_context
@@ -49,6 +50,7 @@ except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fal
         _run_document_analysis,
         _run_duplicate_detection,
         _extract_archive_for_analysis,
+        _collect_files_for_ai,
     )
 
 # Add parent directory to path for absolute imports (needed for lazy imports in background tasks)
@@ -1039,6 +1041,18 @@ def _run_scan_background(
             logger.info(f"💾 Saving duplicate report to scan_data")
             result_payload["duplicate_report"] = duplicate_report
 
+        # Store the original source path for AI analysis to read files later.
+        # source_path is always defined here: it is a required str parameter of
+        # _run_scan_background and the function returns early (line ~707) if the
+        # path doesn't exist, so execution cannot reach this point with it unset.
+        if source_path:
+            result_payload["project_source_path"] = str(source_path)
+
+        # Collect file snippets at scan time for AI analysis
+        file_snippets = _collect_files_for_ai(analysis_target)
+        if file_snippets:
+            logger.info(f"Saving {len(file_snippets)} file snippets for AI analysis")
+            result_payload["file_snippets"] = file_snippets
         # Project auto-categorization
         from analyzer.project_classifier import safe_classify_project
         cat_result = safe_classify_project(scan_result.parse_result.files, scan_result.languages)
@@ -1690,10 +1704,6 @@ def dedup(project_id: str, auth: AuthContext = Depends(get_auth_context)):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"code": "validation_error", "message": "project_id must be a valid UUID"},
-        )
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"code": "validation_error", "message": "project_id is required"},
         )
 
     try:
