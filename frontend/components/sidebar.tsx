@@ -7,7 +7,6 @@ import {
   LayoutDashboard,
   Folder,
   Briefcase,
-  FileText,
   FileEdit,
   Settings,
   Search,
@@ -149,11 +148,6 @@ export const Sidebar: React.FC = () => {
             href="/projects"
             icon={<Briefcase size={20} />}
             label="Projects"
-          />
-          <NavItem
-            href="/resume-builder"
-            icon={<FileText size={20} />}
-            label="Resumes"
           />
           <NavItem
             href="/ai-analysis"
