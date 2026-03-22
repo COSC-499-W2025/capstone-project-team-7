@@ -99,49 +99,88 @@ def _lines_changed_by_email(repo_dir: str) -> Dict[str, Dict[str, int]]:
     return stats
 
 
+def _do_merge_group(group: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Merge a list of contributor dicts into a single entry."""
+    primary = max(group, key=lambda c: c.get("commits", 0))
+    total_commits = sum(c.get("commits", 0) for c in group)
+    all_emails = [c.get("email") for c in group if c.get("email")]
+    all_names = [c.get("name") for c in group if c.get("name")]
+    return {
+        "name": primary.get("name"),
+        "email": primary.get("email"),
+        "commits": total_commits,
+        "aliases": list(set(all_names)),
+        "all_emails": list(set(all_emails)),
+    }
+
+
 def _merge_contributors(contributors: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Merge contributors that appear to be the same person.
-    
-    Detects same person by:
-    1. Same GitHub username (from name or noreply email)
-    2. Same normalized email local part
+
+    Pass 1: Same GitHub username / normalized email local part.
+    Pass 2: Same display name (case-insensitive, whitespace-normalized).
     """
     if len(contributors) <= 1:
         return contributors
-    
-    # Group contributors by their unique key
+
+    # --- Pass 1: merge by contributor key (email / GitHub username) ---
     key_groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
-    
     for contrib in contributors:
         key = _get_contributor_key(contrib)
         key_groups[key].append(contrib)
-    
-    # Merge contributors with same key
+
+    after_pass1: List[Dict[str, Any]] = []
+    for group in key_groups.values():
+        if len(group) == 1:
+            after_pass1.append(group[0])
+        else:
+            after_pass1.append(_do_merge_group(group))
+
+    # --- Pass 2: merge by display name (exact match, case-insensitive) ---
+    name_groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for contrib in after_pass1:
+        name = (contrib.get("name") or "").strip().lower()
+        names_to_check = [name]
+        for alias in (contrib.get("aliases") or []):
+            names_to_check.append(alias.strip().lower())
+        group_key = max(names_to_check, key=len) if names_to_check else name
+        if group_key:
+            name_groups[group_key].append(contrib)
+        else:
+            name_groups[f"__unnamed_{id(contrib)}"].append(contrib)
+
+    after_pass2: List[Dict[str, Any]] = []
+    for group in name_groups.values():
+        if len(group) == 1:
+            after_pass2.append(group[0])
+        else:
+            after_pass2.append(_do_merge_group(group))
+
+    # --- Pass 3: merge by normalized name (strip spaces, punctuation) ---
+    # Catches "Joaquin Almora" == "joaquinalmora"
+    norm_groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for contrib in after_pass2:
+        names_to_check = [(contrib.get("name") or "")]
+        for alias in (contrib.get("aliases") or []):
+            names_to_check.append(alias)
+        # Normalize: lowercase, remove spaces/dots/hyphens
+        norm_keys = set()
+        for n in names_to_check:
+            norm = re.sub(r"[\s.\-_]+", "", n.strip().lower())
+            if norm:
+                norm_keys.add(norm)
+        # Use the shortest normalized key (most likely to match a username)
+        group_key = min(norm_keys, key=len) if norm_keys else f"__unk_{id(contrib)}"
+        norm_groups[group_key].append(contrib)
+
     merged: List[Dict[str, Any]] = []
-    
-    for key, group in key_groups.items():
+    for group in norm_groups.values():
         if len(group) == 1:
             merged.append(group[0])
         else:
-            # Merge multiple entries for same person
-            # Use the name with most commits as primary
-            primary = max(group, key=lambda c: c.get("commits", 0))
-            total_commits = sum(c.get("commits", 0) for c in group)
-            
-            # Collect all emails and names for reference
-            all_emails = [c.get("email") for c in group if c.get("email")]
-            all_names = [c.get("name") for c in group if c.get("name")]
-            
-            merged_contrib = {
-                "name": primary.get("name"),
-                "email": primary.get("email"),
-                "commits": total_commits,
-                "aliases": list(set(all_names)),  # Store alternate names
-                "all_emails": list(set(all_emails)),  # Store all emails
-            }
-            merged.append(merged_contrib)
-    
+            merged.append(_do_merge_group(group))
+
     return merged
 
 
