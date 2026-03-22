@@ -120,12 +120,21 @@ export interface ResumeSkillsSection {
   custom?: Record<string, string[]>;
 }
 
+export interface ResumeAwardEntry {
+  id: string;
+  title: string;
+  issuer?: string;
+  date?: string;
+  description?: string;
+}
+
 export interface ResumeStructuredData {
   contact?: ResumeContactInfo;
   education?: ResumeEducationEntry[];
   experience?: ResumeExperienceEntry[];
   projects?: ResumeProjectEntry[];
   skills?: ResumeSkillsSection;
+  awards?: ResumeAwardEntry[];
   // Section ordering
   section_order?: string[];
 }
