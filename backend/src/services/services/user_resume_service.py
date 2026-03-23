@@ -178,12 +178,15 @@ class UserResumeService:
             return response
         raise UserResumeServiceError("Supabase operation returned None")
 
+    PROFILE_RECORD_NAME = "Resume Profile"
+
     def list_resumes(
         self, user_id: str, *, limit: int = 20, offset: int = 0
     ) -> tuple[List[Dict[str, Any]], int]:
         """List resumes for a user with pagination.
 
-        Profile records (metadata.is_profile == True) are excluded from this list.
+        Profile records are excluded by filtering out the well-known profile
+        record name on the server side.
 
         Returns:
             Tuple of (records, total_count) for the requested page.
@@ -192,21 +195,32 @@ class UserResumeService:
             return [], 0
 
         try:
-            # Fetch all records and filter out the profile record in Python,
-            # since PostgREST JSONB path filtering has limited type coercion.
+            # Get total count excluding the profile record
+            count_response = (
+                self.client.table("user_resumes")
+                .select("id", count="exact")
+                .eq("user_id", user_id)
+                .neq("name", self.PROFILE_RECORD_NAME)
+                .execute()
+            )
+            total = (
+                count_response.count
+                if hasattr(count_response, "count") and count_response.count is not None
+                else 0
+            )
+
+            # Get paginated records
             response = (
                 self.client.table("user_resumes")
                 .select("id, name, template, is_latex_mode, metadata, created_at, updated_at")
                 .eq("user_id", user_id)
+                .neq("name", self.PROFILE_RECORD_NAME)
                 .order("updated_at", desc=True)
+                .range(offset, offset + limit - 1)
                 .execute()
             )
-            all_records = self._handle_response(response.data)
-            # Exclude the profile record
-            records = [r for r in all_records if not (r.get("metadata") or {}).get("is_profile")]
-            total = len(records)
-            paginated = records[offset: offset + limit]
-            return paginated, total
+            records = self._handle_response(response.data)
+            return records, total
         except Exception as exc:
             raise UserResumeServiceError(f"Failed to list resumes: {exc}") from exc
 
@@ -219,27 +233,41 @@ class UserResumeService:
                 self.client.table("user_resumes")
                 .select("*")
                 .eq("user_id", user_id)
-                .order("created_at", desc=False)
+                .eq("name", self.PROFILE_RECORD_NAME)
+                .limit(1)
                 .execute()
             )
-            all_records = self._handle_response(response.data)
-            for r in all_records:
-                if (r.get("metadata") or {}).get("is_profile"):
-                    return r
-            return None
+            records = self._handle_response(response.data)
+            return records[0] if records else None
         except Exception as exc:
             raise UserResumeServiceError(f"Failed to fetch resume profile: {exc}") from exc
 
     def save_profile(
         self, user_id: str, structured_data: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Create or update the user's resume profile with the given structured data."""
-        existing = self.get_profile(user_id)
+        """Create or update the user's resume profile with the given structured data.
+
+        Uses the well-known profile record name to find the existing record in a
+        single targeted query (eq + limit 1) rather than loading all resumes.
+        """
+        try:
+            response = (
+                self.client.table("user_resumes")
+                .select("id")
+                .eq("user_id", user_id)
+                .eq("name", self.PROFILE_RECORD_NAME)
+                .limit(1)
+                .execute()
+            )
+            existing = self._handle_response(response.data)
+        except Exception as exc:
+            raise UserResumeServiceError(f"Failed to check existing profile: {exc}") from exc
+
         if existing:
-            return self.update_resume(user_id, existing["id"], structured_data=structured_data)
+            return self.update_resume(user_id, existing[0]["id"], structured_data=structured_data)
         return self.create_resume(
             user_id,
-            name="Resume Profile",
+            name=self.PROFILE_RECORD_NAME,
             template="jake",
             is_latex_mode=False,
             structured_data=structured_data,
