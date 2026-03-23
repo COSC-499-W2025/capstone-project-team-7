@@ -208,11 +208,8 @@ class TestRunProjectAiAnalysisCachedReturn:
                 "/api/projects/proj-cached-001/ai-analysis?force=true"
             )
 
-        assert response.status_code == 200
-        body = response.json()
-        # Should NOT be cached; consent blocked it in this mock scenario
-        assert body["llm_status"] != "used:cached"
-        assert body["cached"] is not True
+        assert response.status_code == 403
+        assert response.json()["detail"] == "External services consent not granted."
 
     @patch("api.project_routes.get_projects_service")
     def test_no_existing_ai_analysis_skips_cache(self, mock_get_service):
@@ -231,5 +228,5 @@ class TestRunProjectAiAnalysisCachedReturn:
 
             response = client.post("/api/projects/proj-fresh-001/ai-analysis")
 
-        assert response.status_code == 200
-        assert response.json()["llm_status"] != "used:cached"
+        assert response.status_code == 403
+        assert response.json()["detail"] == "External services consent not granted."

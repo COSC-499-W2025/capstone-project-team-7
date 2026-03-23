@@ -12,6 +12,7 @@ import {
   RoleProfile,
   SkillGapAnalysis,
   AiAnalysisApiResponse,
+  AiBatchStatusApiResponse,
 } from "@/types/project";
 import { request } from "@/lib/api";
 
@@ -257,5 +258,19 @@ export async function runProjectAiAnalysis(
     `/api/projects/${projectId}/ai-analysis${params}`,
     { method: "POST", headers: authHeaders(token) },
     "Failed to run AI analysis"
+  );
+}
+
+/**
+ * Fetch in-progress batch status messages for real-time polling.
+ */
+export async function getProjectAiBatchStatus(
+  token: string,
+  projectId: string,
+): Promise<AiBatchStatusApiResponse> {
+  return call(
+    `/api/projects/${projectId}/ai-batch/status`,
+    { headers: authHeaders(token) },
+    "Failed to fetch AI batch status"
   );
 }

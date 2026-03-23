@@ -5,7 +5,12 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { getStoredToken } from "@/lib/auth";
-import { getProjects, getProjectById, runProjectAiAnalysis } from "@/lib/api/projects";
+import {
+  getProjects,
+  getProjectById,
+  runProjectAiAnalysis,
+  getProjectAiBatchStatus,
+} from "@/lib/api/projects";
 import type {
   ProjectMetadata,
   ProjectAiAnalysis,
@@ -21,22 +26,10 @@ import {
 } from "lucide-react";
 import { EligibilityBadge } from "@/components/ai-analysis/eligibility-badge";
 import { CategoryCard } from "@/components/ai-analysis/category-card";
+import { MarkdownReport } from "@/components/ai-analysis/markdown-report";
+import { KeyFileSummary } from "@/components/ai-analysis/key-file-summary";
+import { formatDate } from "@/components/ai-analysis/render-inline-markdown";
 import { useAiEligibility } from "@/hooks/use-ai-eligibility";
-
-// ─── helpers ────────────────────────────────────────────────────────────────
-
-function formatDate(ts?: string | null): string {
-  if (!ts) return "Unknown date";
-  try {
-    return new Date(ts).toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  } catch {
-    return ts;
-  }
-}
 
 // ─── main page ───────────────────────────────────────────────────────────────
 
@@ -69,6 +62,8 @@ export default function AiAnalysisPage() {
   // run-analysis state
   const [runningFor, setRunningFor] = useState<string | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
+  const [statusMessages, setStatusMessages] = useState<string[]>([]);
+  const [batchStatus, setBatchStatus] = useState<string | null>(null);
 
   // ── load projects ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -112,6 +107,7 @@ export default function AiAnalysisPage() {
     async (projectId: string) => {
       setSelectedId(projectId);
       setRunError(null);
+      setStatusMessages([]);
 
       // If we already have it in state (including null = "confirmed no analysis"), skip
       if (Object.prototype.hasOwnProperty.call(analyses, projectId)) return;
@@ -148,7 +144,9 @@ export default function AiAnalysisPage() {
       if (!eligible) return;
 
       setRunningFor(projectId);
+      setBatchStatus("running");
       setRunError(null);
+      setStatusMessages([]);
       try {
         const res: AiAnalysisApiResponse = await runProjectAiAnalysis(
           token,
@@ -156,21 +154,61 @@ export default function AiAnalysisPage() {
           force
         );
         setAnalyses((prev) => ({ ...prev, [projectId]: res.result }));
+        setStatusMessages(res.status_messages ?? []);
       } catch (err) {
         setRunError(
           err instanceof Error ? err.message : "AI analysis failed. Try again."
         );
+        setStatusMessages([]);
       } finally {
+        setBatchStatus(null);
         setRunningFor(null);
       }
     },
     [aiReady, checkEligibility]
   );
 
+  useEffect(() => {
+    const runningForSelected = runningFor !== null && runningFor === selectedId;
+    if (!runningForSelected || !selectedId) return;
+
+    let cancelled = false;
+
+    const poll = async () => {
+      const token = getStoredToken();
+      if (!token || cancelled) return;
+      try {
+        const statusRes = await getProjectAiBatchStatus(token, selectedId);
+        if (cancelled) return;
+        setBatchStatus(statusRes.status);
+        setStatusMessages(statusRes.status_messages ?? []);
+      } catch {
+        // Ignore transient polling errors while analysis is in progress.
+      }
+    };
+
+    void poll();
+    const intervalId = window.setInterval(() => {
+      void poll();
+    }, 900);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [runningFor, selectedId]);
+
   // ── render ─────────────────────────────────────────────────────────────────
   const analysisForSelected =
     selectedId !== null ? (analyses[selectedId] ?? null) : null;
   const isRunning = runningFor === selectedId;
+  const useMarkdownReport =
+    analysisForSelected?.render_mode === "markdown_report" &&
+    typeof analysisForSelected?.markdown_report === "string" &&
+    analysisForSelected.markdown_report.trim().length > 0;
+  const keyFiles = (analysisForSelected?.key_files ?? [])
+    .filter((file) => Boolean(file?.file_path) && Boolean(file?.summary))
+    .slice(0, 3);
 
   return (
     <div className="p-6 space-y-6">
@@ -372,6 +410,21 @@ export default function AiAnalysisPage() {
                     </div>
                   )}
 
+                  {(isRunning || statusMessages.length > 0) && (
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+                      <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2">
+                        Batch Progress {isRunning && batchStatus ? `(${batchStatus})` : ""}
+                      </p>
+                      <ul className="space-y-1 max-h-40 overflow-auto pr-1">
+                        {statusMessages.map((msg, idx) => (
+                          <li key={`${idx}-${msg}`} className="text-sm text-blue-900">
+                            {msg}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
                   {!aiReady && eligibilityChecked && (
                     <p className="text-sm text-gray-500">
                       Enable External Data consent and verify your OpenAI API
@@ -453,7 +506,7 @@ export default function AiAnalysisPage() {
                   <CardContent className="p-8 flex flex-col items-center gap-3 text-gray-400">
                     <Loader2 size={24} className="animate-spin" />
                     <p className="text-sm">
-                      Running AI analysis, this may take a moment…
+                      Running AI analysis, streaming backend batch status above…
                     </p>
                   </CardContent>
                 </Card>
@@ -469,25 +522,73 @@ export default function AiAnalysisPage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="p-5 space-y-5">
-                    {/* Overall summary */}
-                    {analysisForSelected.overall_summary && (
-                      <div>
-                        <p className="text-sm font-semibold text-gray-700 mb-1">
-                          Project Overview
-                        </p>
-                        <p className="text-sm text-gray-700 leading-relaxed">
-                          {analysisForSelected.overall_summary}
-                        </p>
-                      </div>
-                    )}
+                    {useMarkdownReport ? (
+                      <div className="space-y-4">
+                        <div className="rounded-2xl border border-gray-200 bg-gradient-to-b from-white to-gray-50/60 p-5 shadow-sm">
+                          <div className="flex items-center justify-between mb-4">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                              Batch AI Report
+                            </p>
+                            <span className="text-xs px-2 py-1 rounded-full border border-gray-200 text-gray-600 bg-white">
+                              Markdown View
+                            </span>
+                          </div>
+                          <MarkdownReport markdown={analysisForSelected.markdown_report as string} />
+                        </div>
 
-                    {/* Per-category cards */}
-                    {analysisForSelected.categories && analysisForSelected.categories.length > 0 && (
-                      <div className="grid gap-4 md:grid-cols-2">
-                        {analysisForSelected.categories.map((cat) => (
-                          <CategoryCard key={cat.category} cat={cat} />
-                        ))}
+                        {keyFiles.length > 0 && (
+                          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                            <div className="mb-3">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                Key Files
+                              </p>
+                            </div>
+                            <div className="space-y-3">
+                              {keyFiles.map((file, idx) => (
+                                <details
+                                  key={`${file.file_path}-${idx}`}
+                                  className="group rounded-lg border border-gray-200 bg-gray-50/60 open:bg-white open:border-gray-300"
+                                >
+                                  <summary className="cursor-pointer select-none list-none px-4 py-3 flex items-center justify-between">
+                                    <span className="text-sm font-medium text-gray-900 break-all pr-3">
+                                      {file.file_path}
+                                    </span>
+                                    <span className="text-xs text-gray-500 group-open:text-gray-700">
+                                      Expand
+                                    </span>
+                                  </summary>
+                                  <div className="px-4 pb-4 border-t border-gray-100 pt-3">
+                                    <KeyFileSummary text={file.summary as string} keyPrefix={`kf-${idx}`} />
+                                  </div>
+                                </details>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
+                    ) : (
+                      <>
+                        {/* Overall summary */}
+                        {analysisForSelected.overall_summary && (
+                          <div>
+                            <p className="text-sm font-semibold text-gray-700 mb-1">
+                              Project Overview
+                            </p>
+                            <p className="text-sm text-gray-700 leading-relaxed">
+                              {analysisForSelected.overall_summary}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Per-category cards */}
+                        {analysisForSelected.categories && analysisForSelected.categories.length > 0 && (
+                          <div className="grid gap-4 md:grid-cols-2">
+                            {analysisForSelected.categories.map((cat) => (
+                              <CategoryCard key={cat.category} cat={cat} />
+                            ))}
+                          </div>
+                        )}
+                      </>
                     )}
 
                     {/* Legacy fallback for already-cached old-format results */}
