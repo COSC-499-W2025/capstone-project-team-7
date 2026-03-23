@@ -23,16 +23,21 @@ kill_port 3000
 echo "=== Setting up environment ==="
 
 # Setup backend (Python)
-if [ ! -d "backend/venv" ]; then
+BACKEND_VENV=""
+if [ -x "backend/.venv/bin/python" ]; then
+    BACKEND_VENV="backend/.venv"
+elif [ -x "backend/venv/bin/python" ]; then
+    BACKEND_VENV="backend/venv"
+else
     echo "Creating Python virtual environment..."
     cd backend
-    python3.12 -m venv venv
-    source venv/bin/activate
-    pip install -r requirements.txt
+    python3.12 -m venv .venv
+    .venv/bin/python -m pip install -r requirements.txt
     cd ..
-else
-    echo "Python venv already exists, skipping..."
+    BACKEND_VENV="backend/.venv"
 fi
+
+echo "Using backend environment: $BACKEND_VENV"
 
 # Setup frontend
 if [ ! -d "frontend/node_modules" ]; then
@@ -57,11 +62,22 @@ fi
 echo "=== Starting services ==="
 
 # Start backend
-(source backend/venv/bin/activate && cd backend && uvicorn src.main:app --reload --port 8000) &
+(cd backend && "../$BACKEND_VENV/bin/python" -m uvicorn src.main:app --reload --port 8000) &
 BACK_PID=$!
 
 # Give backend a moment to start before frontend
-sleep 2
+echo "Waiting for backend to start..."
+for i in {1..20}; do
+    if curl -s http://localhost:8000/health > /dev/null 2>&1; then
+        echo "Backend ready!"
+        break
+    fi
+    if ! kill -0 "$BACK_PID" 2>/dev/null; then
+        echo "Backend failed to start."
+        exit 1
+    fi
+    sleep 1
+done
 
 # Start frontend
 (cd frontend && npm run dev) &
