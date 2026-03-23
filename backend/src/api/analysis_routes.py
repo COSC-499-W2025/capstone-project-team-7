@@ -54,6 +54,15 @@ class ContributorInfo(BaseModel):
     percentage: float
 
 
+class BranchInfo(BaseModel):
+    """Branch information from git analysis"""
+    name: str
+    created_date: Optional[str] = None
+    is_merged: bool = False
+    merge_date: Optional[str] = None
+    commit_count: int = 0
+
+
 class GitAnalysisResult(BaseModel):
     """Git repository analysis result"""
     path: str
@@ -61,7 +70,7 @@ class GitAnalysisResult(BaseModel):
     contributors: List[ContributorInfo]
     project_type: str
     date_range: Optional[Dict[str, str]] = None
-    branches: List[str] = Field(default_factory=list)
+    branches: List[BranchInfo] = Field(default_factory=list)
 
 
 class CodeMetrics(BaseModel):
@@ -617,9 +626,16 @@ def _analysis_response_from_project(
                 ],
                 project_type=str(repo.get("project_type", "unknown")),
                 date_range=repo.get("date_range") if isinstance(repo.get("date_range"), dict) else None,
-                branches=[str(branch) for branch in repo.get("branches", [])]
-                if isinstance(repo.get("branches"), list)
-                else [],
+                branches=[
+                    BranchInfo(
+                        name=str(b.get("name", b) if isinstance(b, dict) else b),
+                        created_date=b.get("created_date") if isinstance(b, dict) else None,
+                        is_merged=b.get("is_merged", False) if isinstance(b, dict) else False,
+                        merge_date=b.get("merge_date") if isinstance(b, dict) else None,
+                        commit_count=b.get("commit_count", 0) if isinstance(b, dict) else 0,
+                    )
+                    for b in repo.get("branches", [])
+                ] if isinstance(repo.get("branches"), list) else [],
             )
             for repo in git_analysis_rows
         ] if git_analysis_rows else None,
@@ -927,7 +943,10 @@ async def analyze_portfolio(
                     ],
                     project_type=repo.get("project_type", "unknown"),
                     date_range=repo.get("date_range"),
-                    branches=repo.get("branches", []),
+                    branches=[
+                        BranchInfo(**b) if isinstance(b, dict) else BranchInfo(name=str(b))
+                        for b in repo.get("branches", [])
+                    ],
                 )
                 for repo in git_analysis
             ] if git_analysis else None,

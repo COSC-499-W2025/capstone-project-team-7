@@ -162,11 +162,19 @@ class GitTimelineItem(BaseModel):
     commits: int
 
 
+class GitBranchInfo(BaseModel):
+    name: str
+    created_date: Optional[str] = None
+    is_merged: bool = False
+    merge_date: Optional[str] = None
+    commit_count: int = 0
+
+
 class GitRepoAnalysis(BaseModel):
     path: str
     commit_count: int
     date_range: Dict[str, str]
-    branches: List[str] = Field(default_factory=list)
+    branches: List[GitBranchInfo] = Field(default_factory=list)
     contributors: List[GitContributor] = Field(default_factory=list)
     timeline: List[GitTimelineItem] = Field(default_factory=list)
 

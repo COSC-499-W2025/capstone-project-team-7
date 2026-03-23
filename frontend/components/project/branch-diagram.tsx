@@ -28,13 +28,13 @@ const OPEN_SPAN = 3; // open branches extend this many rows then end
 /*  Helpers                                                           */
 /* ------------------------------------------------------------------ */
 
-function sn(name: string) { return name.replace(/^origin\//, ""); }
-function fd(v: string | null | undefined) { return v ? v.slice(0, 10) : ""; }
+function shortName(name: string) { return name.replace(/^origin\//, ""); }
+function formatDate(v: string | null | undefined) { return v ? v.slice(0, 10) : ""; }
 
 function dedup(branches: GitBranchInfo[]): GitBranchInfo[] {
   const m = new Map<string, GitBranchInfo>();
   for (const b of branches) {
-    const s = sn(b.name);
+    const s = shortName(b.name);
     const ex = m.get(s);
     if (!ex) {
       m.set(s, { ...b, name: s });
@@ -67,7 +67,7 @@ interface LaidOut {
 
 function layout(branches: GitBranchInfo[], filter: "all" | "merged" | "open") {
   let list = dedup(branches).filter((b) => {
-    const s = sn(b.name);
+    const s = shortName(b.name);
     return s !== "main" && s !== "master";
   });
   if (filter === "merged") list = list.filter((b) => b.is_merged);
@@ -130,7 +130,7 @@ function layout(branches: GitBranchInfo[], filter: "all" | "merged" | "open") {
 
     items.push({
       branch: b,
-      label: sn(b.name),
+      label: shortName(b.name),
       color: COLORS[i % COLORS.length],
       lane,
       forkRow,
@@ -156,11 +156,11 @@ export function BranchDiagram({ branches }: { branches: GitBranchInfo[] }) {
   );
 
   const mergedN = useMemo(
-    () => dedup(branches).filter((b) => sn(b.name) !== "main" && sn(b.name) !== "master" && b.is_merged).length,
+    () => dedup(branches).filter((b) => shortName(b.name) !== "main" && shortName(b.name) !== "master" && b.is_merged).length,
     [branches]
   );
   const openN = useMemo(
-    () => dedup(branches).filter((b) => sn(b.name) !== "main" && sn(b.name) !== "master" && !b.is_merged).length,
+    () => dedup(branches).filter((b) => shortName(b.name) !== "main" && shortName(b.name) !== "master" && !b.is_merged).length,
     [branches]
   );
 
@@ -291,7 +291,7 @@ export function BranchDiagram({ branches }: { branches: GitBranchInfo[] }) {
                   )}
                   {(it.branch.merge_date || it.branch.created_date) && (
                     <span className="flex-shrink-0 text-[10px] text-gray-400">
-                      {fd(it.branch.merge_date || it.branch.created_date)}
+                      {formatDate(it.branch.merge_date || it.branch.created_date)}
                     </span>
                   )}
                 </div>

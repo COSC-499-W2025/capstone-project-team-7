@@ -99,7 +99,7 @@ def _lines_changed_by_email(repo_dir: str) -> Dict[str, Dict[str, int]]:
     return stats
 
 
-def _do_merge_group(group: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _merge_contributor_group(group: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Merge a list of contributor dicts into a single entry."""
     primary = max(group, key=lambda c: c.get("commits", 0))
     total_commits = sum(c.get("commits", 0) for c in group)
@@ -135,7 +135,7 @@ def _merge_contributors(contributors: List[Dict[str, Any]]) -> List[Dict[str, An
         if len(group) == 1:
             after_pass1.append(group[0])
         else:
-            after_pass1.append(_do_merge_group(group))
+            after_pass1.append(_merge_contributor_group(group))
 
     # --- Pass 2: merge by display name (exact match, case-insensitive) ---
     name_groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
@@ -155,7 +155,7 @@ def _merge_contributors(contributors: List[Dict[str, Any]]) -> List[Dict[str, An
         if len(group) == 1:
             after_pass2.append(group[0])
         else:
-            after_pass2.append(_do_merge_group(group))
+            after_pass2.append(_merge_contributor_group(group))
 
     # --- Pass 3: merge by normalized name (strip spaces, punctuation) ---
     # Catches "Joaquin Almora" == "joaquinalmora"
@@ -179,7 +179,7 @@ def _merge_contributors(contributors: List[Dict[str, Any]]) -> List[Dict[str, An
         if len(group) == 1:
             merged.append(group[0])
         else:
-            merged.append(_do_merge_group(group))
+            merged.append(_merge_contributor_group(group))
 
     return merged
 
@@ -370,21 +370,47 @@ def _analyze_branches(repo_dir: str) -> List[Dict[str, Any]]:
         pass
 
     # Count commits per branch (unique to branch, not on default)
+    # Use a single git for-each-ref with %(ahead-behind) (Git 2.40+) to avoid
+    # O(N) subprocess calls.  Falls back to the per-branch loop (capped) on
+    # older Git versions.
     branch_commits: Dict[str, int] = {}
     try:
-        for branch in all_branches:
-            if branch.endswith("/HEAD"):
+        ref_counts = _git(
+            [
+                "for-each-ref",
+                f"--format=%(refname:short)\t%(ahead-behind:{default_sha})",
+                "--sort=-committerdate",
+                "refs/heads/",
+                "refs/remotes/",
+            ],
+            repo_dir,
+        ).splitlines()
+        for line in ref_counts:
+            if "\t" not in line:
                 continue
-            try:
-                count_str = _git(
-                    ["rev-list", "--count", f"{default_sha}..{branch}"],
-                    repo_dir,
-                ).strip()
-                branch_commits[branch] = int(count_str) if count_str else 0
-            except (CalledProcessError, ValueError):
-                branch_commits[branch] = 0
-    except Exception:
-        pass
+            name, counts = line.split("\t", 1)
+            parts = counts.strip().split()
+            if len(parts) >= 1:
+                try:
+                    branch_commits[name.strip()] = int(parts[0])
+                except ValueError:
+                    pass
+    except CalledProcessError:
+        # Fallback for Git < 2.40: per-branch rev-list, capped at 200
+        try:
+            for branch in all_branches[:200]:
+                if branch.endswith("/HEAD"):
+                    continue
+                try:
+                    count_str = _git(
+                        ["rev-list", "--count", f"{default_sha}..{branch}"],
+                        repo_dir,
+                    ).strip()
+                    branch_commits[branch] = int(count_str) if count_str else 0
+                except (CalledProcessError, ValueError):
+                    branch_commits[branch] = 0
+        except Exception:
+            pass
 
     # Build short-name lookup for merged_set (handles origin/ prefix matching)
     merged_short: Set[str] = set()
