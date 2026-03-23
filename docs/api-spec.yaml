@@ -1856,6 +1856,86 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/DedupReport' }
 
+  /api/portfolio/resource-suggestions:
+    get:
+      summary: Get personalised learning resource suggestions
+      description: Returns curated resources based on user's scanned skill tiers. Optionally filter by target role.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: role
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [backend_developer, frontend_developer, fullstack_developer, data_scientist, devops_engineer, ml_engineer, security_engineer]
+          description: Target role to prioritise suggestions for
+      responses:
+        '200':
+          description: List of skill-based resource suggestions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  suggestions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        skill_name: { type: string }
+                        current_tier: { type: string, enum: [beginner, intermediate, advanced] }
+                        target_tier: { type: string, enum: [beginner, intermediate, advanced] }
+                        reason: { type: string }
+                        importance: { type: string, nullable: true }
+                        resources:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              title: { type: string }
+                              url: { type: string, format: uri }
+                              type: { type: string, enum: [article, video, course, docs] }
+                              level: { type: string, enum: [beginner, intermediate, advanced] }
+                  role: { type: string, nullable: true }
+                  role_label: { type: string, nullable: true }
+        '401':
+          description: Unauthorized
+
+  /api/portfolio/linkedin-post:
+    post:
+      summary: Generate a LinkedIn post from portfolio or project data
+      description: Produces a shareable text post with project highlights, skills, and optional share URL.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                scope:
+                  type: string
+                  enum: [portfolio, project]
+                  default: portfolio
+                project_id:
+                  type: string
+                  nullable: true
+                  description: Required when scope is 'project'
+      responses:
+        '200':
+          description: Generated post text
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  post_text: { type: string }
+                  share_url: { type: string, nullable: true }
+        '401':
+          description: Unauthorized
+        '404':
+          description: Project not found (when scope is 'project')
+
   /api/selection:
     post:
       summary: Save user selection and ordering

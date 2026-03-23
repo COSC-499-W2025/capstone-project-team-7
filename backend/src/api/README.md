@@ -80,6 +80,8 @@ The routes below are extracted from the active routers included by `backend/src/
 - `DELETE /api/portfolio/items/{item_id}`
 - `POST /api/portfolio/refresh`
 - `POST /api/portfolio/generate`
+- `GET /api/portfolio/resource-suggestions` — personalised learning resource suggestions based on scanned skills (optional `?role=` filter)
+- `POST /api/portfolio/linkedin-post` — generate a shareable LinkedIn post from portfolio or project data
 
 ### Resume
 
