@@ -77,6 +77,7 @@ export function ResourceSuggestions() {
   const [error, setError] = useState<string | null>(null);
   const [selectedRole, setSelectedRole] = useState<string>("");
   const hasFetched = useRef(false);
+  const requestIdRef = useRef(0);
 
   const fetchSuggestions = useCallback(async (role?: string) => {
     const token = getStoredToken();
@@ -84,15 +85,18 @@ export function ResourceSuggestions() {
       setError("Not authenticated");
       return;
     }
+    const currentRequestId = ++requestIdRef.current;
     setLoading(true);
     setError(null);
     try {
       const res = await getResourceSuggestions(token, role || undefined);
+      if (currentRequestId !== requestIdRef.current) return;
       setSuggestions(res.suggestions);
     } catch (err) {
+      if (currentRequestId !== requestIdRef.current) return;
       setError(err instanceof Error ? err.message : "Failed to load suggestions");
     } finally {
-      setLoading(false);
+      if (currentRequestId === requestIdRef.current) setLoading(false);
     }
   }, []);
 
