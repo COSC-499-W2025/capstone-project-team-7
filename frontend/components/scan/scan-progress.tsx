@@ -39,13 +39,13 @@ export function ScanProgress({ percent, message }: ScanProgressProps) {
       <style jsx>{`
         @keyframes indeterminate {
           0% {
-            transform: translateX(-110%);
+            transform: translateX(-100%);
           }
-          60% {
-            transform: translateX(165%);
+          50% {
+            transform: translateX(100%);
           }
           100% {
-            transform: translateX(230%);
+            transform: translateX(-100%);
           }
         }
       `}</style>

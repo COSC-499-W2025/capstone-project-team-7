@@ -11,11 +11,10 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { Search, FileText, Sparkles } from "lucide-react";
+import { Search, FileText, Sparkles, X } from "lucide-react";
 import { getStoredToken } from "@/lib/auth";
 import { searchProjects, getSkills } from "@/lib/api/projects";
 import { SearchResultItem } from "@/types/project";
-import { SearchInput } from "@/components/ui/search-input";
 
 export default function SearchPage() {
   const router = useRouter();
@@ -130,77 +129,90 @@ export default function SearchPage() {
       </section>
 
         <section className="page-card page-body">
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(300px,0.8fr)]">
-            <div className="space-y-4">
-              <div className="rounded-[22px] border border-border bg-muted/35 p-4">
+          <div className="space-y-3.5">
+              <div className="rounded-[24px] border border-border/70 bg-[linear-gradient(180deg,hsl(var(--card)/0.9),hsl(var(--muted)/0.58))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_20px_40px_rgba(15,23,42,0.06)] sm:p-5">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                   Query Builder
                 </p>
-                <div className="mt-3 flex flex-col gap-4 sm:flex-row">
-                  <div className="flex-1">
-                    <SearchInput
+                <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
+                  <div className="group relative flex min-w-0 flex-1 items-center rounded-[16px] border border-border/80 bg-background/86 shadow-[inset_0_1px_0_rgba(255,255,255,0.82),0_12px_24px_rgba(15,23,42,0.05)] transition-[border-color,box-shadow,background-color] focus-within:border-primary/45 focus-within:bg-background focus-within:shadow-[0_0_0_4px_hsl(var(--primary)/0.12),0_18px_34px_rgba(15,23,42,0.08)]">
+                    <Search className="pointer-events-none ml-4 h-4 w-4 shrink-0 text-muted-foreground transition-colors group-focus-within:text-foreground" />
+                    <input
+                      type="text"
                       value={query}
-                      onChange={setQuery}
+                      onChange={(event) => setQuery(event.target.value)}
                       onKeyDown={handleKeyDown}
-                      onClear={() => {
-                        setQuery("");
-                        setHasSearched(false);
-                        setResults([]);
-                        setTotal(0);
-                      }}
                       placeholder="Search projects, files, skills..."
+                      className="h-12 min-w-0 flex-1 bg-transparent px-3 py-0 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
                     />
+                    {query.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setQuery("");
+                          setHasSearched(false);
+                          setResults([]);
+                          setTotal(0);
+                        }}
+                        className="mr-3 inline-flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                        aria-label="Clear search"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
                   </div>
 
-                  <Select
-                    value={scope}
-                    onValueChange={(value) =>
-                      setScope(value as "all" | "files" | "skills")
-                    }
-                  >
-                    <SelectTrigger className="w-full sm:w-[160px]">
-                      <SelectValue placeholder="Scope" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All</SelectItem>
-                      <SelectItem value="files">Files</SelectItem>
-                      <SelectItem value="skills">Skills</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <div className="grid gap-3 sm:grid-cols-2 lg:w-auto lg:grid-cols-[minmax(110px,auto)_minmax(190px,auto)_auto]">
+                    <Select
+                      value={scope}
+                      onValueChange={(value) =>
+                        setScope(value as "all" | "files" | "skills")
+                      }
+                    >
+                      <SelectTrigger className="h-12 w-full rounded-[16px] border-border/80 bg-background/86 px-4 py-0 text-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.82),0_12px_24px_rgba(15,23,42,0.05)] ring-offset-0 transition-[border-color,box-shadow,background-color] focus:ring-[3px] focus:ring-primary/12 focus:ring-offset-0 sm:min-w-[110px]">
+                        <SelectValue placeholder="Scope" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All</SelectItem>
+                        <SelectItem value="files">Files</SelectItem>
+                        <SelectItem value="skills">Skills</SelectItem>
+                      </SelectContent>
+                    </Select>
 
-                  <Select value={selectedSkill} onValueChange={setSelectedSkill}>
-                    <SelectTrigger className="w-full sm:w-[220px]">
-                      <SelectValue placeholder="Filter by skill" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Skills</SelectItem>
-                      {skillsLoading ? (
-                        <SelectItem value="loading" disabled>
-                          Loading...
-                        </SelectItem>
-                      ) : (
-                        skills.map((skill) => (
-                          <SelectItem key={skill} value={skill}>
-                            {skill}
+                    <Select value={selectedSkill} onValueChange={setSelectedSkill}>
+                      <SelectTrigger className="h-12 w-full rounded-[16px] border-border/80 bg-background/86 px-4 py-0 text-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.82),0_12px_24px_rgba(15,23,42,0.05)] ring-offset-0 transition-[border-color,box-shadow,background-color] focus:ring-[3px] focus:ring-primary/12 focus:ring-offset-0 sm:min-w-[190px]">
+                        <SelectValue placeholder="All Skills" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Skills</SelectItem>
+                        {skillsLoading ? (
+                          <SelectItem value="loading" disabled>
+                            Loading...
                           </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
+                        ) : (
+                          skills.map((skill) => (
+                            <SelectItem key={skill} value={skill}>
+                              {skill}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
 
-                  <Button
-                    onClick={handleSearch}
-                    onKeyDown={handleKeyDown}
-                    disabled={loading || !query.trim()}
-                    className="sm:min-w-[132px]"
-                  >
-                    {loading ? (
-                      <Spinner size="md" />
-                    ) : (
-                      <Search className="h-4 w-4" />
-                    )}
-                    <span>Search</span>
-                  </Button>
+                    <Button
+                      onClick={handleSearch}
+                      onKeyDown={handleKeyDown}
+                      disabled={loading || !query.trim()}
+                      className="h-12 w-full rounded-[16px] px-5 shadow-[0_14px_28px_hsl(var(--primary)/0.2)] transition-[background-color,border-color,box-shadow] hover:translate-y-0 hover:shadow-[0_16px_30px_hsl(var(--primary)/0.24)] active:translate-y-0 sm:col-span-2 lg:col-span-1 lg:min-w-[120px]"
+                    >
+                      {loading ? (
+                        <Spinner size="md" />
+                      ) : (
+                        <Search className="h-4 w-4" />
+                      )}
+                      <span>Search</span>
+                    </Button>
+                  </div>
                 </div>
               </div>
 
@@ -224,7 +236,7 @@ export default function SearchPage() {
               )}
 
               {loading && (
-                <div className="flex items-center justify-center rounded-[22px] border border-border bg-muted/30 py-20">
+                <div className="flex items-center justify-center rounded-[22px] border border-border bg-muted/30 py-16">
                   <Spinner size="xl" className="text-muted-foreground" />
                   <span className="ml-3 text-muted-foreground">Searching...</span>
                 </div>
@@ -297,8 +309,10 @@ export default function SearchPage() {
               )}
 
               {!loading && hasSearched && filteredResults.length === 0 && (
-                <div className="rounded-[24px] border border-dashed border-border bg-background/75 py-16 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]">
-                  <Search className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+                <div className="rounded-[24px] border border-dashed border-border bg-background/75 px-6 py-12 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]">
+                  <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-muted/80 text-muted-foreground">
+                    <Search className="h-5 w-5" />
+                  </div>
                   <p className="text-base font-medium text-foreground">No results found</p>
                   <p className="mt-1 text-sm text-muted-foreground">
                     Try a different search term or adjust your filters.
@@ -307,33 +321,16 @@ export default function SearchPage() {
               )}
 
               {!loading && !hasSearched && (
-                <div className="rounded-[24px] border border-dashed border-border bg-background/75 py-16 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]">
-                  <Search className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+                <div className="rounded-[24px] border border-dashed border-border bg-background/75 px-6 py-12 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]">
+                  <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-muted/80 text-muted-foreground">
+                    <Search className="h-5 w-5" />
+                  </div>
                   <p className="text-base font-medium text-foreground">Enter a search term to get started</p>
                   <p className="mt-1 text-sm text-muted-foreground">
                     Search by file name, path, project name, or skill.
                   </p>
                 </div>
               )}
-            </div>
-
-            <div className="grid gap-3">
-              <div className="info-tile">
-                <p className="info-tile-kicker">Search Tips</p>
-                <p className="mt-3 text-base font-semibold text-foreground">Use short, precise terms</p>
-                <p className="mt-2 text-sm text-muted-foreground">Search by filename fragments, technology names, or notable capabilities.</p>
-              </div>
-              <div className="info-tile">
-                <p className="info-tile-kicker">Filters</p>
-                <p className="mt-3 text-base font-semibold text-foreground">Scope narrows noise</p>
-                <p className="mt-2 text-sm text-muted-foreground">Switch between files and skills when you want either raw evidence or extracted expertise.</p>
-              </div>
-              <div className="info-tile">
-                <p className="info-tile-kicker">Navigation</p>
-                <p className="mt-3 text-base font-semibold text-foreground">Jump directly into a project</p>
-                <p className="mt-2 text-sm text-muted-foreground">Each result opens the corresponding project detail view without changing the underlying search data.</p>
-              </div>
-            </div>
           </div>
       </section>
     </div>
