@@ -1,7 +1,7 @@
 import tempfile
 import subprocess
 import pathlib
-from backend.src.local_analysis.git_repo import analyze_git_repo, _is_vendor_path
+from backend.src.local_analysis.git_repo import analyze_git_repo, _is_vendor_path, _analyze_branches, _resolve_default_branch
 
 def run(cmd, cwd):
     subprocess.check_call(cmd, cwd=cwd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -143,3 +143,125 @@ def test_timeline_excludes_c_from_lib_directories():
         assert "C" not in languages
         # Python should be present
         assert languages.get("Python", 0) >= 1
+
+
+# ── Branch analysis tests ──────────────────────────────────────────
+
+
+def test_resolve_default_branch_main():
+    """Default branch resolves to 'main' for a repo with a main branch."""
+    with tempfile.TemporaryDirectory() as tmp:
+        run(["git", "init", "-q", "--initial-branch=main"], tmp)
+        (pathlib.Path(tmp) / "a.txt").write_text("hello", encoding="utf-8")
+        run(["git", "add", "a.txt"], tmp)
+        run(["git", "-c", "user.name=T", "-c", "user.email=t@t.com",
+             "commit", "-m", "init", "-q"], tmp)
+        result = _resolve_default_branch(tmp)
+        assert result in ("main", "HEAD")
+
+
+def test_resolve_default_branch_fallback():
+    """Repos with no remote and non-standard branch fall back to HEAD."""
+    with tempfile.TemporaryDirectory() as tmp:
+        run(["git", "init", "-q", "--initial-branch=develop"], tmp)
+        (pathlib.Path(tmp) / "a.txt").write_text("hello", encoding="utf-8")
+        run(["git", "add", "a.txt"], tmp)
+        run(["git", "-c", "user.name=T", "-c", "user.email=t@t.com",
+             "commit", "-m", "init", "-q"], tmp)
+        result = _resolve_default_branch(tmp)
+        assert result == "HEAD"
+
+
+def test_analyze_branches_merged_and_open():
+    """Branches are returned with correct is_merged status after a merge."""
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = pathlib.Path(tmp)
+        run(["git", "init", "-q", "--initial-branch=main"], tmp)
+
+        # Initial commit on main
+        (repo / "a.txt").write_text("hello", encoding="utf-8")
+        run(["git", "add", "a.txt"], tmp)
+        run(["git", "-c", "user.name=T", "-c", "user.email=t@t.com",
+             "commit", "-m", "init", "-q"], tmp)
+
+        # Create and merge a feature branch
+        run(["git", "checkout", "-b", "feature/merged-one", "-q"], tmp)
+        (repo / "b.txt").write_text("feature work", encoding="utf-8")
+        run(["git", "add", "b.txt"], tmp)
+        run(["git", "-c", "user.name=T", "-c", "user.email=t@t.com",
+             "commit", "-m", "add feature", "-q"], tmp)
+        run(["git", "checkout", "main", "-q"], tmp)
+        run(["git", "merge", "feature/merged-one", "--no-ff", "-m",
+             "Merge branch 'feature/merged-one'", "-q"], tmp)
+
+        # Create an open branch
+        run(["git", "checkout", "-b", "feature/open-one", "-q"], tmp)
+        (repo / "c.txt").write_text("wip", encoding="utf-8")
+        run(["git", "add", "c.txt"], tmp)
+        run(["git", "-c", "user.name=T", "-c", "user.email=t@t.com",
+             "commit", "-m", "wip", "-q"], tmp)
+        run(["git", "checkout", "main", "-q"], tmp)
+
+        branches = _analyze_branches(tmp)
+        names = {b["name"] for b in branches}
+        assert "feature/merged-one" in names
+        assert "feature/open-one" in names
+
+        merged_branch = next(b for b in branches if b["name"] == "feature/merged-one")
+        open_branch = next(b for b in branches if b["name"] == "feature/open-one")
+        assert merged_branch["is_merged"] is True
+        assert open_branch["is_merged"] is False
+        assert merged_branch["commit_count"] >= 1
+        assert open_branch["commit_count"] >= 1
+
+
+def test_analyze_branches_no_remote():
+    """Branch analysis works for a local-only repo with no remote."""
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = pathlib.Path(tmp)
+        run(["git", "init", "-q", "--initial-branch=main"], tmp)
+
+        (repo / "a.txt").write_text("init", encoding="utf-8")
+        run(["git", "add", "a.txt"], tmp)
+        run(["git", "-c", "user.name=T", "-c", "user.email=t@t.com",
+             "commit", "-m", "init", "-q"], tmp)
+
+        run(["git", "checkout", "-b", "dev", "-q"], tmp)
+        (repo / "b.txt").write_text("dev", encoding="utf-8")
+        run(["git", "add", "b.txt"], tmp)
+        run(["git", "-c", "user.name=T", "-c", "user.email=t@t.com",
+             "commit", "-m", "dev commit", "-q"], tmp)
+        run(["git", "checkout", "main", "-q"], tmp)
+
+        branches = _analyze_branches(tmp)
+        assert len(branches) >= 1
+        dev = next((b for b in branches if b["name"] == "dev"), None)
+        assert dev is not None
+        assert dev["commit_count"] >= 1
+
+
+def test_analyze_branches_returns_rich_data():
+    """Each branch dict contains all expected keys."""
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = pathlib.Path(tmp)
+        run(["git", "init", "-q", "--initial-branch=main"], tmp)
+        (repo / "a.txt").write_text("init", encoding="utf-8")
+        run(["git", "add", "a.txt"], tmp)
+        run(["git", "-c", "user.name=T", "-c", "user.email=t@t.com",
+             "commit", "-m", "init", "-q"], tmp)
+
+        run(["git", "checkout", "-b", "feat", "-q"], tmp)
+        (repo / "b.txt").write_text("feat", encoding="utf-8")
+        run(["git", "add", "b.txt"], tmp)
+        run(["git", "-c", "user.name=T", "-c", "user.email=t@t.com",
+             "commit", "-m", "feat", "-q"], tmp)
+        run(["git", "checkout", "main", "-q"], tmp)
+
+        branches = _analyze_branches(tmp)
+        assert len(branches) >= 1
+        for b in branches:
+            assert "name" in b
+            assert "created_date" in b
+            assert "is_merged" in b
+            assert "merge_date" in b
+            assert "commit_count" in b

@@ -40,6 +40,17 @@ export interface GitDateRange {
 }
 
 /**
+ * Rich branch info returned by the backend.
+ */
+export interface GitBranchInfo {
+  name: string;
+  created_date: string | null;
+  is_merged: boolean;
+  merge_date: string | null;
+  commit_count: number;
+}
+
+/**
  * Full analysis result for a single git repo.
  * Returned by analyze_git_repo().
  */
@@ -50,6 +61,6 @@ export interface GitRepoAnalysis {
   contributors: GitContributor[];
   project_type: string;
   date_range: GitDateRange | null;
-  branches: string[];
+  branches: GitBranchInfo[];
   timeline: GitTimelineEntry[];
 }
