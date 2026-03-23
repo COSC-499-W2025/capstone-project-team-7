@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { LoadingState } from "@/components/ui/loading-state";
 import { Spinner } from "@/components/ui/spinner";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -20,7 +21,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { formatOperationError } from "@/lib/error-utils";
 import type { AuthSessionInfo } from "@/lib/auth";
 import type { ConfigResponse, ProfilesResponse, EncryptionStatus, SecretStatusItem } from "@/lib/api.types";
-import { AlertTriangle, ArrowLeft, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -568,8 +569,18 @@ export default function SettingsPage() {
     }
   };
 
+  if (consentLoading) {
+    return (
+      <div className="page-container">
+        <div className="mx-auto w-full max-w-[1500px]">
+          <LoadingState message="Loading settings..." />
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="page-container relative">
+    <div className="page-container">
       {/* Error Banner */}
       {consentError && (
         <div className="alert alert-error">
@@ -591,31 +602,14 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Loading Overlay */}
-      {consentLoading && (
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
-          <div className="text-center">
-            <Spinner size={48} className="mx-auto mb-4 text-primary" />
-            <p className="text-sm text-muted-foreground">Loading settings...</p>
-          </div>
-        </div>
-      )}
-
       <section className="page-card page-hero">
         <div className="page-header">
           <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
             <div>
-              <div className="mb-3 flex items-center gap-3">
-                <Link
-                  href="/"
-                  className="inline-flex items-center gap-2 text-sm text-muted-foreground/70 transition-[color,transform] duration-200 hover:-translate-x-0.5 hover:text-foreground"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                  <span>Back</span>
-                </Link>
+              <div className="mb-3 flex items-center gap-2">
                 <span
                   aria-hidden="true"
-                  className="h-4 w-px bg-gradient-to-b from-transparent via-border to-transparent"
+                  className="h-px w-7 bg-gradient-to-r from-primary/75 to-primary/0"
                 />
                 <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                   Operations Control
