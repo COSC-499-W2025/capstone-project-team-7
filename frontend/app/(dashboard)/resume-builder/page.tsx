@@ -52,30 +52,8 @@ import {
   saveResumeProfile,
 } from "@/lib/api/user-resume";
 import { getTemplateLatex } from "@/lib/latex-templates";
+import { TEMPLATE_INFO } from "./template-options";
 import type { UserResumeSummary, ResumeTemplate, ResumeStructuredData } from "@/types/user-resume";
-
-const TEMPLATE_INFO: Record<ResumeTemplate, { name: string; description: string }> = {
-  jake: {
-    name: "Jake's Resume",
-    description: "Clean, ATS-friendly single-column template",
-  },
-  classic: {
-    name: "Classic",
-    description: "Traditional professional layout",
-  },
-  modern: {
-    name: "Modern",
-    description: "Contemporary design with clean sections",
-  },
-  minimal: {
-    name: "Minimal",
-    description: "Ultra-clean minimalist design",
-  },
-  custom: {
-    name: "Custom",
-    description: "Start from scratch",
-  },
-};
 
 export default function ResumeBuilderPage() {
   const router = useRouter();
@@ -131,7 +109,9 @@ export default function ResumeBuilderPage() {
       const record = await getResumeProfile(token);
       setProfile(record?.structured_data ?? null);
     };
-    loadProfile();
+    loadProfile().catch((err) => {
+      setProfileError(err instanceof Error ? err.message : "Failed to load profile");
+    });
   }, []);
 
   const handleRefresh = () => {

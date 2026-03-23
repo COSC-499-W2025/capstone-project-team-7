@@ -191,6 +191,8 @@ function ResumeEditorPageInner() {
           name: debouncedResumeName,
           template: debouncedTemplate,
           latex_content: isLatexMode ? debouncedLatex : null,
+          // Always persist structured_data so form-mode data is preserved
+          // even when the user is editing in LaTeX mode.
           structured_data: debouncedStructured,
           is_latex_mode: isLatexMode,
         });

@@ -25,10 +25,10 @@ import { listResumeItems, getResumeItem } from "@/lib/api/resume";
 import {
   createUserResume,
   addResumeItemsToResume,
-  getUserResume,
   updateUserResume,
 } from "@/lib/api/user-resume";
 import { generateLatexFromStructuredData } from "@/lib/latex-templates";
+import { TEMPLATES } from "./template-options";
 import type { ResumeTemplate, ResumeStructuredData } from "@/types/user-resume";
 import type { ResumeItemSummary, ResumeItemRecord } from "@/types/resume";
 
@@ -48,14 +48,6 @@ type Step =
   | { kind: "creating" }
   | { kind: "adding_items" }
   | { kind: "done" };
-
-const TEMPLATES: { id: ResumeTemplate; name: string; description: string }[] = [
-  { id: "jake", name: "Jake's Resume", description: "Clean, ATS-friendly single-column template" },
-  { id: "classic", name: "Classic", description: "Traditional professional layout" },
-  { id: "modern", name: "Modern", description: "Contemporary design with clean sections" },
-  { id: "minimal", name: "Minimal", description: "Ultra-clean minimalist design" },
-  { id: "custom", name: "Custom", description: "Start from scratch" },
-];
 
 // ── Component ────────────────────────────────────────────────────────────────
 
@@ -168,10 +160,9 @@ export function GenerateFromProfileModal({ open, onOpenChange, profile, onGenera
       // Step 2: Attach selected scan items (projects)
       if (selectedItemIds.length > 0) {
         setStep({ kind: "adding_items" });
-        await addResumeItemsToResume(token, created.id, { item_ids: selectedItemIds });
+        const updated = await addResumeItemsToResume(token, created.id, { item_ids: selectedItemIds });
 
-        // Re-fetch the updated resume and regenerate LaTeX with the added projects
-        const updated = await getUserResume(token, created.id);
+        // Regenerate LaTeX with the added projects
         const finalLatex = generateLatexFromStructuredData(updated.structured_data || {});
         await updateUserResume(token, created.id, { latex_content: finalLatex });
       }
