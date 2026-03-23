@@ -864,8 +864,7 @@
 }
 
 @layer utilities {
-  .pc-no-shadow,
-  .pc-no-shadow * {
+  .pc-no-shadow {
     box-shadow: none !important;
   }
 
