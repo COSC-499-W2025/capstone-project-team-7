@@ -301,6 +301,76 @@ def create_user_resume(
     return _build_resume_record(record)
 
 
+# ============================================================================
+# Profile Routes  (must be defined BEFORE /{resume_id} to avoid path conflict)
+# ============================================================================
+
+class UserResumeSaveProfileRequest(BaseModel):
+    """Request to create or update the user's resume profile."""
+    structured_data: Dict[str, Any] = Field(default_factory=dict)
+
+
+@router.get(
+    "/profile",
+    response_model=UserResumeRecord,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Profile not saved yet"},
+        500: {"model": ErrorResponse, "description": "Profile retrieval failed"},
+    },
+)
+def get_resume_profile(
+    auth: AuthContext = Depends(get_auth_context),
+    service: UserResumeService = Depends(get_user_resume_service),
+) -> UserResumeRecord:
+    """Fetch the user's saved resume profile."""
+    try:
+        service.apply_access_token(auth.access_token)
+        record = service.get_profile(auth.user_id)
+    except UserResumeServiceError as exc:
+        logger.exception("Failed to fetch resume profile")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "profile_fetch_error", "message": str(exc)},
+        ) from exc
+
+    if not record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "profile_not_found", "message": "No resume profile saved yet."},
+        )
+
+    return _build_resume_record(record)
+
+
+@router.put(
+    "/profile",
+    response_model=UserResumeRecord,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        422: {"model": ErrorResponse, "description": "Validation error"},
+        500: {"model": ErrorResponse, "description": "Profile save failed"},
+    },
+)
+def save_resume_profile(
+    payload: UserResumeSaveProfileRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    service: UserResumeService = Depends(get_user_resume_service),
+) -> UserResumeRecord:
+    """Create or update the user's resume profile."""
+    try:
+        service.apply_access_token(auth.access_token)
+        record = service.save_profile(auth.user_id, payload.structured_data)
+    except UserResumeServiceError as exc:
+        logger.exception("Failed to save resume profile")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "profile_save_error", "message": str(exc)},
+        ) from exc
+
+    return _build_resume_record(record)
+
+
 @router.get(
     "/{resume_id}",
     response_model=UserResumeRecord,

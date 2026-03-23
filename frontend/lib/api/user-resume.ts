@@ -10,6 +10,7 @@ import type {
   UserResumeDuplicateRequest,
   UserResumeAddItemsRequest,
   TemplatesListResponse,
+  ResumeStructuredData,
 } from "@/types/user-resume";
 
 import { request } from "@/lib/api";
@@ -77,4 +78,34 @@ export async function downloadResumePdf(token: string, id: string, latexContent:
 
   if (!result.ok) throw new Error(result.error ?? "Failed to export PDF");
   return result.data;
+}
+
+/**
+ * Fetch the user's saved resume profile, or null if none exists yet.
+ */
+export async function getResumeProfile(token: string): Promise<UserResumeRecord | null> {
+  const result = await request<UserResumeRecord>("/api/user-resumes/profile", {
+    headers: authHeaders(token),
+  });
+  // 404 = profile not saved yet — return null instead of throwing
+  if (!result.ok) return null;
+  return result.data;
+}
+
+/**
+ * Create or update the user's resume profile.
+ */
+export async function saveResumeProfile(
+  token: string,
+  structured_data: ResumeStructuredData,
+): Promise<UserResumeRecord> {
+  return call(
+    "/api/user-resumes/profile",
+    {
+      method: "PUT",
+      headers: authHeaders(token),
+      body: JSON.stringify({ structured_data }),
+    },
+    "Failed to save resume profile",
+  );
 }
