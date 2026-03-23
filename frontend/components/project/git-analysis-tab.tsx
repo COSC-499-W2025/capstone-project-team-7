@@ -313,7 +313,7 @@ function ActivityTimeline({ timeline }: { timeline: GitTimelineEntry[] }) {
                   {formatMonthLabel(entry.month)}
                 </h4>
                 <div className="flex flex-wrap gap-2 text-xs font-semibold">
-                  <span className="px-2.5 py-1 rounded-full bg-gray-900 text-white">
+                  <span className="px-2.5 py-1 rounded-full bg-foreground text-background">
                     {entry.commits} commits
                   </span>
                   <span className="rounded-full border border-border bg-muted px-2.5 py-1 text-foreground">

@@ -331,17 +331,17 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
           {/* Scanning state */}
           {isScanning && (
             <div className="space-y-4">
-              <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+              <div className="p-4 bg-muted/30 border border-border rounded-lg">
                 <div className="flex items-center gap-2 mb-3">
-                  <Spinner size="md" className="text-gray-600" />
-                  <span className="text-sm font-medium text-gray-700">
+                  <Spinner size="md" className="text-muted-foreground" />
+                  <span className="text-sm font-medium text-foreground">
                     {scanMode === "append" ? "Scanning and merging..." : "Scanning in progress..."}
                   </span>
                 </div>
                 <ScanProgress percent={progress?.percent} message={progress?.message} />
               </div>
 
-              <p className="text-xs text-gray-500 text-center">
+              <p className="text-xs text-muted-foreground text-center">
                 {scanMode === "append" && selectedProject && (
                   <>Adding to: {selectedProject.project_name} • </>
                 )}
@@ -360,25 +360,25 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
                   <label
                     className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${
                       scanMode === "new"
-                        ? "border-gray-900 bg-gray-50"
-                        : "border-gray-200 bg-white hover:border-gray-300"
+                        ? "border-foreground bg-muted/30"
+                        : "border-border bg-card hover:border-border"
                     } ${!isAuthenticated ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
                   >
                     <input
                       type="radio"
                       name="scan-mode"
                       value="new"
-                      className="mt-0.5 h-4 w-4 accent-gray-900"
+                      className="mt-0.5 h-4 w-4 accent-foreground"
                       checked={scanMode === "new"}
                       onChange={() => handleModeChange("new")}
                       disabled={!isAuthenticated}
                     />
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                      <p className="text-sm font-medium text-foreground flex items-center gap-2">
                         <Plus className="h-4 w-4" />
                         New Project
                       </p>
-                      <p className="text-xs text-gray-500 mt-1">
+                      <p className="text-xs text-muted-foreground mt-1">
                         Create a new project from selected files.
                       </p>
                     </div>
@@ -387,31 +387,31 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
                   <label
                     className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${
                       scanMode === "append"
-                        ? "border-gray-900 bg-gray-50"
-                        : "border-gray-200 bg-white hover:border-gray-300"
+                        ? "border-foreground bg-muted/30"
+                        : "border-border bg-card hover:border-border"
                     } ${!isAuthenticated ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
                   >
                     <input
                       type="radio"
                       name="scan-mode"
                       value="append"
-                      className="mt-0.5 h-4 w-4 accent-gray-900"
+                      className="mt-0.5 h-4 w-4 accent-foreground"
                       checked={scanMode === "append"}
                       onChange={() => handleModeChange("append")}
                       disabled={!isAuthenticated}
                     />
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                      <p className="text-sm font-medium text-foreground flex items-center gap-2">
                         <FolderPlus className="h-4 w-4" />
                         Add to Existing
                       </p>
-                      <p className="text-xs text-gray-500 mt-1">
+                      <p className="text-xs text-muted-foreground mt-1">
                         Merge new files into a project you already created.
                       </p>
                     </div>
                   </label>
                 </div>
-                <p className="text-xs text-gray-500">Choose a scan type, then pick a folder or ZIP below.</p>
+                <p className="text-xs text-muted-foreground">Choose a scan type, then pick a folder or ZIP below.</p>
               </div>
 
               {/* Project selector (append mode only) */}
@@ -453,7 +453,7 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
                         <SelectItem key={project.id} value={project.id}>
                           <div className="flex flex-col">
                             <span>{project.project_name}</span>
-                            <span className="text-xs text-gray-500">
+                            <span className="text-xs text-muted-foreground">
                               {project.total_files} files
                               {project.languages && project.languages.length > 0 && (
                                 <> • {project.languages.slice(0, 3).join(", ")}</>

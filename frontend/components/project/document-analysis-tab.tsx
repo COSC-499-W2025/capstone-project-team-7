@@ -39,9 +39,9 @@ function getFileIcon(fileType: string) {
     case "markdown":
       return <BookOpen className="h-5 w-5 text-purple-500" />;
     case "txt":
-      return <FileIcon className="h-5 w-5 text-gray-500" />;
+      return <FileIcon className="h-5 w-5 text-muted-foreground" />;
     default:
-      return <FileIcon className="h-5 w-5 text-gray-500" />;
+      return <FileIcon className="h-5 w-5 text-muted-foreground" />;
   }
 }
 
@@ -276,7 +276,7 @@ export function DocumentAnalysisTab({
               </div>
             </div>
             <div className="flex items-center gap-3 rounded-[16px] border border-border bg-muted/60 p-3.5">
-              <FileIcon className="h-6 w-6 text-gray-500" />
+              <FileIcon className="h-6 w-6 text-muted-foreground" />
               <div>
                 <p className="text-lg font-bold text-foreground">{stats.txt_count}</p>
                 <p className="text-xs text-muted-foreground">Text Files</p>
@@ -290,7 +290,7 @@ export function DocumentAnalysisTab({
               </div>
             </div>
             <div className="flex items-center gap-3 rounded-[16px] border border-border bg-muted/60 p-3.5">
-              <FileIcon className="h-6 w-6 text-gray-500" />
+              <FileIcon className="h-6 w-6 text-muted-foreground" />
               <div>
                 <p className="text-lg font-bold text-foreground">{stats.other_count}</p>
                 <p className="text-xs text-muted-foreground">Other</p>
@@ -335,7 +335,7 @@ export function DocumentAnalysisTab({
         </CardHeader>
         <CardContent className="p-5 pt-4">
           {resolvedIsLoading && (
-            <div className="text-center py-8 text-gray-500">
+            <div className="text-center py-8 text-muted-foreground">
               Loading document analysis…
             </div>
           )}
@@ -346,7 +346,7 @@ export function DocumentAnalysisTab({
           )}
           <div className="space-y-4">
             {!resolvedIsLoading && !resolvedErrorMessage && filteredDocuments.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
+              <div className="text-center py-8 text-muted-foreground">
                 {emptyMessage}
               </div>
             ) : (!resolvedIsLoading && !resolvedErrorMessage ? (

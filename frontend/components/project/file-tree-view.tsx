@@ -99,7 +99,7 @@ export function FileTreeView({
 
   if (sourceFiles.length === 0) {
     return (
-      <div className="text-sm text-gray-500 text-center py-8">
+      <div className="text-sm text-muted-foreground text-center py-8">
         No files available.
       </div>
     );
@@ -118,19 +118,19 @@ export function FileTreeView({
 
       {/* Summary + View Toggle */}
       <div className="flex items-center justify-between">
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-muted-foreground">
           {filteredFiles.length} file{filteredFiles.length !== 1 ? "s" : ""}
           {isSearching && filteredFiles.length !== sourceFiles.length
             ? ` (of ${sourceFiles.length})`
             : ""}
           , {formatFileSize(totalSize)} total
         </p>
-        <div className="flex items-center gap-1 border border-gray-200 rounded-md p-0.5">
+        <div className="flex items-center gap-1 border border-border rounded-md p-0.5">
           <button
             type="button"
             onClick={() => setViewMode("tree")}
             aria-label="Tree view"
-            className={`p-1 rounded ${viewMode === "tree" ? "bg-gray-200 text-gray-900" : "text-gray-400 hover:text-gray-600"}`}
+            className={`p-1 rounded ${viewMode === "tree" ? "bg-muted/60 text-foreground" : "text-muted-foreground hover:text-foreground"}`}
           >
             <GitBranch size={14} />
           </button>
@@ -138,7 +138,7 @@ export function FileTreeView({
             type="button"
             onClick={() => setViewMode("list")}
             aria-label="List view"
-            className={`p-1 rounded ${viewMode === "list" ? "bg-gray-200 text-gray-900" : "text-gray-400 hover:text-gray-600"}`}
+            className={`p-1 rounded ${viewMode === "list" ? "bg-muted/60 text-foreground" : "text-muted-foreground hover:text-foreground"}`}
           >
             <List size={14} />
           </button>
@@ -146,10 +146,10 @@ export function FileTreeView({
       </div>
 
       {/* Tree / List */}
-      <div className="border border-gray-200 rounded-lg overflow-hidden">
+      <div className="border border-border rounded-lg overflow-hidden">
         <div key={`${viewMode}-${search.trim()}`} className="max-h-[480px] overflow-y-auto p-2">
           {filteredFiles.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-4">
+            <p className="text-sm text-muted-foreground text-center py-4">
               No matching files.
             </p>
           ) : viewMode === "list" ? (
@@ -158,14 +158,14 @@ export function FileTreeView({
                 key={f.path}
                 className="flex items-center gap-1.5 px-2 py-1 text-sm"
               >
-                <File size={14} className="text-gray-400 shrink-0" />
-                <span className="text-gray-700 truncate">{f.path}</span>
+                <File size={14} className="text-muted-foreground shrink-0" />
+                <span className="text-foreground truncate">{f.path}</span>
                 {f.mime_type && (
-                  <span className="ml-1 px-1.5 py-0.5 rounded bg-gray-100 text-[10px] text-gray-500 shrink-0">
+                  <span className="ml-1 px-1.5 py-0.5 rounded bg-muted/30 text-[10px] text-muted-foreground shrink-0">
                     {f.mime_type}
                   </span>
                 )}
-                <span className="ml-auto text-xs text-gray-400 shrink-0">
+                <span className="ml-auto text-xs text-muted-foreground shrink-0">
                   {formatFileSize(f.size_bytes ?? 0)}
                 </span>
               </div>
@@ -210,27 +210,27 @@ function TreeNode({
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className="flex items-center gap-1.5 w-full text-left px-2 py-1 rounded hover:bg-gray-50 text-sm"
+          className="flex items-center gap-1.5 w-full text-left px-2 py-1 rounded hover:bg-muted/50 text-sm"
           style={{ paddingLeft: `${depth * 16 + 8}px` }}
         >
           {open ? (
-            <ChevronDown size={14} className="text-gray-400 shrink-0" />
+            <ChevronDown size={14} className="text-muted-foreground shrink-0" />
           ) : (
-            <ChevronRight size={14} className="text-gray-400 shrink-0" />
+            <ChevronRight size={14} className="text-muted-foreground shrink-0" />
           )}
           {open ? (
             <FolderOpen size={14} className="text-amber-500 shrink-0" />
           ) : (
             <Folder size={14} className="text-amber-500 shrink-0" />
           )}
-          <span className="font-medium text-gray-900 truncate">
+          <span className="font-medium text-foreground truncate">
             {node.name}
           </span>
           <span className="ml-auto flex items-center gap-2 shrink-0">
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-muted-foreground">
               {node.fileCount} file{node.fileCount !== 1 ? "s" : ""}
             </span>
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-muted-foreground">
               {formatFileSize(node.size_bytes)}
             </span>
           </span>
@@ -257,14 +257,14 @@ function TreeNode({
       className="flex items-center gap-1.5 px-2 py-1 text-sm"
       style={{ paddingLeft: `${depth * 16 + 8 + 18}px` }}
     >
-      <File size={14} className="text-gray-400 shrink-0" />
-      <span className="text-gray-700 truncate">{node.name}</span>
+      <File size={14} className="text-muted-foreground shrink-0" />
+      <span className="text-foreground truncate">{node.name}</span>
       {node.file?.mime_type && (
-        <span className="ml-1 px-1.5 py-0.5 rounded bg-gray-100 text-[10px] text-gray-500 shrink-0">
+        <span className="ml-1 px-1.5 py-0.5 rounded bg-muted/30 text-[10px] text-muted-foreground shrink-0">
           {node.file.mime_type}
         </span>
       )}
-      <span className="ml-auto text-xs text-gray-400 shrink-0">
+      <span className="ml-auto text-xs text-muted-foreground shrink-0">
         {formatFileSize(node.size_bytes)}
       </span>
     </div>

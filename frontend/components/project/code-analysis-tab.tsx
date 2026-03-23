@@ -146,20 +146,20 @@ export function CodeAnalysisTab({
   // Loading state
   if (resolvedIsLoading) {
     return (
-      <Card className="bg-white border border-gray-200">
-        <CardHeader className="border-b border-gray-200">
-          <CardTitle className="text-xl font-bold text-gray-900">
+      <Card className="bg-card border border-border">
+        <CardHeader className="border-b border-border">
+          <CardTitle className="text-xl font-bold text-foreground">
             Code Analysis
           </CardTitle>
-          <p className="text-xs text-gray-500 mt-1">
+          <p className="text-xs text-muted-foreground mt-1">
             Analyzing code metrics and quality...
           </p>
         </CardHeader>
         <CardContent className="p-6">
           <div className="space-y-4 animate-pulse">
-            <div className="h-24 rounded-lg bg-gray-100" />
-            <div className="h-24 rounded-lg bg-gray-100" />
-            <div className="h-24 rounded-lg bg-gray-100" />
+            <div className="h-24 rounded-lg bg-muted/50" />
+            <div className="h-24 rounded-lg bg-muted/50" />
+            <div className="h-24 rounded-lg bg-muted/50" />
           </div>
         </CardContent>
       </Card>
@@ -169,9 +169,9 @@ export function CodeAnalysisTab({
   // Error state
   if (resolvedErrorMessage) {
     return (
-      <Card className="bg-white border border-gray-200">
-        <CardHeader className="border-b border-gray-200">
-          <CardTitle className="text-xl font-bold text-gray-900">
+      <Card className="bg-card border border-border">
+        <CardHeader className="border-b border-border">
+          <CardTitle className="text-xl font-bold text-foreground">
             Code Analysis
           </CardTitle>
         </CardHeader>
@@ -201,19 +201,19 @@ export function CodeAnalysisTab({
     });
     
     return (
-      <Card className="bg-white border border-gray-200">
-        <CardHeader className="border-b border-gray-200">
-          <CardTitle className="text-xl font-bold text-gray-900">
+      <Card className="bg-card border border-border">
+        <CardHeader className="border-b border-border">
+          <CardTitle className="text-xl font-bold text-foreground">
             Code Analysis
           </CardTitle>
         </CardHeader>
         <CardContent className="p-6">
-          <div className="rounded-lg border border-gray-200 bg-gray-50 p-8 text-center">
-            <Code2 className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-            <p className="text-sm font-semibold text-gray-900">
+          <div className="rounded-lg border border-border bg-muted/30 p-8 text-center">
+            <Code2 className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+            <p className="text-sm font-semibold text-foreground">
               No code analysis data available
             </p>
-            <p className="text-xs text-gray-500 mt-2">
+            <p className="text-xs text-muted-foreground mt-2">
               Run a scan with code analysis enabled to see detailed metrics about
               your codebase structure and quality.
             </p>
@@ -253,7 +253,7 @@ export function CodeAnalysisTab({
 
   // Quality indicators
   const getComplexityColor = (complexity?: number) => {
-    if (!complexity) return "text-gray-500";
+    if (!complexity) return "text-muted-foreground";
     if (complexity < 10) return "text-green-600";
     if (complexity < 20) return "text-yellow-600";
     return "text-red-600";
@@ -267,7 +267,7 @@ export function CodeAnalysisTab({
   };
 
   const getMaintainabilityColor = (maintainability?: number) => {
-    if (!maintainability) return "text-gray-500";
+    if (!maintainability) return "text-muted-foreground";
     if (maintainability >= 80) return "text-green-600";
     if (maintainability >= 60) return "text-yellow-600";
     return "text-red-600";
@@ -282,12 +282,12 @@ export function CodeAnalysisTab({
 
   return (
     <div className="space-y-6">
-      <Card className="bg-white border border-gray-200">
-        <CardHeader className="border-b border-gray-200">
-          <CardTitle className="text-xl font-bold text-gray-900">
+      <Card className="bg-card border border-border">
+        <CardHeader className="border-b border-border">
+          <CardTitle className="text-xl font-bold text-foreground">
             Code Analysis Overview
           </CardTitle>
-          <p className="text-xs text-gray-500 mt-1">
+          <p className="text-xs text-muted-foreground mt-1">
             Comprehensive metrics about your codebase structure and quality
           </p>
         </CardHeader>
@@ -295,73 +295,73 @@ export function CodeAnalysisTab({
           {/* Overview Cards */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
             {/* Total Files */}
-            <div className="rounded-lg border border-gray-200 p-4 bg-gradient-to-br from-blue-50 to-white">
+            <div className="rounded-lg border border-border p-4 bg-gradient-to-br from-blue-50 to-white">
               <div className="flex items-center justify-between mb-2">
                 <FileCode className="h-5 w-5 text-blue-600" />
               </div>
-              <p className="text-3xl font-bold text-gray-900">
+              <p className="text-3xl font-bold text-foreground">
                 {total_files.toLocaleString()}
               </p>
-              <p className="text-xs text-gray-600 mt-1">Total Files Analyzed</p>
+              <p className="text-xs text-muted-foreground mt-1">Total Files Analyzed</p>
             </div>
 
             {/* Total Lines */}
-            <div className="rounded-lg border border-gray-200 p-4 bg-gradient-to-br from-purple-50 to-white">
+            <div className="rounded-lg border border-border p-4 bg-gradient-to-br from-purple-50 to-white">
               <div className="flex items-center justify-between mb-2">
                 <Code2 className="h-5 w-5 text-purple-600" />
               </div>
-              <p className="text-3xl font-bold text-gray-900">
+              <p className="text-3xl font-bold text-foreground">
                 {total_lines.toLocaleString()}
               </p>
-              <p className="text-xs text-gray-600 mt-1">Total Lines of Code</p>
+              <p className="text-xs text-muted-foreground mt-1">Total Lines of Code</p>
             </div>
 
             {/* Functions */}
-            <div className="rounded-lg border border-gray-200 p-4 bg-gradient-to-br from-emerald-50 to-white">
+            <div className="rounded-lg border border-border p-4 bg-gradient-to-br from-emerald-50 to-white">
               <div className="flex items-center justify-between mb-2">
                 <Braces className="h-5 w-5 text-emerald-600" />
               </div>
-              <p className="text-3xl font-bold text-gray-900">
+              <p className="text-3xl font-bold text-foreground">
                 {functions.toLocaleString()}
               </p>
-              <p className="text-xs text-gray-600 mt-1">Functions</p>
+              <p className="text-xs text-muted-foreground mt-1">Functions</p>
             </div>
 
             {/* Classes */}
-            <div className="rounded-lg border border-gray-200 p-4 bg-gradient-to-br from-amber-50 to-white">
+            <div className="rounded-lg border border-border p-4 bg-gradient-to-br from-amber-50 to-white">
               <div className="flex items-center justify-between mb-2">
                 <Box className="h-5 w-5 text-amber-600" />
               </div>
-              <p className="text-3xl font-bold text-gray-900">
+              <p className="text-3xl font-bold text-foreground">
                 {classes.toLocaleString()}
               </p>
-              <p className="text-xs text-gray-600 mt-1">Classes</p>
+              <p className="text-xs text-muted-foreground mt-1">Classes</p>
             </div>
           </div>
 
           {/* Code Composition */}
           <div className="mb-6">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">
+            <h3 className="text-sm font-semibold text-foreground mb-3">
               Code Composition
             </h3>
             <div className="grid gap-4 md:grid-cols-2">
               {/* Code Lines */}
-              <div className="rounded-lg border border-gray-200 p-4">
+              <div className="rounded-lg border border-border p-4">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <div className="h-3 w-3 rounded-full bg-blue-500" />
-                    <span className="text-sm font-medium text-gray-700">
+                    <span className="text-sm font-medium text-foreground">
                       Code Lines
                     </span>
                   </div>
-                  <span className="text-sm font-bold text-gray-900">
+                  <span className="text-sm font-bold text-foreground">
                     {codePercentage}%
                   </span>
                 </div>
-                <p className="text-2xl font-bold text-gray-900">
+                <p className="text-2xl font-bold text-foreground">
                   {code_lines.toLocaleString()}
                 </p>
-                <div className="mt-2 h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+                <div className="mt-2 h-2 w-full rounded-full bg-muted/50 overflow-hidden">
                   <div
                     className="h-full bg-blue-500 transition-all duration-300"
                     style={{ width: `${codePercentage}%` }}
@@ -370,22 +370,22 @@ export function CodeAnalysisTab({
               </div>
 
               {/* Comment Lines */}
-              <div className="rounded-lg border border-gray-200 p-4">
+              <div className="rounded-lg border border-border p-4">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <div className="h-3 w-3 rounded-full bg-green-500" />
-                    <span className="text-sm font-medium text-gray-700">
+                    <span className="text-sm font-medium text-foreground">
                       Comment Lines
                     </span>
                   </div>
-                  <span className="text-sm font-bold text-gray-900">
+                  <span className="text-sm font-bold text-foreground">
                     {commentPercentage}%
                   </span>
                 </div>
-                <p className="text-2xl font-bold text-gray-900">
+                <p className="text-2xl font-bold text-foreground">
                   {comment_lines.toLocaleString()}
                 </p>
-                <div className="mt-2 h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+                <div className="mt-2 h-2 w-full rounded-full bg-muted/50 overflow-hidden">
                   <div
                     className="h-full bg-green-500 transition-all duration-300"
                     style={{ width: `${commentPercentage}%` }}
@@ -398,16 +398,16 @@ export function CodeAnalysisTab({
           {/* Quality Metrics */}
           {(avg_complexity !== undefined || avg_maintainability !== undefined) && (
             <div>
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">
+              <h3 className="text-sm font-semibold text-foreground mb-3">
                 Code Quality Metrics
               </h3>
               <div className="grid gap-4 md:grid-cols-2">
                 {/* Average Complexity */}
                 {avg_complexity !== undefined && avg_complexity !== null && (
-                  <div className="rounded-lg border border-gray-200 p-4">
+                  <div className="rounded-lg border border-border p-4">
                     <div className="flex items-center gap-2 mb-2">
-                      <TrendingUp className="h-4 w-4 text-gray-600" />
-                      <span className="text-sm font-medium text-gray-700">
+                      <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium text-foreground">
                         Average Complexity
                       </span>
                     </div>
@@ -419,7 +419,7 @@ export function CodeAnalysisTab({
                         {getComplexityLabel(avg_complexity)}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-500 mt-2">
+                    <p className="text-xs text-muted-foreground mt-2">
                       Lower values indicate simpler, more maintainable code
                     </p>
                   </div>
@@ -427,10 +427,10 @@ export function CodeAnalysisTab({
 
                 {/* Average Maintainability */}
                 {avg_maintainability !== undefined && avg_maintainability !== null && (
-                  <div className="rounded-lg border border-gray-200 p-4">
+                  <div className="rounded-lg border border-border p-4">
                     <div className="flex items-center gap-2 mb-2">
-                      <TrendingUp className="h-4 w-4 text-gray-600" />
-                      <span className="text-sm font-medium text-gray-700">
+                      <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium text-foreground">
                         Average Maintainability
                       </span>
                     </div>
@@ -442,7 +442,7 @@ export function CodeAnalysisTab({
                         {getMaintainabilityLabel(avg_maintainability)}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-500 mt-2">
+                    <p className="text-xs text-muted-foreground mt-2">
                       Score from 0-100, higher is better
                     </p>
                   </div>
@@ -455,9 +455,9 @@ export function CodeAnalysisTab({
 
       {/* Code Quality Issues Card */}
       {(dead_code || duplicates || magic_values > 0 || error_handling_issues || naming_issues > 0 || nesting_issues > 0) && (
-        <Card className="bg-white border border-gray-200">
-          <CardHeader className="border-b border-gray-200">
-            <CardTitle className="text-base font-bold text-gray-900">
+        <Card className="bg-card border border-border">
+          <CardHeader className="border-b border-border">
+            <CardTitle className="text-base font-bold text-foreground">
               Code Quality Issues
             </CardTitle>
           </CardHeader>
@@ -468,24 +468,24 @@ export function CodeAnalysisTab({
                 <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
                   <div className="flex items-center gap-2 mb-3">
                     <XCircle className="h-5 w-5 text-orange-600" />
-                    <h3 className="text-sm font-semibold text-gray-900">
+                    <h3 className="text-sm font-semibold text-foreground">
                       Dead Code Detection
                     </h3>
                   </div>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Total items:</span>
+                      <span className="text-muted-foreground">Total items:</span>
                       <span className="font-semibold text-orange-700">
                         {dead_code.total}
                       </span>
                     </div>
-                    <div className="pl-3 space-y-1 text-xs text-gray-600">
+                    <div className="pl-3 space-y-1 text-xs text-muted-foreground">
                       <div>• Unused functions: {dead_code.unused_functions}</div>
                       <div>• Unused imports: {dead_code.unused_imports}</div>
                       <div>• Unused variables: {dead_code.unused_variables}</div>
                     </div>
                   </div>
-                  <p className="text-xs text-gray-500 mt-3">
+                  <p className="text-xs text-muted-foreground mt-3">
                     Remove unused code to improve maintainability
                   </p>
                   {/* Examples */}
@@ -501,10 +501,10 @@ export function CodeAnalysisTab({
                       {expandedSections.deadCode && (
                         <div className="mt-2 space-y-2 max-h-48 overflow-y-auto">
                           {examples.dead_code.map((ex, i) => (
-                            <div key={i} className="bg-white rounded p-2 text-xs border border-orange-100">
+                            <div key={i} className="bg-card rounded p-2 text-xs border border-orange-100">
                               <div className="font-mono text-orange-800">{ex.name}</div>
-                              <div className="text-gray-500">{getShortPath(ex.file)}:{ex.line}</div>
-                              <code className="block mt-1 text-gray-700 bg-gray-50 p-1 rounded truncate">{ex.code_snippet}</code>
+                              <div className="text-muted-foreground">{getShortPath(ex.file)}:{ex.line}</div>
+                              <code className="block mt-1 text-foreground bg-muted/30 p-1 rounded truncate">{ex.code_snippet}</code>
                             </div>
                           ))}
                         </div>
@@ -519,24 +519,24 @@ export function CodeAnalysisTab({
                 <div className="rounded-lg border border-purple-200 bg-purple-50 p-4">
                   <div className="flex items-center gap-2 mb-3">
                     <Copy className="h-5 w-5 text-purple-600" />
-                    <h3 className="text-sm font-semibold text-gray-900">
+                    <h3 className="text-sm font-semibold text-foreground">
                       Duplicate Code Detection
                     </h3>
                   </div>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Total blocks:</span>
+                      <span className="text-muted-foreground">Total blocks:</span>
                       <span className="font-semibold text-purple-700">
                         {duplicates.within_file + duplicates.cross_file}
                       </span>
                     </div>
-                    <div className="pl-3 space-y-1 text-xs text-gray-600">
+                    <div className="pl-3 space-y-1 text-xs text-muted-foreground">
                       <div>• Within-file: {duplicates.within_file}</div>
                       <div>• Cross-file: {duplicates.cross_file}</div>
                       <div>• Duplicate lines: ~{duplicates.total_duplicate_lines}</div>
                     </div>
                   </div>
-                  <p className="text-xs text-gray-500 mt-3">
+                  <p className="text-xs text-muted-foreground mt-3">
                     Extract duplicates into reusable functions
                   </p>
                   {/* Examples */}
@@ -552,14 +552,14 @@ export function CodeAnalysisTab({
                       {expandedSections.duplicates && (
                         <div className="mt-2 space-y-2 max-h-48 overflow-y-auto">
                           {examples.duplicates.map((ex, i) => (
-                            <div key={i} className="bg-white rounded p-2 text-xs border border-purple-100">
+                            <div key={i} className="bg-card rounded p-2 text-xs border border-purple-100">
                               {ex.file1 && ex.file2 ? (
                                 <>
-                                  <div className="text-gray-500">{getShortPath(ex.file1)}:{ex.line1}</div>
-                                  <div className="text-gray-500">{getShortPath(ex.file2)}:{ex.line2}</div>
+                                  <div className="text-muted-foreground">{getShortPath(ex.file1)}:{ex.line1}</div>
+                                  <div className="text-muted-foreground">{getShortPath(ex.file2)}:{ex.line2}</div>
                                 </>
                               ) : ex.file ? (
-                                <div className="text-gray-500">{getShortPath(ex.file)}:{ex.lines || ex.line1}</div>
+                                <div className="text-muted-foreground">{getShortPath(ex.file)}:{ex.lines || ex.line1}</div>
                               ) : null}
                               {ex.similarity && <div className="text-purple-700">Similarity: {(ex.similarity * 100).toFixed(0)}%</div>}
                             </div>
@@ -576,19 +576,19 @@ export function CodeAnalysisTab({
                 <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4">
                   <div className="flex items-center gap-2 mb-3">
                     <Hash className="h-5 w-5 text-yellow-600" />
-                    <h3 className="text-sm font-semibold text-gray-900">
+                    <h3 className="text-sm font-semibold text-foreground">
                       Magic Value Detection
                     </h3>
                   </div>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Hardcoded values:</span>
+                      <span className="text-muted-foreground">Hardcoded values:</span>
                       <span className="font-semibold text-yellow-700">
                         {magic_values}
                       </span>
                     </div>
                   </div>
-                  <p className="text-xs text-gray-500 mt-3">
+                  <p className="text-xs text-muted-foreground mt-3">
                     Replace magic numbers/strings with named constants
                   </p>
                   {/* Examples */}
@@ -604,13 +604,13 @@ export function CodeAnalysisTab({
                       {expandedSections.magicValues && (
                         <div className="mt-2 space-y-2 max-h-48 overflow-y-auto">
                           {examples.magic_values.map((ex, i) => (
-                            <div key={i} className="bg-white rounded p-2 text-xs border border-yellow-100">
+                            <div key={i} className="bg-card rounded p-2 text-xs border border-yellow-100">
                               <div className="flex justify-between">
                                 <span className="font-mono text-yellow-800">{ex.value}</span>
-                                <span className="text-gray-400">{ex.type}</span>
+                                <span className="text-muted-foreground">{ex.type}</span>
                               </div>
-                              <div className="text-gray-500">{getShortPath(ex.file)}:{ex.line}</div>
-                              <code className="block mt-1 text-gray-700 bg-gray-50 p-1 rounded truncate">{ex.code_snippet}</code>
+                              <div className="text-muted-foreground">{getShortPath(ex.file)}:{ex.line}</div>
+                              <code className="block mt-1 text-foreground bg-muted/30 p-1 rounded truncate">{ex.code_snippet}</code>
                               {ex.suggested_name && <div className="text-yellow-600 mt-1">Suggest: {ex.suggested_name}</div>}
                             </div>
                           ))}
@@ -626,23 +626,23 @@ export function CodeAnalysisTab({
                 <div className="rounded-lg border border-red-200 bg-red-50 p-4">
                   <div className="flex items-center gap-2 mb-3">
                     <AlertTriangle className="h-5 w-5 text-red-600" />
-                    <h3 className="text-sm font-semibold text-gray-900">
+                    <h3 className="text-sm font-semibold text-foreground">
                       Error Handling Quality
                     </h3>
                   </div>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Total issues:</span>
+                      <span className="text-muted-foreground">Total issues:</span>
                       <span className="font-semibold text-red-700">
                         {error_handling_issues.total}
                       </span>
                     </div>
-                    <div className="pl-3 space-y-1 text-xs text-gray-600">
+                    <div className="pl-3 space-y-1 text-xs text-muted-foreground">
                       <div>• Critical: {error_handling_issues.critical}</div>
                       <div>• Warnings: {error_handling_issues.warning}</div>
                     </div>
                   </div>
-                  <p className="text-xs text-gray-500 mt-3">
+                  <p className="text-xs text-muted-foreground mt-3">
                     Fix empty catch blocks and broad exceptions
                   </p>
                   {/* Examples */}
@@ -658,13 +658,13 @@ export function CodeAnalysisTab({
                       {expandedSections.errorHandling && (
                         <div className="mt-2 space-y-2 max-h-48 overflow-y-auto">
                           {examples.error_handling.map((ex, i) => (
-                            <div key={i} className="bg-white rounded p-2 text-xs border border-red-100">
+                            <div key={i} className="bg-card rounded p-2 text-xs border border-red-100">
                               <div className="flex justify-between">
                                 <span className="font-medium text-red-800">{ex.issue_type}</span>
                                 <span className={ex.severity === 'critical' ? 'text-red-600' : 'text-yellow-600'}>{ex.severity}</span>
                               </div>
-                              <div className="text-gray-500">{getShortPath(ex.file)}:{ex.line}</div>
-                              {ex.code_snippet && <code className="block mt-1 text-gray-700 bg-gray-50 p-1 rounded truncate">{ex.code_snippet}</code>}
+                              <div className="text-muted-foreground">{getShortPath(ex.file)}:{ex.line}</div>
+                              {ex.code_snippet && <code className="block mt-1 text-foreground bg-muted/30 p-1 rounded truncate">{ex.code_snippet}</code>}
                             </div>
                           ))}
                         </div>
@@ -679,19 +679,19 @@ export function CodeAnalysisTab({
                 <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
                   <div className="flex items-center gap-2 mb-3">
                     <Type className="h-5 w-5 text-blue-600" />
-                    <h3 className="text-sm font-semibold text-gray-900">
+                    <h3 className="text-sm font-semibold text-foreground">
                       Naming Convention Checking
                     </h3>
                   </div>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Violations:</span>
+                      <span className="text-muted-foreground">Violations:</span>
                       <span className="font-semibold text-blue-700">
                         {naming_issues}
                       </span>
                     </div>
                   </div>
-                  <p className="text-xs text-gray-500 mt-3">
+                  <p className="text-xs text-muted-foreground mt-3">
                     Follow language naming conventions
                   </p>
                   {/* Examples */}
@@ -707,9 +707,9 @@ export function CodeAnalysisTab({
                       {expandedSections.namingIssues && (
                         <div className="mt-2 space-y-2 max-h-48 overflow-y-auto">
                           {examples.naming_issues.map((ex, i) => (
-                            <div key={i} className="bg-white rounded p-2 text-xs border border-blue-100">
+                            <div key={i} className="bg-card rounded p-2 text-xs border border-blue-100">
                               <div className="font-mono text-blue-800">{ex.name}</div>
-                              <div className="text-gray-500">{getShortPath(ex.file)}:{ex.line}</div>
+                              <div className="text-muted-foreground">{getShortPath(ex.file)}:{ex.line}</div>
                               <div className="text-blue-600">{ex.issue_type}</div>
                               {ex.suggestion && <div className="text-green-600 mt-1">→ {ex.suggestion}</div>}
                             </div>
@@ -725,19 +725,19 @@ export function CodeAnalysisTab({
                 <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4">
                   <div className="flex items-center gap-2 mb-3">
                     <Layers className="h-5 w-5 text-indigo-600" />
-                    <h3 className="text-sm font-semibold text-gray-900">
+                    <h3 className="text-sm font-semibold text-foreground">
                       Nesting Depth Analysis
                     </h3>
                   </div>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Deep functions:</span>
+                      <span className="text-muted-foreground">Deep functions:</span>
                       <span className="font-semibold text-indigo-700">
                         {nesting_issues}
                       </span>
                     </div>
                   </div>
-                  <p className="text-xs text-gray-500 mt-3">
+                  <p className="text-xs text-muted-foreground mt-3">
                     Reduce nesting to improve readability
                   </p>
                 </div>
@@ -749,19 +749,19 @@ export function CodeAnalysisTab({
 
       {/* Call Graph Analysis Card */}
       {call_graph_edges > 0 && (
-        <Card className="bg-white border border-gray-200">
-          <CardHeader className="border-b border-gray-200">
-            <CardTitle className="text-base font-bold text-gray-900 flex items-center gap-2">
+        <Card className="bg-card border border-border">
+          <CardHeader className="border-b border-border">
+            <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
               <GitBranch className="h-5 w-5" />
               Call Graph Analysis
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6">
             <div className="flex items-center gap-4">
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 flex-1">
-                <p className="text-sm text-gray-600 mb-1">Function Relationships</p>
-                <p className="text-3xl font-bold text-gray-900">{call_graph_edges}</p>
-                <p className="text-xs text-gray-500 mt-2">
+              <div className="rounded-lg border border-border bg-muted/30 p-4 flex-1">
+                <p className="text-sm text-muted-foreground mb-1">Function Relationships</p>
+                <p className="text-3xl font-bold text-foreground">{call_graph_edges}</p>
+                <p className="text-xs text-muted-foreground mt-2">
                   Tracks function call relationships to understand code flow
                 </p>
               </div>
@@ -772,9 +772,9 @@ export function CodeAnalysisTab({
 
       {/* Data Structure Usage Card */}
       {data_structures && Object.keys(data_structures).length > 0 && (
-        <Card className="bg-white border border-gray-200">
-          <CardHeader className="border-b border-gray-200">
-            <CardTitle className="text-base font-bold text-gray-900">
+        <Card className="bg-card border border-border">
+          <CardHeader className="border-b border-border">
+            <CardTitle className="text-base font-bold text-foreground">
               Data Structure Usage Tracking
             </CardTitle>
           </CardHeader>
@@ -785,16 +785,16 @@ export function CodeAnalysisTab({
                 .map(([structure, count]) => (
                   <div
                     key={structure}
-                    className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 p-3"
+                    className="flex items-center justify-between rounded-lg border border-border bg-muted/30 p-3"
                   >
-                    <span className="text-sm font-medium text-gray-700 capitalize">
+                    <span className="text-sm font-medium text-foreground capitalize">
                       {structure}
                     </span>
-                    <span className="text-lg font-bold text-gray-900">{count}</span>
+                    <span className="text-lg font-bold text-foreground">{count}</span>
                   </div>
                 ))}
             </div>
-            <p className="text-xs text-gray-500 mt-4">
+            <p className="text-xs text-muted-foreground mt-4">
               Tracks usage of lists, dicts, sets, and other data structures
             </p>
           </CardContent>
@@ -802,9 +802,9 @@ export function CodeAnalysisTab({
       )}
 
       {/* Additional Insights Card */}
-      <Card className="bg-white border border-gray-200">
-        <CardHeader className="border-b border-gray-200">
-          <CardTitle className="text-base font-bold text-gray-900">
+      <Card className="bg-card border border-border">
+        <CardHeader className="border-b border-border">
+          <CardTitle className="text-base font-bold text-foreground">
             Code Statistics
           </CardTitle>
         </CardHeader>
@@ -812,40 +812,40 @@ export function CodeAnalysisTab({
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Average lines per file:</span>
-                <span className="font-semibold text-gray-900">
+                <span className="text-muted-foreground">Average lines per file:</span>
+                <span className="font-semibold text-foreground">
                   {total_files > 0 ? (total_lines / total_files).toFixed(1) : "0"}
                 </span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Functions per file:</span>
-                <span className="font-semibold text-gray-900">
+                <span className="text-muted-foreground">Functions per file:</span>
+                <span className="font-semibold text-foreground">
                   {total_files > 0 ? (functions / total_files).toFixed(1) : "0"}
                 </span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Classes per file:</span>
-                <span className="font-semibold text-gray-900">
+                <span className="text-muted-foreground">Classes per file:</span>
+                <span className="font-semibold text-foreground">
                   {total_files > 0 ? (classes / total_files).toFixed(1) : "0"}
                 </span>
               </div>
             </div>
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Code to comment ratio:</span>
-                <span className="font-semibold text-gray-900">
+                <span className="text-muted-foreground">Code to comment ratio:</span>
+                <span className="font-semibold text-foreground">
                   {comment_lines > 0 ? (code_lines / comment_lines).toFixed(2) : "N/A"}
                 </span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Documentation coverage:</span>
-                <span className="font-semibold text-gray-900">
+                <span className="text-muted-foreground">Documentation coverage:</span>
+                <span className="font-semibold text-foreground">
                   {commentPercentage}%
                 </span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Lines per function:</span>
-                <span className="font-semibold text-gray-900">
+                <span className="text-muted-foreground">Lines per function:</span>
+                <span className="font-semibold text-foreground">
                   {functions > 0 ? (code_lines / functions).toFixed(1) : "N/A"}
                 </span>
               </div>

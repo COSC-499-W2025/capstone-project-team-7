@@ -170,7 +170,7 @@ export function SearchFilterTab({
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-4">
         <AlertCircle className="text-red-500" size={32} />
-        <p className="text-sm text-gray-700">{error}</p>
+        <p className="text-sm text-foreground">{error}</p>
         <Button variant="outline" size="sm" onClick={onRetry}>
           Try again
         </Button>
@@ -278,7 +278,7 @@ export function SearchFilterTab({
             variant="ghost"
             size="sm"
             onClick={reset}
-            className="h-8 text-xs gap-1 text-gray-500 hover:text-gray-900"
+            className="h-8 text-xs gap-1 text-muted-foreground hover:text-foreground"
           >
             <RotateCcw size={12} />
             Reset
@@ -287,7 +287,7 @@ export function SearchFilterTab({
       </div>
 
       {/* Result count */}
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-muted-foreground">
         {loading
           ? "Loading…"
           : `${filtered.length} file${filtered.length !== 1 ? "s" : ""}${
@@ -299,15 +299,15 @@ export function SearchFilterTab({
 
       {/* Results */}
       {loading ? (
-        <div className="border border-gray-200 rounded-lg">
-          <div className="flex items-center justify-center py-16 text-sm text-gray-400">
+        <div className="border border-border rounded-lg">
+          <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
             Loading files…
           </div>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="border border-gray-200 rounded-lg flex flex-col items-center justify-center py-16 gap-3">
-          <Search className="text-gray-300" size={32} />
-          <p className="text-sm text-gray-500">No files match your search.</p>
+        <div className="border border-border rounded-lg flex flex-col items-center justify-center py-16 gap-3">
+          <Search className="text-muted-foreground/40" size={32} />
+          <p className="text-sm text-muted-foreground">No files match your search.</p>
           {hasActiveFilters && (
             <Button variant="outline" size="sm" onClick={reset}>
               Clear filters
@@ -316,8 +316,8 @@ export function SearchFilterTab({
         </div>
       ) : (
         <>
-          <div className="border border-gray-200 rounded-lg overflow-hidden">
-            <div className="max-h-[480px] overflow-y-auto divide-y divide-gray-100">
+          <div className="border border-border rounded-lg overflow-hidden">
+            <div className="max-h-[480px] overflow-y-auto divide-y divide-border/50">
               {paginated.map((f) => {
                 const ext = getExtension(f.path);
                 const name = f.path.split("/").pop() ?? f.path;
@@ -327,15 +327,15 @@ export function SearchFilterTab({
                 return (
                   <div
                     key={f.path}
-                    className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50"
+                    className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/50"
                   >
-                    <File size={14} className="text-gray-400 shrink-0" />
+                    <File size={14} className="text-muted-foreground shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">
+                      <p className="text-sm font-medium text-foreground truncate">
                         {name}
                       </p>
                       {dir && (
-                        <p className="text-xs text-gray-400 truncate">{dir}</p>
+                        <p className="text-xs text-muted-foreground truncate">{dir}</p>
                       )}
                     </div>
                     {ext && (
@@ -346,7 +346,7 @@ export function SearchFilterTab({
                         .{ext}
                       </Badge>
                     )}
-                    <span className="text-xs text-gray-400 shrink-0">
+                    <span className="text-xs text-muted-foreground shrink-0">
                       {formatFileSize(f.size_bytes)}
                     </span>
                   </div>
@@ -358,7 +358,7 @@ export function SearchFilterTab({
           {/* Pagination */}
           {totalPages > 1 && (
             <div className="flex items-center justify-between pt-1">
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-muted-foreground">
                 Page {page} of {totalPages} ({filtered.length} files)
               </p>
               <div className="flex gap-2">

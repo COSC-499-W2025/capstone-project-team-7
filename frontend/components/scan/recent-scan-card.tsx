@@ -235,21 +235,21 @@ function getLanguageTone(language: string): string {
   switch (language.toLowerCase()) {
     case "typescript":
     case "javascript":
-      return "bg-amber-50 text-amber-900 border-amber-200";
+      return "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30";
     case "python":
-      return "bg-blue-50 text-blue-900 border-blue-200";
+      return "bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30";
     case "markdown":
     case "md":
-      return "bg-emerald-50 text-emerald-900 border-emerald-200";
+      return "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30";
     case "json":
     case "yaml":
     case "yml":
-      return "bg-violet-50 text-violet-900 border-violet-200";
+      return "bg-violet-500/15 text-violet-600 dark:text-violet-400 border-violet-500/30";
     case "text":
     case "txt":
-      return "bg-slate-100 text-slate-800 border-slate-200";
+      return "bg-muted/50 text-muted-foreground border-border/70";
     default:
-      return "bg-slate-50 text-slate-800 border-slate-200";
+      return "bg-muted/50 text-muted-foreground border-border/70";
   }
 }
 
@@ -657,7 +657,7 @@ export function RecentScanCard({ project }: RecentScanCardProps) {
                       {card.value}
                     </p>
                   </div>
-                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[hsl(220_35%_97%)] text-muted-foreground">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-[hsl(220_18%_82%)] bg-[linear-gradient(180deg,hsl(220_20%_93%),hsl(220_16%_88%))] text-[hsl(220_11%_53%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/10 dark:bg-[linear-gradient(180deg,hsl(223_12%_25%),hsl(223_11%_21%))] dark:text-[hsl(220_14%_72%)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
                     <Icon className="h-4.5 w-4.5" />
                   </div>
                 </div>

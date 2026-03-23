@@ -48,7 +48,7 @@ export function PasswordStrength({ password }: PasswordStrengthProps) {
 
   return (
     <div className="space-y-2">
-      <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+      <div className="h-2 bg-muted/60 rounded-full overflow-hidden">
         <div
           className={`h-full rounded-full ${bgColor} transition-all duration-200`}
           style={{ width: `${fillPercent}%` }}
@@ -59,17 +59,17 @@ export function PasswordStrength({ password }: PasswordStrengthProps) {
         Strength: {strengthLabel}
       </p>
 
-      <ul className="text-sm space-y-1 text-gray-700">
-        <li className={hasMinLength ? "text-green-600" : "text-gray-400"}>
+      <ul className="text-sm space-y-1 text-foreground">
+        <li className={hasMinLength ? "text-green-600 dark:text-green-500" : "text-muted-foreground"}>
           {hasMinLength ? "✓" : "✗"} At least 8 characters
         </li>
-        <li className={hasUppercase ? "text-green-600" : "text-gray-400"}>
+        <li className={hasUppercase ? "text-green-600 dark:text-green-500" : "text-muted-foreground"}>
           {hasUppercase ? "✓" : "✗"} Contains uppercase letter
         </li>
-        <li className={hasLowercase ? "text-green-600" : "text-gray-400"}>
+        <li className={hasLowercase ? "text-green-600 dark:text-green-500" : "text-muted-foreground"}>
           {hasLowercase ? "✓" : "✗"} Contains lowercase letter
         </li>
-        <li className={hasNumber ? "text-green-600" : "text-gray-400"}>
+        <li className={hasNumber ? "text-green-600 dark:text-green-500" : "text-muted-foreground"}>
           {hasNumber ? "✓" : "✗"} Contains number
         </li>
       </ul>

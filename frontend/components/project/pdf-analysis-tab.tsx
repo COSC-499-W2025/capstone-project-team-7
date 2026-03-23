@@ -152,7 +152,7 @@ export function PdfAnalysisTab({
         </CardHeader>
         <CardContent className="p-5 pt-4">
           {resolvedIsLoading && (
-            <div className="text-center py-8 text-gray-500">
+            <div className="text-center py-8 text-muted-foreground">
               Loading PDF analysis…
             </div>
           )}
@@ -163,7 +163,7 @@ export function PdfAnalysisTab({
           )}
           <div className="space-y-4">
             {!resolvedIsLoading && !resolvedErrorMessage && documents.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
+              <div className="text-center py-8 text-muted-foreground">
                 {emptyMessage}
               </div>
             ) : (!resolvedIsLoading && !resolvedErrorMessage ? (
