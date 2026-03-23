@@ -1,5 +1,74 @@
 # Om Mistry (@OM200401)
 
+## Week 25 - March 16 - March 22
+
+This week I focused on three areas: building two new user-facing features (resource suggestions and LinkedIn post sharing), conducting a full requirements audit of the system against all three milestones ahead of Monday's final presentation, and performing thorough code reviews on 7 teammate PRs — several across multiple review rounds.
+
+**Core Implementation:**
+
+1. **Resource Suggestions Feature (PR #458):**
+   - Built a curated resource map (`resource_map.py`) covering 44 skills with learning resources at beginner/intermediate/advanced levels — articles, videos, courses, and docs
+   - Created `resource_suggestions_service.py` that aggregates skill tiers across all user projects, identifies gaps, and recommends next-level resources
+   - Added `GET /api/portfolio/resource-suggestions?role=` endpoint with optional role-based filtering across 7 career paths (Backend Developer, Frontend Developer, Full-Stack, Data Scientist, DevOps, ML Engineer, Security Engineer)
+   - Built `ResourceSuggestions` component with role selector dropdown and suggestion cards showing skill name, current/target tier badges, importance labels, and clickable resource pills
+   - Added as a new "Resources" tab on the Portfolio page
+   - Fixed stale-response race condition in role filter using request ID guard (from PR review feedback)
+   - Extracted `collect_skill_names()` utility to eliminate duplicated skill extraction logic across endpoints
+
+2. **LinkedIn Post Sharing Feature (PR #458):**
+   - Built `linkedin_post_builder.py` with template-based post generation for portfolio-level and single-project posts
+   - Posts include top 3 projects by contribution score, key skills, commit metrics, language hashtags, and public portfolio URL
+   - Added `POST /api/portfolio/linkedin-post` endpoint with `Literal`-typed Pydantic models
+   - Built `LinkedInShareDialog` component with editable textarea, character count (3000 limit), copy-to-clipboard, and "Open LinkedIn" button
+   - Placed "Share on LinkedIn" button in the portfolio overview header alongside the existing Publish toggle — using the LinkedIn brand color for visibility
+   - No OAuth required - clipboard-based approach
+
+3. **Skills Analysis Enhancements (PRs #436, #437, #438):**
+   - Added importance weights to skill gap analysis role profiles (critical/recommended/nice_to_have)
+   - Built ML/data science pattern detection (pandas, NumPy, scikit-learn, PyTorch, TensorFlow)
+   - Added beginner/intermediate/advanced tier detection for framework skills (React, Next.js, Angular, Vue, Django, Flask, Express, Spring)
+   - Added ML Engineer and Security Engineer role profiles
+   - Refactored framework tier detection with auto-derived mappings and O(1) proficiency tracking
+   - Displayed importance badges and weighted coverage in gap analysis UI
+
+4. **Contributor Ranking & Auto-Categorization (PR #444):**
+   - Added contributor ranking by lines changed
+   - Wired project category into scan_data storage and project detail page
+   - Moved project category display from Git Analysis tab to Overview tab
+
+5. **CI/CD Pipeline (PR #454):**
+   - Added GitHub Actions CI pipeline with backend and frontend checks
+   - Decoupled static export from production builds for web deployment
+   - Updated Dockerfile for web API deployment and added Railway config
+
+6. **Documentation & Testing:**
+   - Updated `backend/src/api/README.md`, `docs/api-spec.yaml`, and `docs/feature-inventory.md` with new endpoints
+   - Wrote 45 tests across `test_resource_suggestions.py` (26 tests) and `test_linkedin_post.py` (19 tests)
+   - Conducted full system audit against all M1/M2/M3 requirements — identified 6 gaps documented for the team
+
+**PR Reviews (7 PRs, multiple rounds):**
+- **PR #450** (aaronbanerjee123 - AI analysis endpoint): Requested changes on logger hijack, disk leak via `_permanent_dir`, removed skill types, gutted encryption, private LLM method access, and missing tests. Re-reviewed after fixes — approved after 6 commits addressed all items.
+- **PR #451** (aaronbanerjee123 - AI analysis frontend): Requested changes on `projects.ts` rewrite to raw fetch, removed frontend types, dead `/help` link, `/resumes` sidebar change, and 643-line monolithic component. Re-reviewed — approved after components extracted and API client reverted.
+- **PR #452** (aaronbanerjee123 - spec_routes refactor): Approved — identified dependency on PR #450 for `_collect_files_for_ai` import, dead code removal was a good catch.
+- **PR #455** (Samarth-G - AI batch analysis): Requested changes on consent returning 200 instead of 403/422, progress entries evaporating before frontend poll, 837-line page, hardcoded exclusion lists, and inconsistent message caps. Re-reviewed — approved after TTL pruning, component extraction, and constant unification.
+- **PR #457** (VladPetrariu - Git branch diagram): Requested changes on O(N) subprocess calls per branch, missing tests, and single-letter function names. Re-reviewed — approved after batched `for-each-ref` query, 5 new tests, and naming improvements.
+- **PR #461** (aaronbanerjee123 - Resume profile CRUD): Requested changes on missing generate modal file, `get_profile` fetching all records, pagination regression, extra DB round-trip, and missing tests.
+- **PR #462** (aaronbanerjee123 - Generate resume from profile): Requested changes on bundled PR #461 code, 4 sequential API calls, missing error handling, and duplicated templates. Re-reviewed — approved after targeted DB queries, error handling, 35 tests, and shared `template-options.ts`.
+
+**What Went Well:**
+- Resource suggestions feature differentiates our project from all other teams — no other capstone group has personalized learning recommendations
+- Thorough multi-round code reviews caught real issues: disk leaks, pagination regressions, race conditions, type regressions, and security concerns (encryption removal) before they hit main
+- Full milestone requirements audit gave the team a clear checklist of gaps to address before Monday
+
+**What Didn't Go Well:**
+- Several teammate PRs required 2-3 review rounds due to bundled scope (features + bug fixes + removals in one PR) — smaller focused PRs would have been faster to review and merge
+- The requirements audit revealed documentation gaps (installation guide, test report, known bugs) that are harder to address last-minute
+
+**Next Steps:**
+- Final presentation on Monday March 24
+- Address remaining M3 documentation gaps (installation guide, test report, known bugs list)
+- Record polished demo video for slides
+
 ## Week 24 - March 9 - March 15
 
 This week I shipped a three-part skills analysis enhancement (backend enrichment, UI enrichment, rule-based gap analysis), built the full portfolio dashboard with visualizations, added public portfolio sharing with token-based access, and reviewed 8 teammate PRs with detailed feedback. Also prepared the peer testing task list for the upcoming session.
