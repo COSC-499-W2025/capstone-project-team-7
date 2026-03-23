@@ -156,8 +156,14 @@ function ResumeEditorPageInner() {
       try {
         const data = await getUserResume(token, resumeId);
         setResume(data);
-        setLatexContent(data.latex_content || getTemplateLatex(data.template));
-        setStructuredData(data.structured_data || {});
+        // If no saved LaTeX, generate it from structured data (e.g. profile-generated resumes)
+        const sd = data.structured_data || {};
+        const hasStructuredContent = sd.contact || (sd.education && sd.education.length > 0) || (sd.experience && sd.experience.length > 0) || (sd.projects && sd.projects.length > 0);
+        setLatexContent(
+          data.latex_content ||
+          (hasStructuredContent ? generateLatexFromStructuredData(sd) : getTemplateLatex(data.template))
+        );
+        setStructuredData(sd);
         setIsLatexMode(data.is_latex_mode);
         setResumeName(data.name);
         setTemplate(data.template);
@@ -185,7 +191,8 @@ function ResumeEditorPageInner() {
           name: debouncedResumeName,
           template: debouncedTemplate,
           latex_content: isLatexMode ? debouncedLatex : null,
-          structured_data: !isLatexMode ? debouncedStructured : undefined,
+          structured_data: debouncedStructured,
+          is_latex_mode: isLatexMode,
         });
         setLastSaved(new Date());
         setIsDirty(false);
