@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normalizeMediaPayload } from "../app/(dashboard)/project/page";
+import { normalizeMediaPayload } from "../lib/project-media-analysis";
 
 describe("normalizeMediaPayload", () => {
   it("does not place object arrays from media_assets into insights", () => {
