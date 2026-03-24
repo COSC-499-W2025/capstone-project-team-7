@@ -1,5 +1,5 @@
 ## Level 0
-![DFD Level 0](../docs/assets/dfd-0.png)
+![DFD Level 0](../docs/assets/dfd0.png)
 
 ## Level 1
 ![DFD Level 1](../docs/assets/dfd1.png)
