@@ -72,6 +72,7 @@ import {
   projectPageSelectors,
   useProjectPageStore,
   type MainTabValue,
+  type OverviewTabValue,
   type ToolsTabValue,
 } from "@/lib/stores/project-page-store";
 import {
@@ -106,6 +107,7 @@ const mainTabs = [
 const overviewSubTabs = [
   { value: "overview-main", label: "Overview", icon: LayoutDashboard },
   { value: "languages", label: "Languages", icon: BarChart3 },
+  { value: "git-analysis", label: "Git Analysis", icon: GitBranch },
 ] as const;
 
 // Sub-tabs for Skills & Progress section
@@ -126,7 +128,6 @@ const contentSubTabs = [
 const toolsSubTabs = [
   { value: "tools-main", label: "Overview", icon: Wrench },
   { value: "file-browser", label: "Files Explorer", icon: FileText },
-  { value: "git-analysis", label: "Git Analysis", icon: GitBranch },
   { value: "duplicate-finder", label: "Duplicate Finder", icon: Copy },
 ] as const;
 
@@ -136,6 +137,7 @@ export default function ProjectPage() {
   const projectIdParam = searchParams.get("projectId");
 
   const activeMainTab = useProjectPageStore(projectPageSelectors.activeMainTab);
+  const activeOverviewTab = useProjectPageStore(projectPageSelectors.activeOverviewTab);
   const activeToolsTab = useProjectPageStore(projectPageSelectors.activeToolsTab);
   const projectId = useProjectPageStore(projectPageSelectors.projectId);
   const project = useProjectPageStore(projectPageSelectors.project);
@@ -143,6 +145,7 @@ export default function ProjectPage() {
   const projectLoading = useProjectPageStore(projectPageSelectors.projectLoading);
   const hasProject = useProjectPageStore(projectPageSelectors.hasProject);
   const setActiveMainTab = useProjectPageStore(projectPageSelectors.setActiveMainTab);
+  const setActiveOverviewTab = useProjectPageStore(projectPageSelectors.setActiveOverviewTab);
   const setActiveToolsTab = useProjectPageStore(projectPageSelectors.setActiveToolsTab);
   const setProjectId = useProjectPageStore(projectPageSelectors.setProjectId);
   const setProject = useProjectPageStore(projectPageSelectors.setProject);
@@ -917,6 +920,11 @@ export default function ProjectPage() {
     setActiveToolsTab(nextTab);
   }, []);
 
+  const openGitAnalysis = useCallback(() => {
+    setActiveMainTab("overview");
+    setActiveOverviewTab("git-analysis");
+  }, []);
+
   const aiEligibilityReady =
     externalServicesConsentEnabled && openAiKeyValid;
   const primaryTabsListClass =
@@ -1083,7 +1091,12 @@ export default function ProjectPage() {
               TAB 1: OVERVIEW & ANALYSIS
           ============================================ */}
           <TabsContent value="overview" className="mt-0 border-0 bg-transparent p-0">
-            <Tabs defaultValue="overview-main" className="space-y-6">
+            <Tabs
+              key={activeOverviewTab}
+              defaultValue={activeOverviewTab}
+              onValueChange={(value) => setActiveOverviewTab(value as OverviewTabValue)}
+              className="space-y-6"
+            >
               <TabsList className={secondaryTabsListClass}>
                 {overviewSubTabs.map((tab) => {
                   const Icon = tab.icon;
@@ -1116,6 +1129,7 @@ export default function ProjectPage() {
                   pdfDocs={pdfDocs}
                   otherDocs={otherDocs}
                   contributionMetrics={scanData.contribution_metrics}
+                  projectCategory={scanData.project_category ?? null}
                 />
               </TabsContent>
 
@@ -1124,6 +1138,15 @@ export default function ProjectPage() {
                 <LanguagesTab topLanguages={topLanguages} />
               </TabsContent>
 
+              {/* Git Analysis */}
+              <TabsContent value="git-analysis" className="space-y-4">
+                <GitAnalysisTab
+                  loading={projectLoading}
+                  error={projectError}
+                  gitAnalysis={scanData.git_analysis}
+                  onRetry={loadProject}
+                />
+              </TabsContent>
 
             </Tabs>
           </TabsContent>
@@ -1446,6 +1469,7 @@ export default function ProjectPage() {
               <TabsContent value="tools-main" className="mt-0 border-0 bg-transparent p-0">
                 <ToolsMainTab
                   openToolsTab={openToolsTab}
+                  openGitAnalysis={openGitAnalysis}
                   projectFilesCount={projectFiles.length}
                   gitRepoTotal={gitRepoTotal}
                   gitCommitTotal={gitCommitTotal}
@@ -1504,37 +1528,6 @@ export default function ProjectPage() {
                         />
                       </TabsContent>
                     </Tabs>
-                  </SectionBody>
-                </Section>
-              </TabsContent>
-
-              <TabsContent value="git-analysis" className="mt-0 space-y-4 border-0 bg-transparent p-0">
-                <Section>
-                  <SectionHeader>
-                    <SectionHeading>
-                      <SectionTitle className="flex items-center gap-2">
-                      <GitBranch size={18} />
-                      Git Analysis
-                      </SectionTitle>
-                    </SectionHeading>
-                    <SectionActions>
-                      <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setActiveToolsTab("tools-main")}
-                    >
-                      Back to Overview
-                    </Button>
-                    </SectionActions>
-                  </SectionHeader>
-                  <SectionBody className="pt-0">
-                    <GitAnalysisTab
-                      loading={projectLoading}
-                      error={projectError}
-                      gitAnalysis={scanData.git_analysis}
-                      onRetry={loadProject}
-                    />
                   </SectionBody>
                 </Section>
               </TabsContent>

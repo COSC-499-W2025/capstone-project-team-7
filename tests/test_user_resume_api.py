@@ -1,6 +1,6 @@
 """Tests for User Resume API routes."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
@@ -197,7 +197,8 @@ def test_create_resume_with_custom_values(override_service):
 def test_create_resume_rejects_invalid_template(override_service):
     """Test that invalid templates are rejected."""
     override_service.create_resume.side_effect = UserResumeServiceError(
-        "Invalid template: bad_template"
+        "Invalid template: bad_template",
+        code="invalid_template",
     )
     
     response = client.post(
@@ -366,11 +367,317 @@ def test_duplicate_resume_with_custom_name(override_service):
 def test_duplicate_resume_not_found(override_service):
     """Test duplicating a non-existent resume."""
     override_service.duplicate_resume.side_effect = UserResumeServiceError(
-        "Resume not found."
+        "Resume not found.",
+        code="resume_not_found",
     )
     
     response = client.post("/api/user-resumes/nonexistent/duplicate", json={})
     assert response.status_code == 404
+
+
+# ============================================================================
+# Add Items + Detect Skills Tests
+# ============================================================================
+
+
+def test_add_items_to_resume_success(override_service):
+    override_service.add_resume_items_to_resume.return_value = {
+        "id": "resume-1",
+        "name": "My Resume",
+        "template": "jake",
+        "is_latex_mode": False,
+        "metadata": {"last_added_items": 2},
+        "latex_content": None,
+        "structured_data": {
+            "projects": [
+                {
+                    "id": "proj-1",
+                    "name": "Capstone Project",
+                    "bullets": ["Built API"],
+                    "resume_item_id": "item-1",
+                }
+            ]
+        },
+        "created_at": "2026-03-11T10:00:00Z",
+        "updated_at": "2026-03-11T10:00:00Z",
+    }
+
+    response = client.post(
+        "/api/user-resumes/resume-1/add-items",
+        json={"item_ids": ["item-1", "item-2"]},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["id"] == "resume-1"
+    assert len(payload["structured_data"]["projects"]) == 1
+    override_service.add_resume_items_to_resume.assert_called_once_with(
+        "user-123",
+        "resume-1",
+        item_ids=["item-1", "item-2"],
+    )
+
+
+def test_add_items_to_resume_rejects_empty_item_ids(override_service):
+    response = client.post(
+        "/api/user-resumes/resume-1/add-items",
+        json={"item_ids": []},
+    )
+
+    assert response.status_code == 422
+    payload = response.json()
+    assert payload["detail"]["code"] == "invalid_payload"
+
+
+def test_add_items_to_resume_not_found(override_service):
+    override_service.add_resume_items_to_resume.return_value = None
+
+    response = client.post(
+        "/api/user-resumes/nonexistent/add-items",
+        json={"item_ids": ["item-1"]},
+    )
+
+    assert response.status_code == 404
+    payload = response.json()
+    assert payload["detail"]["code"] == "resume_not_found"
+
+
+def test_detect_skills_for_resume_success(override_service):
+    override_service.detect_skills_from_resume_projects.return_value = {
+        "id": "resume-1",
+        "name": "My Resume",
+        "template": "jake",
+        "is_latex_mode": False,
+        "metadata": {"auto_detected_skills": True},
+        "latex_content": None,
+        "structured_data": {
+            "skills": {
+                "languages": ["Python", "TypeScript"],
+                "frameworks": ["React", "FastAPI"],
+                "developer_tools": ["Git"],
+                "libraries": ["Pandas"],
+            }
+        },
+        "created_at": "2026-03-11T10:00:00Z",
+        "updated_at": "2026-03-11T10:00:00Z",
+    }
+
+    response = client.post("/api/user-resumes/resume-1/detect-skills")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["structured_data"]["skills"]["languages"] == ["Python", "TypeScript"]
+    override_service.detect_skills_from_resume_projects.assert_called_once_with("user-123", "resume-1")
+
+
+def test_detect_skills_for_resume_not_found(override_service):
+    override_service.detect_skills_from_resume_projects.return_value = None
+
+    response = client.post("/api/user-resumes/nonexistent/detect-skills")
+
+    assert response.status_code == 404
+    payload = response.json()
+    assert payload["detail"]["code"] == "resume_not_found"
+
+
+def test_export_resume_pdf_success(override_service):
+    override_service.render_pdf_bytes.return_value = b"%PDF-1.4\nmock"
+
+    response = client.post(
+        "/api/user-resumes/resume-1/pdf",
+        json={"latex_content": "\\documentclass{article}\\begin{document}x\\end{document}"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert "attachment; filename=\"resume-1.pdf\"" in response.headers["content-disposition"]
+    assert response.content.startswith(b"%PDF")
+
+
+def test_export_resume_pdf_rejects_missing_latex(override_service):
+    override_service.render_pdf_bytes.side_effect = UserResumeServiceError(
+        "No LaTeX content available for PDF export.",
+        code="missing_latex_content",
+    )
+
+    response = client.post("/api/user-resumes/resume-1/pdf", json={})
+
+    assert response.status_code == 422
+    payload = response.json()
+    assert payload["detail"]["code"] == "invalid_payload"
+
+
+def test_export_resume_pdf_not_found(override_service):
+    override_service.render_pdf_bytes.side_effect = UserResumeServiceError(
+        "Resume not found.",
+        code="resume_not_found",
+    )
+
+    response = client.post("/api/user-resumes/nonexistent/pdf", json={})
+
+    assert response.status_code == 404
+    payload = response.json()
+    assert payload["detail"]["code"] == "resume_not_found"
+
+
+# ============================================================================
+# Profile CRUD Tests
+# ============================================================================
+
+PROFILE_RECORD = {
+    "id": "profile-1",
+    "name": "Resume Profile",
+    "template": "jake",
+    "is_latex_mode": False,
+    "metadata": {"is_profile": True},
+    "latex_content": None,
+    "structured_data": {
+        "contact": {"full_name": "Jane Doe", "email": "jane@example.com"},
+        "education": [{"school": "UBC", "degree": "BSc Computer Science"}],
+        "experience": [],
+        "skills": {"languages": ["Python"], "frameworks": [], "developer_tools": [], "libraries": []},
+        "awards": [],
+    },
+    "created_at": "2026-03-20T10:00:00Z",
+    "updated_at": "2026-03-20T10:00:00Z",
+}
+
+
+def test_get_profile_returns_saved_profile(override_service):
+    """Test fetching a saved resume profile."""
+    override_service.get_profile.return_value = PROFILE_RECORD
+
+    response = client.get("/api/user-resumes/profile")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["id"] == "profile-1"
+    assert payload["name"] == "Resume Profile"
+    assert payload["metadata"]["is_profile"] is True
+    assert payload["structured_data"]["contact"]["full_name"] == "Jane Doe"
+    override_service.get_profile.assert_called_once_with("user-123")
+
+
+def test_get_profile_returns_404_when_no_profile(override_service):
+    """Test that 404 is returned when user has no profile saved yet."""
+    override_service.get_profile.return_value = None
+
+    response = client.get("/api/user-resumes/profile")
+    assert response.status_code == 404
+    payload = response.json()
+    assert payload["detail"]["code"] == "profile_not_found"
+
+
+def test_get_profile_handles_service_error(override_service):
+    """Test that service errors during profile fetch return 500."""
+    override_service.get_profile.side_effect = UserResumeServiceError("Database error")
+
+    response = client.get("/api/user-resumes/profile")
+    assert response.status_code == 500
+    payload = response.json()
+    assert payload["detail"]["code"] == "profile_fetch_error"
+
+
+def test_save_profile_creates_new_profile(override_service):
+    """Test saving a profile when none exists yet (create)."""
+    override_service.save_profile.return_value = PROFILE_RECORD
+
+    response = client.put(
+        "/api/user-resumes/profile",
+        json={
+            "structured_data": {
+                "contact": {"full_name": "Jane Doe", "email": "jane@example.com"},
+                "education": [{"school": "UBC", "degree": "BSc Computer Science"}],
+            }
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["id"] == "profile-1"
+    assert payload["structured_data"]["contact"]["full_name"] == "Jane Doe"
+    override_service.save_profile.assert_called_once()
+    call_args = override_service.save_profile.call_args
+    assert call_args[0][0] == "user-123"
+    assert call_args[0][1]["contact"]["full_name"] == "Jane Doe"
+
+
+def test_save_profile_updates_existing_profile(override_service):
+    """Test saving a profile when one already exists (update)."""
+    updated = {**PROFILE_RECORD, "updated_at": "2026-03-21T12:00:00Z"}
+    updated["structured_data"] = {
+        **PROFILE_RECORD["structured_data"],
+        "contact": {"full_name": "Jane Smith", "email": "jane.smith@example.com"},
+    }
+    override_service.save_profile.return_value = updated
+
+    response = client.put(
+        "/api/user-resumes/profile",
+        json={
+            "structured_data": {
+                "contact": {"full_name": "Jane Smith", "email": "jane.smith@example.com"},
+            }
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["structured_data"]["contact"]["full_name"] == "Jane Smith"
+
+
+def test_save_profile_with_empty_structured_data(override_service):
+    """Test saving a profile with empty structured data."""
+    empty_profile = {**PROFILE_RECORD, "structured_data": {}}
+    override_service.save_profile.return_value = empty_profile
+
+    response = client.put(
+        "/api/user-resumes/profile",
+        json={"structured_data": {}},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["structured_data"] == {}
+
+
+def test_save_profile_handles_service_error(override_service):
+    """Test that service errors during profile save return 500."""
+    override_service.save_profile.side_effect = UserResumeServiceError("Database error")
+
+    response = client.put(
+        "/api/user-resumes/profile",
+        json={"structured_data": {"contact": {"full_name": "Test"}}},
+    )
+    assert response.status_code == 500
+    payload = response.json()
+    assert payload["detail"]["code"] == "profile_save_error"
+
+
+def test_list_resumes_excludes_profile(override_service):
+    """Test that list_resumes is called and profile records do not appear in results.
+
+    The actual filtering (via .neq on the profile name) happens in the service
+    layer; here we verify the API route passes through correctly and the mock
+    returns results without profiles.
+    """
+    non_profile_resumes = [
+        {
+            "id": "resume-1",
+            "name": "My Resume",
+            "template": "jake",
+            "is_latex_mode": True,
+            "metadata": {},
+            "created_at": "2026-03-11T10:00:00Z",
+            "updated_at": "2026-03-11T10:00:00Z",
+        },
+    ]
+    override_service.list_resumes.return_value = (non_profile_resumes, 1)
+
+    response = client.get("/api/user-resumes")
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload["items"]) == 1
+    assert payload["page"]["total"] == 1
+    # Ensure no item in the list is the profile
+    for item in payload["items"]:
+        assert item["name"] != "Resume Profile"
+        assert not item.get("metadata", {}).get("is_profile")
 
 
 # ============================================================================

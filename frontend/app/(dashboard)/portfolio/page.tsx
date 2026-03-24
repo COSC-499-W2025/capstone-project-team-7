@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Briefcase,
   Calendar,
+  Lightbulb,
   Plus,
   Edit2,
   Trash2,
@@ -55,6 +56,8 @@ import type { UserProfile } from "@/lib/api.types";
 import { PortfolioOverview } from "@/components/portfolio/portfolio-overview";
 import { LoadingState } from "@/components/ui/loading-state";
 import { Spinner } from "@/components/ui/spinner";
+import { ResourceSuggestions } from "@/components/portfolio/resource-suggestions";
+import { LinkedInShareDialog } from "@/components/portfolio/linkedin-share-dialog";
 
 interface FormState {
   title: string;
@@ -137,6 +140,7 @@ export default function PortfolioPage() {
   const [activeTab, setActiveTab] = useState("overview");
   const [stableTabHeight, setStableTabHeight] = useState(0);
   const activePanelRef = useRef<HTMLDivElement | null>(null);
+  const [linkedInOpen, setLinkedInOpen] = useState(false);
 
   const fetchAll = useCallback(async () => {
     const token = getStoredToken();
@@ -496,6 +500,10 @@ export default function PortfolioPage() {
                 <TabsTrigger value="timeline">
                   Project Timeline
                 </TabsTrigger>
+                <TabsTrigger value="resources" className="rounded-xl">
+                  <Lightbulb size={14} className="mr-1.5" />
+                  Resources
+                </TabsTrigger>
               </TabsList>
 
               <div
@@ -510,6 +518,7 @@ export default function PortfolioPage() {
                       projects={projects}
                       skills={skills}
                       initialSettings={portfolioSettings}
+                      onShareLinkedIn={() => setLinkedInOpen(true)}
                     />
                   </div>
                 </TabsContent>
@@ -694,10 +703,18 @@ export default function PortfolioPage() {
                     )}
                   </div>
                 </TabsContent>
+
+                <TabsContent value="resources" className="mt-0 border-0 bg-transparent p-0">
+                  <div ref={activeTab === "resources" ? activePanelRef : null}>
+                    <ResourceSuggestions />
+                  </div>
+                </TabsContent>
               </div>
             </Tabs>
           </div>
         </div>
+
+        <LinkedInShareDialog open={linkedInOpen} onOpenChange={setLinkedInOpen} />
 
         <Dialog open={dialogOpen} onOpenChange={handleDialogClose}>
           <DialogContent className="sm:max-w-[580px] flex max-h-[90vh] flex-col">

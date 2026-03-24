@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
 
 from api.dependencies import AuthContext, get_auth_context
@@ -99,6 +99,14 @@ class UserResumeDuplicateRequest(BaseModel):
     new_name: Optional[str] = None
 
 
+class UserResumeAddItemsRequest(BaseModel):
+    item_ids: List[str] = Field(default_factory=list)
+
+
+class UserResumeExportPdfRequest(BaseModel):
+    latex_content: Optional[str] = None
+
+
 class TemplatesListResponse(BaseModel):
     """Response for listing available templates."""
     templates: List[ResumeTemplateMeta] = Field(default_factory=list)
@@ -171,6 +179,37 @@ def _build_resume_summary(record: Dict[str, Any]) -> UserResumeSummary:
         metadata=record.get("metadata") or {},
         created_at=record.get("created_at"),
         updated_at=record.get("updated_at"),
+    )
+
+
+def _translate_service_error(
+    exc: UserResumeServiceError,
+    *,
+    default_status: int,
+    default_code: str,
+) -> HTTPException:
+    error_map = {
+        "invalid_template": (
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "invalid_template",
+        ),
+        "invalid_resume_item_ids": (
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "invalid_payload",
+        ),
+        "resume_not_found": (
+            status.HTTP_404_NOT_FOUND,
+            "resume_not_found",
+        ),
+        "missing_latex_content": (
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "invalid_payload",
+        ),
+    }
+    status_code, code = error_map.get(exc.code, (default_status, default_code))
+    return HTTPException(
+        status_code=status_code,
+        detail={"code": code, "message": str(exc)},
     )
 
 
@@ -252,15 +291,81 @@ def create_user_resume(
             metadata=payload.metadata,
         )
     except UserResumeServiceError as exc:
-        if "Invalid template" in str(exc):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail={"code": "invalid_template", "message": str(exc)},
-            ) from exc
         logger.exception("Failed to create user resume")
+        raise _translate_service_error(
+            exc,
+            default_status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            default_code="resume_create_error",
+        ) from exc
+
+    return _build_resume_record(record)
+
+
+# ============================================================================
+# Profile Routes  (must be defined BEFORE /{resume_id} to avoid path conflict)
+# ============================================================================
+
+class UserResumeSaveProfileRequest(BaseModel):
+    """Request to create or update the user's resume profile."""
+    structured_data: Dict[str, Any] = Field(default_factory=dict)
+
+
+@router.get(
+    "/profile",
+    response_model=UserResumeRecord,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Profile not saved yet"},
+        500: {"model": ErrorResponse, "description": "Profile retrieval failed"},
+    },
+)
+def get_resume_profile(
+    auth: AuthContext = Depends(get_auth_context),
+    service: UserResumeService = Depends(get_user_resume_service),
+) -> UserResumeRecord:
+    """Fetch the user's saved resume profile."""
+    try:
+        service.apply_access_token(auth.access_token)
+        record = service.get_profile(auth.user_id)
+    except UserResumeServiceError as exc:
+        logger.exception("Failed to fetch resume profile")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"code": "resume_create_error", "message": str(exc)},
+            detail={"code": "profile_fetch_error", "message": str(exc)},
+        ) from exc
+
+    if not record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "profile_not_found", "message": "No resume profile saved yet."},
+        )
+
+    return _build_resume_record(record)
+
+
+@router.put(
+    "/profile",
+    response_model=UserResumeRecord,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        422: {"model": ErrorResponse, "description": "Validation error"},
+        500: {"model": ErrorResponse, "description": "Profile save failed"},
+    },
+)
+def save_resume_profile(
+    payload: UserResumeSaveProfileRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    service: UserResumeService = Depends(get_user_resume_service),
+) -> UserResumeRecord:
+    """Create or update the user's resume profile."""
+    try:
+        service.apply_access_token(auth.access_token)
+        record = service.save_profile(auth.user_id, payload.structured_data)
+    except UserResumeServiceError as exc:
+        logger.exception("Failed to save resume profile")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "profile_save_error", "message": str(exc)},
         ) from exc
 
     return _build_resume_record(record)
@@ -330,7 +435,7 @@ def update_user_resume(
         ]
     ):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={"code": "invalid_payload", "message": "No fields provided for update."},
         )
 
@@ -347,15 +452,11 @@ def update_user_resume(
             metadata=payload.metadata,
         )
     except UserResumeServiceError as exc:
-        if "Invalid template" in str(exc):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail={"code": "invalid_template", "message": str(exc)},
-            ) from exc
         logger.exception("Failed to update user resume")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"code": "resume_update_error", "message": str(exc)},
+        raise _translate_service_error(
+            exc,
+            default_status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            default_code="resume_update_error",
         ) from exc
 
     if not record:
@@ -421,15 +522,131 @@ def duplicate_user_resume(
         service.apply_access_token(auth.access_token)
         record = service.duplicate_resume(auth.user_id, resume_id, payload.new_name)
     except UserResumeServiceError as exc:
-        if "not found" in str(exc).lower():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail={"code": "resume_not_found", "message": str(exc)},
-            ) from exc
         logger.exception("Failed to duplicate user resume")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"code": "resume_duplicate_error", "message": str(exc)},
+        raise _translate_service_error(
+            exc,
+            default_status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            default_code="resume_duplicate_error",
         ) from exc
 
     return _build_resume_record(record)
+
+
+@router.post(
+    "/{resume_id}/add-items",
+    response_model=UserResumeRecord,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Resume not found"},
+        422: {"model": ErrorResponse, "description": "Validation error"},
+        500: {"model": ErrorResponse, "description": "Resume update failed"},
+    },
+)
+def add_items_to_user_resume(
+    resume_id: str,
+    payload: UserResumeAddItemsRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    service: UserResumeService = Depends(get_user_resume_service),
+) -> UserResumeRecord:
+    if not payload.item_ids:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={"code": "invalid_payload", "message": "item_ids is required."},
+        )
+
+    try:
+        service.apply_access_token(auth.access_token)
+        record = service.add_resume_items_to_resume(
+            auth.user_id,
+            resume_id,
+            item_ids=payload.item_ids,
+        )
+    except UserResumeServiceError as exc:
+        logger.exception("Failed to add resume items to user resume")
+        raise _translate_service_error(
+            exc,
+            default_status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            default_code="resume_update_error",
+        ) from exc
+
+    if not record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "resume_not_found", "message": "Resume not found."},
+        )
+
+    return _build_resume_record(record)
+
+
+@router.post(
+    "/{resume_id}/detect-skills",
+    response_model=UserResumeRecord,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Resume not found"},
+        500: {"model": ErrorResponse, "description": "Resume update failed"},
+    },
+)
+def detect_skills_for_user_resume(
+    resume_id: str,
+    auth: AuthContext = Depends(get_auth_context),
+    service: UserResumeService = Depends(get_user_resume_service),
+) -> UserResumeRecord:
+    try:
+        service.apply_access_token(auth.access_token)
+        record = service.detect_skills_from_resume_projects(auth.user_id, resume_id)
+    except UserResumeServiceError as exc:
+        logger.exception("Failed to auto-detect resume skills")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "resume_update_error", "message": str(exc)},
+        ) from exc
+
+    if not record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "resume_not_found", "message": "Resume not found."},
+        )
+
+    return _build_resume_record(record)
+
+
+@router.post(
+    "/{resume_id}/pdf",
+    response_class=Response,
+    responses={
+        200: {"content": {"application/pdf": {}}},
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Resume not found"},
+        422: {"model": ErrorResponse, "description": "Validation error"},
+        500: {"model": ErrorResponse, "description": "PDF export failed"},
+    },
+)
+def export_user_resume_pdf(
+    resume_id: str,
+    payload: UserResumeExportPdfRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    service: UserResumeService = Depends(get_user_resume_service),
+) -> Response:
+    try:
+        service.apply_access_token(auth.access_token)
+        pdf_bytes = service.render_pdf_bytes(
+            auth.user_id,
+            resume_id,
+            latex_content=payload.latex_content,
+        )
+    except UserResumeServiceError as exc:
+        logger.exception("Failed to export user resume PDF")
+        raise _translate_service_error(
+            exc,
+            default_status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            default_code="resume_pdf_export_error",
+        ) from exc
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{resume_id}.pdf"',
+        },
+    )

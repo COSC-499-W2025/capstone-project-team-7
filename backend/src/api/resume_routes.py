@@ -51,19 +51,19 @@ def generate_resume_content_from_project(
         first_commit = repo.get("first_commit_date")
         last_commit = repo.get("last_commit_date")
         if first_commit:
-            # Format as "Mon YYYY" 
+            # Format as "Mon YYYY"
             try:
                 from datetime import datetime
                 dt = datetime.fromisoformat(first_commit.replace('Z', '+00:00'))
                 start_date = dt.strftime("%b %Y")
-            except:
+            except (ValueError, TypeError):
                 pass
         if last_commit:
             try:
                 from datetime import datetime
                 dt = datetime.fromisoformat(last_commit.replace('Z', '+00:00'))
                 end_date = dt.strftime("%b %Y")
-            except:
+            except (ValueError, TypeError):
                 pass
     
     # Generate bullets from scan data

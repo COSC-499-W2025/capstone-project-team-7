@@ -11,6 +11,7 @@ import {
   Code,
   FileEdit,
   MoreVertical,
+  Wand2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,38 +40,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ProfileForm } from "./profile-form";
+import { GenerateFromProfileModal } from "./generate-from-profile-modal";
 import { getStoredToken } from "@/lib/auth";
 import {
   listUserResumes,
   createUserResume,
   deleteUserResume,
   duplicateUserResume,
+  getResumeProfile,
+  saveResumeProfile,
 } from "@/lib/api/user-resume";
 import { getTemplateLatex } from "@/lib/latex-templates";
-import type { UserResumeSummary, ResumeTemplate } from "@/types/user-resume";
-
-const TEMPLATE_INFO: Record<ResumeTemplate, { name: string; description: string }> = {
-  jake: {
-    name: "Jake's Resume",
-    description: "Clean, ATS-friendly single-column template",
-  },
-  classic: {
-    name: "Classic",
-    description: "Traditional professional layout",
-  },
-  modern: {
-    name: "Modern",
-    description: "Contemporary design with clean sections",
-  },
-  minimal: {
-    name: "Minimal",
-    description: "Ultra-clean minimalist design",
-  },
-  custom: {
-    name: "Custom",
-    description: "Start from scratch",
-  },
-};
+import { TEMPLATE_INFO } from "./template-options";
+import type { UserResumeSummary, ResumeTemplate, ResumeStructuredData } from "@/types/user-resume";
 
 export default function ResumeBuilderPage() {
   const router = useRouter();
@@ -86,6 +70,13 @@ export default function ResumeBuilderPage() {
   const [newResumeTemplate, setNewResumeTemplate] = useState<ResumeTemplate>("jake");
   const [newResumeLatexMode, setNewResumeLatexMode] = useState(true);
   const [createError, setCreateError] = useState<string | null>(null);
+
+  // Profile state
+  const [profile, setProfile] = useState<ResumeStructuredData | null>(null);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileSaved, setProfileSaved] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [generateModalOpen, setGenerateModalOpen] = useState(false);
 
   const fetchResumes = useCallback(async () => {
     const token = getStoredToken();
@@ -110,6 +101,19 @@ export default function ResumeBuilderPage() {
   useEffect(() => {
     fetchResumes();
   }, [fetchResumes]);
+
+  // Load the user's saved profile once on mount
+  useEffect(() => {
+    const loadProfile = async () => {
+      const token = getStoredToken();
+      if (!token) return;
+      const record = await getResumeProfile(token);
+      setProfile(record?.structured_data ?? null);
+    };
+    loadProfile().catch((err) => {
+      setProfileError(err instanceof Error ? err.message : "Failed to load profile");
+    });
+  }, []);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -180,6 +184,27 @@ export default function ResumeBuilderPage() {
     router.push(`/resume-builder/editor?id=${id}` as Parameters<typeof router.push>[0]);
   };
 
+  const handleSaveProfile = async (data: ResumeStructuredData) => {
+    const token = getStoredToken();
+    if (!token) return;
+    setProfileSaving(true);
+    setProfileError(null);
+    try {
+      await saveResumeProfile(token, data);
+      setProfile(data);
+      setProfileSaved(true);
+      setTimeout(() => setProfileSaved(false), 3000);
+    } catch (err) {
+      setProfileError(err instanceof Error ? err.message : "Failed to save profile");
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  const handleGeneratedResume = (id: string) => {
+    router.push(`/resume-builder/editor?id=${id}` as Parameters<typeof router.push>[0]);
+  };
+
   const formatDate = (dateStr?: string | null) => {
     if (!dateStr) return "";
     return new Date(dateStr).toLocaleDateString(undefined, {
@@ -201,156 +226,202 @@ export default function ResumeBuilderPage() {
 
   return (
     <div className="page-container">
-      <section className="page-card page-hero">
-        {/* Header */}
-        <div className="page-header">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="page-kicker">Presentation Assets</p>
-              <h1 className="text-3xl font-bold text-foreground tracking-tight">
-                Resume Builder
-              </h1>
-              <p className="page-summary">
-                Create and manage your professional resumes
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={handleRefresh}
-                disabled={refreshing}
-                className="flex items-center gap-2 px-4 py-2 border-2 border-border bg-muted text-foreground rounded-md hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {refreshing ? <Spinner size={18} /> : <RefreshCw size={18} />}
-                <span className="font-medium">Refresh</span>
-              </button>
-              <button
-                onClick={openCreateDialog}
-                className="flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground border-2 border-primary rounded-md hover:bg-primary/90 transition-colors"
-              >
-                <Plus size={20} />
-                <span className="font-medium">New Resume</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-        {/* Error banner */}
-        {error && (
-          <div className="alert alert-error">
-            <div className="flex">
-              <svg
-                className="h-5 w-5 text-red-400 flex-shrink-0"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                  clipRule="evenodd"
-                />
-              </svg>
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-red-800">Error</h3>
-                <p className="mt-1 text-sm text-red-700">{error}</p>
+      <Tabs defaultValue="resumes" className="space-y-4">
+        <section className="page-card page-hero">
+          <div className="page-header">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="page-kicker">Presentation Assets</p>
+                <h1 className="text-3xl font-bold text-foreground tracking-tight">
+                  Resume Builder
+                </h1>
+                <p className="page-summary">
+                  Create and manage your professional resumes
+                </p>
               </div>
-            </div>
-          </div>
-        )}
-
-        {/* Content */}
-        <section className="page-card page-body">
-          {resumes.length === 0 ? (
-            <div className="text-center py-16">
-              <div className="inline-flex items-center justify-center w-16 h-16 bg-muted rounded-md mb-4">
-                <FileText className="h-8 w-8 text-muted-foreground" />
-              </div>
-              <h2 className="text-xl font-semibold text-foreground mb-2">
-                No resumes yet
-              </h2>
-              <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                Create your first professional resume using our LaTeX editor or
-                simple form-based builder.
-              </p>
-              <button
-                onClick={openCreateDialog}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground border-2 border-primary rounded-md hover:bg-primary/90 transition-colors"
-              >
-                <Plus size={18} />
-                Create Your First Resume
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {resumes.map((resume) => (
-                <div
-                  key={resume.id}
-                  className="group relative rounded-[16px] border-2 border-border bg-card/75 p-5 transition-all cursor-pointer hover:-translate-y-px hover:bg-background"
-                  onClick={() => handleOpen(resume.id)}
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  onClick={handleRefresh}
+                  disabled={refreshing}
+                  className="flex items-center gap-2 px-4 py-2 border-2 border-border bg-muted text-foreground rounded-md hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center justify-center w-10 h-10 bg-muted rounded-md">
-                        {resume.is_latex_mode ? (
-                          <Code className="h-5 w-5 text-muted-foreground" />
-                        ) : (
-                          <FileEdit className="h-5 w-5 text-muted-foreground" />
-                        )}
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-foreground truncate max-w-[180px]">
-                          {resume.name}
-                        </h3>
-                        <p className="text-xs text-muted-foreground">
-                          {TEMPLATE_INFO[resume.template]?.name || resume.template}
-                        </p>
-                      </div>
-                    </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        onClick={(e) => e.stopPropagation()}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-md hover:bg-muted"
-                      >
-                        <MoreVertical className="h-4 w-4 text-gray-500" />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent>
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDuplicate(resume.id);
-                          }}
-                        >
-                          <Copy className="h-4 w-4 mr-2" />
-                          Duplicate
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete(resume.id, resume.name);
-                          }}
-                          className="text-red-600"
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                  <div className="mt-4 pt-4 border-t border-border/60">
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>
-                        {resume.is_latex_mode ? "LaTeX" : "Form"} mode
-                      </span>
-                      <span>
-                        Updated {formatDate(resume.updated_at)}
-                      </span>
-                    </div>
-                  </div>
+                  {refreshing ? <Spinner size={18} /> : <RefreshCw size={18} />}
+                  <span className="font-medium">Refresh</span>
+                </button>
+                {profile && (
+                  <button
+                    onClick={() => setGenerateModalOpen(true)}
+                    className="flex items-center gap-2 px-4 py-2 border border-primary/20 bg-primary/10 text-primary rounded-md hover:bg-primary/15 transition-colors"
+                    title="Create a new resume pre-filled with your saved profile"
+                  >
+                    <Wand2 size={18} />
+                    <span className="font-medium">Generate from Profile</span>
+                  </button>
+                )}
+                <button
+                  onClick={openCreateDialog}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground border-2 border-primary rounded-md hover:bg-primary/90 transition-colors"
+                >
+                  <Plus size={20} />
+                  <span className="font-medium">New Resume</span>
+                </button>
+              </div>
+            </div>
+            <div className="mt-4">
+              <TabsList className="h-auto w-fit gap-2 bg-muted/55 p-1">
+                <TabsTrigger value="resumes">My Resumes</TabsTrigger>
+                <TabsTrigger value="profile">My Profile</TabsTrigger>
+              </TabsList>
+            </div>
+          </div>
+        </section>
+
+        <TabsContent value="resumes" className="mt-0 border-0 bg-transparent p-0">
+          {error && (
+            <div className="alert alert-error">
+              <div className="flex">
+                <svg
+                  className="h-5 w-5 text-red-400 flex-shrink-0"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-red-800">Error</h3>
+                  <p className="mt-1 text-sm text-red-700">{error}</p>
                 </div>
-              ))}
+              </div>
             </div>
           )}
-        </section>
+
+          <section className="page-card page-body">
+            {resumes.length === 0 ? (
+              <div className="text-center py-16">
+                <div className="inline-flex items-center justify-center w-16 h-16 bg-muted rounded-md mb-4">
+                  <FileText className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <h2 className="text-xl font-semibold text-foreground mb-2">
+                  No resumes yet
+                </h2>
+                <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+                  Create your first professional resume using our LaTeX editor or
+                  simple form-based builder.
+                </p>
+                <div className="flex items-center justify-center gap-3">
+                  {profile && (
+                    <button
+                      onClick={() => setGenerateModalOpen(true)}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 border border-primary/20 bg-primary/10 text-primary rounded-md hover:bg-primary/15 transition-colors"
+                    >
+                      <Wand2 size={18} />
+                      Generate from Profile
+                    </button>
+                  )}
+                  <button
+                    onClick={openCreateDialog}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground border-2 border-primary rounded-md hover:bg-primary/90 transition-colors"
+                  >
+                    <Plus size={18} />
+                    Create Your First Resume
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {resumes.map((resume) => (
+                  <div
+                    key={resume.id}
+                    className="group relative rounded-[16px] border-2 border-border bg-card/75 p-5 transition-all cursor-pointer hover:-translate-y-px hover:bg-background"
+                    onClick={() => handleOpen(resume.id)}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center justify-center w-10 h-10 bg-muted rounded-md">
+                          {resume.is_latex_mode ? (
+                            <Code className="h-5 w-5 text-muted-foreground" />
+                          ) : (
+                            <FileEdit className="h-5 w-5 text-muted-foreground" />
+                          )}
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-foreground truncate max-w-[180px]">
+                            {resume.name}
+                          </h3>
+                          <p className="text-xs text-muted-foreground">
+                            {TEMPLATE_INFO[resume.template]?.name || resume.template}
+                          </p>
+                        </div>
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          onClick={(e) => e.stopPropagation()}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-md hover:bg-muted"
+                        >
+                          <MoreVertical className="h-4 w-4 text-gray-500" />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDuplicate(resume.id);
+                            }}
+                          >
+                            <Copy className="h-4 w-4 mr-2" />
+                            Duplicate
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(resume.id, resume.name);
+                            }}
+                            className="text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                    <div className="mt-4 pt-4 border-t border-border/60">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>{resume.is_latex_mode ? "LaTeX" : "Form"} mode</span>
+                        <span>Updated {formatDate(resume.updated_at)}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </TabsContent>
+
+        <TabsContent value="profile" className="mt-0 border-0 bg-transparent p-0">
+          <section className="page-card page-body">
+            <ProfileForm
+              initialData={profile ?? {}}
+              onSave={handleSaveProfile}
+              saving={profileSaving}
+              saved={profileSaved}
+              error={profileError}
+            />
+          </section>
+        </TabsContent>
+      </Tabs>
+
+      {/* Generate from Profile Modal */}
+      {profile && (
+        <GenerateFromProfileModal
+          open={generateModalOpen}
+          onOpenChange={setGenerateModalOpen}
+          profile={profile}
+          onGenerated={handleGeneratedResume}
+        />
+      )}
 
       {/* Create Resume Dialog */}
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>

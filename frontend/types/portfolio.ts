@@ -63,6 +63,22 @@ export interface PortfolioChronology {
   skills: SkillsTimelineItem[];
 }
 
+export interface ProjectEvolutionPeriod {
+  period_label: string;
+  commits: number;
+  skill_count: number;
+  languages: Record<string, number>;
+  activity_types: string[];
+}
+
+export interface ProjectEvolutionItem {
+  project_id: string;
+  project_name: string;
+  total_commits: number;
+  total_lines: number;
+  periods: ProjectEvolutionPeriod[];
+}
+
 export interface DuplicateFileInfo {
   path: string;
   project_id: string;
@@ -133,4 +149,40 @@ export interface PublicPortfolioResponse {
   }[];
   heatmap_data: { period: string; commits: number }[];
   all_skills: string[];
+}
+
+// ── Resource Suggestions ─────────────────────────────────────────────
+
+export interface ResourceEntry {
+  title: string;
+  url: string;
+  type: "article" | "video" | "course" | "docs";
+  level: "beginner" | "intermediate" | "advanced";
+}
+
+export interface ResourceSuggestion {
+  skill_name: string;
+  current_tier: string;
+  target_tier: string;
+  reason: string;
+  importance?: string | null;
+  resources: ResourceEntry[];
+}
+
+export interface ResourceSuggestionsResponse {
+  suggestions: ResourceSuggestion[];
+  role?: string | null;
+  role_label?: string | null;
+}
+
+// ── LinkedIn Post ────────────────────────────────────────────────────
+
+export interface LinkedInPostRequest {
+  scope: "portfolio" | "project";
+  project_id?: string;
+}
+
+export interface LinkedInPostResponse {
+  post_text: string;
+  share_url?: string | null;
 }

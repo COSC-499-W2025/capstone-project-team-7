@@ -1017,5 +1017,249 @@ class TestCommitMessageSkills:
         assert "Containerization" not in skills
 
 
+class TestArchitecturePatterns:
+    """Tests for architecture pattern detection."""
+
+    @pytest.fixture
+    def extractor(self):
+        return SkillsExtractor()
+
+    def test_rest_api_python(self, extractor):
+        """Flask route decorator should detect RESTful API Design."""
+        code = """
+from flask import Flask, jsonify
+app = Flask(__name__)
+
+@app.route('/api/users', methods=['GET'])
+def get_users():
+    return jsonify(users)
+"""
+        skills = extractor.extract_skills(file_contents={"api.py": code})
+        assert "RESTful API Design" in skills
+        assert skills["RESTful API Design"].category == "architecture"
+
+    def test_rest_api_javascript(self, extractor):
+        """Express route should detect RESTful API Design."""
+        code = """
+const express = require('express');
+const app = express();
+app.get('/api/items', (req, res) => {
+    res.json(items);
+});
+"""
+        skills = extractor.extract_skills(file_contents={"server.js": code})
+        assert "RESTful API Design" in skills
+
+    def test_authentication_python(self, extractor):
+        """JWT/bcrypt usage should detect Authentication & Authorization."""
+        code = """
+import jwt
+import bcrypt
+
+def login(username, password):
+    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+    token = jwt.encode({'user': username}, SECRET_KEY)
+    return token
+"""
+        skills = extractor.extract_skills(file_contents={"auth.py": code})
+        assert "Authentication & Authorization" in skills
+        assert skills["Authentication & Authorization"].category == "architecture"
+
+    def test_input_validation_python(self, extractor):
+        """Pydantic usage should detect Input Validation."""
+        code = """
+from pydantic import BaseModel, validator
+
+class UserCreate(BaseModel):
+    username: str
+    email: str
+
+    @validator('email')
+    def email_must_be_valid(cls, v):
+        if '@' not in v:
+            raise ValueError('invalid email')
+        return v
+"""
+        skills = extractor.extract_skills(file_contents={"schemas.py": code})
+        assert "Input Validation" in skills
+        assert skills["Input Validation"].category == "architecture"
+
+    def test_middleware_python(self, extractor):
+        """Django MIDDLEWARE setting should detect Middleware Pattern."""
+        code = """
+MIDDLEWARE = [
+    'django.middleware.security.SecurityMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+]
+"""
+        skills = extractor.extract_skills(file_contents={"settings.py": code})
+        assert "Middleware Pattern" in skills
+        assert skills["Middleware Pattern"].category == "architecture"
+
+    def test_mvc_java(self, extractor):
+        """Spring @Controller should detect MVC Architecture."""
+        code = """
+import org.springframework.stereotype.Controller;
+import org.springframework.web.servlet.ModelAndView;
+
+@Controller
+public class HomeController {
+    public ModelAndView home() {
+        return new ModelAndView("index");
+    }
+}
+"""
+        skills = extractor.extract_skills(file_contents={"HomeController.java": code})
+        assert "MVC Architecture" in skills
+        assert skills["MVC Architecture"].category == "architecture"
+
+    def test_no_false_positive_architecture(self, extractor):
+        """Plain arithmetic code should not trigger architecture patterns."""
+        code = "x = 1\ny = 2\nprint(x + y)\n"
+        skills = extractor.extract_skills(file_contents={"simple.py": code})
+        arch_skills = [s for s in skills if skills[s].category == "architecture"]
+        assert len(arch_skills) == 0
+
+
+class TestFrameworkTiers:
+    """Tests for tiered framework pattern detection."""
+
+    @pytest.fixture
+    def extractor(self):
+        return SkillsExtractor()
+
+    def test_react_basic_is_beginner(self, extractor):
+        """Basic React import/useState should be beginner tier."""
+        code = """
+import React from 'react';
+const [count, setCount] = useState(0);
+"""
+        skills = extractor.extract_skills(file_contents={"app.jsx": code})
+        assert "React Framework" in skills
+        assert skills["React Framework"].highest_tier == TIER_BEGINNER
+
+    def test_react_intermediate_with_memo(self, extractor):
+        """useReducer/useMemo should elevate React to intermediate tier."""
+        code = """
+import React from 'react';
+const [state, dispatch] = useReducer(reducer, init);
+const memoized = useMemo(() => expensive(a, b), [a, b]);
+"""
+        skills = extractor.extract_skills(file_contents={"app.jsx": code})
+        assert "React Framework" in skills
+        assert skills["React Framework"].highest_tier == TIER_INTERMEDIATE
+
+    def test_react_advanced_with_lazy(self, extractor):
+        """React.lazy/Suspense should elevate React to advanced tier."""
+        code = """
+import React from 'react';
+const LazyComp = React.lazy(() => import('./Heavy'));
+function App() {
+    return <Suspense fallback={<div>Loading...</div>}><LazyComp /></Suspense>;
+}
+"""
+        skills = extractor.extract_skills(file_contents={"app.jsx": code})
+        assert "React Framework" in skills
+        assert skills["React Framework"].highest_tier == TIER_ADVANCED
+
+    def test_django_basic_is_beginner(self, extractor):
+        """Basic Django model should be beginner tier."""
+        code = """
+from django.db import models
+
+class Post(models.Model):
+    title = models.CharField(max_length=200)
+"""
+        skills = extractor.extract_skills(file_contents={"models.py": code})
+        assert "Django Framework" in skills
+        assert skills["Django Framework"].highest_tier == TIER_BEGINNER
+
+    def test_django_advanced_with_prefetch(self, extractor):
+        """select_related/prefetch_related should elevate Django to advanced tier."""
+        code = """
+from django.db import models
+
+class Post(models.Model):
+    title = models.CharField(max_length=200)
+
+posts = Post.objects.select_related('author').prefetch_related('tags')
+"""
+        skills = extractor.extract_skills(file_contents={"views.py": code})
+        assert "Django Framework" in skills
+        assert skills["Django Framework"].highest_tier == TIER_ADVANCED
+
+    def test_flask_intermediate_with_blueprint(self, extractor):
+        """Flask Blueprint should elevate to intermediate tier."""
+        code = """
+from flask import Flask, Blueprint
+
+auth_bp = Blueprint('auth', __name__)
+
+@auth_bp.before_request
+def check_auth():
+    pass
+"""
+        skills = extractor.extract_skills(file_contents={"auth.py": code})
+        assert "Flask Framework" in skills
+        assert skills["Flask Framework"].highest_tier == TIER_INTERMEDIATE
+
+    def test_express_intermediate_with_router(self, extractor):
+        """express.Router() should elevate Express to intermediate tier."""
+        code = """
+const express = require('express');
+const router = express.Router();
+router.use('/api', apiRouter);
+app.get('/health', (req, res) => res.json({ok: true}));
+"""
+        skills = extractor.extract_skills(file_contents={"routes.js": code})
+        assert "Express.js Framework" in skills
+        assert skills["Express.js Framework"].highest_tier == TIER_INTERMEDIATE
+
+    def test_spring_intermediate_with_service(self, extractor):
+        """@Service/@Transactional should elevate Spring to intermediate tier."""
+        code = """
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@SpringBootApplication
+public class App {}
+
+@Service
+@Transactional
+public class UserService {}
+"""
+        skills = extractor.extract_skills(file_contents={"App.java": code})
+        assert "Spring Framework" in skills
+        assert skills["Spring Framework"].highest_tier == TIER_INTERMEDIATE
+
+    def test_nextjs_advanced_with_metadata(self, extractor):
+        """generateMetadata should elevate Next.js to advanced tier."""
+        code = """
+import { Metadata } from 'next';
+export async function generateMetadata({ params }) {
+    return { title: params.slug };
+}
+"""
+        skills = extractor.extract_skills(file_contents={"page.tsx": code})
+        assert "Next.js Framework" in skills
+        assert skills["Next.js Framework"].highest_tier == TIER_ADVANCED
+
+    def test_framework_tier_breakdown(self, extractor):
+        """Framework should accumulate evidence across tiers."""
+        code = """
+import React from 'react';
+const [count, setCount] = useState(0);
+const memoized = useMemo(() => count * 2, [count]);
+const LazyComp = React.lazy(() => import('./Heavy'));
+"""
+        skills = extractor.extract_skills(file_contents={"app.jsx": code})
+        assert "React Framework" in skills
+        breakdown = skills["React Framework"].tier_breakdown
+        assert breakdown[TIER_BEGINNER] > 0
+        assert breakdown[TIER_INTERMEDIATE] > 0
+        assert breakdown[TIER_ADVANCED] > 0
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

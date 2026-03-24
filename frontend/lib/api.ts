@@ -29,11 +29,22 @@ import { getContributionHeaders } from "./settings";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
 
+type ResponseParser<T> = (response: Response) => Promise<T>;
+
 const getApiBaseUrl = () => {
   return process.env.NEXT_PUBLIC_API_BASE_URL || DEFAULT_API_BASE_URL;
 };
 
-export async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> {
+async function parseJsonResponse<T>(response: Response): Promise<T> {
+  const text = await response.text();
+  return (text ? JSON.parse(text) : {}) as T;
+}
+
+export async function request<T>(
+  path: string,
+  init?: RequestInit,
+  parseResponse?: ResponseParser<T>,
+): Promise<ApiResult<T>> {
   const baseUrl = getApiBaseUrl();
   const url = `${baseUrl}${path}`;
 
@@ -64,8 +75,9 @@ export async function request<T>(path: string, init?: RequestInit): Promise<ApiR
       return { ok: false as const, status: res.status, error: text || res.statusText };
     }
 
-    const text = await res.text();
-    const data = (text ? JSON.parse(text) : {}) as T;
+    const data = parseResponse
+      ? await parseResponse(res)
+      : await parseJsonResponse<T>(res);
     return { ok: true as const, data };
   };
 

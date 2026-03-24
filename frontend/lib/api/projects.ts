@@ -11,6 +11,8 @@ import {
   SkillsListResponse,
   RoleProfile,
   SkillGapAnalysis,
+  AiAnalysisApiResponse,
+  AiBatchStatusApiResponse,
 } from "@/types/project";
 import { request } from "@/lib/api";
 
@@ -185,7 +187,6 @@ export async function exportProjectHtml(
   token: string,
   projectId: string,
 ): Promise<string> {
-  // This endpoint returns HTML text, not JSON - use direct fetch with refresh wrapper
   const result = await request<string>(`/api/projects/${projectId}/export-html`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
@@ -240,5 +241,36 @@ export async function getSkillGaps(
     `/api/projects/${projectId}/skills/gaps?${params}`,
     { headers: authHeaders(token) },
     "Failed to analyse skill gaps"
+  );
+}
+
+/**
+ * Run AI analysis for an existing project using its stored scan data.
+ * Pass force=true to re-run even if a cached result exists.
+ */
+export async function runProjectAiAnalysis(
+  token: string,
+  projectId: string,
+  force = false,
+): Promise<AiAnalysisApiResponse> {
+  const params = force ? "?force=true" : "";
+  return call(
+    `/api/projects/${projectId}/ai-analysis${params}`,
+    { method: "POST", headers: authHeaders(token) },
+    "Failed to run AI analysis"
+  );
+}
+
+/**
+ * Fetch in-progress batch status messages for real-time polling.
+ */
+export async function getProjectAiBatchStatus(
+  token: string,
+  projectId: string,
+): Promise<AiBatchStatusApiResponse> {
+  return call(
+    `/api/projects/${projectId}/ai-batch/status`,
+    { headers: authHeaders(token) },
+    "Failed to fetch AI batch status"
   );
 }

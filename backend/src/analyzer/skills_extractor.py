@@ -65,6 +65,7 @@ class Skill:
     description: str
     evidence: List[SkillEvidence] = field(default_factory=list)
     proficiency_score: float = 0.0  # 0.0 to 1.0 based on evidence quality/quantity
+    _max_tier_score: float = field(default=0.0, repr=False)
 
     def add_evidence(self, evidence: SkillEvidence):
         """Add evidence and update proficiency score.
@@ -75,32 +76,23 @@ class Skill:
         matches can only reach ~0.5.
         """
         self.evidence.append(evidence)
-        self._recalculate_proficiency()
-
-    def _recalculate_proficiency(self):
-        """Recompute proficiency from the full evidence list."""
-        if not self.evidence:
-            self.proficiency_score = 0.0
-            return
-
-        highest_tier_score = max(
-            TIER_SCORES.get(ev.tier, TIER_SCORES[TIER_BEGINNER])
-            for ev in self.evidence
-        )
-        # Small bonus per piece of evidence beyond the first (diminishing)
+        # Track max tier incrementally to avoid O(n) rescan on each add
+        tier_score = TIER_SCORES.get(evidence.tier, TIER_SCORES[TIER_BEGINNER])
+        if tier_score > self._max_tier_score:
+            self._max_tier_score = tier_score
         evidence_bonus = min(0.1, (len(self.evidence) - 1) * 0.02)
-        self.proficiency_score = min(1.0, highest_tier_score + evidence_bonus)
+        self.proficiency_score = min(1.0, self._max_tier_score + evidence_bonus)
 
     @property
     def highest_tier(self) -> str:
         """Return the highest complexity tier reached across all evidence."""
         if not self.evidence:
             return TIER_BEGINNER
-        tier_order = {TIER_BEGINNER: 0, TIER_INTERMEDIATE: 1, TIER_ADVANCED: 2}
-        return max(
-            (ev.tier for ev in self.evidence),
-            key=lambda t: tier_order.get(t, 0),
-        )
+        # Use cached max score to find tier in O(1)
+        for tier, score in sorted(TIER_SCORES.items(), key=lambda x: -x[1]):
+            if self._max_tier_score >= score:
+                return tier
+        return TIER_BEGINNER
 
     @property
     def tier_breakdown(self) -> Dict[str, int]:
@@ -321,40 +313,119 @@ class SkillsExtractor:
             'documentation': TIER_BEGINNER,
         }
 
-        # Framework Patterns
-        # No tier mapping for frameworks — detecting framework usage (e.g. `import React`)
-        # is inherently beginner-level; distinguishing intermediate/advanced usage would
-        # require semantic analysis (hooks vs class components, etc.) which is out of scope
-        # for regex-based detection.  All framework matches default to TIER_BEGINNER.
+        # Framework Patterns — split into beginner/intermediate/advanced per framework
+        # so that detecting basic imports yields beginner tier while advanced usage
+        # patterns (custom hooks, performance APIs, etc.) yield higher tiers.
         self.framework_patterns = {
-            'react': {
+            # React — beginner: basic imports/hooks; intermediate: perf hooks, context;
+            # advanced: lazy loading, portals, refs
+            'react_basic': {
                 'javascript': [r'import.*from\s+["\']react["\']', r'useState', r'useEffect', r'React\.Component', r'\.jsx'],
                 'typescript': [r'import.*from\s+["\']react["\']', r'useState', r'useEffect', r'FC<', r'\.tsx'],
             },
-            'vue': {
+            'react_intermediate': {
+                'javascript': (_react_int := [r'useReducer', r'useContext', r'React\.memo', r'useMemo', r'useCallback', r'createContext']),
+                'typescript': _react_int,
+            },
+            'react_advanced': {
+                'javascript': (_react_adv := [r'React\.lazy', r'Suspense', r'forwardRef', r'createPortal', r'useImperativeHandle']),
+                'typescript': _react_adv,
+            },
+            # Vue — only basic tier; Vue's advanced patterns (Composition API,
+            # Pinia, etc.) need template-aware parsing beyond regex scope.
+            'vue_basic': {
                 'javascript': [r'import.*from\s+["\']vue["\']', r'Vue\.component', r'v-if', r'v-for', r'\.vue'],
             },
-            'angular': {
-                'typescript': [r'@Component', r'@Injectable', r'@NgModule', r'import.*@angular'],
+            # Angular — beginner: decorators; intermediate: services/HTTP;
+            # advanced: change detection, custom directives
+            'angular_basic': {
+                'typescript': [r'@Component', r'@NgModule', r'import.*@angular'],
             },
-            'django': {
+            'angular_intermediate': {
+                'typescript': [r'@Injectable', r'HttpClient', r'@Pipe', r'Observable'],
+            },
+            'angular_advanced': {
+                'typescript': [r'ChangeDetectionStrategy\.OnPush', r'@HostListener', r'@ContentChild'],
+            },
+            # Django — beginner: models/views; intermediate: forms/signals;
+            # advanced: Q objects, prefetch, caching
+            'django_basic': {
                 'python': [r'from\s+django', r'django\.db\.models', r'models\.Model', r'\.views', r'urlpatterns'],
             },
-            'flask': {
+            'django_intermediate': {
+                'python': [r'class\s+Meta:', r'ModelForm', r'django\.forms', r'signals\.'],
+            },
+            'django_advanced': {
+                'python': [r'models\.Q\b', r'F\(\s*["\']', r'select_related', r'prefetch_related', r'django\.core\.cache'],
+            },
+            # Flask — beginner: basic routes; intermediate: blueprints/hooks;
+            # advanced: app context, signals
+            'flask_basic': {
                 'python': [r'from\s+flask\s+import', r'@app\.route', r'Flask\(__name__\)', r'render_template'],
             },
-            'express': {
+            'flask_intermediate': {
+                'python': [r'Blueprint\(', r'before_request', r'after_request', r'flask\.g\b'],
+            },
+            'flask_advanced': {
+                'python': [r'app_context', r'current_app', r'flask\.signals', r'@app\.errorhandler'],
+            },
+            # Express — beginner: basic app; intermediate: router/middleware;
+            # advanced: custom error middleware
+            'express_basic': {
                 'javascript': [r'require\(["\']express["\']\)', r'express\(\)', r'app\.get\(', r'app\.post\('],
             },
-            'spring': {
+            'express_intermediate': {
+                'javascript': [r'express\.Router\(\)', r'router\.use\(', r'app\.use\('],
+            },
+            'express_advanced': {
+                'javascript': [r'function\s*\(\s*err\s*,\s*req\s*,\s*res\s*,\s*next\s*\)', r'app\.all\('],
+            },
+            # Spring — beginner: boot/controller; intermediate: service layer;
+            # advanced: AOP, caching, async
+            'spring_basic': {
                 'java': [r'@SpringBootApplication', r'@RestController', r'@Autowired', r'import.*springframework'],
             },
-            'nextjs': {
+            'spring_intermediate': {
+                'java': [r'@Service', r'@Repository', r'@Transactional', r'JpaRepository'],
+            },
+            'spring_advanced': {
+                'java': [r'@Aspect', r'@EnableCaching', r'@Async', r'@EventListener'],
+            },
+            # Next.js — beginner: imports/SSR; intermediate: ISR/routing;
+            # advanced: middleware, server actions
+            'nextjs_basic': {
                 'javascript': [r'import.*from\s+["\']next', r'getServerSideProps', r'getStaticProps', r'next\.config'],
                 'typescript': [r'import.*from\s+["\']next', r'getServerSideProps', r'getStaticProps'],
             },
+            'nextjs_intermediate': {
+                'javascript': (_nextjs_int := [r'getStaticPaths', r'useRouter', r'next/image', r'next/head']),
+                'typescript': _nextjs_int,
+            },
+            'nextjs_advanced': {
+                'javascript': (_nextjs_adv := [r'generateMetadata', r'revalidatePath', r'unstable_cache', r'generateStaticParams']),
+                'typescript': _nextjs_adv,
+            },
         }
-        
+
+        # Auto-derive tiers from key suffix — avoids hand-maintaining a parallel dict
+        _suffix_tier = {"_basic": TIER_BEGINNER, "_intermediate": TIER_INTERMEDIATE, "_advanced": TIER_ADVANCED}
+        self.framework_tiers = {
+            k: next(tier for suffix, tier in _suffix_tier.items() if k.endswith(suffix))
+            for k in self.framework_patterns
+        }
+
+        # Map framework prefix -> display name (used to auto-generate skill_mapping)
+        self._framework_skill_names = {
+            "react": "React Framework",
+            "vue": "Vue.js Framework",
+            "angular": "Angular Framework",
+            "django": "Django Framework",
+            "flask": "Flask Framework",
+            "express": "Express.js Framework",
+            "spring": "Spring Framework",
+            "nextjs": "Next.js Framework",
+        }
+
         # Database & ORM Patterns
         self.database_patterns = {
             'sql_queries': {
@@ -851,20 +922,14 @@ class SkillsExtractor:
                 tier_mapping=self.practice_tiers,
             )
             
-            # Check frameworks
+            # Check frameworks (tiered: basic/intermediate/advanced per framework)
+            # skill_mapping derived from _framework_skill_names — strip tier suffix to find display name
             self._check_patterns(
                 content, file_path, language,
                 self.framework_patterns, "frameworks",
-                {
-                    'react': "React Framework",
-                    'vue': "Vue.js Framework",
-                    'angular': "Angular Framework",
-                    'django': "Django Framework",
-                    'flask': "Flask Framework",
-                    'express': "Express.js Framework",
-                    'spring': "Spring Framework",
-                    'nextjs': "Next.js Framework",
-                }
+                {k: self._framework_skill_names[k.rsplit("_", 1)[0]]
+                 for k in self.framework_patterns},
+                tier_mapping=self.framework_tiers,
             )
             
             # Check database patterns
@@ -939,7 +1004,7 @@ class SkillsExtractor:
                 if matches:
                     # Get line number of first match
                     first_match = matches[0]
-                    line_num = content[:first_match.start()].count('\n') + 1
+                    line_num = content.count('\n', 0, first_match.start()) + 1
 
                     tier = (tier_mapping or {}).get(pattern_key, TIER_BEGINNER)
 

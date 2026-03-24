@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import logging
-from typing import List, Optional, Dict
 from collections import defaultdict
+from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
-from typing import List, Optional, Dict, Any
-from collections import defaultdict
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -89,6 +87,26 @@ class SkillsTimelineResponse(BaseModel):
 class PortfolioChronology(BaseModel):
     projects: List[TimelineItem] = Field(default_factory=list)
     skills: List[SkillsTimelineItem] = Field(default_factory=list)
+
+class ProjectEvolutionPeriod(BaseModel):
+    period_label: str
+    commits: int = 0
+    skill_count: int = 0
+    languages: Dict[str, Any] = Field(default_factory=dict)
+    activity_types: List[str] = Field(default_factory=list)
+
+
+class ProjectEvolutionItem(BaseModel):
+    project_id: str
+    project_name: str
+    total_commits: int = 0
+    total_lines: int = 0
+    periods: List[ProjectEvolutionPeriod] = Field(default_factory=list)
+
+
+class ProjectEvolutionResponse(BaseModel):
+    items: List[ProjectEvolutionItem] = Field(default_factory=list)
+
 
 class SkillsListResponse(BaseModel):
     """Response for GET /api/skills endpoint."""
@@ -176,6 +194,37 @@ def get_portfolio_chronology(
     return PortfolioChronology(
         projects=[TimelineItem(**item) for item in chronology.get("projects", [])],
         skills=[SkillsTimelineItem(**item) for item in chronology.get("skills", [])],
+    )
+
+
+@router.get(
+    "/api/portfolio/project-evolution",
+    response_model=ProjectEvolutionResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        500: {"model": ErrorResponse, "description": "Evolution retrieval failed"},
+    },
+)
+def get_project_evolution(
+    project_ids: Optional[str] = None,
+    auth: AuthContext = Depends(get_auth_context),
+    service: PortfolioTimelineService = Depends(get_portfolio_timeline_service),
+) -> ProjectEvolutionResponse:
+    """Return per-project monthly evolution data.
+
+    Optionally filter by comma-separated project IDs.
+    """
+    ids_list = [pid.strip() for pid in project_ids.split(",") if pid.strip()] if project_ids else None
+    try:
+        items = service.get_project_evolution(auth.user_id, project_ids=ids_list)
+    except PortfolioTimelineServiceError as exc:
+        logger.exception("Failed to build project evolution")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "evolution_error", "message": str(exc)},
+        ) from exc
+    return ProjectEvolutionResponse(
+        items=[ProjectEvolutionItem(**item) for item in items],
     )
 
 
@@ -672,6 +721,152 @@ async def generate_portfolio_item(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"code": "generation_error", "message": str(exc)},
         ) from exc
+
+
+# ============================================================================
+# Resource Suggestions
+# ============================================================================
+
+
+class ResourceEntryModel(BaseModel):
+    title: str
+    url: str
+    type: Literal["article", "video", "course", "docs"]
+    level: Literal["beginner", "intermediate", "advanced"]
+
+
+class ResourceSuggestionModel(BaseModel):
+    skill_name: str
+    current_tier: str
+    target_tier: str
+    reason: str
+    importance: Optional[str] = None
+    resources: List[ResourceEntryModel]
+
+
+class ResourceSuggestionsResponse(BaseModel):
+    suggestions: List[ResourceSuggestionModel]
+    role: Optional[str] = None
+    role_label: Optional[str] = None
+
+
+@router.get(
+    "/api/portfolio/resource-suggestions",
+    response_model=ResourceSuggestionsResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        500: {"model": ErrorResponse, "description": "Failed to generate suggestions"},
+    },
+)
+def get_resource_suggestions(
+    role: Optional[str] = None,
+    auth: AuthContext = Depends(get_auth_context),
+    projects_service: ProjectsService = Depends(get_projects_service),
+):
+    """Return personalised learning resource suggestions based on scanned skills."""
+    try:
+        projects = projects_service.get_user_projects(auth.user_id)
+        if not isinstance(projects, list):
+            projects = []
+    except Exception as exc:
+        logger.exception("Failed to load projects for resource suggestions")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "project_load_error", "message": str(exc)},
+        ) from exc
+
+    from services.services.resource_suggestions_service import get_suggestions
+
+    result = get_suggestions(
+        user_id=auth.user_id,
+        projects=projects,
+        role=role,
+    )
+
+    return ResourceSuggestionsResponse(
+        suggestions=[ResourceSuggestionModel(**s) for s in result["suggestions"]],
+        role=result.get("role"),
+        role_label=result.get("role_label"),
+    )
+
+
+# ============================================================================
+# LinkedIn Post Generation
+# ============================================================================
+
+
+class LinkedInPostRequest(BaseModel):
+    scope: Literal["portfolio", "project"] = Field("portfolio")
+    project_id: Optional[str] = Field(None, description="Required when scope is 'project'")
+
+
+class LinkedInPostResponse(BaseModel):
+    post_text: str
+    share_url: Optional[str] = None
+
+
+@router.post(
+    "/api/portfolio/linkedin-post",
+    response_model=LinkedInPostResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Project not found"},
+        500: {"model": ErrorResponse, "description": "Failed to generate post"},
+    },
+)
+def generate_linkedin_post(
+    body: LinkedInPostRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    projects_service: ProjectsService = Depends(get_projects_service),
+):
+    """Generate a LinkedIn post from portfolio or project data."""
+    from services.services.linkedin_post_builder import (
+        build_portfolio_post,
+        build_project_post,
+    )
+
+    try:
+        projects = projects_service.get_user_projects(auth.user_id)
+        if not isinstance(projects, list):
+            projects = []
+    except Exception as exc:
+        logger.exception("Failed to load projects for LinkedIn post")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "project_load_error", "message": str(exc)},
+        ) from exc
+
+    # Resolve public share URL
+    share_url: Optional[str] = None
+    try:
+        from services.services.portfolio_settings_service import PortfolioSettingsService
+        settings_service = PortfolioSettingsService()
+        settings_service.apply_access_token(auth.access_token)
+        settings = settings_service.get_settings(auth.user_id)
+        if settings and settings.get("is_public") and settings.get("share_token"):
+            share_url = settings["share_token"]
+    except Exception as exc:
+        logger.warning("Failed to resolve public share URL for LinkedIn post: %s", exc)
+
+    if body.scope == "project" and body.project_id:
+        project = next((p for p in projects if p.get("id") == body.project_id), None)
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "not_found", "message": "Project not found"},
+            )
+        post_text = build_project_post(project)
+    else:
+        from services.services.resource_suggestions_service import collect_skill_names
+
+        all_skills = collect_skill_names(projects)
+        post_text = build_portfolio_post(
+            projects=projects,
+            skills=all_skills,
+            share_url=share_url,
+        )
+
+    return LinkedInPostResponse(post_text=post_text, share_url=share_url)
 
 
 # ============================================================================

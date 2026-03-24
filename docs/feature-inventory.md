@@ -152,6 +152,18 @@ Priority key: P0 = launch-critical parity; P1 = nice-to-have once P0 is stable; 
 - Data: Uses combined scan payload (summary, files, code_analysis, skills_analysis, contribution_metrics, git_analysis, media_analysis, pdf/document analysis).
 - Migration notes: Export buttons (HTML/PDF); show errors if PDF deps missing; allow user to pick path via Electron file save dialog; include toggles for sections.
 
+### Resource suggestions
+- Current behavior: Aggregates skills across all user projects, identifies beginner/intermediate skills, and recommends curated learning resources at the next tier. Optionally weights suggestions by target role importance.
+- Components: `backend/src/analyzer/resource_map.py` (44-skill curated map), `backend/src/services/services/resource_suggestions_service.py`, `GET /api/portfolio/resource-suggestions`.
+- Frontend: `frontend/components/portfolio/resource-suggestions.tsx` rendered as a "Resources" tab on the Portfolio page with role selector dropdown.
+- Data: Reads `scan_data.skills_analysis.skills_by_category` from all user projects; cross-references against `ROLE_PROFILES` from `skill_gap_analyzer.py`.
+
+### LinkedIn post sharing
+- Current behavior: Generates a template-based LinkedIn post from portfolio or single-project data. User copies text to clipboard and pastes into LinkedIn. No OAuth required.
+- Components: `backend/src/services/services/linkedin_post_builder.py`, `POST /api/portfolio/linkedin-post`.
+- Frontend: `frontend/components/portfolio/linkedin-share-dialog.tsx` with editable textarea, character count, copy-to-clipboard, and "Open LinkedIn" button. Share button placed in portfolio overview header alongside Publish toggle.
+- Data: Uses project names, languages, commit counts, skills, contribution scores, and public share token.
+
 ### Encryption at rest
 - Current behavior: AES-GCM encryption service wraps scan_data, resume content, cached metadata when `ENCRYPTION_MASTER_KEY` is set; used by ProjectsService and ResumeStorageService.
 - Components: `backend/src/cli/services/encryption.py`.

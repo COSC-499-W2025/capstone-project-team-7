@@ -144,6 +144,12 @@ export interface ProjectDuplicateReport extends Record<string, unknown> {
   total_wasted_mb?: number;
 }
 
+export interface ProjectCategoryInfo {
+  category: string;
+  label: string;
+  confidence: number;
+}
+
 export interface ProjectScanData extends Record<string, unknown> {
   summary?: ProjectScanSummary;
   skills_analysis?: ProjectSkillsAnalysis;
@@ -157,6 +163,58 @@ export interface ProjectScanData extends Record<string, unknown> {
   duplicate_report?: ProjectDuplicateReport;
   files?: ProjectScanFile[];
   languages?: string[] | ProjectScanLanguageEntry[] | Record<string, unknown>;
+  project_category?: ProjectCategoryInfo;
+  ai_analysis?: ProjectAiAnalysis | null;
+}
+
+export interface ProjectAiAnalysisCategory {
+  category: string;
+  label: string;
+  summary?: string | null;
+  insights?: string[] | null;
+}
+
+export interface ProjectAiKeyFile {
+  file_path?: string | null;
+  summary?: string | null;
+}
+
+export interface ProjectAiAnalysis {
+  overall_summary?: string | null;
+  categories?: ProjectAiAnalysisCategory[] | null;
+  render_mode?: "cards" | "markdown_report" | null;
+  markdown_report?: string | null;
+  key_files?: ProjectAiKeyFile[] | null;
+  // Legacy fields kept for backward compat with already-cached results
+  portfolio_overview?: string | null;
+  project_insights?: string[] | null;
+  key_achievements?: string[] | null;
+  recommendations?: string[] | null;
+}
+
+export interface AiAnalysisApiResponse {
+  project_id: string;
+  result: ProjectAiAnalysis;
+  llm_status: string;
+  cached: boolean;
+  status_messages?: string[] | null;
+}
+
+export interface AiBatchApiResponse {
+  project_id: string;
+  status: string;
+  cached: boolean;
+  result?: Record<string, unknown> | null;
+  detail?: string | null;
+  status_messages?: string[] | null;
+}
+
+export interface AiBatchStatusApiResponse {
+  project_id: string;
+  status: string;
+  detail?: string | null;
+  status_messages: string[];
+  updated_at?: string | null;
 }
 
 export interface ProjectDetail extends ProjectMetadata {

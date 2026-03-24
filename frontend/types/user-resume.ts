@@ -53,6 +53,10 @@ export interface UserResumeDuplicateRequest {
   new_name?: string | null;
 }
 
+export interface UserResumeAddItemsRequest {
+  item_ids: string[];
+}
+
 export interface TemplatesListResponse {
   templates: ResumeTemplateMeta[];
 }
@@ -96,6 +100,8 @@ export interface ResumeExperienceEntry {
 export interface ResumeProjectEntry {
   id: string;
   name: string;
+  role?: string;
+  company?: string;
   technologies?: string;
   url?: string;
   start_date?: string;
@@ -114,12 +120,21 @@ export interface ResumeSkillsSection {
   custom?: Record<string, string[]>;
 }
 
+export interface ResumeAwardEntry {
+  id: string;
+  title: string;
+  issuer?: string;
+  date?: string;
+  description?: string;
+}
+
 export interface ResumeStructuredData {
   contact?: ResumeContactInfo;
   education?: ResumeEducationEntry[];
   experience?: ResumeExperienceEntry[];
   projects?: ResumeProjectEntry[];
   skills?: ResumeSkillsSection;
+  awards?: ResumeAwardEntry[];
   // Section ordering
   section_order?: string[];
 }

@@ -7,9 +7,11 @@ from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any, cast
 from datetime import datetime
 import asyncio
+import json
 import logging
 import sys
 import os
+import time
 from pathlib import Path
 from dataclasses import asdict, is_dataclass
 import uuid
@@ -30,6 +32,7 @@ try:
     )
     from auth.consent_validator import ConsentValidator
     from api.llm_routes import get_user_client
+    from api.settings_routes import get_or_hydrate_llm_client
     from services.services.export_service import ExportService
 except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
     from backend.src.services.services.projects_service import ProjectsService, ProjectsServiceError
@@ -41,6 +44,7 @@ except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fal
     )
     from backend.src.auth.consent_validator import ConsentValidator
     from backend.src.api.llm_routes import get_user_client
+    from backend.src.api.settings_routes import get_or_hydrate_llm_client
     from backend.src.services.services.export_service import ExportService
 
 try:
@@ -86,6 +90,33 @@ CATEGORY_LABELS = {
     "ml_data": "ML & Data Science",
 }
 
+# Keep terminal status snapshots briefly so polling clients can observe completion.
+AI_BATCH_PROGRESS_TERMINAL_TTL_SEC = max(
+    0,
+    int(os.getenv("AI_BATCH_PROGRESS_TERMINAL_TTL_SEC", "30") or "30"),
+)
+AI_BATCH_STATUS_MESSAGES_MAX = 300
+
+AI_BATCH_LOGIC_EXCLUDED_EXTS = {
+    ".md", ".markdown", ".txt", ".rst", ".log",
+    ".json", ".yml", ".yaml", ".toml", ".ini", ".cfg", ".conf",
+    ".css", ".scss", ".sass", ".less", ".xml", ".svg", ".lock",
+}
+AI_BATCH_LOGIC_PREFERRED_EXTS = {
+    ".py", ".ts", ".tsx", ".js", ".jsx", ".java", ".go", ".rs",
+    ".cs", ".cpp", ".c", ".h", ".hpp", ".kt", ".swift", ".rb", ".php",
+}
+AI_BATCH_LOGIC_EXCLUDED_BASENAMES = {
+    "package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock",
+    "tsconfig.json", "jsconfig.json", "next.config.mjs", "next.config.js",
+    "vite.config.ts", "vite.config.js", "docker-compose.yml", "docker-compose.yaml",
+    "dockerfile", "readme.md",
+}
+AI_BATCH_LOGIC_EXCLUDED_PATH_MARKERS = (
+    "/docs/", "/doc/", "/assets/", "/styles/", "/css/", "/migrations/",
+    "/scripts/", "/config/", "/settings/", "/.github/",
+)
+
 # Create router for project endpoints
 router = APIRouter(prefix="/api/projects", tags=["Projects"])
 
@@ -96,6 +127,127 @@ _encryption_service: Optional[EncryptionService] = None
 _overrides_service: Optional[ProjectOverridesService] = None
 _encryption_service_lock = threading.Lock()
 _overrides_service_lock = threading.Lock()
+_ai_batch_progress: Dict[str, Dict[str, Any]] = {}
+_ai_batch_progress_lock = threading.Lock()
+
+
+def _prune_expired_batch_progress_locked(now_epoch: Optional[float] = None) -> None:
+    now_ts = now_epoch if now_epoch is not None else time.time()
+    stale_keys: List[str] = []
+    for key, entry in _ai_batch_progress.items():
+        if not isinstance(entry, dict):
+            stale_keys.append(key)
+            continue
+        expires_at = entry.get("expires_at")
+        if expires_at is None:
+            continue
+        try:
+            expires_ts = float(expires_at)
+        except (TypeError, ValueError):
+            stale_keys.append(key)
+            continue
+        if expires_ts <= now_ts:
+            stale_keys.append(key)
+
+    for key in stale_keys:
+        _ai_batch_progress.pop(key, None)
+
+
+def _batch_progress_key(user_id: str, project_id: str) -> str:
+    return f"{user_id}:{project_id}"
+
+
+def _init_batch_progress(user_id: str, project_id: str, status: str = "running") -> None:
+    key = _batch_progress_key(user_id, project_id)
+    with _ai_batch_progress_lock:
+        _prune_expired_batch_progress_locked()
+        _ai_batch_progress[key] = {
+            "project_id": project_id,
+            "status": status,
+            "detail": None,
+            "status_messages": [],
+            "updated_at": datetime.now().isoformat(),
+            "expires_at": None,
+        }
+
+
+def _append_batch_progress_message(user_id: str, project_id: str, message: str) -> None:
+    key = _batch_progress_key(user_id, project_id)
+    msg = (message or "").strip()
+    if not msg:
+        return
+    with _ai_batch_progress_lock:
+        _prune_expired_batch_progress_locked()
+        entry = _ai_batch_progress.setdefault(
+            key,
+            {
+                "project_id": project_id,
+                "status": "running",
+                "detail": None,
+                "status_messages": [],
+                "updated_at": datetime.now().isoformat(),
+                "expires_at": None,
+            },
+        )
+        messages = entry.setdefault("status_messages", [])
+        if isinstance(messages, list) and len(messages) < AI_BATCH_STATUS_MESSAGES_MAX:
+            messages.append(msg)
+        entry["updated_at"] = datetime.now().isoformat()
+
+
+def _finalize_batch_progress(
+    user_id: str,
+    project_id: str,
+    status: str,
+    detail: Optional[str] = None,
+    status_messages: Optional[List[str]] = None,
+) -> None:
+    key = _batch_progress_key(user_id, project_id)
+    with _ai_batch_progress_lock:
+        _prune_expired_batch_progress_locked()
+
+        entry = _ai_batch_progress.setdefault(
+            key,
+            {
+                "project_id": project_id,
+                "status": status,
+                "detail": detail,
+                "status_messages": [],
+                "updated_at": datetime.now().isoformat(),
+            },
+        )
+        entry["status"] = status
+        entry["detail"] = detail
+        if isinstance(status_messages, list):
+            entry["status_messages"] = status_messages[:AI_BATCH_STATUS_MESSAGES_MAX]
+        entry["updated_at"] = datetime.now().isoformat()
+        entry["expires_at"] = (
+            None
+            if status == "running"
+            else (time.time() + AI_BATCH_PROGRESS_TERMINAL_TTL_SEC)
+        )
+
+
+def _get_batch_progress(user_id: str, project_id: str) -> Dict[str, Any]:
+    key = _batch_progress_key(user_id, project_id)
+    with _ai_batch_progress_lock:
+        _prune_expired_batch_progress_locked()
+        entry = _ai_batch_progress.get(key)
+        if not isinstance(entry, dict):
+            return {
+                "project_id": project_id,
+                "status": "idle",
+                "detail": None,
+                "status_messages": [],
+                "updated_at": None,
+            }
+        return {
+            "project_id": project_id,
+            "status": entry.get("status") or "idle",
+            "detail": entry.get("detail"),
+            "status_messages": list(entry.get("status_messages") or []),
+            "updated_at": entry.get("updated_at"),
+        }
 
 
 def get_projects_service() -> ProjectsService:
@@ -1273,8 +1425,9 @@ async def create_project_from_upload(
             preferences=preferences,
         )
 
-        with tempfile.TemporaryDirectory() as temp_dir:
-            analysis_target = _extract_archive_for_analysis(storage_path, Path(temp_dir))
+        with tempfile.TemporaryDirectory() as _td:
+            temp_dir = Path(_td)
+            analysis_target = _extract_archive_for_analysis(storage_path, temp_dir)
             languages = summarize_languages(parse_result.files)
             summary: Dict[str, Any] = dict(parse_result.summary)
             summary["languages"] = languages
@@ -1335,8 +1488,12 @@ async def create_project_from_upload(
             logger.info("✨ All analysis pipelines completed")
             logger.info("=" * 50)
 
+            # Preserve the original local path the user selected (from upload metadata).
+            # This persists across restarts and is used as the primary source for AI analysis.
+            original_local_path = upload_data.get("metadata", {}).get("source_path")
+
             scan_data: Dict[str, Any] = {
-                "archive": str(storage_path),
+                "project_source_path": original_local_path or str(analysis_target),
                 "summary": summary,
                 "files": _serialize_parse_files(parse_result.files),
                 "issues": _serialize_parse_issues(parse_result.issues),
@@ -1376,7 +1533,26 @@ async def create_project_from_upload(
                 scan_data["duplicate_report"] = duplicate_report
             else:
                 logger.warning("⚠️  No duplicate report data to save")
-            
+
+            # Project auto-categorization
+            try:
+                from analyzer.project_classifier import safe_classify_project
+                cat_result = safe_classify_project(parse_result.files, languages)
+                if cat_result is not None:
+                    scan_data["project_category"] = {
+                        "category": cat_result.category,
+                        "label": cat_result.label,
+                        "confidence": cat_result.confidence,
+                    }
+            except Exception as e:
+                logger.warning(f"⚠️  Project auto-categorization failed: {e}")
+
+            # File snippets for AI analysis (stored at scan time for reliability)
+            file_snippets_for_ai = _collect_files_for_ai(analysis_target)
+            if file_snippets_for_ai:
+                scan_data["file_snippets"] = file_snippets_for_ai
+                logger.info(f"💾 Saving {len(file_snippets_for_ai)} file snippets for AI analysis")
+
             logger.info(f"📦 Final scan_data keys: {list(scan_data.keys())}")
 
         project_path = request.project_path or upload_data.get("metadata", {}).get("original_filename") or storage_path.name
@@ -1840,31 +2016,28 @@ async def generate_project_skill_summary(
         try:
             has_consent = consent_validator.validate_external_services_consent(user_id)
         except Exception:
-            return SkillProgressSummaryResponse(
-                project_id=project_id,
-                note="Consent check failed. Please retry.",
-                llm_status="skipped:consent_check_failed",
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Consent check failed. Please retry.",
             )
 
         if not has_consent:
-            return SkillProgressSummaryResponse(
-                project_id=project_id,
-                note="External services consent not granted.",
-                llm_status="skipped:consent_not_granted",
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="External services consent not granted.",
             )
 
         client = get_user_client(user_id)
         if client is None:
-            return SkillProgressSummaryResponse(
-                project_id=project_id,
-                note="No API key verified. Please verify your key in Settings.",
-                llm_status="skipped:no_api_key",
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="No API key verified. Please verify your key in Settings.",
             )
 
         from analyzer.llm.skill_progress_summary import summarize_skill_progress
 
         def call_model(prompt: str) -> str:
-            return client._make_llm_call(
+            return client.make_llm_call(
                 [{"role": "user", "content": prompt}],
                 max_tokens=1200,
                 temperature=0.6,
@@ -1898,6 +2071,973 @@ async def generate_project_skill_summary(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred",
+        )
+
+
+# ---------------------------------------------------------------------------
+# AI analysis helpers
+# ---------------------------------------------------------------------------
+
+_AI_MAX_FILES = 50          # max files to include in the prompt
+_AI_MAX_FILE_CHARS = 2500   # max chars per file (rest truncated)
+_AI_MAX_TOTAL_CHARS = 55_000  # total content budget across all files
+
+_TEXT_EXTENSIONS = {
+    ".py", ".js", ".ts", ".tsx", ".jsx", ".java", ".go", ".rs",
+    ".c", ".cpp", ".h", ".hpp", ".cs", ".rb", ".php", ".swift",
+    ".kt", ".scala", ".r", ".sql", ".sh", ".bash", ".yml", ".yaml",
+    ".json", ".toml", ".ini", ".cfg", ".md", ".css", ".html",
+    ".vue", ".svelte", ".txt",
+}
+_TEXT_MIME_PREFIXES = ("text/",)
+_TEXT_MIME_EXACT = {
+    "application/json", "application/xml", "application/javascript",
+    "application/typescript",
+}
+
+# Maps scan_data key → (display label, requested JSON key in prompt)
+_AI_CATEGORY_MAP: List[tuple[str, str]] = [
+    ("code_analysis",     "Code Analysis"),
+    ("git_analysis",      "Git Analysis"),
+    ("pdf_analysis",      "PDF Analysis"),
+    ("document_analysis", "Document Analysis"),
+    ("media_analysis",    "Media Analysis"),
+    ("skills_analysis",   "Skills Analysis"),
+    ("skills_progress",   "Skills Progress"),
+]
+
+
+def _is_text_file(path_str: str, mime_type: str) -> bool:
+    ext = Path(path_str).suffix.lower()
+    return (
+        ext in _TEXT_EXTENSIONS
+        or (mime_type and (
+            any(mime_type.startswith(p) for p in _TEXT_MIME_PREFIXES)
+            or mime_type in _TEXT_MIME_EXACT
+        ))
+    )
+
+
+def _collect_files_for_ai(
+    source_path: Path,
+    max_files: int = _AI_MAX_FILES,
+) -> List[Dict[str, str]]:
+    """
+    Read text/code file contents from a directory for LLM context.
+
+    Returns a list of {path, content} dicts where each content is truncated
+    to _AI_MAX_FILE_CHARS.  Total content is capped at _AI_MAX_TOTAL_CHARS.
+    """
+    results: List[Dict[str, str]] = []
+    total_chars = 0
+
+    if not source_path.exists() or not source_path.is_dir():
+        return results
+
+    source_resolved = source_path.resolve()
+
+    for fpath in sorted(source_path.rglob("*")):
+        if len(results) >= max_files or total_chars >= _AI_MAX_TOTAL_CHARS:
+            break
+
+        if not fpath.is_file():
+            continue
+
+        path_str = str(fpath.relative_to(source_path))
+        if not _is_text_file(path_str, ""):
+            continue
+
+        # Security: must stay within source directory
+        try:
+            fpath.resolve().relative_to(source_resolved)
+        except ValueError:
+            continue
+
+        try:
+            content = fpath.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+
+        content = content.strip()
+        if not content:
+            continue
+
+        if len(content) > _AI_MAX_FILE_CHARS:
+            content = content[:_AI_MAX_FILE_CHARS] + "\n... [truncated]"
+
+        results.append({"path": path_str, "content": content})
+        total_chars += len(content)
+
+    return results
+
+
+class AiAnalysisCategoryResult(BaseModel):
+    category: str
+    label: str
+    summary: Optional[str] = None
+    insights: Optional[List[str]] = None
+
+
+class AiAnalysisResult(BaseModel):
+    overall_summary: Optional[str] = None
+    categories: Optional[List[Dict[str, Any]]] = None
+    render_mode: Optional[str] = None
+    markdown_report: Optional[str] = None
+    key_files: Optional[List[Dict[str, Any]]] = None
+    # Legacy fields kept for backward compat with already-cached results
+    portfolio_overview: Optional[str] = None
+    project_insights: Optional[List[str]] = None
+    key_achievements: Optional[List[str]] = None
+    recommendations: Optional[List[str]] = None
+
+
+class AiAnalysisResponse(BaseModel):
+    project_id: str
+    result: AiAnalysisResult
+    llm_status: str = "used"
+    cached: bool = False
+    status_messages: Optional[List[str]] = None
+
+
+class AiBatchResponse(BaseModel):
+    project_id: str
+    status: str
+    cached: bool = False
+    result: Optional[Dict[str, Any]] = None
+    detail: Optional[str] = None
+    status_messages: Optional[List[str]] = None
+
+
+class AiBatchStatusResponse(BaseModel):
+    project_id: str
+    status: str = "idle"
+    detail: Optional[str] = None
+    status_messages: List[str] = Field(default_factory=list)
+    updated_at: Optional[str] = None
+
+
+def _build_categorized_ai_prompt(
+    project_name: str,
+    scan_data: Dict[str, Any],
+    file_snippets: List[Dict[str, str]],
+    active_categories: List[tuple[str, str]],
+) -> str:
+    """
+    Build a prompt that feeds real file content + structured metadata for each
+    detected analysis category and requests per-category JSON output.
+    """
+    summary = scan_data.get("summary") or {}
+    total_files = summary.get("total_files") or scan_data.get("total_files") or 0
+    total_lines = summary.get("total_lines") or scan_data.get("total_lines") or 0
+
+    raw_langs = scan_data.get("languages") or summary.get("languages") or []
+    if isinstance(raw_langs, list):
+        lang_names = [
+            (l.get("name") or l.get("language") or str(l)) if isinstance(l, dict) else str(l)
+            for l in raw_langs[:8]
+        ]
+    elif isinstance(raw_langs, dict):
+        lang_names = list(raw_langs.keys())[:8]
+    else:
+        lang_names = []
+    languages_str = ", ".join(lang_names) if lang_names else "not detected"
+
+    lines: List[str] = [
+        "You are a technical analyst writing portfolio content for a software developer.",
+        "",
+        f"Project name: {project_name}",
+        f"Languages: {languages_str}",
+        f"Total files: {total_files}, Total lines: {total_lines}",
+        "",
+        "=== ANALYSIS DATA ===",
+    ]
+
+    # --- per-category metadata context ---
+    for cat_key, cat_label in active_categories:
+        data = scan_data.get(cat_key)
+        if not data:
+            continue
+        lines.append(f"\n[[ {cat_label.upper()} ]]")
+
+        if cat_key == "code_analysis" and isinstance(data, dict):
+            lines.append(f"  Files: {data.get('total_files', 0)}, Lines: {data.get('total_lines', 0)}")
+            lines.append(f"  Functions: {data.get('functions', 0)}, Classes: {data.get('classes', 0)}")
+            lines.append(f"  Avg complexity: {data.get('avg_complexity', 'N/A')}")
+            lines.append(f"  Magic values: {data.get('magic_values', 0)}, Naming issues: {data.get('naming_issues', 0)}")
+            dc = data.get("dead_code") or {}
+            if isinstance(dc, dict):
+                lines.append(f"  Dead code: {dc.get('total', 0)} (unused fns: {dc.get('unused_functions', 0)}, unused imports: {dc.get('unused_imports', 0)})")
+            langs = data.get("languages") or {}
+            if isinstance(langs, dict) and langs:
+                top_langs = ", ".join(list(langs.keys())[:6])
+                lines.append(f"  Code languages: {top_langs}")
+
+        elif cat_key == "git_analysis" and isinstance(data, list) and data:
+            g = data[0]
+            lines.append(f"  Commits: {g.get('commit_count', 0)}")
+            contributors = g.get("contributors") or []
+            if contributors:
+                names = ", ".join(c.get("name", "?") for c in contributors[:5])
+                lines.append(f"  Contributors: {names}")
+            timeline = g.get("timeline") or []
+            if timeline:
+                lines.append(f"  Active months: {len(timeline)}")
+            branches = g.get("branches") or []
+            if branches:
+                lines.append(f"  Branches: {', '.join(str(b) for b in branches[:5])}")
+
+        elif cat_key == "pdf_analysis" and isinstance(data, list) and data:
+            for pdf in data[:5]:
+                lines.append(f"  PDF: {pdf.get('file_name', '?')}")
+                if pdf.get("summary"):
+                    lines.append(f"    Summary: {str(pdf['summary'])[:300]}")
+                if pdf.get("key_topics"):
+                    lines.append(f"    Topics: {', '.join(str(t) for t in pdf['key_topics'][:5])}")
+
+        elif cat_key == "document_analysis" and isinstance(data, list) and data:
+            for doc in data[:5]:
+                lines.append(f"  Doc: {doc.get('file_name', '?')} ({doc.get('file_type', '?')})")
+                if doc.get("summary"):
+                    lines.append(f"    Summary: {str(doc['summary'])[:300]}")
+
+        elif cat_key == "media_analysis" and isinstance(data, dict):
+            lines.append(f"  Media files: {data.get('total_media_files', data.get('file_count', '?'))}")
+            types = data.get("media_types") or data.get("file_types") or {}
+            if types:
+                lines.append(f"  Types: {', '.join(str(k) for k in list(types.keys())[:5])}")
+
+        elif cat_key in ("skills_analysis", "skills_progress") and isinstance(data, dict):
+            skills_by_cat = data.get("skills_by_category") or {}
+            for scat, entries in list(skills_by_cat.items())[:6]:
+                if not isinstance(entries, list):
+                    continue
+                names = [
+                    (e.get("name") if isinstance(e, dict) else str(e))
+                    for e in entries[:5]
+                ]
+                lines.append(f"  {scat}: {', '.join(n for n in names if n)}")
+
+    # --- file content section ---
+    if file_snippets:
+        lines.append(f"\n=== FILE CONTENTS ({len(file_snippets)} representative files) ===")
+        for s in file_snippets:
+            lines.append(f"\n### {s['path']}\n```\n{s['content']}\n```")
+
+    # --- task / JSON spec ---
+    json_fields_doc = '\n'.join(
+        f'  "{cat_key}": {{"summary": "1-3 sentence summary for {cat_label}", "insights": ["insight 1", "insight 2", "insight 3"]}}'
+        for cat_key, cat_label in active_categories
+    )
+
+    lines += [
+        "",
+        "=== TASK ===",
+        "Based on the analysis data and file contents above, produce a JSON object with exactly these keys:",
+        '  "overall_summary": "3-5 sentence portfolio-ready paragraph about the entire project",',
+        json_fields_doc,
+        "",
+        "Rules:",
+        "- Each category 'insights' list must have 3-5 concise bullet-style strings backed by evidence.",
+        "- Only include keys listed above.",
+        "- Return only valid JSON. No markdown fences, no extra text.",
+    ]
+
+    return "\n".join(lines)
+
+
+def _resolve_project_source_path(
+    project: Dict[str, Any],
+    scan_data: Dict[str, Any],
+) -> Optional[Path]:
+    """Resolve a trustworthy local project directory for batch analysis.
+
+    Priority order:
+    1) scan_data.project_source_path
+    2) project.project_path
+    3) scan_data.scan_path
+    4) scan_data.summary.scan_path
+    5) scan_data.target
+
+    A candidate is accepted only if it exists, is a directory, and at least one
+    known scanned file path resolves under it (when file metadata is available).
+    Path checks tolerate archive/root prefixes by also trying the path with the
+    first segment removed.
+    """
+    if not isinstance(scan_data, dict):
+        return None
+
+    summary = scan_data.get("summary") if isinstance(scan_data.get("summary"), dict) else {}
+    candidates: List[str] = []
+    for value in (
+        scan_data.get("project_source_path"),
+        project.get("project_path"),
+        scan_data.get("scan_path"),
+        summary.get("scan_path") if isinstance(summary, dict) else None,
+        scan_data.get("target"),
+    ):
+        if isinstance(value, str) and value.strip():
+            candidates.append(value.strip())
+
+    # Build a small list of relative file paths that we can validate against candidates.
+    scanned_files: List[str] = []
+    files = scan_data.get("files")
+    if isinstance(files, list):
+        for entry in files[:50]:
+            if not isinstance(entry, dict):
+                continue
+            path_val = entry.get("path")
+            if isinstance(path_val, str) and path_val and not Path(path_val).is_absolute():
+                scanned_files.append(path_val)
+
+    for candidate in candidates:
+        try:
+            candidate_path = Path(candidate).expanduser().resolve()
+        except Exception:
+            continue
+
+        if not candidate_path.exists() or not candidate_path.is_dir():
+            continue
+
+        if scanned_files:
+            matched = 0
+            for rel in scanned_files[:10]:
+                rel_path = Path(rel)
+                if (candidate_path / rel_path).exists():
+                    matched += 1
+                    break
+                # Some scans persist paths prefixed with the archive/root folder.
+                if len(rel_path.parts) > 1 and (candidate_path / Path(*rel_path.parts[1:])).exists():
+                    matched += 1
+                    break
+            if matched == 0:
+                continue
+
+        return candidate_path
+
+    return None
+
+
+def _build_relevant_files_for_batch(
+    scan_data: Dict[str, Any],
+    source_path: Optional[Path] = None,
+) -> List[Dict[str, Any]]:
+    files = scan_data.get("files") or []
+    if not isinstance(files, list):
+        return []
+
+    relevant: List[Dict[str, Any]] = []
+    for entry in files:
+        if not isinstance(entry, dict):
+            continue
+        path = entry.get("path")
+        if not path:
+            continue
+
+        normalized_path = str(path)
+        if source_path is not None:
+            path_obj = Path(normalized_path)
+            if not (source_path / path_obj).exists() and len(path_obj.parts) > 1:
+                stripped = Path(*path_obj.parts[1:])
+                if (source_path / stripped).exists():
+                    normalized_path = str(stripped)
+
+        relevant.append(
+            {
+                "path": normalized_path,
+                "size": entry.get("size_bytes", 0),
+                "mime_type": entry.get("mime_type", "") or "",
+                "media_info": entry.get("media_info"),
+            }
+        )
+    return relevant
+
+
+def _adapt_batch_to_ai_result(
+    batch_result: Dict[str, Any],
+    active_categories: List[tuple[str, str]],
+) -> Dict[str, Any]:
+    project_analysis = batch_result.get("project_analysis") or {}
+    project_analysis_text = project_analysis.get("analysis") if isinstance(project_analysis, dict) else None
+
+    file_summaries = batch_result.get("file_summaries") or []
+    if not isinstance(file_summaries, list):
+        file_summaries = []
+
+    media_briefings = batch_result.get("media_briefings") or []
+    if not isinstance(media_briefings, list):
+        media_briefings = []
+
+    categories_out: List[Dict[str, Any]] = []
+    for cat_key, cat_label in active_categories:
+        insights: List[str] = []
+        summary_text: Optional[str] = None
+
+        if cat_key == "code_analysis":
+            top_files = [
+                s for s in file_summaries
+                if isinstance(s, dict) and s.get("file_path")
+            ][:4]
+            if top_files:
+                summary_text = f"Analyzed {len(top_files)} representative code files via batch pipeline."
+                insights = [
+                    f"{f.get('file_path')}: {str(f.get('analysis', 'No analysis'))[:220]}"
+                    for f in top_files
+                ]
+
+        elif cat_key == "media_analysis":
+            if media_briefings:
+                summary_text = "Media assets were summarized during batch processing."
+                insights = [str(item) for item in media_briefings[:5] if item]
+
+        elif cat_key in ("git_analysis", "skills_analysis", "skills_progress", "pdf_analysis", "document_analysis"):
+            if project_analysis_text:
+                summary_text = f"{cat_label} synthesized from batch file summaries and project context."
+                insights = [str(project_analysis_text)[:240]]
+
+        if summary_text or insights:
+            categories_out.append(
+                {
+                    "category": cat_key,
+                    "label": cat_label,
+                    "summary": summary_text,
+                    "insights": insights or None,
+                }
+            )
+
+    overall_summary = (
+        str(project_analysis_text)
+        if project_analysis_text
+        else f"Batch analysis completed across {len(file_summaries)} files."
+    )
+
+    def _is_logic_heavy_candidate(path_str: str) -> bool:
+        normalized = "/" + path_str.replace("\\", "/").lower().lstrip("/")
+        basename = Path(path_str).name.lower()
+        ext = Path(path_str).suffix.lower()
+
+        if basename.startswith("__init__") or basename == "init" or basename.startswith("init."):
+            return False
+
+        if basename in AI_BATCH_LOGIC_EXCLUDED_BASENAMES:
+            return False
+        if ext in AI_BATCH_LOGIC_EXCLUDED_EXTS:
+            return False
+        if any(marker in normalized for marker in AI_BATCH_LOGIC_EXCLUDED_PATH_MARKERS):
+            return False
+        if basename.endswith(".config.ts") or basename.endswith(".config.js"):
+            return False
+        return ext in AI_BATCH_LOGIC_PREFERRED_EXTS
+
+    candidate_entries: List[Dict[str, Any]] = []
+    fallback_entries: List[Dict[str, Any]] = []
+    for entry in file_summaries:
+        if not isinstance(entry, dict):
+            continue
+        path_val = entry.get("file_path")
+        analysis_val = entry.get("analysis")
+        if not path_val or not analysis_val:
+            continue
+
+        path_text = str(path_val)
+        item = {
+            "file_path": path_text,
+            "summary": str(analysis_val),
+        }
+        if _is_logic_heavy_candidate(path_text):
+            candidate_entries.append(item)
+        else:
+            fallback_entries.append(item)
+
+    key_files = candidate_entries[:3]
+    if len(key_files) < 3:
+        for item in fallback_entries:
+            if len(key_files) >= 3:
+                break
+            key_files.append(item)
+
+    return {
+        "overall_summary": overall_summary,
+        "categories": categories_out if categories_out else None,
+        "render_mode": "markdown_report" if project_analysis_text else "cards",
+        "markdown_report": str(project_analysis_text) if project_analysis_text else None,
+        "key_files": key_files or None,
+    }
+
+
+async def _run_or_get_batch_analysis(
+    service: ProjectsService,
+    user_id: str,
+    project_id: str,
+    project: Dict[str, Any],
+    scan_data: Dict[str, Any],
+    client: Any,
+    force: bool = False,
+) -> tuple[Optional[Dict[str, Any]], str, bool, Optional[str], List[str]]:
+    _init_batch_progress(user_id, project_id, status="running")
+    existing_batch = scan_data.get("ai_batch") if isinstance(scan_data, dict) else None
+    if existing_batch and not force:
+        cached_msgs = existing_batch.get("_status_messages") if isinstance(existing_batch, dict) else None
+        cached_list = cached_msgs if isinstance(cached_msgs, list) else []
+        _finalize_batch_progress(
+            user_id,
+            project_id,
+            status="used:batch_cached",
+            detail="Using cached batch analysis",
+            status_messages=cached_list,
+        )
+        return existing_batch, "used:batch_cached", True, None, cached_list
+
+    source_path = _resolve_project_source_path(project, scan_data)
+    if source_path is None:
+        reason = "No usable local source directory found in project_source_path/project_path/scan_path"
+        _append_batch_progress_message(user_id, project_id, reason)
+        _finalize_batch_progress(
+            user_id,
+            project_id,
+            status="fallback:snippets_batch_unavailable",
+            detail=reason,
+            status_messages=[reason],
+        )
+        return None, "fallback:snippets_batch_unavailable", False, reason, [reason]
+
+    relevant_files = _build_relevant_files_for_batch(scan_data, source_path=source_path)
+    if not relevant_files:
+        reason = "No indexed files available for batch analysis"
+        _append_batch_progress_message(user_id, project_id, reason)
+        _finalize_batch_progress(
+            user_id,
+            project_id,
+            status="fallback:snippets_batch_unavailable",
+            detail=reason,
+            status_messages=[reason],
+        )
+        return None, "fallback:snippets_batch_unavailable", False, reason, [reason]
+
+    summary = scan_data.get("summary") or {}
+    languages = scan_data.get("languages") or summary.get("languages") or []
+    scan_summary = {
+        "total_files": summary.get("total_files") or len(relevant_files),
+        "total_size_bytes": summary.get("total_size_bytes") or summary.get("bytes_processed") or 0,
+        "language_breakdown": languages if isinstance(languages, list) else [],
+        "scan_path": str(source_path),
+    }
+
+    status_messages: List[str] = []
+    def _progress_callback(message: str) -> None:
+        if not isinstance(message, str):
+            return
+        msg = message.strip()
+        if not msg:
+            return
+        # Keep a bounded list to avoid oversized payloads.
+        if len(status_messages) < AI_BATCH_STATUS_MESSAGES_MAX:
+            status_messages.append(msg)
+        _append_batch_progress_message(user_id, project_id, msg)
+        logger.info(f"[AI Batch] {msg}")
+
+    def _call_batch() -> Dict[str, Any]:
+        return client.summarize_scan_with_ai(
+            scan_summary=scan_summary,
+            relevant_files=relevant_files,
+            scan_base_path=str(source_path),
+            progress_callback=_progress_callback,
+            include_media=False,
+        )
+
+    try:
+        batch_result = await asyncio.to_thread(_call_batch)
+        if not isinstance(batch_result, dict):
+            _finalize_batch_progress(
+                user_id,
+                project_id,
+                status="fallback:snippets_after_batch_error",
+                detail="Batch analysis returned invalid payload",
+                status_messages=status_messages,
+            )
+            return None, "fallback:snippets_after_batch_error", False, "Batch analysis returned invalid payload", status_messages
+
+        batch_result["_generated_at"] = datetime.now().isoformat()
+        batch_result["_status_messages"] = status_messages
+        await asyncio.to_thread(service.patch_ai_batch, user_id, project_id, batch_result)
+        _finalize_batch_progress(
+            user_id,
+            project_id,
+            status="used:batch",
+            detail=None,
+            status_messages=status_messages,
+        )
+        return batch_result, "used:batch", False, None, status_messages
+    except Exception as exc:
+        logger.warning(f"Batch analysis failed for project {project_id}: {exc}", exc_info=True)
+        _finalize_batch_progress(
+            user_id,
+            project_id,
+            status="fallback:snippets_after_batch_error",
+            detail=str(exc),
+            status_messages=status_messages,
+        )
+        return None, "fallback:snippets_after_batch_error", False, str(exc), status_messages
+
+
+@router.post(
+    "/{project_id}/ai-batch",
+    response_model=AiBatchResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def run_project_ai_batch(
+    project_id: str,
+    force: bool = False,
+    user_id: str = Depends(verify_auth_token),
+) -> AiBatchResponse:
+    """Run (or fetch cached) legacy batch-style AI summarization for a project."""
+    service = get_projects_service()
+    project = await asyncio.to_thread(service.get_project_scan, user_id, project_id)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found",
+        )
+
+    scan_data = project.get("scan_data") or {}
+
+    consent_validator = ConsentValidator()
+    try:
+        has_consent = consent_validator.validate_external_services_consent(user_id)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Consent check failed. Please retry.",
+        )
+
+    if not has_consent:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="External services consent not granted.",
+        )
+
+    access_token = get_request_access_token() or ""
+    client = await get_or_hydrate_llm_client(user_id, access_token)
+    if client is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="No API key verified. Please verify your key in Settings.",
+        )
+
+    batch_result, batch_status, cached, detail, status_messages = await _run_or_get_batch_analysis(
+        service=service,
+        user_id=user_id,
+        project_id=project_id,
+        project=project,
+        scan_data=scan_data,
+        client=client,
+        force=force,
+    )
+
+    return AiBatchResponse(
+        project_id=project_id,
+        status=batch_status,
+        cached=cached,
+        result=batch_result,
+        detail=detail,
+        status_messages=status_messages,
+    )
+
+
+@router.get(
+    "/{project_id}/ai-batch/status",
+    response_model=AiBatchStatusResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def get_project_ai_batch_status(
+    project_id: str,
+    user_id: str = Depends(verify_auth_token),
+) -> AiBatchStatusResponse:
+    """Fetch in-progress batch status messages for real-time frontend polling."""
+    snapshot = _get_batch_progress(user_id, project_id)
+    return AiBatchStatusResponse(
+        project_id=project_id,
+        status=str(snapshot.get("status") or "idle"),
+        detail=snapshot.get("detail"),
+        status_messages=[str(m) for m in (snapshot.get("status_messages") or []) if m],
+        updated_at=snapshot.get("updated_at"),
+    )
+
+
+@router.get(
+    "/{project_id}/ai-batch",
+    response_model=AiBatchResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def get_project_ai_batch(
+    project_id: str,
+    user_id: str = Depends(verify_auth_token),
+) -> AiBatchResponse:
+    """Fetch the latest cached batch AI result for a project."""
+    service = get_projects_service()
+    project = await asyncio.to_thread(service.get_project_scan, user_id, project_id)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found",
+        )
+
+    scan_data = project.get("scan_data") or {}
+    cached_batch = scan_data.get("ai_batch") if isinstance(scan_data, dict) else None
+    if not cached_batch:
+        return AiBatchResponse(
+            project_id=project_id,
+            status="missing",
+            cached=False,
+            detail="No cached batch analysis",
+        )
+
+    return AiBatchResponse(
+        project_id=project_id,
+        status="used:batch_cached",
+        cached=True,
+        result=cached_batch,
+        status_messages=(cached_batch.get("_status_messages") if isinstance(cached_batch, dict) else None),
+    )
+
+
+@router.post(
+    "/{project_id}/ai-analysis",
+    response_model=AiAnalysisResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Project not found"},
+        500: {"model": ErrorResponse, "description": "Server error"},
+    },
+)
+async def run_project_ai_analysis(
+    project_id: str,
+    force: bool = False,
+    user_id: str = Depends(verify_auth_token),
+) -> AiAnalysisResponse:
+    """
+    Run LLM-based portfolio analysis for an existing project using stored scan_data.
+
+    - Requires External Data consent and a verified OpenAI API key in Settings.
+    - If AI analysis already exists in scan_data and force=False, returns cached result.
+    - Saves the result to scan_data["ai_analysis"] for future retrieval.
+    """
+    try:
+        service = get_projects_service()
+        project = await asyncio.to_thread(service.get_project_scan, user_id, project_id)
+
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Project {project_id} not found",
+            )
+
+        scan_data = project.get("scan_data") or {}
+        project_name = project.get("project_name") or "Unnamed Project"
+
+        # Return cached result if available and not forced
+        existing = scan_data.get("ai_analysis") if isinstance(scan_data, dict) else None
+        if existing and not force:
+            return AiAnalysisResponse(
+                project_id=project_id,
+                result=AiAnalysisResult(
+                    overall_summary=existing.get("overall_summary"),
+                    categories=existing.get("categories"),
+                    render_mode=existing.get("render_mode"),
+                    markdown_report=existing.get("markdown_report"),
+                    key_files=existing.get("key_files"),
+                    # legacy compat
+                    portfolio_overview=existing.get("portfolio_overview"),
+                    project_insights=existing.get("project_insights"),
+                    key_achievements=existing.get("key_achievements"),
+                    recommendations=existing.get("recommendations"),
+                ),
+                llm_status="used:cached",
+                cached=True,
+                status_messages=existing.get("status_messages") if isinstance(existing, dict) else None,
+            )
+
+        # Check consent
+        consent_validator = ConsentValidator()
+        try:
+            has_consent = consent_validator.validate_external_services_consent(user_id)
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Consent check failed. Please retry.",
+            )
+        if not has_consent:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="External services consent not granted.",
+            )
+
+        access_token = get_request_access_token() or ""
+        client = await get_or_hydrate_llm_client(user_id, access_token)
+        if client is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="No API key verified. Please verify your key in Settings.",
+            )
+
+        batch_result, batch_status, _batch_cached, batch_detail, batch_status_messages = await _run_or_get_batch_analysis(
+            service=service,
+            user_id=user_id,
+            project_id=project_id,
+            project=project,
+            scan_data=scan_data,
+            client=client,
+            force=force,
+        )
+
+        # ------------------------------------------------------------------
+        # Determine which analysis categories exist in this project's data.
+        # ------------------------------------------------------------------
+        active_categories: List[tuple[str, str]] = [
+            (cat_key, cat_label)
+            for cat_key, cat_label in _AI_CATEGORY_MAP
+            if scan_data.get(cat_key)
+        ]
+        # Always include code_analysis context if we have it via has_* flag
+        if not any(k == "code_analysis" for k, _ in active_categories):
+            if scan_data.get("has_code_analysis"):
+                active_categories.insert(0, ("code_analysis", "Code Analysis"))
+
+        if batch_result:
+            ai_result = _adapt_batch_to_ai_result(batch_result, active_categories)
+            ai_result["status_messages"] = batch_status_messages
+            await asyncio.to_thread(service.patch_ai_analysis, user_id, project_id, ai_result)
+            return AiAnalysisResponse(
+                project_id=project_id,
+                result=AiAnalysisResult(
+                    overall_summary=ai_result.get("overall_summary"),
+                    categories=ai_result.get("categories"),
+                    render_mode=ai_result.get("render_mode"),
+                    markdown_report=ai_result.get("markdown_report"),
+                    key_files=ai_result.get("key_files"),
+                ),
+                llm_status=batch_status,
+                cached=False,
+                status_messages=batch_status_messages,
+            )
+
+        if batch_detail:
+            logger.info(f"Falling back to snippet prompt path for project {project_id}: {batch_detail}")
+
+        # ------------------------------------------------------------------
+        # Read file contents from the project's permanent source directory.
+        # Falls back to metadata-only if the path no longer exists on disk.
+        # ------------------------------------------------------------------
+        # Use file snippets stored in scan_data at scan time (reliable across
+        # restarts, environments, and Docker — no disk path dependency).
+        file_snippets: List[Dict[str, str]] = []
+
+        # 1. Try the original local path first (works in Electron/local installs
+        #    where the user's project folder still exists on disk).
+        source_path_str = scan_data.get("project_source_path") if isinstance(scan_data, dict) else None
+        file_source = "none"
+        if source_path_str:
+            source_path = Path(source_path_str)
+            if source_path.exists() and source_path.is_dir():
+                file_snippets = await asyncio.to_thread(_collect_files_for_ai, source_path)
+                file_source = f"live:{source_path_str}"
+            else:
+                logger.info(f"[AI Analysis] source path not on disk: {source_path_str}")
+
+        # 2. Fall back to snapshots stored in Supabase at scan time.
+        if not file_snippets:
+            file_snippets = scan_data.get("file_snippets") or []
+            if file_snippets:
+                file_source = "stored_snapshot"
+
+        logger.info(f"[AI Analysis] {project_id}: file_source={file_source}, files={len(file_snippets)}")
+
+        llm_status_value = (
+            f"used:path({len(file_snippets)} files)"
+            if file_snippets
+            else "used:metadata_only"
+        )
+
+        prompt = _build_categorized_ai_prompt(
+            project_name, scan_data, file_snippets, active_categories
+        )
+
+        def call_llm() -> str:
+            return client.make_llm_call(
+                [{"role": "user", "content": prompt}],
+                max_tokens=2000,
+                temperature=0.5,
+                response_format={"type": "json_object"},
+            )
+
+        raw = await asyncio.to_thread(call_llm)
+
+        try:
+            parsed = json.loads(raw) if isinstance(raw, str) else (raw or {})
+        except Exception:
+            logger.warning("Failed to parse LLM response as JSON; treating as empty result")
+            parsed = {}
+
+        def _to_str_list(val: Any) -> Optional[List[str]]:
+            if not isinstance(val, list):
+                return None
+            return [str(item) for item in val if item]
+
+        # Build per-category results from the LLM response
+        categories_out: List[Dict[str, Any]] = []
+        for cat_key, cat_label in active_categories:
+            cat_data = parsed.get(cat_key) or {}
+            if not isinstance(cat_data, dict):
+                continue
+            insights = _to_str_list(cat_data.get("insights"))
+            summary_text = cat_data.get("summary")
+            if insights or summary_text:
+                categories_out.append({
+                    "category": cat_key,
+                    "label": cat_label,
+                    "summary": str(summary_text) if summary_text else None,
+                    "insights": insights,
+                })
+
+        ai_result = {
+            "overall_summary": parsed.get("overall_summary"),
+            "categories": categories_out if categories_out else None,
+            "render_mode": "cards",
+            "markdown_report": None,
+            "key_files": None,
+            "status_messages": batch_status_messages,
+        }
+
+        # Persist to scan_data["ai_analysis"]
+        await asyncio.to_thread(service.patch_ai_analysis, user_id, project_id, ai_result)
+
+        return AiAnalysisResponse(
+            project_id=project_id,
+            result=AiAnalysisResult(
+                overall_summary=ai_result.get("overall_summary"),
+                categories=ai_result.get("categories"),
+                render_mode=ai_result.get("render_mode"),
+                markdown_report=ai_result.get("markdown_report"),
+                key_files=ai_result.get("key_files"),
+            ),
+            llm_status=f"{batch_status}|{llm_status_value}" if batch_status.startswith("fallback:") else llm_status_value,
+            cached=False,
+            status_messages=batch_status_messages,
+        )
+
+    except HTTPException:
+        raise
+    except ProjectsServiceError as exc:
+        logger.error(f"Projects service error in ai-analysis: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to run AI analysis: {str(exc)}",
+        )
+    except Exception:
+        logger.exception("Unexpected error in run_project_ai_analysis")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while running AI analysis.",
         )
 
 

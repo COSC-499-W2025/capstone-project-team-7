@@ -8,7 +8,9 @@ import type {
   UserResumeCreateRequest,
   UserResumeUpdateRequest,
   UserResumeDuplicateRequest,
+  UserResumeAddItemsRequest,
   TemplatesListResponse,
+  ResumeStructuredData,
 } from "@/types/user-resume";
 
 import { request } from "@/lib/api";
@@ -53,4 +55,57 @@ export async function deleteUserResume(token: string, id: string): Promise<void>
 
 export async function duplicateUserResume(token: string, id: string, body: UserResumeDuplicateRequest = {}): Promise<UserResumeRecord> {
   return call(`/api/user-resumes/${id}/duplicate`, { method: "POST", headers: authHeaders(token), body: JSON.stringify(body) }, "Failed to duplicate resume");
+}
+
+export async function addResumeItemsToResume(token: string, id: string, body: UserResumeAddItemsRequest): Promise<UserResumeRecord> {
+  return call(`/api/user-resumes/${id}/add-items`, { method: "POST", headers: authHeaders(token), body: JSON.stringify(body) }, "Failed to add resume items to resume");
+}
+
+export async function detectResumeSkills(token: string, id: string): Promise<UserResumeRecord> {
+  return call(`/api/user-resumes/${id}/detect-skills`, { method: "POST", headers: authHeaders(token), body: JSON.stringify({}) }, "Failed to auto-detect skills");
+}
+
+export async function downloadResumePdf(token: string, id: string, latexContent: string): Promise<Blob> {
+  const result = await request<Blob>(
+    `/api/user-resumes/${id}/pdf`,
+    {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify({ latex_content: latexContent }),
+    },
+    async (response) => response.blob(),
+  );
+
+  if (!result.ok) throw new Error(result.error ?? "Failed to export PDF");
+  return result.data;
+}
+
+/**
+ * Fetch the user's saved resume profile, or null if none exists yet.
+ */
+export async function getResumeProfile(token: string): Promise<UserResumeRecord | null> {
+  const result = await request<UserResumeRecord>("/api/user-resumes/profile", {
+    headers: authHeaders(token),
+  });
+  // 404 = profile not saved yet — return null instead of throwing
+  if (!result.ok) return null;
+  return result.data;
+}
+
+/**
+ * Create or update the user's resume profile.
+ */
+export async function saveResumeProfile(
+  token: string,
+  structured_data: ResumeStructuredData,
+): Promise<UserResumeRecord> {
+  return call(
+    "/api/user-resumes/profile",
+    {
+      method: "PUT",
+      headers: authHeaders(token),
+      body: JSON.stringify({ structured_data }),
+    },
+    "Failed to save resume profile",
+  );
 }

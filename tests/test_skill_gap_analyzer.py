@@ -137,3 +137,65 @@ class TestWeightedCoverage:
         assert "Data Analysis (pandas)" in skills
         assert "Numerical Computing (NumPy)" in skills
         assert "Machine Learning (scikit-learn)" in skills
+
+
+class TestNewRoleProfiles:
+    """Tests for the ML Engineer and Security Engineer role profiles."""
+
+    def test_ml_engineer_profile_exists(self):
+        assert "ml_engineer" in ROLE_PROFILES
+        assert ROLE_PROFILES["ml_engineer"]["label"] == "ML Engineer"
+
+    def test_ml_engineer_has_critical_ml_skills(self):
+        """ML Engineer should require core ML stack as critical."""
+        skills = ROLE_PROFILES["ml_engineer"]["expected_skills"]
+        assert skills["Machine Learning (scikit-learn)"] == "critical"
+        assert skills["Data Analysis (pandas)"] == "critical"
+        assert skills["Numerical Computing (NumPy)"] == "critical"
+
+    def test_ml_engineer_has_deep_learning(self):
+        """ML Engineer should recommend at least one deep learning framework."""
+        skills = ROLE_PROFILES["ml_engineer"]["expected_skills"]
+        has_dl = (
+            "Deep Learning (PyTorch)" in skills
+            or "Deep Learning (TensorFlow)" in skills
+        )
+        assert has_dl
+
+    def test_security_engineer_profile_exists(self):
+        assert "security_engineer" in ROLE_PROFILES
+        assert ROLE_PROFILES["security_engineer"]["label"] == "Security Engineer"
+
+    def test_security_engineer_has_critical_security_skills(self):
+        """Security Engineer should require auth and validation as critical."""
+        skills = ROLE_PROFILES["security_engineer"]["expected_skills"]
+        assert skills["Authentication & Authorization"] == "critical"
+        assert skills["Input Validation"] == "critical"
+        assert skills["Error Handling"] == "critical"
+
+    def test_security_engineer_gap_analysis(self):
+        """Gap analysis should work correctly with security engineer profile."""
+        detected = ["Authentication & Authorization", "Input Validation", "Logging"]
+        result = analyze_gaps(detected, "security_engineer")
+        assert result["role_label"] == "Security Engineer"
+        matched_names = [s["name"] for s in result["matched"]]
+        assert "Authentication & Authorization" in matched_names
+        assert "Input Validation" in matched_names
+        assert "Logging" in matched_names
+        assert result["weighted_coverage_percent"] > 0
+
+    def test_ml_engineer_gap_analysis(self):
+        """Gap analysis should work correctly with ML engineer profile."""
+        detected = ["Data Analysis (pandas)", "Numerical Computing (NumPy)"]
+        result = analyze_gaps(detected, "ml_engineer")
+        assert result["role_label"] == "ML Engineer"
+        matched_names = [s["name"] for s in result["matched"]]
+        assert "Data Analysis (pandas)" in matched_names
+        assert "Numerical Computing (NumPy)" in matched_names
+
+    def test_new_roles_appear_in_available_roles(self):
+        """New roles should appear in get_available_roles."""
+        roles = get_available_roles()
+        keys = {r["key"] for r in roles}
+        assert "ml_engineer" in keys
+        assert "security_engineer" in keys

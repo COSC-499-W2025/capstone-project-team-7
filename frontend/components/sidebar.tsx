@@ -7,9 +7,10 @@ import {
   LayoutDashboard,
   Folder,
   Briefcase,
-  FileText,
+  FileEdit,
   Settings,
   Search,
+  Sparkles,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/hooks/use-auth';
@@ -149,11 +150,16 @@ export const Sidebar: React.FC = () => {
               label="Projects"
             />
             <NavItem
-              href="/resume-builder"
-              icon={<FileText size={18} />}
-              label="Resumes"
-            />
-          </div>
+            href="/ai-analysis"
+            icon={<Sparkles size={18} />}
+            label="AI Analysis"
+          />
+          <NavItem
+            href="/resume-builder"
+            icon={<FileEdit size={18} />}
+            label="Resume Builder"
+          />
+        </div>
 
           <SectionLabel>Utilities</SectionLabel>
           <div className="space-y-1">

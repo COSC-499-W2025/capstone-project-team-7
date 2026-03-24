@@ -5,7 +5,7 @@
  * Users can select a base template and customize it.
  */
 
-import type { ResumeTemplate, ResumeStructuredData } from "@/types/user-resume";
+import type { ResumeTemplate, ResumeStructuredData, ResumeAwardEntry } from "@/types/user-resume";
 
 // ============================================================================
 // Jake's Resume Template (MIT License)
@@ -501,12 +501,13 @@ export function generateLatexFromStructuredData(data: ResumeStructuredData): str
   if (data.contact) {
     const c = data.contact;
     const contactParts: string[] = [];
-    if (c.phone) contactParts.push(c.phone);
+    if (c.phone) contactParts.push(`\\href{tel:${c.phone}}{${escapeLatex(c.phone)}}`);
     // URLs inside \href{} should NOT be escaped - hyperref handles URL characters.
     // Only the display text needs escaping.
     if (c.email) contactParts.push(`\\href{mailto:${c.email}}{\\underline{${escapeLatex(c.email)}}}`);
-    if (c.linkedin_url) contactParts.push(`\\href{${c.linkedin_url}}{\\underline{${escapeLatex(extractDomain(c.linkedin_url))}}}`);
-    if (c.github_url) contactParts.push(`\\href{${c.github_url}}{\\underline{${escapeLatex(extractDomain(c.github_url))}}}`);
+    if (c.linkedin_url) contactParts.push(`\\href{${normalizeUrlForHref(c.linkedin_url)}}{\\underline{${escapeLatex(extractDomain(c.linkedin_url))}}}`);
+    if (c.github_url) contactParts.push(`\\href{${normalizeUrlForHref(c.github_url)}}{\\underline{${escapeLatex(extractDomain(c.github_url))}}}`);
+    if (c.portfolio_url) contactParts.push(`\\href{${normalizeUrlForHref(c.portfolio_url)}}{\\underline{${escapeLatex(extractDomain(c.portfolio_url))}}}`);
     
     lines.push(`\\begin{center}
     \\textbf{\\Huge \\scshape ${escapeLatex(c.full_name)}} \\\\ \\vspace{1pt}
@@ -559,8 +560,11 @@ export function generateLatexFromStructuredData(data: ResumeStructuredData): str
     for (const proj of data.projects) {
       const dateRange = formatDateRange(proj.start_date, proj.end_date);
       const techStr = proj.technologies ? ` $|$ \\emph{${escapeLatex(proj.technologies)}}` : '';
+      const roleCompanyLabel = [proj.role, proj.company].filter(Boolean).join(" at ");
+      const roleCompanyStr = roleCompanyLabel ? ` $|$ \\emph{${escapeLatex(roleCompanyLabel)}}` : "";
+      const urlStr = proj.url ? ` $|$ \\href{${normalizeUrlForHref(proj.url)}}{${escapeLatex(extractDomain(proj.url))}}` : "";
       lines.push(`      \\resumeProjectHeading
-          {\\textbf{${escapeLatex(proj.name)}}${techStr}}{${dateRange}}`);
+          {\\textbf{${escapeLatex(proj.name)}}${roleCompanyStr}${techStr}${urlStr}}{${dateRange}}`);
       if (proj.bullets && proj.bullets.length > 0) {
         lines.push(`          \\resumeItemListStart`);
         for (const bullet of proj.bullets) {
@@ -570,6 +574,26 @@ export function generateLatexFromStructuredData(data: ResumeStructuredData): str
       }
     }
     lines.push(`    \\resumeSubHeadingListEnd
+`);
+  }
+
+  // Awards
+  if (data.awards && data.awards.length > 0) {
+    lines.push(`\\section{Awards \\& Honors}
+  \\resumeSubHeadingListStart`);
+    for (const award of data.awards) {
+      const dateStr = award.date ? escapeLatex(award.date) : '';
+      const issuerStr = award.issuer ? escapeLatex(award.issuer) : '';
+      lines.push(`    \\resumeSubheading
+      {${escapeLatex(award.title)}}{${dateStr}}
+      {${issuerStr}}{}`);
+      if (award.description) {
+        lines.push(`      \\resumeItemListStart
+        \\resumeItem{${escapeLatex(award.description)}}
+      \\resumeItemListEnd`);
+      }
+    }
+    lines.push(`  \\resumeSubHeadingListEnd
 `);
   }
 
@@ -665,4 +689,11 @@ function extractDomain(url: string): string {
   } catch {
     return url;
   }
+}
+
+function normalizeUrlForHref(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
 }

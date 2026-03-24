@@ -6,6 +6,8 @@ import base64
 import logging
 import threading
 import mimetypes
+import os
+import time
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, Dict, List, Any, Mapping, Tuple
@@ -46,6 +48,11 @@ class LLMClient:
     
     DEFAULT_TEMPERATURE = 0.7
     DEFAULT_MAX_TOKENS = 4000
+    DEFAULT_REQUEST_TIMEOUT_SEC = 90
+    DEFAULT_SINGLE_PROJECT_BATCH_SIZE = 4
+    DEFAULT_BATCH_HEARTBEAT_SEC = 15
+    DEFAULT_FILE_SUMMARY_TIMEOUT_SEC = 120
+    DEFAULT_MAX_FILE_SUMMARY_TOKENS = 12000
     
     def __init__(
         self, 
@@ -66,9 +73,17 @@ class LLMClient:
         self.api_key = api_key
         self.client = None
         self.logger = logging.getLogger(__name__)
+        self._tokenizer_cache: Dict[str, Any] = {}
+        self._tokenizer_warning_emitted = False
         
         self.temperature = temperature if temperature is not None else self.DEFAULT_TEMPERATURE
         self.max_tokens = max_tokens if max_tokens is not None else self.DEFAULT_MAX_TOKENS
+        self.request_timeout_sec = self._get_int_env(
+            "LLM_REQUEST_TIMEOUT_SEC",
+            self.DEFAULT_REQUEST_TIMEOUT_SEC,
+            minimum=15,
+            maximum=600,
+        )
 
         if not 0.0 <= self.temperature <= 2.0:
             raise ValueError("Temperature must be between 0.0 and 2.0")
@@ -194,6 +209,65 @@ class LLMClient:
             bool: True if API key is set, False otherwise
         """
         return self.api_key is not None and self.client is not None
+
+    @staticmethod
+    def _get_int_env(name: str, default: int, minimum: int = 1, maximum: Optional[int] = None) -> int:
+        """Read a bounded integer from env with safe fallback."""
+        raw = os.getenv(name)
+        if raw is None:
+            return default
+        try:
+            value = int(str(raw).strip())
+        except Exception:
+            return default
+        if value < minimum:
+            return minimum
+        if maximum is not None and value > maximum:
+            return maximum
+        return value
+
+    def _get_tokenizer(self, model: Optional[str] = None):
+        """Resolve tokenizer for a model with robust fallbacks."""
+        tokenizer_model = model or self.DEFAULT_MODEL
+        cached = self._tokenizer_cache.get(tokenizer_model)
+        if cached is not None:
+            return cached
+
+        normalized_model = tokenizer_model.lower()
+        preferred_encoding_name = None
+        if normalized_model.startswith("gpt-4o") or normalized_model.startswith("o1"):
+            preferred_encoding_name = "o200k_base"
+
+        if preferred_encoding_name is not None:
+            try:
+                encoding = tiktoken.get_encoding(preferred_encoding_name)
+                self._tokenizer_cache[tokenizer_model] = encoding
+                return encoding
+            except Exception:
+                pass
+
+        try:
+            encoding = tiktoken.encoding_for_model(tokenizer_model)
+            self._tokenizer_cache[tokenizer_model] = encoding
+            return encoding
+        except Exception as model_exc:
+            for fallback_name in ("o200k_base", "cl100k_base"):
+                try:
+                    encoding = tiktoken.get_encoding(fallback_name)
+                    if not self._tokenizer_warning_emitted:
+                        self.logger.debug(
+                            "Tokenizer mapping unavailable for %s (%s). Using %s.",
+                            tokenizer_model,
+                            model_exc,
+                            fallback_name,
+                        )
+                        self._tokenizer_warning_emitted = True
+                    self._tokenizer_cache[tokenizer_model] = encoding
+                    return encoding
+                except Exception:
+                    continue
+
+        return None
     
     def _count_tokens(self, text: str, model: Optional[str] = None) -> int:
         """
@@ -206,14 +280,11 @@ class LLMClient:
         Returns:
             int: Number of tokens
         """
-        if model is None:
-            model = self.DEFAULT_MODEL
-        try:
-            encoding = tiktoken.encoding_for_model(model)
+        encoding = self._get_tokenizer(model)
+        if encoding is not None:
             return len(encoding.encode(text))
-        except Exception as e:
-            self.logger.warning(f"Failed to count tokens: {e}. Using character estimate.")
-            return len(text) // 4
+        self.logger.warning("Failed to resolve tokenizer. Using character estimate.")
+        return len(text) // 4
 
     def _infer_media_type(self, path: str, mime_type: str) -> Optional[str]:
         """Infer media type from path/mime string."""
@@ -650,6 +721,7 @@ class LLMClient:
             )
             if response_format:
                 kwargs["response_format"] = response_format
+            kwargs["timeout"] = self.request_timeout_sec
 
             response = self.client.chat.completions.create(**kwargs)
             
@@ -680,7 +752,24 @@ class LLMClient:
                 raise LLMError(f"Request timed out. Please check your internet connection and try again: {str(e)}")
             else:
                 raise LLMError(f"LLM call failed: {str(e)}")
-    
+
+    def make_llm_call(
+        self,
+        messages: List[Dict[str, str]],
+        model: Optional[str] = None,
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+        response_format: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """Public wrapper around _make_llm_call for external callers."""
+        return self._make_llm_call(
+            messages,
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            response_format=response_format,
+        )
+
     def chunk_and_summarize(self, text: str, file_type: str = "", 
                            chunk_size: int = 2000, overlap: int = 100) -> Dict[str, Any]:
         """
@@ -706,7 +795,9 @@ class LLMClient:
         
         try:
             try:
-                encoding = tiktoken.encoding_for_model(self.DEFAULT_MODEL)
+                encoding = self._get_tokenizer(self.DEFAULT_MODEL)
+                if encoding is None:
+                    raise ValueError("No tokenizer available")
                 tokens = encoding.encode(text)
                 decode_tokens = encoding.decode
             except Exception as exc:
@@ -784,12 +875,37 @@ class LLMClient:
         try:
             token_count = self._count_tokens(content)
             self.logger.info(f"Summarizing {file_path} ({token_count} tokens)")
+
+            # Guardrail: extremely large files can stall an entire batch.
+            max_summary_tokens = self._get_int_env(
+                "AI_MAX_FILE_SUMMARY_TOKENS",
+                self.DEFAULT_MAX_FILE_SUMMARY_TOKENS,
+                minimum=2000,
+                maximum=80000,
+            )
+            truncated_for_budget = False
+            if token_count > max_summary_tokens:
+                approx_chars = max_summary_tokens * 4
+                content = content[:approx_chars]
+                token_count = self._count_tokens(content)
+                truncated_for_budget = True
+                self.logger.warning(
+                    "Truncated oversized file for AI summary (%s): capped to %s tokens",
+                    file_path,
+                    max_summary_tokens,
+                )
             
             if token_count > 2000:
                 chunk_result = self.chunk_and_summarize(content, file_type)
                 content_to_analyze = chunk_result["final_summary"]
             else:
                 content_to_analyze = content
+
+            if truncated_for_budget:
+                content_to_analyze = (
+                    "[Note: file content was truncated for latency budget before summarization.]\n"
+                    + content_to_analyze
+                )
             
             prompt = f"""Analyze this {file_type} file and provide a brief structured summary.
 
@@ -960,7 +1076,12 @@ MEDIA INSIGHTS:
             self.logger.error(f"Feedback generation failed: {e}")
             raise LLMError(f"Failed to generate feedback: {str(e)}")
     
-    def _run_async_in_thread(self, coro):
+    def _run_async_in_thread(
+        self,
+        coro,
+        heartbeat_callback: Optional[Any] = None,
+        heartbeat_interval_sec: int = 15,
+    ):
         """Run an async coroutine in a dedicated thread with its own event loop.
         
         This prevents conflicts with existing event loops and is safe to call
@@ -990,17 +1111,32 @@ MEDIA INSIGHTS:
         
         thread = threading.Thread(target=run_in_thread)
         thread.start()
-        thread.join()
+
+        heartbeat_every = max(1, int(heartbeat_interval_sec))
+        while thread.is_alive():
+            thread.join(timeout=heartbeat_every)
+            if thread.is_alive() and callable(heartbeat_callback):
+                try:
+                    heartbeat_callback()
+                except Exception:
+                    # Best effort progress signal.
+                    pass
         
         if exception:
             raise exception
         return result
     
-    async def _summarize_file_batch(self, files_batch: List[tuple], base_path) -> List[Dict[str, str]]:
+    async def _summarize_file_batch(
+        self,
+        files_batch: List[tuple],
+        base_path,
+        per_file_timeout_sec: int = 120,
+        skipped_files: Optional[List[Dict[str, Any]]] = None,
+    ) -> List[Dict[str, str]]:
         """Process a batch of files in parallel.
         
         Args:
-            files_batch: List of (file_path, full_path, file_type) tuples
+            files_batch: List of (file_path, full_path, file_type, file_size) tuples
             base_path: Base path for file reading
             
         Returns:
@@ -1008,20 +1144,36 @@ MEDIA INSIGHTS:
         """
         
         async def analyze_single_file(file_info):
-            file_path, full_path, file_type = file_info
+            file_path, full_path, file_type, file_size = file_info
             try:
                 content = full_path.read_text(encoding='utf-8', errors='ignore')
                 # Run the synchronous summarize in thread pool
                 loop = asyncio.get_event_loop()
-                summary_result = await loop.run_in_executor(
-                    None,
-                    self.summarize_tagged_file,
-                    file_path,
-                    content,
-                    file_type
+                summary_result = await asyncio.wait_for(
+                    loop.run_in_executor(
+                        None,
+                        self.summarize_tagged_file,
+                        file_path,
+                        content,
+                        file_type
+                    ),
+                    timeout=per_file_timeout_sec,
                 )
                 self.logger.info(f"Summarized: {file_path}")
                 return summary_result
+            except asyncio.TimeoutError:
+                self.logger.warning(
+                    "Timed out summarizing %s after %ss",
+                    file_path,
+                    per_file_timeout_sec,
+                )
+                if skipped_files is not None:
+                    skipped_files.append({
+                        'path': file_path,
+                        'size_mb': file_size / (1024 * 1024),
+                        'reason': f'Summarization timed out after {per_file_timeout_sec}s',
+                    })
+                return None
             except Exception as e:
                 self.logger.error(f"Error analyzing {file_path}: {e}")
                 return None
@@ -1129,30 +1281,77 @@ MEDIA INSIGHTS:
                 
                 if full_path.exists() and full_path.is_file():
                     file_type = full_path.suffix or 'unknown'
-                    files_to_analyze.append((file_path, full_path, file_type))
+                    files_to_analyze.append((file_path, full_path, file_type, file_size))
             
-            # Process files in batches of 5 for parallel execution
-            BATCH_SIZE = 5
+            batch_size = self._get_int_env(
+                "AI_SINGLE_PROJECT_BATCH_SIZE",
+                self.DEFAULT_SINGLE_PROJECT_BATCH_SIZE,
+                minimum=1,
+                maximum=8,
+            )
+            heartbeat_sec = self._get_int_env(
+                "AI_BATCH_HEARTBEAT_SEC",
+                self.DEFAULT_BATCH_HEARTBEAT_SEC,
+                minimum=5,
+                maximum=120,
+            )
+            per_file_timeout_sec = self._get_int_env(
+                "AI_FILE_SUMMARY_TIMEOUT_SEC",
+                self.DEFAULT_FILE_SUMMARY_TIMEOUT_SEC,
+                minimum=20,
+                maximum=900,
+            )
+
+            # Balance heavier files across batches to avoid long stalls in early batches.
+            files_to_analyze.sort(key=lambda item: int(item[3]), reverse=True)
+            total_batches = (len(files_to_analyze) + batch_size - 1) // batch_size
+            balanced_batches: List[List[tuple]] = [[] for _ in range(total_batches)]
+            batch_weight = [0] * total_batches
+            for file_tuple in files_to_analyze:
+                idx = min(
+                    range(total_batches),
+                    key=lambda i: (len(balanced_batches[i]), batch_weight[i]),
+                )
+                balanced_batches[idx].append(file_tuple)
+                batch_weight[idx] += int(file_tuple[3])
+
             processed_count = 0
             
-            for i in range(0, len(files_to_analyze), BATCH_SIZE):
-                batch = files_to_analyze[i:i + BATCH_SIZE]
-                batch_num = (i // BATCH_SIZE) + 1
-                total_batches = (len(files_to_analyze) + BATCH_SIZE - 1) // BATCH_SIZE
+            for batch_num, batch in enumerate(balanced_batches, start=1):
+                batch_size_mb = sum(int(item[3]) for item in batch) / (1024 * 1024)
+                batch_started_at = time.monotonic()
                 
                 if progress_callback:
-                    progress_callback(f"Single-project: Batch {batch_num}/{total_batches} ({len(batch)} files)…")
+                    progress_callback(
+                        f"Single-project: Batch {batch_num}/{total_batches} ({len(batch)} files, {batch_size_mb:.2f}MB)…"
+                    )
                 
                 try:
                     # Process batch in parallel using dedicated thread
                     batch_results = self._run_async_in_thread(
-                        self._summarize_file_batch(batch, scan_base_path)
+                        self._summarize_file_batch(
+                            batch,
+                            scan_base_path,
+                            per_file_timeout_sec=per_file_timeout_sec,
+                            skipped_files=skipped_files,
+                        ),
+                        heartbeat_interval_sec=heartbeat_sec,
+                        heartbeat_callback=(
+                            (lambda bn=batch_num, tb=total_batches, bs=batch_started_at:
+                                progress_callback(
+                                    f"Single-project: Batch {bn}/{tb} still running ({int(time.monotonic() - bs)}s elapsed)…"
+                                )
+                            ) if progress_callback else None
+                        ),
                     )
                     file_summaries.extend(batch_results)
                     processed_count += len(batch_results)
                     
                     if progress_callback:
-                        progress_callback(f"Single-project: Completed {processed_count}/{len(files_to_analyze)} files…")
+                        duration = int(time.monotonic() - batch_started_at)
+                        progress_callback(
+                            f"Single-project: Completed {processed_count}/{len(files_to_analyze)} files (batch {batch_num} in {duration}s)…"
+                        )
                 except Exception as e:
                     self.logger.error(f"Error processing batch: {e}")
                     continue
@@ -1559,8 +1758,9 @@ PORTFOLIO COHERENCE:
             # Truncate if too large
             if token_count > 3000:
                 try:
-                    import tiktoken
-                    encoding = tiktoken.encoding_for_model(self.DEFAULT_MODEL)
+                    encoding = self._get_tokenizer(self.DEFAULT_MODEL)
+                    if encoding is None:
+                        raise ValueError("No tokenizer available")
                     tokens = encoding.encode(content)
                     truncated_tokens = tokens[:3000]
                     content = encoding.decode(truncated_tokens)

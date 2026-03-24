@@ -34,7 +34,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
 import { getStoredToken } from "@/lib/auth";
-import { getUserResume, updateUserResume } from "@/lib/api/user-resume";
+import {
+  getUserResume,
+  updateUserResume,
+  addResumeItemsToResume,
+  detectResumeSkills,
+  downloadResumePdf,
+} from "@/lib/api/user-resume";
+import { listResumeItems, getResumeItem } from "@/lib/api/resume";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { getTemplateLatex, generateLatexFromStructuredData } from "@/lib/latex-templates";
 import type {
   UserResumeRecord,
@@ -44,7 +53,9 @@ import type {
   ResumeEducationEntry,
   ResumeExperienceEntry,
   ResumeProjectEntry,
+  ResumeAwardEntry,
 } from "@/types/user-resume";
+import type { ResumeItemSummary, ResumeItemRecord } from "@/types/resume";
 
 // Debounce helper
 function useDebounce<T>(value: T, delay: number): T {
@@ -59,6 +70,17 @@ function useDebounce<T>(value: T, delay: number): T {
 // Generate unique ID
 function generateId(): string {
   return Math.random().toString(36).substring(2, 9);
+}
+
+function normalizeExternalUrl(url: string): string {
+  const value = url.trim();
+  if (!value) return "";
+  if (/^https?:\/\//i.test(value)) return value;
+  return `https://${value}`;
+}
+
+function displayUrl(url: string): string {
+  return url.replace(/^https?:\/\//i, "").replace(/\/$/, "");
 }
 
 // Comma-separated input that preserves typing and only converts to array on blur
@@ -104,6 +126,7 @@ function ResumeEditorPageInner() {
   const [resume, setResume] = useState<UserResumeRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [pdfExporting, setPdfExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
@@ -134,8 +157,14 @@ function ResumeEditorPageInner() {
       try {
         const data = await getUserResume(token, resumeId);
         setResume(data);
-        setLatexContent(data.latex_content || getTemplateLatex(data.template));
-        setStructuredData(data.structured_data || {});
+        // If no saved LaTeX, generate it from structured data (e.g. profile-generated resumes)
+        const sd = data.structured_data || {};
+        const hasStructuredContent = sd.contact || (sd.education && sd.education.length > 0) || (sd.experience && sd.experience.length > 0) || (sd.projects && sd.projects.length > 0);
+        setLatexContent(
+          data.latex_content ||
+          (hasStructuredContent ? generateLatexFromStructuredData(sd) : getTemplateLatex(data.template))
+        );
+        setStructuredData(sd);
         setIsLatexMode(data.is_latex_mode);
         setResumeName(data.name);
         setTemplate(data.template);
@@ -163,7 +192,10 @@ function ResumeEditorPageInner() {
           name: debouncedResumeName,
           template: debouncedTemplate,
           latex_content: isLatexMode ? debouncedLatex : null,
-          structured_data: !isLatexMode ? debouncedStructured : undefined,
+          // Always persist structured_data so form-mode data is preserved
+          // even when the user is editing in LaTeX mode.
+          structured_data: debouncedStructured,
+          is_latex_mode: isLatexMode,
         });
         setLastSaved(new Date());
         setIsDirty(false);
@@ -234,6 +266,69 @@ function ResumeEditorPageInner() {
     a.download = `${resumeName.replace(/[^a-z0-9]/gi, "_")}.tex`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadPdf = async () => {
+    const token = getStoredToken();
+    if (!token) {
+      setError("Not authenticated");
+      return;
+    }
+
+    const latex = isLatexMode ? latexContent : generateLatexFromStructuredData(structuredData);
+
+    setPdfExporting(true);
+    try {
+      const pdfBlob = await downloadResumePdf(token, resumeId, latex);
+      const url = URL.createObjectURL(pdfBlob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${resumeName.replace(/[^a-z0-9]/gi, "_")}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to export PDF");
+    } finally {
+      setPdfExporting(false);
+    }
+  };
+
+  const handleAddResumeItems = async (itemIds: string[]) => {
+    const token = getStoredToken();
+    if (!token || itemIds.length === 0) return;
+
+    setSaving(true);
+    try {
+      const updated = await addResumeItemsToResume(token, resumeId, { item_ids: itemIds });
+      setResume(updated);
+      setStructuredData(updated.structured_data || {});
+      setLastSaved(new Date());
+      setIsDirty(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add items to resume");
+      throw err;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDetectSkills = async () => {
+    const token = getStoredToken();
+    if (!token) return;
+
+    setSaving(true);
+    try {
+      const updated = await detectResumeSkills(token, resumeId);
+      setResume(updated);
+      setStructuredData(updated.structured_data || {});
+      setLastSaved(new Date());
+      setIsDirty(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to auto-detect skills");
+      throw err;
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (loading) {
@@ -329,6 +424,11 @@ function ResumeEditorPageInner() {
               Download .tex
             </Button>
 
+            <Button variant="outline" size="sm" onClick={handleDownloadPdf} disabled={pdfExporting}>
+              <Download className="h-4 w-4 mr-1" />
+              {pdfExporting ? "Exporting PDF..." : "Download PDF"}
+            </Button>
+
             <Button size="sm" onClick={handleSave} disabled={saving}>
               <Save className="h-4 w-4 mr-1" />
               Save
@@ -348,6 +448,8 @@ function ResumeEditorPageInner() {
           <FormEditor
             data={structuredData}
             onChange={updateStructuredData}
+            onAddResumeItems={handleAddResumeItems}
+            onDetectSkills={handleDetectSkills}
           />
         )}
       </div>
@@ -405,10 +507,22 @@ function LatexEditor({ content, onChange }: LatexEditorProps) {
 interface FormEditorProps {
   data: ResumeStructuredData;
   onChange: (updates: Partial<ResumeStructuredData>) => void;
+  onAddResumeItems: (itemIds: string[]) => Promise<void>;
+  onDetectSkills: () => Promise<void>;
 }
 
-function FormEditor({ data, onChange }: FormEditorProps) {
+function FormEditor({ data, onChange, onAddResumeItems, onDetectSkills }: FormEditorProps) {
   const [activeTab, setActiveTab] = useState("contact");
+  const [itemsDialogOpen, setItemsDialogOpen] = useState(false);
+  const [resumeItems, setResumeItems] = useState<ResumeItemSummary[]>([]);
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
+  const [expandedItemIds, setExpandedItemIds] = useState<string[]>([]);
+  const [itemDetailsById, setItemDetailsById] = useState<Record<string, ResumeItemRecord>>({});
+  const [loadingItems, setLoadingItems] = useState(false);
+  const [loadingItemDetails, setLoadingItemDetails] = useState<Record<string, boolean>>({});
+  const [addingItems, setAddingItems] = useState(false);
+  const [detectingSkills, setDetectingSkills] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
 
   const updateContact = (updates: Partial<ResumeContactInfo>) => {
     onChange({ contact: { ...data.contact, ...updates } as ResumeContactInfo });
@@ -461,6 +575,9 @@ function FormEditor({ data, onChange }: FormEditorProps) {
     const newEntry: ResumeProjectEntry = {
       id: generateId(),
       name: "",
+      role: "",
+      company: "",
+      url: "",
       bullets: [],
     };
     onChange({ projects: [...(data.projects || []), newEntry] });
@@ -478,6 +595,108 @@ function FormEditor({ data, onChange }: FormEditorProps) {
     onChange({ projects: updated });
   };
 
+  const addAward = () => {
+    const newEntry: ResumeAwardEntry = {
+      id: generateId(),
+      title: "",
+    };
+    onChange({ awards: [...(data.awards || []), newEntry] });
+  };
+
+  const updateAward = (index: number, updates: Partial<ResumeAwardEntry>) => {
+    const updated = [...(data.awards || [])];
+    updated[index] = { ...updated[index], ...updates };
+    onChange({ awards: updated });
+  };
+
+  const removeAward = (index: number) => {
+    const updated = [...(data.awards || [])];
+    updated.splice(index, 1);
+    onChange({ awards: updated });
+  };
+
+  const openAddItemsDialog = async () => {
+    const token = getStoredToken();
+    if (!token) {
+      setModalError("Not authenticated");
+      return;
+    }
+
+    setItemsDialogOpen(true);
+    setLoadingItems(true);
+    setModalError(null);
+
+    try {
+      const response = await listResumeItems(token, 100, 0);
+      setResumeItems(response.items || []);
+    } catch (err) {
+      setModalError(err instanceof Error ? err.message : "Failed to load resume items");
+    } finally {
+      setLoadingItems(false);
+    }
+  };
+
+  const toggleItemSelection = (itemId: string) => {
+    setSelectedItemIds((prev) =>
+      prev.includes(itemId) ? prev.filter((id) => id !== itemId) : [...prev, itemId]
+    );
+  };
+
+  const toggleItemPreview = async (itemId: string) => {
+    if (expandedItemIds.includes(itemId)) {
+      setExpandedItemIds((prev) => prev.filter((id) => id !== itemId));
+      return;
+    }
+
+    setExpandedItemIds((prev) => [...prev, itemId]);
+    if (itemDetailsById[itemId]) return;
+
+    const token = getStoredToken();
+    if (!token) {
+      setModalError("Not authenticated");
+      return;
+    }
+
+    setLoadingItemDetails((prev) => ({ ...prev, [itemId]: true }));
+    try {
+      const detail = await getResumeItem(token, itemId);
+      setItemDetailsById((prev) => ({ ...prev, [itemId]: detail }));
+    } catch (err) {
+      setModalError(err instanceof Error ? err.message : "Failed to load item preview");
+    } finally {
+      setLoadingItemDetails((prev) => ({ ...prev, [itemId]: false }));
+    }
+  };
+
+  const handleBulkAddSelected = async () => {
+    if (selectedItemIds.length === 0) return;
+
+    setAddingItems(true);
+    setModalError(null);
+    try {
+      await onAddResumeItems(selectedItemIds);
+      setItemsDialogOpen(false);
+      setSelectedItemIds([]);
+      setExpandedItemIds([]);
+    } catch (err) {
+      setModalError(err instanceof Error ? err.message : "Failed to add selected items");
+    } finally {
+      setAddingItems(false);
+    }
+  };
+
+  const handleDetectSkillsClick = async () => {
+    setDetectingSkills(true);
+    setModalError(null);
+    try {
+      await onDetectSkills();
+    } catch (err) {
+      setModalError(err instanceof Error ? err.message : "Failed to auto-detect skills");
+    } finally {
+      setDetectingSkills(false);
+    }
+  };
+
   return (
     <div className="flex-1 flex">
       {/* Form pane */}
@@ -489,6 +708,7 @@ function FormEditor({ data, onChange }: FormEditorProps) {
             <TabsTrigger value="experience" className="text-xs">Experience</TabsTrigger>
             <TabsTrigger value="projects" className="text-xs">Projects</TabsTrigger>
             <TabsTrigger value="skills" className="text-xs">Skills</TabsTrigger>
+            <TabsTrigger value="awards" className="text-xs">Awards</TabsTrigger>
           </TabsList>
 
           <div className="flex-1 overflow-auto p-4">
@@ -723,12 +943,38 @@ function FormEditor({ data, onChange }: FormEditorProps) {
                       placeholder="Project Name"
                     />
                   </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label>Role</Label>
+                      <Input
+                        value={proj.role || ""}
+                        onChange={(e) => updateProject(idx, { role: e.target.value })}
+                        placeholder="Lead Developer"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Company</Label>
+                      <Input
+                        value={proj.company || ""}
+                        onChange={(e) => updateProject(idx, { company: e.target.value })}
+                        placeholder="Freelance / Personal / Company"
+                      />
+                    </div>
+                  </div>
                   <div className="space-y-2">
                     <Label>Technologies</Label>
                     <Input
                       value={proj.technologies || ""}
                       onChange={(e) => updateProject(idx, { technologies: e.target.value })}
                       placeholder="React, TypeScript, Node.js"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Project URL</Label>
+                    <Input
+                      value={proj.url || ""}
+                      onChange={(e) => updateProject(idx, { url: e.target.value })}
+                      placeholder="https://github.com/username/project"
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
@@ -769,12 +1015,20 @@ function FormEditor({ data, onChange }: FormEditorProps) {
                   </div>
                 </div>
               ))}
-              <Button variant="outline" onClick={addProject} className="w-full">
-                + Add Project
-              </Button>
+              <div className="grid grid-cols-2 gap-3">
+                <Button variant="outline" onClick={openAddItemsDialog}>
+                  Add from Projects
+                </Button>
+                <Button variant="outline" onClick={addProject}>
+                  + Add Project
+                </Button>
+              </div>
             </TabsContent>
 
             <TabsContent value="skills" className="mt-0 space-y-4">
+              <Button variant="outline" onClick={handleDetectSkillsClick} disabled={detectingSkills} className="w-full">
+                {detectingSkills ? "Detecting..." : "Auto-detect Skills from Projects"}
+              </Button>
               <div className="space-y-2">
                 <Label>Programming Languages (comma-separated)</Label>
                 <CommaSeparatedInput
@@ -836,9 +1090,163 @@ function FormEditor({ data, onChange }: FormEditorProps) {
                 />
               </div>
             </TabsContent>
+
+            <TabsContent value="awards" className="mt-0 space-y-4">
+              {(data.awards || []).map((award, idx) => (
+                <div key={award.id} className="p-4 border border-gray-200 rounded-lg space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Award #{idx + 1}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeAward(idx)}
+                      className="text-red-600 hover:text-red-700"
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Award Title</Label>
+                    <Input
+                      value={award.title}
+                      onChange={(e) => updateAward(idx, { title: e.target.value })}
+                      placeholder="Dean's List, Hackathon Winner, etc."
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label>Issuer / Organization</Label>
+                      <Input
+                        value={award.issuer || ""}
+                        onChange={(e) => updateAward(idx, { issuer: e.target.value })}
+                        placeholder="University, Company, etc."
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Date</Label>
+                      <Input
+                        value={award.date || ""}
+                        onChange={(e) => updateAward(idx, { date: e.target.value })}
+                        placeholder="May 2024"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Description (optional)</Label>
+                    <Input
+                      value={award.description || ""}
+                      onChange={(e) => updateAward(idx, { description: e.target.value })}
+                      placeholder="Brief description of the award"
+                    />
+                  </div>
+                </div>
+              ))}
+              <Button variant="outline" onClick={addAward} className="w-full">
+                + Add Award
+              </Button>
+            </TabsContent>
           </div>
         </Tabs>
       </div>
+
+      <Dialog open={itemsDialogOpen} onOpenChange={setItemsDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Add Project Blocks from Resume Items</DialogTitle>
+          </DialogHeader>
+
+          <div className="flex items-center justify-between text-sm text-gray-600">
+            <span>{selectedItemIds.length} selected</span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSelectedItemIds(resumeItems.map((item) => item.id))}
+                disabled={resumeItems.length === 0}
+              >
+                Select All
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setSelectedItemIds([])}>
+                Deselect All
+              </Button>
+            </div>
+          </div>
+
+          {modalError && <p className="text-sm text-red-600">{modalError}</p>}
+
+          <div className="flex-1 overflow-auto space-y-3 py-1">
+            {loadingItems ? (
+              <div className="text-sm text-gray-500">Loading resume items...</div>
+            ) : resumeItems.length === 0 ? (
+              <div className="text-sm text-gray-500">No resume items found.</div>
+            ) : (
+              resumeItems.map((item) => {
+                const selected = selectedItemIds.includes(item.id);
+                const expanded = expandedItemIds.includes(item.id);
+                const detail = itemDetailsById[item.id];
+                return (
+                  <div key={item.id} className="border border-gray-200 rounded-lg p-3 space-y-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <label className="flex items-start gap-2 cursor-pointer flex-1 min-w-0">
+                        <Checkbox checked={selected} onCheckedChange={() => toggleItemSelection(item.id)} />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">{item.project_name}</p>
+                          <p className="text-xs text-gray-500">
+                            {item.start_date || "Unknown start"}
+                            {item.end_date ? ` - ${item.end_date}` : ""}
+                          </p>
+                        </div>
+                      </label>
+                      <Button variant="outline" size="sm" onClick={() => toggleItemPreview(item.id)}>
+                        {expanded ? "Hide Preview" : "Preview"}
+                      </Button>
+                    </div>
+
+                    {expanded && (
+                      <div className="bg-gray-50 border border-gray-200 rounded-md p-3 text-sm">
+                        {loadingItemDetails[item.id] ? (
+                          <p className="text-gray-500">Loading preview...</p>
+                        ) : detail ? (
+                          <div className="space-y-2">
+                            <p className="text-xs uppercase tracking-wide text-gray-500">Bullets</p>
+                            {detail.bullets.length > 0 ? (
+                              <ul className="list-disc list-inside space-y-1">
+                                {detail.bullets.map((bullet, idx) => (
+                                  <li key={`${item.id}-${idx}`}>{bullet}</li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="text-gray-500">No bullets found for this item.</p>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-gray-500">Preview unavailable.</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setItemsDialogOpen(false);
+                setModalError(null);
+              }}
+              disabled={addingItems}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleBulkAddSelected} disabled={addingItems || selectedItemIds.length === 0}>
+              {addingItems ? "Adding..." : `Add ${selectedItemIds.length} Item${selectedItemIds.length === 1 ? "" : "s"}`}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Preview pane */}
       <div className="w-1/2 flex flex-col bg-gray-100">
@@ -888,27 +1296,35 @@ function FormPreview({ data }: { data: ResumeStructuredData }) {
         <div className="text-center border-b pb-4">
           <h1 className="text-2xl font-bold">{data.contact.full_name || "Your Name"}</h1>
           <div className="text-sm text-gray-600 mt-1 flex flex-wrap justify-center gap-2">
-            {data.contact.phone && <span>{data.contact.phone}</span>}
+            {data.contact.phone && <a className="text-blue-600 underline" href={`tel:${data.contact.phone}`}>{data.contact.phone}</a>}
             {data.contact.email && (
               <>
                 {data.contact.phone && <span>|</span>}
-                <span>{data.contact.email}</span>
+                <a className="text-blue-600 underline" href={`mailto:${data.contact.email}`}>{data.contact.email}</a>
               </>
             )}
             {data.contact.linkedin_url && (
               <>
                 <span>|</span>
-                <span className="text-blue-600 underline">
-                  {data.contact.linkedin_url.replace(/^https?:\/\//, "")}
-                </span>
+                <a className="text-blue-600 underline" href={normalizeExternalUrl(data.contact.linkedin_url)} target="_blank" rel="noopener noreferrer">
+                  {displayUrl(data.contact.linkedin_url)}
+                </a>
               </>
             )}
             {data.contact.github_url && (
               <>
                 <span>|</span>
-                <span className="text-blue-600 underline">
-                  {data.contact.github_url.replace(/^https?:\/\//, "")}
-                </span>
+                <a className="text-blue-600 underline" href={normalizeExternalUrl(data.contact.github_url)} target="_blank" rel="noopener noreferrer">
+                  {displayUrl(data.contact.github_url)}
+                </a>
+              </>
+            )}
+            {data.contact.portfolio_url && (
+              <>
+                <span>|</span>
+                <a className="text-blue-600 underline" href={normalizeExternalUrl(data.contact.portfolio_url)} target="_blank" rel="noopener noreferrer">
+                  {displayUrl(data.contact.portfolio_url)}
+                </a>
               </>
             )}
           </div>
@@ -980,6 +1396,9 @@ function FormPreview({ data }: { data: ResumeStructuredData }) {
               <div className="flex justify-between">
                 <span>
                   <span className="font-semibold">{proj.name}</span>
+                  {(proj.role || proj.company) && (
+                    <span className="italic text-gray-600"> {proj.role || "Contributor"}{proj.company ? ` at ${proj.company}` : ""}</span>
+                  )}
                   {proj.technologies && (
                     <span className="italic text-gray-600"> | {proj.technologies}</span>
                   )}
@@ -995,6 +1414,39 @@ function FormPreview({ data }: { data: ResumeStructuredData }) {
                   {proj.bullets.map((bullet, i) => (
                     <li key={i}>{bullet}</li>
                   ))}
+                </ul>
+              )}
+              {proj.url && (
+                <a
+                  className="text-sm text-blue-600 underline"
+                  href={normalizeExternalUrl(proj.url)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {displayUrl(proj.url)}
+                </a>
+              )}
+            </div>
+          ))}
+        </section>
+      )}
+
+      {/* Awards */}
+      {data.awards && data.awards.length > 0 && (
+        <section>
+          <h2 className="text-lg font-bold border-b border-gray-300 pb-1 mb-2">Awards & Honors</h2>
+          {data.awards.map((award) => (
+            <div key={award.id} className="mb-2">
+              <div className="flex justify-between">
+                <span className="font-semibold">{award.title}</span>
+                <span className="text-gray-600">{award.date}</span>
+              </div>
+              {award.issuer && (
+                <div className="text-sm italic text-gray-600">{award.issuer}</div>
+              )}
+              {award.description && (
+                <ul className="list-disc list-inside mt-1 text-sm space-y-0.5">
+                  <li>{award.description}</li>
                 </ul>
               )}
             </div>
@@ -1042,6 +1494,7 @@ function FormPreview({ data }: { data: ResumeStructuredData }) {
         (!data.education || data.education.length === 0) &&
         (!data.experience || data.experience.length === 0) &&
         (!data.projects || data.projects.length === 0) &&
+        (!data.awards || data.awards.length === 0) &&
         !data.skills && (
           <div className="text-center text-gray-400 py-12">
             <p>Start adding content using the form on the left</p>

@@ -25,6 +25,7 @@ interface DuplicateOverview {
 
 interface ToolsMainTabProps {
   openToolsTab: (tab: ToolsTabValue) => void;
+  openGitAnalysis?: () => void;
   projectFilesCount: number;
   gitRepoTotal: number;
   gitCommitTotal: number;
@@ -40,6 +41,7 @@ interface ToolsMainTabProps {
 
 export function ToolsMainTab({
   openToolsTab,
+  openGitAnalysis,
   projectFilesCount,
   gitRepoTotal,
   gitCommitTotal,
@@ -93,7 +95,7 @@ export function ToolsMainTab({
           <CardTitle className="text-base font-semibold text-foreground">
             <button
               type="button"
-              onClick={() => openToolsTab("git-analysis")}
+              onClick={() => openGitAnalysis?.()}
               className="inline-flex items-center gap-2 hover:text-foreground"
             >
               <GitBranch size={18} />
@@ -123,7 +125,7 @@ export function ToolsMainTab({
             type="button"
             size="sm"
             variant="outline"
-            onClick={() => openToolsTab("git-analysis")}
+            onClick={() => openGitAnalysis?.()}
           >
             Open Full View
           </Button>
