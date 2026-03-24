@@ -9,7 +9,7 @@
     "strict": true,
     "skipLibCheck": true,
     "noImplicitAny": true,
-    "types": ["node", "electron"]
+    "types": ["node"]
   },
   "include": ["**/*.ts"]
 }
