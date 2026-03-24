@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
   Folder,
@@ -11,6 +11,7 @@ import {
   Settings,
   Search,
   Sparkles,
+  LogOut,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/hooks/use-auth';
@@ -57,7 +58,8 @@ const SectionLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 };
 
 export const Sidebar: React.FC = () => {
-  const { user, isAuthenticated } = useAuth();
+  const router = useRouter();
+  const { user, isAuthenticated, logout } = useAuth();
   const [profile, setProfile] = useState<SidebarProfile>({
     displayName: "Guest",
     email: "",
@@ -174,6 +176,18 @@ export const Sidebar: React.FC = () => {
             icon={<Search size={20} />}
             label="Search"
           />
+          {isAuthenticated && (
+            <button
+              onClick={() => {
+                logout();
+                router.push('/auth/login');
+              }}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 w-full text-gray-400 hover:bg-red-500/10 hover:text-red-400"
+            >
+              <span className="w-5 h-5 flex-shrink-0"><LogOut size={20} /></span>
+              <span className="text-sm">Logout</span>
+            </button>
+          )}
         </div>
 
         <Link
