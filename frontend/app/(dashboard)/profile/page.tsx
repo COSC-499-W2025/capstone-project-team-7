@@ -148,7 +148,9 @@ export default function ProfilePage() {
             return;
           }
           if (avatarPreview?.startsWith("blob:")) URL.revokeObjectURL(avatarPreview);
-          const file = new File([base64ToBytes(desktopFile.data)], desktopFile.name, {
+          const bytes = base64ToBytes(desktopFile.data);
+          const arrayBuffer = new Uint8Array(bytes).buffer as ArrayBuffer;
+          const file = new File([arrayBuffer], desktopFile.name, {
             type: desktopFile.type,
           });
           const previewUrl = URL.createObjectURL(file);
