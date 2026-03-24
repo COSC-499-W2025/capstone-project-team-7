@@ -15,11 +15,10 @@
     "dist:mac": "electron-builder --mac",
     "dist:linux": "electron-builder --linux"
   },
-  "dependencies": {
-    "electron": "^31.0.0"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@types/node": "^22.7.4",
+    "electron": "31.0.0",
     "cross-env": "^10.1.0",
     "electron-builder": "^24.13.3",
     "ts-node": "^10.9.2",

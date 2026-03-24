@@ -65,7 +65,8 @@ test.describe("Project document analysis tab", () => {
     await page.goto("/project?projectId=proj-123", { waitUntil: "domcontentloaded" });
     await page.waitForResponse("**/api/projects/proj-123");
     await page.waitForResponse("**/api/projects/proj-123/skills/timeline**");
-    await page.getByRole("button", { name: "Document Analysis" }).click();
+    await page.getByRole("button", { name: "Content Analysis" }).click();
+    await page.getByRole("button", { name: "Documents" }).click();
 
     await expect(page.getByRole("heading", { name: "Guide.md" })).toBeVisible();
     await expect(
