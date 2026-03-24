@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   User,
@@ -19,6 +19,14 @@ import { LoadingState } from "@/components/ui/loading-state";
 import { EmptyState } from "@/components/ui/empty-state";
 
 export default function PublicPortfolioPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><LoadingState message="Loading portfolio..." /></div>}>
+      <PublicPortfolioContent />
+    </Suspense>
+  );
+}
+
+function PublicPortfolioContent() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
 
