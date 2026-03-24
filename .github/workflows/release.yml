@@ -124,9 +124,28 @@ jobs:
         working-directory: electron
         run: npm run build
 
+      - name: Install electron-builder
+        working-directory: electron
+        run: npm install --no-save electron-builder@24.13.3
+
       - name: Build Electron app
         working-directory: electron
-        run: npm run dist:${{ matrix.platform }}
+        run: |
+          case "${{ matrix.platform }}" in
+            mac)
+              npx electron-builder --config electron-builder.yml --mac
+              ;;
+            linux)
+              npx electron-builder --config electron-builder.yml --linux
+              ;;
+            win)
+              npx electron-builder --config electron-builder.yml --win
+              ;;
+            *)
+              echo "Unsupported platform: ${{ matrix.platform }}"
+              exit 1
+              ;;
+          esac
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
