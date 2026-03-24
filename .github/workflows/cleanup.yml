@@ -1,0 +1,27 @@
+# Cleanup Pipeline - Deletes old prerelease builds to save storage
+# Runs weekly and keeps only the 5 most recent prereleases
+
+name: Cleanup Prereleases
+
+on:
+  schedule:
+    # Run every Sunday at midnight UTC
+    - cron: "0 0 * * 0"
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  cleanup:
+    name: Delete Old Prereleases
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Delete old prereleases
+        uses: dev-drprasad/delete-older-releases@v0.3.3
+        with:
+          keep_latest: 5
+          delete_prerelease_only: true
+          delete_tag_pattern: "dev-*"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

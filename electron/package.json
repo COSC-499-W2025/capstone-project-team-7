@@ -9,7 +9,11 @@
     "build": "tsc -p tsconfig.json",
     "build:electron": "tsc -p tsconfig.json",
     "build:watch": "tsc -p tsconfig.json -w",
-    "start": "electron ."
+    "start": "electron .",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist:linux": "electron-builder --linux"
   },
   "dependencies": {
     "electron": "^31.0.0"
@@ -17,6 +21,7 @@
   "devDependencies": {
     "@types/node": "^22.7.4",
     "cross-env": "^10.1.0",
+    "electron-builder": "^24.13.3",
     "ts-node": "^10.9.2",
     "typescript": "^5.6.3"
   }
