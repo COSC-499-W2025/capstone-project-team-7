@@ -125,9 +125,9 @@ export const Sidebar: React.FC = () => {
       <div className="flex-shrink-0 px-6 py-6 border-b border-gray-800/50">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center shadow-lg">
-            <span className="text-white font-bold text-base">L</span>
+            <span className="text-white font-bold text-base">D</span>
           </div>
-          <span className="text-xl font-bold text-white tracking-tight">Lumen</span>
+          <span className="text-xl font-bold text-white tracking-tight">DevFolio</span>
         </div>
       </div>
 
