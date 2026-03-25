@@ -7,7 +7,8 @@ export type MainTabValue = "overview" | "skills" | "content" | "ai-analysis" | "
 export type OverviewTabValue =
   | "overview-main"
   | "languages"
-  | "git-analysis";
+  | "git-analysis"
+  | "code-analysis";
 export type ToolsTabValue =
   | "tools-main"
   | "file-browser"

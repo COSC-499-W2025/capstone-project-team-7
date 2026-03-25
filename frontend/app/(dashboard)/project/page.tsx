@@ -98,6 +98,7 @@ const overviewSubTabs = [
   { value: "overview-main", label: "Overview", icon: LayoutDashboard },
   { value: "languages", label: "Languages", icon: BarChart3 },
   { value: "git-analysis", label: "Git Analysis", icon: GitBranch },
+  { value: "code-analysis", label: "Code Analysis", icon: FileCode2 },
 ] as const;
 
 // Sub-tabs for Skills & Progress section
@@ -112,7 +113,6 @@ const contentSubTabs = [
   { value: "documents", label: "Documents", icon: FileText },
   { value: "media", label: "Media", icon: Film },
   { value: "pdfs", label: "PDFs", icon: FileImage },
-  {value:"code-analysis", label: "Code Analysis", icon: FileCode2}
 ] as const;
 
 const toolsSubTabs = [
@@ -1150,6 +1150,33 @@ export default function ProjectPage() {
                 </Card>
               </TabsContent>
 
+              {/* Code Analysis */}
+              <TabsContent value="code-analysis" className="space-y-4">
+                <Card className="bg-white border border-gray-200">
+                  <CardHeader className="border-b border-gray-200 flex flex-row items-center justify-between">
+                    <CardTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                      <FileCode2 size={18} />
+                      Code Analysis
+                    </CardTitle>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setActiveOverviewTab("overview-main")}
+                    >
+                      Back to Overview
+                    </Button>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    <CodeAnalysisTab
+                      codeAnalysis={isPlainObject(scanData.code_analysis) ? scanData.code_analysis : null}
+                      isLoading={projectLoading}
+                      errorMessage={projectError}
+                    />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
             </Tabs>
           </TabsContent>
 
@@ -1415,15 +1442,6 @@ export default function ProjectPage() {
                   errorMessage={projectError}
                 />
               </TabsContent>
-
-                 {/* Code Analysis */}
-            <TabsContent value="code-analysis">
-              <CodeAnalysisTab
-                codeAnalysis={isPlainObject(scanData.code_analysis) ? scanData.code_analysis : null}
-                isLoading={projectLoading}
-                errorMessage={projectError}
-              />
-            </TabsContent>
 
               {/* Media */}
               <TabsContent value="media">

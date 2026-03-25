@@ -107,7 +107,6 @@ export async function request<T>(
     const canRetryWithRefresh =
       !result.ok &&
       result.status === 401 &&
-      !hasExplicitAuthorization &&
       path !== "/api/auth/refresh";
 
     if (canRetryWithRefresh) {

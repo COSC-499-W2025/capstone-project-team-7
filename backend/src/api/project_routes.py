@@ -1621,12 +1621,24 @@ async def list_projects(
         )
     
     except ProjectsServiceError as exc:
+        error_str = str(exc).lower()
+        if "jwt expired" in error_str or "jwt" in error_str and "expired" in error_str:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session expired",
+            )
         logger.error(f"Projects service error: {exc}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve projects: {str(exc)}",
         )
     except Exception as exc:
+        error_str = str(exc).lower()
+        if "jwt expired" in error_str or "jwt" in error_str and "expired" in error_str:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session expired",
+            )
         logger.exception("Unexpected error listing projects")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
