@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
 interface DropdownContextValue {
@@ -14,13 +14,29 @@ interface DropdownMenuProps {
 
 export function DropdownMenu({ children }: DropdownMenuProps) {
   const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
 
   const ctx = useMemo<DropdownContextValue>(() => ({ open, setOpen }), [open]);
 
-  return <DropdownContext.Provider value={ctx}>{children}</DropdownContext.Provider>;
+  return (
+    <DropdownContext.Provider value={ctx}>
+      <div ref={ref} className="relative">{children}</div>
+    </DropdownContext.Provider>
+  );
 }
 
-export function DropdownMenuTrigger({ className, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) {
+export function DropdownMenuTrigger({ className, onClick, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) {
   const ctx = useDropdownContext();
   return (
     <button
@@ -33,7 +49,10 @@ export function DropdownMenuTrigger({ className, ...props }: React.ButtonHTMLAtt
       )}
       aria-haspopup="menu"
       aria-expanded={ctx.open}
-      onClick={() => ctx.setOpen(!ctx.open)}
+      onClick={(e) => {
+        onClick?.(e);
+        ctx.setOpen(!ctx.open);
+      }}
       {...props}
     />
   );
@@ -49,7 +68,7 @@ export function DropdownMenuContent({ className, children, ...props }: DropdownM
     <div
       role="menu"
       className={cn(
-        "mt-2 min-w-[12rem] rounded-md border border-border bg-popover p-2 text-sm shadow-md shadow-black/20",
+        "absolute right-0 z-50 mt-2 min-w-[12rem] rounded-md border border-border bg-popover p-2 text-sm shadow-md shadow-black/20",
         className
       )}
       {...props}
