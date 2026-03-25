@@ -1170,7 +1170,11 @@ export default function ProjectPage() {
 
               {/* Contributions */}
               <TabsContent value="contributions">
-                <ContributionsTab contributionMetrics={scanData.contribution_metrics} />
+                <ContributionsTab contributionMetrics={scanData.contribution_metrics ? {
+                  ...scanData.contribution_metrics,
+                  user_commit_share: scanData.contribution_metrics.user_commit_share
+                    ?? ((scanData.contribution_ranking as Record<string, unknown> | undefined)?.user_commit_share as number | undefined),
+                } : scanData.contribution_metrics} />
               </TabsContent>
             </Tabs>
           </TabsContent>

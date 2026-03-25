@@ -59,8 +59,9 @@ export function ContributionsTab({ contributionMetrics }: ContributionsTabProps)
                   Top Contributors
                 </h4>
                 <div className="space-y-3">
-                  {contributionMetrics.contributors
-                    .slice(0, 5)
+                  {[...contributionMetrics.contributors]
+                    .sort((a, b) => (b.commits ?? 0) - (a.commits ?? 0))
+                    .slice(0, 6)
                     .map((contributor, index) => (
                     <div key={`${contributor.name ?? "unknown"}-${index}`} className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
