@@ -14,9 +14,9 @@ interface EmptyStateProps {
 export function EmptyState({ title, description, onRetry, variant = "card", className }: EmptyStateProps) {
   const content = (
     <>
-      <p className="text-sm text-gray-600">{title}</p>
+      <p className="text-sm font-medium text-foreground">{title}</p>
       {description && (
-        <p className="text-xs text-gray-400">{description}</p>
+        <p className="text-sm text-muted-foreground">{description}</p>
       )}
       {onRetry && (
         <div>
@@ -30,14 +30,14 @@ export function EmptyState({ title, description, onRetry, variant = "card", clas
 
   if (variant === "plain") {
     return (
-      <div className={cn("text-center py-12 space-y-3", className)}>
+      <div className={cn("empty-state space-y-3", className)}>
         {content}
       </div>
     );
   }
 
   return (
-    <Card className={cn("bg-white border border-gray-200", className)}>
+    <Card className={cn(className)}>
       <CardContent className="p-10 text-center space-y-3">
         {content}
       </CardContent>

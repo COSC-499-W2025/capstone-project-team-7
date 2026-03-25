@@ -12,29 +12,27 @@ export function ScanProgress({ percent, message }: ScanProgressProps) {
   const displayPercent = isIndeterminate ? 0 : Math.min(100, Math.max(0, percent));
 
   return (
-    <div className="w-full space-y-2">
-      {/* Progress bar container */}
-      <div className="h-2.5 w-full bg-gray-200 rounded-full overflow-hidden">
+    <div className="w-full space-y-3">
+      <div className="relative h-2.5 w-full overflow-hidden rounded-full border border-border bg-muted/80">
         {isIndeterminate ? (
-          // Indeterminate animation
-          <div className="h-full w-1/3 bg-gray-900 rounded-full animate-pulse" 
-               style={{ animation: "indeterminate 1.5s ease-in-out infinite" }} />
-        ) : (
-          // Determinate progress
           <div
-            className="h-full bg-gray-900 rounded-full transition-all duration-300 ease-out"
+            className="absolute inset-y-0 left-0 w-[42%] rounded-full bg-gradient-to-r from-foreground via-foreground/75 to-transparent"
+            style={{ animation: "indeterminate 1.3s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite" }}
+          />
+        ) : (
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-foreground to-foreground/75 transition-all duration-500 ease-out"
             style={{ width: `${displayPercent}%` }}
           />
         )}
       </div>
 
-      {/* Progress info */}
       <div className="flex items-center justify-between text-sm">
-        <span className="text-gray-600 truncate max-w-[80%]">
+        <span className="truncate max-w-[80%] text-muted-foreground">
           {message || (isIndeterminate ? "Starting scan..." : "Processing...")}
         </span>
         {!isIndeterminate && (
-          <span className="text-gray-900 font-medium">{Math.round(displayPercent)}%</span>
+          <span className="font-semibold text-foreground">{Math.round(displayPercent)}%</span>
         )}
       </div>
 
@@ -44,7 +42,7 @@ export function ScanProgress({ percent, message }: ScanProgressProps) {
             transform: translateX(-100%);
           }
           50% {
-            transform: translateX(200%);
+            transform: translateX(100%);
           }
           100% {
             transform: translateX(-100%);
