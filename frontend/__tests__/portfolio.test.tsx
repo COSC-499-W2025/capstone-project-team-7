@@ -95,6 +95,8 @@ vi.mock("@/lib/api/portfolio", () => ({
   getPortfolioChronology: vi.fn(),
   refreshPortfolio: vi.fn(),
   getPortfolioSettings: vi.fn(),
+  publishPortfolio: vi.fn(),
+  getProjectEvolution: vi.fn(),
 }));
 
 vi.mock("@/lib/api/projects", () => ({
@@ -121,6 +123,7 @@ import {
   getPortfolioChronology,
   refreshPortfolio,
   getPortfolioSettings,
+  getProjectEvolution,
 } from "@/lib/api/portfolio";
 import { getProjects, getSkills } from "@/lib/api/projects";
 import { getStoredToken, getStoredTokenCandidates } from "@/lib/auth";
@@ -137,6 +140,7 @@ const mockGetSkills = getSkills as Mock;
 const mockGetStoredToken = getStoredToken as Mock;
 const mockGetStoredTokenCandidates = getStoredTokenCandidates as Mock;
 const mockRefreshPortfolio = refreshPortfolio as Mock;
+const mockGetProjectEvolution = getProjectEvolution as Mock;
 
 const confirmMock = vi.fn();
 Object.defineProperty(window, "confirm", { value: confirmMock, writable: true });
@@ -192,6 +196,7 @@ beforeEach(() => {
       duplicate_groups: [],
     },
   });
+  mockGetProjectEvolution.mockResolvedValue([]);
 });
 
 // ---------------------------------------------------------------------------

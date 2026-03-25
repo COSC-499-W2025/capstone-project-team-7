@@ -114,23 +114,42 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold text-center">
-            Login
-          </CardTitle>
-          <CardDescription className="text-center">
-            Enter your credentials to access your account
-          </CardDescription>
-        </CardHeader>
+    <div className="auth-shell">
+      <div className="auth-panel">
+        <section className="auth-showcase">
+          <p className="page-kicker text-white/70">Investor-ready workspace</p>
+          <h1 className="text-4xl font-bold text-white">Lumen</h1>
+          <p className="mt-4 max-w-md text-sm leading-7 text-white/78">
+            Portfolio intelligence, structured project evidence, and polished presentation assets in one focused workspace.
+          </p>
+          <div className="mt-8 grid gap-3">
+            <div className="auth-metric">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/62">Evidence</p>
+              <p className="mt-1 text-sm text-white">Track scans, skills, and contribution signals across projects.</p>
+            </div>
+            <div className="auth-metric">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/62">Presentation</p>
+              <p className="mt-1 text-sm text-white">Turn project history into an investor-facing story quickly.</p>
+            </div>
+          </div>
+        </section>
 
-        <form onSubmit={handleSubmit}>
-          <CardContent className="space-y-4">
+        <Card className="auth-card w-full border-0 bg-transparent">
+          <CardHeader className="space-y-1 px-0 pt-0">
+            <CardTitle className="text-3xl font-bold">
+              Login
+            </CardTitle>
+            <CardDescription>
+              Enter your credentials to access your account
+            </CardDescription>
+          </CardHeader>
+
+          <form onSubmit={handleSubmit}>
+            <CardContent className="space-y-4 px-0">
             {error && (
               <div
                 data-testid="error-message"
-                className="p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-md"
+                className="p-3 text-sm text-red-800 bg-red-50 border-2 border-red-300 rounded-md"
               >
                 {error}
               </div>
@@ -196,27 +215,28 @@ export default function LoginPage() {
                 Forgot password?
               </Link>
             </div>
-          </CardContent>
+            </CardContent>
 
-          <CardFooter className="flex flex-col space-y-4">
-            <Button
-              type="submit"
-              data-testid="submit"
-              className="w-full"
-              disabled={isSubmitting || isLoading}
-            >
-              {isSubmitting ? "Signing in..." : "Sign in"}
-            </Button>
+            <CardFooter className="flex flex-col space-y-4 px-0 pb-0">
+              <Button
+                type="submit"
+                data-testid="submit"
+                className="w-full"
+                disabled={isSubmitting || isLoading}
+              >
+                {isSubmitting ? "Signing in..." : "Sign in"}
+              </Button>
 
-            <p className="text-sm text-center text-muted-foreground">
-              Don&apos;t have an account?{" "}
-              <Link href="/auth/signup" className="text-primary hover:underline">
-                Sign up
-              </Link>
-            </p>
-          </CardFooter>
-        </form>
-      </Card>
+              <p className="text-sm text-center text-muted-foreground">
+                Don&apos;t have an account?{" "}
+                <Link href="/auth/signup" className="text-primary hover:underline">
+                  Sign up
+                </Link>
+              </p>
+            </CardFooter>
+          </form>
+        </Card>
+      </div>
     </div>
   );
 }

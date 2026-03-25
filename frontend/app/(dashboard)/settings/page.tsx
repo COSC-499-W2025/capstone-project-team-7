@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { LoadingState } from "@/components/ui/loading-state";
+import { Spinner } from "@/components/ui/spinner";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -567,15 +569,25 @@ export default function SettingsPage() {
     }
   };
 
+  if (consentLoading) {
+    return (
+      <div className="page-container">
+        <div className="mx-auto w-full max-w-[1500px]">
+          <LoadingState message="Loading settings..." />
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="p-8 relative">
+    <div className="page-container">
       {/* Error Banner */}
       {consentError && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+        <div className="alert alert-error">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-red-900">Failed to load settings</p>
-              <p className="text-sm text-red-700 mt-1">{consentError}</p>
+              <p className="text-sm font-medium text-red-800">Failed to load settings</p>
+              <p className="text-sm text-red-800 mt-1">{consentError}</p>
             </div>
             <Button 
               onClick={handleRetryLoadSettings}
@@ -590,34 +602,34 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Loading Overlay */}
-      {consentLoading && (
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-2 border-primary border-t-transparent mx-auto mb-4" />
-            <p className="text-sm text-muted-foreground">Loading settings...</p>
-          </div>
-        </div>
-      )}
-
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
-        {/* Header with user status */}
-        <div className="p-8">
-          <div className="flex items-center justify-between">
+      <section className="page-card page-hero">
+        <div className="page-header">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
             <div>
-              <Link href="/" className="text-sm text-gray-600 hover:text-gray-900 mb-2 inline-block">
-                ← Back
-              </Link>
-              <h1 className="text-4xl font-bold text-gray-900 tracking-tight">Settings</h1>
-              <p className="text-gray-600 mt-2">Manage your account settings</p>
+              <div className="mb-3 flex items-center gap-2">
+                <span
+                  aria-hidden="true"
+                  className="h-px w-7 bg-gradient-to-r from-primary/75 to-primary/0"
+                />
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                  Operations Control
+                </p>
+              </div>
+              <h1 className="text-foreground">Settings</h1>
+              <p className="page-summary mt-3">Manage appearance, security, privacy, and scanning configuration.</p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <span className="dashboard-chip">Appearance</span>
+                <span className="dashboard-chip">Privacy</span>
+                <span className="dashboard-chip">Scanning</span>
+              </div>
             </div>
-            <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
+            <div className="rounded-[20px] border border-border bg-background/80 px-4 py-4 shadow-[0_16px_36px_rgba(15,23,42,0.08)]">
               {sessionLoading ? (
-                <p className="text-sm text-gray-600">Loading...</p>
+                <p className="text-sm text-muted-foreground">Loading...</p>
               ) : userSession ? (
                 <div>
-                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Logged in as</p>
-                  <p className="text-sm font-semibold text-gray-900 mt-1">{userSession.email || userSession.user_id.slice(0, 8)}</p>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Logged in as</p>
+                  <p className="text-sm font-semibold text-foreground mt-1">{userSession.email || userSession.user_id.slice(0, 8)}</p>
                   <Button
                     variant="outline"
                     size="sm"
@@ -629,9 +641,9 @@ export default function SettingsPage() {
                 </div>
                ) : (
                  <div>
-                   <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Status</p>
-                   <p className="text-sm text-gray-600 mt-1">Guest mode</p>
-                   <p className="text-xs text-gray-500 mt-2">
+                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</p>
+                   <p className="text-sm text-muted-foreground mt-1">Guest mode</p>
+                   <p className="text-xs text-muted-foreground mt-2">
                      <Link href="/auth/login" className="text-blue-600 hover:text-blue-700 underline">
                        Go to login page
                      </Link>
@@ -641,29 +653,56 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Settings Cards Container */}
       <div className="space-y-6">
+        <div className="grid gap-3 md:grid-cols-3">
+          <div className="info-tile">
+            <p className="info-tile-kicker">Session</p>
+            <p className="mt-3 text-base font-semibold text-foreground">
+              {userSession ? "Authenticated" : "Signed out"}
+            </p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {userSession ? "Settings sync with account-backed services." : "Sign in to manage encrypted services and scan profiles."}
+            </p>
+          </div>
+          <div className="info-tile">
+            <p className="info-tile-kicker">Encryption</p>
+            <p className="mt-3 text-base font-semibold text-foreground">
+              {encryptionReady ? "Secure storage active" : "Security needs review"}
+            </p>
+            <p className="mt-2 text-sm text-muted-foreground">{encryptionStatusDescription}</p>
+          </div>
+          <div className="info-tile">
+            <p className="info-tile-kicker">Current Profile</p>
+            <p className="mt-3 text-base font-semibold text-foreground">
+              {serverConfig?.current_profile || "Default"}
+            </p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Active scan profile and operational defaults.
+            </p>
+          </div>
+        </div>
+
         <Tabs defaultValue="general" className="space-y-0">
-          <TabsList className="h-auto w-full justify-start gap-2 rounded-xl border border-gray-200 bg-white p-2">
-            <TabsTrigger value="general" className="rounded-lg px-4 py-2">General</TabsTrigger>
-            <TabsTrigger value="security" className="rounded-lg px-4 py-2">Security & Privacy</TabsTrigger>
-            <TabsTrigger value="scanning" className="rounded-lg px-4 py-2">Scanning</TabsTrigger>
+          <TabsList className="h-auto w-full justify-start gap-2 overflow-x-auto">
+            <TabsTrigger value="general">General</TabsTrigger>
+            <TabsTrigger value="security">Security & Privacy</TabsTrigger>
+            <TabsTrigger value="scanning">Scanning</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="general" className="mt-6 border-0 bg-transparent p-0 shadow-none">
+          <TabsContent value="general" className="mt-6 border-0 bg-transparent p-0">
             <div className="space-y-6">
-              <Card className="bg-white rounded-xl shadow-sm border border-gray-200">
-                <CardHeader className="border-b border-gray-200">
-                  <CardTitle className="text-xl font-bold text-gray-900">Appearance</CardTitle>
-                  <CardDescription className="text-gray-600">Customize the look and feel of the application</CardDescription>
+              <Card className="bg-background">
+                <CardHeader className="pb-5">
+                  <CardTitle className="text-xl font-bold text-foreground">Appearance</CardTitle>
+                  <CardDescription className="text-muted-foreground">Customize the look and feel of the application</CardDescription>
                 </CardHeader>
-                <CardContent className="p-6 space-y-6">
+                <CardContent className="p-6 space-y-0 [&>*+*]:mt-5 [&>*+*]:border-t [&>*+*]:border-border [&>*+*]:pt-5">
                   <div className="space-y-2">
-                    <Label htmlFor="theme-select" className="text-sm font-medium text-gray-900">Theme</Label>
+                    <Label htmlFor="theme-select" className="text-sm font-medium text-foreground">Theme</Label>
                     <Select value={theme} onValueChange={(value) => handleThemeChange(value as Theme)}>
-                      <SelectTrigger id="theme-select" className="border-gray-300">
+                      <SelectTrigger id="theme-select" className="border-border">
                         <SelectValue placeholder="Select theme" />
                       </SelectTrigger>
                       <SelectContent>
@@ -671,13 +710,13 @@ export default function SettingsPage() {
                         <SelectItem value="dark">Dark</SelectItem>
                       </SelectContent>
                     </Select>
-                    <p className="text-xs text-gray-500 mt-1">Choose between light and dark theme</p>
+                    <p className="text-xs text-muted-foreground mt-1">Choose between light and dark theme</p>
                   </div>
 
-                  <div className="flex items-center justify-between py-3 border-t border-gray-200">
+                  <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <Label htmlFor="high-contrast" className="text-sm font-medium text-gray-900">High Contrast Mode</Label>
-                      <p className="text-xs text-gray-500">Increase contrast for better visibility</p>
+                      <Label htmlFor="high-contrast" className="text-sm font-medium text-foreground">High Contrast Mode</Label>
+                      <p className="text-xs text-muted-foreground">Increase contrast for better visibility</p>
                     </div>
                     <Switch
                       id="high-contrast"
@@ -688,68 +727,68 @@ export default function SettingsPage() {
                 </CardContent>
               </Card>
 
-              <Card className="bg-white rounded-xl shadow-sm border border-gray-200">
-                <CardHeader className="border-b border-gray-200">
-                  <CardTitle className="text-xl font-bold text-gray-900">Preferences</CardTitle>
-                  <CardDescription className="text-gray-600">Application configuration and default settings</CardDescription>
+              <Card className="bg-background">
+                <CardHeader className="pb-5">
+                  <CardTitle className="text-xl font-bold text-foreground">Preferences</CardTitle>
+                  <CardDescription className="text-muted-foreground">Application configuration and default settings</CardDescription>
                 </CardHeader>
-                <CardContent className="p-6 space-y-4">
+                <CardContent className="p-6 space-y-0 [&>*+*]:mt-5 [&>*+*]:border-t [&>*+*]:border-border [&>*+*]:pt-5">
                   <div className="space-y-2">
-                    <Label htmlFor="save-path" className="text-sm font-medium text-gray-900">Default save directory</Label>
+                    <Label htmlFor="save-path" className="text-sm font-medium text-foreground">Default save directory</Label>
                     <div className="flex gap-2">
                       <Input
                         id="save-path"
-                        className="border-gray-300 text-gray-900"
+                        className="border-border text-foreground"
                         value={settings.defaultSavePath ?? ""}
                         onChange={(e) => update({ defaultSavePath: e.target.value })}
                         placeholder="/path/to/directory"
                       />
-                      <Button variant="outline" onClick={selectDirectory} className="border-gray-300 hover:bg-gray-50 text-gray-900">
+                      <Button variant="outline" onClick={selectDirectory} className="border-border hover:bg-accent text-foreground">
                         Browse
                       </Button>
                     </div>
-                    <p className="text-xs text-gray-500 mt-1">Where files will be saved by default</p>
+                    <p className="text-xs text-muted-foreground mt-1">Where files will be saved by default</p>
                   </div>
 
-                  <div className="space-y-2 pt-2 border-t border-gray-200">
-                    <Label htmlFor="contribution-user-name" className="text-sm font-medium text-gray-900">Contribution display name</Label>
+                  <div className="space-y-2">
+                    <Label htmlFor="contribution-user-name" className="text-sm font-medium text-foreground">Contribution display name</Label>
                     <Input
                       id="contribution-user-name"
-                      className="border-gray-300 text-gray-900"
+                      className="border-border text-foreground"
                       value={settings.contributionUserName ?? ""}
                       onChange={(e) => update({ contributionUserName: e.target.value })}
                       placeholder="Jane Developer"
                     />
-                    <p className="text-xs text-gray-500 mt-1">Optional name used when matching git contributions</p>
+                    <p className="text-xs text-muted-foreground mt-1">Optional name used when matching git contributions</p>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="contribution-user-email" className="text-sm font-medium text-gray-900">Primary git email</Label>
+                    <Label htmlFor="contribution-user-email" className="text-sm font-medium text-foreground">Primary git email</Label>
                     <Input
                       id="contribution-user-email"
-                      className="border-gray-300 text-gray-900"
+                      className="border-border text-foreground"
                       value={settings.contributionUserEmail ?? ""}
                       onChange={(e) => update({ contributionUserEmail: e.target.value })}
                       placeholder="you@users.noreply.github.com"
                     />
-                    <p className="text-xs text-gray-500 mt-1">Used for contribution ranking when commit emails differ from login email</p>
+                    <p className="text-xs text-muted-foreground mt-1">Used for contribution ranking when commit emails differ from login email</p>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="contribution-email-aliases" className="text-sm font-medium text-gray-900">Git email aliases</Label>
+                    <Label htmlFor="contribution-email-aliases" className="text-sm font-medium text-foreground">Git email aliases</Label>
                     <Input
                       id="contribution-email-aliases"
-                      className="border-gray-300 text-gray-900"
+                      className="border-border text-foreground"
                       value={settings.contributionEmailAliases ?? ""}
                       onChange={(e) => update({ contributionEmailAliases: e.target.value })}
                       placeholder="work@example.com,personal@example.com"
                     />
-                    <p className="text-xs text-gray-500 mt-1">Comma-separated emails to include in contribution matching</p>
+                    <p className="text-xs text-muted-foreground mt-1">Comma-separated emails to include in contribution matching</p>
                   </div>
                 </CardContent>
-                <CardFooter className="bg-gray-50 border-t border-gray-200 p-6">
+                <CardFooter className="bg-muted/60 p-6">
                   <div className="flex items-center gap-3">
-                    <Button onClick={onSave} className="bg-gray-900 text-white hover:bg-gray-800 shadow-sm">
+                    <Button onClick={onSave} className="">
                       Save Changes
                     </Button>
                     {saveStatus && (
@@ -763,28 +802,28 @@ export default function SettingsPage() {
             </div>
           </TabsContent>
 
-          <TabsContent value="security" className="mt-6 border-0 bg-transparent p-0 shadow-none">
+          <TabsContent value="security" className="mt-6 border-0 bg-transparent p-0">
             <div className="space-y-6">
-              <Card className="bg-white rounded-xl shadow-sm border border-gray-200">
-                <CardHeader className="border-b border-gray-200">
-                  <CardTitle className="text-xl font-bold text-gray-900">Security</CardTitle>
-                  <CardDescription className="text-gray-600">Encryption status for sensitive data stored at rest</CardDescription>
+              <Card className="bg-background">
+                <CardHeader className="pb-5">
+                  <CardTitle className="text-xl font-bold text-foreground">Security</CardTitle>
+                  <CardDescription className="text-muted-foreground">Encryption status for sensitive data stored at rest</CardDescription>
                 </CardHeader>
                 <CardContent className="p-6 space-y-4">
                   {encryptionLoading ? (
-                    <div className="flex items-center gap-3 text-gray-600">
-                      <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-400 border-t-transparent" />
+                    <div className="flex items-center gap-3 text-muted-foreground">
+                      <Spinner size={24} />
                       <p className="text-sm">Checking encryption status...</p>
                     </div>
                   ) : encryptionError ? (
-                    <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <div className="bg-red-50 border-2 border-red-300 rounded-md p-4">
                       <div className="flex items-start justify-between gap-4">
                         <div>
                           <div className="flex items-center gap-2">
                             <XCircle className="h-5 w-5 text-red-600" />
-                            <p className="text-sm font-medium text-red-900">Unable to fetch encryption status</p>
+                            <p className="text-sm font-medium text-red-800">Unable to fetch encryption status</p>
                           </div>
-                          <p className="text-xs text-red-700 mt-1">{encryptionError}</p>
+                          <p className="text-xs text-red-800 mt-1">{encryptionError}</p>
                         </div>
                         <Button
                           onClick={handleRetryEncryptionStatus}
@@ -806,15 +845,15 @@ export default function SettingsPage() {
                             <AlertTriangle className="h-6 w-6 text-amber-600" />
                           )}
                           <div>
-                            <p className="text-sm font-semibold text-gray-900">{encryptionStatusLabel}</p>
-                            <p className="text-xs text-gray-500 mt-1">{encryptionStatusDescription}</p>
+                            <p className="text-sm font-semibold text-foreground">{encryptionStatusLabel}</p>
+                            <p className="text-xs text-muted-foreground mt-1">{encryptionStatusDescription}</p>
                           </div>
                         </div>
                         <Button
                           onClick={handleRetryEncryptionStatus}
                           variant="outline"
                           size="sm"
-                          className="border-gray-300 text-gray-700 hover:bg-gray-50"
+                          className="border-border text-muted-foreground hover:bg-accent"
                         >
                           <RefreshCw className="h-4 w-4 mr-2" />
                           Refresh
@@ -822,16 +861,16 @@ export default function SettingsPage() {
                       </div>
 
                       {encryptionReady ? (
-                        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                          <p className="text-sm text-green-900 font-medium">Encryption is active.</p>
+                        <div className="bg-green-50 border-2 border-green-300 rounded-md p-4">
+                          <p className="text-sm text-green-700 font-medium">Encryption is active.</p>
                           <p className="text-xs text-green-700 mt-1">Your stored data will be encrypted using the current backend configuration.</p>
                         </div>
                       ) : (
-                        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 space-y-2">
-                          <p className="text-sm text-yellow-900 font-medium">Action required</p>
-                          <p className="text-xs text-yellow-800">{encryptionGuidance}</p>
+                        <div className="bg-amber-50 border-2 border-amber-300 rounded-md p-4 space-y-2">
+                          <p className="text-sm text-amber-800 font-medium">Action required</p>
+                          <p className="text-xs text-amber-800">{encryptionGuidance}</p>
                           {encryptionStatus?.error && (
-                            <p className="text-xs text-yellow-800">Details: {encryptionStatus.error}</p>
+                            <p className="text-xs text-amber-800">Details: {encryptionStatus.error}</p>
                           )}
                           <Link href="/settings/encryption" className="text-xs text-blue-600 hover:text-blue-700 underline">
                             View encryption setup instructions
@@ -844,14 +883,14 @@ export default function SettingsPage() {
               </Card>
 
               {userSession && (
-                <Card className="bg-white rounded-xl shadow-sm border border-gray-200">
-                  <CardHeader className="border-b border-gray-200">
-                    <CardTitle className="text-xl font-bold text-gray-900">External Services</CardTitle>
-                    <CardDescription className="text-gray-600">Manage API keys for AI-powered features</CardDescription>
+                <Card className="bg-background">
+                  <CardHeader className="pb-5">
+                    <CardTitle className="text-xl font-bold text-foreground">External Services</CardTitle>
+                    <CardDescription className="text-muted-foreground">Manage API keys for AI-powered features</CardDescription>
                   </CardHeader>
-                  <CardContent className="p-6 space-y-4">
+                  <CardContent className="p-6 space-y-0 [&>*+*]:mt-5 [&>*+*]:border-t [&>*+*]:border-border [&>*+*]:pt-5">
                     {!consentData.external_services ? (
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <div className="bg-blue-50 border-2 border-blue-300 rounded-md p-4">
                         <p className="text-sm text-blue-800">
                           Enable external services in Privacy & Consent below to configure API keys.
                         </p>
@@ -860,18 +899,18 @@ export default function SettingsPage() {
                       <div className="space-y-4">
                         <div className="space-y-3">
                           <div className="flex items-center justify-between">
-                            <Label className="text-sm font-medium text-gray-900">OpenAI API Key</Label>
+                            <Label className="text-sm font-medium text-foreground">OpenAI API Key</Label>
                             <div className="flex items-center gap-2">
                               <span
                                 className={`inline-block h-2 w-2 rounded-full ${
-                                  openaiSecret ? "bg-green-500" : "bg-gray-300"
+                                  openaiSecret ? "bg-green-500" : "bg-muted-foreground"
                                 }`}
                               />
-                              <span className="text-sm text-gray-600">
+                              <span className="text-sm text-muted-foreground">
                                 {openaiSecret ? "Configured" : "Not configured"}
                               </span>
                               {openaiSecret?.updated_at && (
-                                <span className="text-xs text-gray-400 ml-2">
+                                <span className="text-xs text-muted-foreground ml-2">
                                   Updated {new Date(openaiSecret.updated_at).toLocaleDateString()}
                                 </span>
                               )}
@@ -882,7 +921,7 @@ export default function SettingsPage() {
                             <div className="relative flex-1">
                               <Input
                                 type={showApiKey ? "text" : "password"}
-                                className="border-gray-300 text-gray-900 pr-10"
+                                className="border-border text-foreground pr-10"
                                 value={apiKeyInput}
                                 onChange={(e) => setApiKeyInput(e.target.value)}
                                 placeholder="sk-..."
@@ -890,7 +929,7 @@ export default function SettingsPage() {
                               <button
                                 type="button"
                                 onClick={() => setShowApiKey(!showApiKey)}
-                                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
+                                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-muted-foreground text-xs"
                               >
                                 {showApiKey ? "Hide" : "Show"}
                               </button>
@@ -898,7 +937,7 @@ export default function SettingsPage() {
                             <Button
                               onClick={handleSaveApiKey}
                               disabled={!apiKeyInput.trim() || apiKeySaving}
-                              className="bg-gray-900 text-white hover:bg-gray-800 shadow-sm"
+                              className=""
                             >
                               {apiKeySaving ? "Saving..." : "Save Key"}
                             </Button>
@@ -910,7 +949,7 @@ export default function SettingsPage() {
                               size="sm"
                               onClick={handleVerifyApiKey}
                               disabled={!openaiSecret || apiKeyVerifying}
-                              className="border-gray-300 hover:bg-gray-50 text-gray-900"
+                              className="border-border hover:bg-accent text-foreground"
                             >
                               {apiKeyVerifying ? "Verifying..." : "Verify Key"}
                             </Button>
@@ -938,44 +977,44 @@ export default function SettingsPage() {
                       </div>
                     )}
                   </CardContent>
-                  <CardFooter className="bg-gray-50 border-t border-gray-200 p-6">
-                    <p className="text-xs text-gray-500">
+                  <CardFooter className="bg-muted/60 p-6">
+                    <p className="text-xs text-muted-foreground">
                       API keys are encrypted at rest and never returned after saving.
                     </p>
                   </CardFooter>
                 </Card>
               )}
 
-              <Card className="bg-white rounded-xl shadow-sm border border-gray-200">
-                <CardHeader className="border-b border-gray-200">
+              <Card className="bg-background">
+                <CardHeader className="pb-5">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <CardTitle className="text-xl font-bold text-gray-900">Privacy & Consent</CardTitle>
-                      <CardDescription className="text-gray-600">Manage your data sharing preferences and consent history</CardDescription>
+                      <CardTitle className="text-xl font-bold text-foreground">Privacy & Consent</CardTitle>
+                      <CardDescription className="text-muted-foreground">Manage your data sharing preferences and consent history</CardDescription>
                     </div>
                     <Link href="/settings/consent">
-                      <Button variant="outline" className="border-gray-300 hover:bg-gray-50 text-gray-900">
+                      <Button variant="outline" className="border-border hover:bg-accent text-foreground">
                         Open consent page
                       </Button>
                     </Link>
                   </div>
                 </CardHeader>
                 <CardContent className="p-6 space-y-4">
-                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-2">
+                  <div className="bg-muted border border-border rounded-md p-4 space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-700">Data Access:</span>
-                      <span className={`text-sm font-medium ${consentData.data_access ? "text-green-600" : "text-gray-400"}`}>
+                      <span className="text-sm text-muted-foreground">Data Access:</span>
+                      <span className={`text-sm font-medium ${consentData.data_access ? "text-green-600" : "text-muted-foreground"}`}>
                         {consentData.data_access ? "Granted" : "Not granted"}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-700">External AI Services:</span>
-                      <span className={`text-sm font-medium ${consentData.external_services ? "text-green-600" : "text-gray-400"}`}>
+                      <span className="text-sm text-muted-foreground">External AI Services:</span>
+                      <span className={`text-sm font-medium ${consentData.external_services ? "text-green-600" : "text-muted-foreground"}`}>
                         {consentData.external_services ? "Granted" : "Not granted"}
                       </span>
                     </div>
                   </div>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-muted-foreground">
                     Use the dedicated consent page to update, withdraw, or review consent notices.
                   </p>
                 </CardContent>
@@ -983,25 +1022,25 @@ export default function SettingsPage() {
             </div>
           </TabsContent>
 
-          <TabsContent value="scanning" className="mt-6 border-0 bg-transparent p-0 shadow-none">
+          <TabsContent value="scanning" className="mt-6 border-0 bg-transparent p-0">
             <div className="space-y-6">
               {userSession ? (
-                <Card className="bg-white rounded-xl shadow-sm border border-gray-200">
-                  <CardHeader className="border-b border-gray-200">
-                    <CardTitle className="text-xl font-bold text-gray-900">Scan Configuration</CardTitle>
-                    <CardDescription className="text-gray-600">Configure scan profiles and analysis settings</CardDescription>
+                <Card className="bg-background">
+                  <CardHeader className="pb-5">
+                    <CardTitle className="text-xl font-bold text-foreground">Scan Configuration</CardTitle>
+                    <CardDescription className="text-muted-foreground">Configure scan profiles and analysis settings</CardDescription>
                   </CardHeader>
-                  <CardContent className="p-6 space-y-4">
+                  <CardContent className="p-6 space-y-0 [&>*+*]:mt-5 [&>*+*]:border-t [&>*+*]:border-border [&>*+*]:pt-5">
                     {serverConfig ? (
                       <>
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
-                            <Label htmlFor="profile-select" className="text-sm font-medium text-gray-900">Scan Profile</Label>
+                            <Label htmlFor="profile-select" className="text-sm font-medium text-foreground">Scan Profile</Label>
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={openCreateProfileDialog}
-                              className="border-gray-300 hover:bg-gray-50 text-gray-900"
+                              className="border-border hover:bg-accent text-foreground"
                             >
                               Create Profile
                             </Button>
@@ -1013,7 +1052,7 @@ export default function SettingsPage() {
                                 onValueChange={handleProfileSwitch}
                                 disabled={configLoading}
                               >
-                                <SelectTrigger id="profile-select" className="border-gray-300">
+                                <SelectTrigger id="profile-select" className="border-border">
                                   <SelectValue placeholder="Select profile" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -1024,13 +1063,13 @@ export default function SettingsPage() {
                                   ))}
                                 </SelectContent>
                               </Select>
-                              <p className="text-xs text-gray-500 mt-1">
+                              <p className="text-xs text-muted-foreground mt-1">
                                 {configLoading ? "Switching profile..." : "Changes are saved automatically when you switch profiles"}
                               </p>
                               {serverConfig.current_profile && profiles[serverConfig.current_profile] && (
-                                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-2">
+                                <div className="bg-muted border border-border rounded-md p-3 space-y-2">
                                   <div className="flex items-center justify-between">
-                                    <p className="text-xs font-medium text-gray-700">Profile Details</p>
+                                    <p className="text-xs font-medium text-muted-foreground">Profile Details</p>
                                     <Button
                                       variant="ghost"
                                       size="sm"
@@ -1042,44 +1081,44 @@ export default function SettingsPage() {
                                   </div>
                                   {profiles[serverConfig.current_profile].extensions && profiles[serverConfig.current_profile].extensions.length > 0 && (
                                     <div>
-                                      <p className="text-xs text-gray-600">Extensions:</p>
-                                      <p className="text-xs text-gray-900 font-mono">{profiles[serverConfig.current_profile].extensions.join(", ")}</p>
+                                      <p className="text-xs text-muted-foreground">Extensions:</p>
+                                      <p className="text-xs text-foreground font-mono">{profiles[serverConfig.current_profile].extensions.join(", ")}</p>
                                     </div>
                                   )}
                                   {profiles[serverConfig.current_profile].exclude_dirs && profiles[serverConfig.current_profile].exclude_dirs.length > 0 && (
                                     <div>
-                                      <p className="text-xs text-gray-600">Excluded Directories:</p>
-                                      <p className="text-xs text-gray-900 font-mono">{profiles[serverConfig.current_profile].exclude_dirs.join(", ")}</p>
+                                      <p className="text-xs text-muted-foreground">Excluded Directories:</p>
+                                      <p className="text-xs text-foreground font-mono">{profiles[serverConfig.current_profile].exclude_dirs.join(", ")}</p>
                                     </div>
                                   )}
                                 </div>
                               )}
                             </>
                           ) : (
-                            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                              <p className="text-sm text-yellow-800">No profiles found. Create your first scan profile to get started.</p>
+                            <div className="bg-amber-50 border-2 border-amber-300 rounded-md p-4">
+                              <p className="text-sm text-amber-800">No profiles found. Create your first scan profile to get started.</p>
                             </div>
                           )}
                         </div>
 
                         <div className="space-y-2">
-                          <Label htmlFor="max-file-size" className="text-sm font-medium text-gray-900">Max File Size (MB)</Label>
+                          <Label htmlFor="max-file-size" className="text-sm font-medium text-foreground">Max File Size (MB)</Label>
                           <Input
                             id="max-file-size"
                             type="number"
-                            className="border-gray-300 text-gray-900"
+                            className="border-border text-foreground"
                             value={serverConfig.max_file_size_mb || 100}
                             onChange={(e) => setServerConfig({ ...serverConfig, max_file_size_mb: parseInt(e.target.value, 10) || 100 })}
                             min={1}
                             max={1000}
                           />
-                          <p className="text-xs text-gray-500 mt-1">Skip files larger than this size</p>
+                          <p className="text-xs text-muted-foreground mt-1">Skip files larger than this size</p>
                         </div>
 
-                        <div className="flex items-center justify-between py-3 border-t border-gray-200">
+                        <div className="flex items-center justify-between">
                           <div className="space-y-0.5">
-                            <Label htmlFor="follow-symlinks" className="text-sm font-medium text-gray-900">Follow Symlinks</Label>
-                            <p className="text-xs text-gray-500">Include symbolic links in file analysis</p>
+                            <Label htmlFor="follow-symlinks" className="text-sm font-medium text-foreground">Follow Symlinks</Label>
+                            <p className="text-xs text-muted-foreground">Include symbolic links in file analysis</p>
                           </div>
                           <Switch
                             id="follow-symlinks"
@@ -1089,18 +1128,18 @@ export default function SettingsPage() {
                         </div>
                       </>
                     ) : (
-                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center text-gray-600">
+                      <div className="bg-muted border border-border rounded-md p-4 text-center text-muted-foreground">
                         Loading configuration...
                       </div>
                     )}
                   </CardContent>
-                  <CardFooter className="bg-gray-50 border-t border-gray-200 p-6">
+                  <CardFooter className="bg-muted/60 p-6">
                     <div className="flex flex-col gap-2">
                       <div className="flex items-center gap-3">
                         <Button
                           onClick={onSaveConfig}
                           disabled={!serverConfig || configLoading}
-                          className="bg-gray-900 text-white hover:bg-gray-800 shadow-sm"
+                          className=""
                         >
                           {configLoading ? "Saving..." : "Save Settings"}
                         </Button>
@@ -1110,18 +1149,18 @@ export default function SettingsPage() {
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-gray-500">Profile selection is saved automatically. This button saves file size and symlink settings.</p>
+                      <p className="text-xs text-muted-foreground">Profile selection is saved automatically. This button saves file size and symlink settings.</p>
                     </div>
                   </CardFooter>
                 </Card>
               ) : (
-                <Card className="bg-white rounded-xl shadow-sm border border-gray-200">
-                  <CardHeader className="border-b border-gray-200">
-                    <CardTitle className="text-xl font-bold text-gray-900">Scan Configuration</CardTitle>
-                    <CardDescription className="text-gray-600">Sign in to manage scan profiles and analysis behavior</CardDescription>
+                <Card className="bg-background">
+                  <CardHeader className="pb-5">
+                    <CardTitle className="text-xl font-bold text-foreground">Scan Configuration</CardTitle>
+                    <CardDescription className="text-muted-foreground">Sign in to manage scan profiles and analysis behavior</CardDescription>
                   </CardHeader>
                   <CardContent className="p-6">
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-muted-foreground">
                       Scan profile management is available after authentication.
                     </p>
                   </CardContent>
@@ -1134,15 +1173,15 @@ export default function SettingsPage() {
 
       {/* Clear API Key Confirmation Dialog */}
       <Dialog open={showClearConfirm} onOpenChange={setShowClearConfirm}>
-        <DialogContent className="bg-white max-w-sm">
+        <DialogContent className="bg-background max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-gray-900">Clear API Key</DialogTitle>
-            <DialogDescription className="text-gray-600">
+            <DialogTitle className="text-foreground">Clear API Key</DialogTitle>
+            <DialogDescription className="text-muted-foreground">
               This will permanently remove your stored OpenAI API key. You will need to re-enter it to use AI features.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowClearConfirm(false)} className="border-gray-300 text-gray-900">
+            <Button variant="outline" onClick={() => setShowClearConfirm(false)} className="border-border text-foreground">
               Cancel
             </Button>
             <Button onClick={handleClearApiKey} className="bg-red-600 text-white hover:bg-red-700">
@@ -1154,73 +1193,73 @@ export default function SettingsPage() {
 
       {/* Dialogs */}
       <Dialog open={showProfileDialog} onOpenChange={setShowProfileDialog}>
-        <DialogContent className="bg-white max-w-2xl">
+        <DialogContent className="bg-background max-w-2xl">
           <DialogHeader>
-            <DialogTitle className="text-gray-900">
+            <DialogTitle className="text-foreground">
               {editingProfile ? `Edit Profile: ${editingProfile}` : "Create New Scan Profile"}
             </DialogTitle>
-            <DialogDescription className="text-gray-600">
+            <DialogDescription className="text-muted-foreground">
               Configure file extensions and directories for this scan profile
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="profile-name" className="text-sm font-medium text-gray-900">Profile Name</Label>
+              <Label htmlFor="profile-name" className="text-sm font-medium text-foreground">Profile Name</Label>
               <Input
                 id="profile-name"
-                className="border-gray-300 text-gray-900"
+                className="border-border text-foreground"
                 value={profileForm.name}
                 onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
                 placeholder="e.g., python_only, web_only"
                 disabled={!!editingProfile}
               />
-              <p className="text-xs text-gray-500">Unique identifier for this profile</p>
+              <p className="text-xs text-muted-foreground">Unique identifier for this profile</p>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="profile-description" className="text-sm font-medium text-gray-900">Description</Label>
+              <Label htmlFor="profile-description" className="text-sm font-medium text-foreground">Description</Label>
               <Input
                 id="profile-description"
-                className="border-gray-300 text-gray-900"
+                className="border-border text-foreground"
                 value={profileForm.description}
                 onChange={(e) => setProfileForm({ ...profileForm, description: e.target.value })}
                 placeholder="e.g., Python projects only"
               />
-              <p className="text-xs text-gray-500">Brief description of what this profile includes</p>
+              <p className="text-xs text-muted-foreground">Brief description of what this profile includes</p>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="profile-extensions" className="text-sm font-medium text-gray-900">File Extensions</Label>
+              <Label htmlFor="profile-extensions" className="text-sm font-medium text-foreground">File Extensions</Label>
               <Input
                 id="profile-extensions"
-                className="border-gray-300 text-gray-900"
+                className="border-border text-foreground"
                 value={extensionsInput}
                 onChange={(e) => setExtensionsInput(e.target.value)}
                 placeholder=".py, .pyx, .pyi"
               />
-              <p className="text-xs text-gray-500">Comma-separated list of file extensions to include</p>
+              <p className="text-xs text-muted-foreground">Comma-separated list of file extensions to include</p>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="profile-exclude" className="text-sm font-medium text-gray-900">Excluded Directories</Label>
+              <Label htmlFor="profile-exclude" className="text-sm font-medium text-foreground">Excluded Directories</Label>
               <Input
                 id="profile-exclude"
-                className="border-gray-300 text-gray-900"
+                className="border-border text-foreground"
                 value={excludeDirsInput}
                 onChange={(e) => setExcludeDirsInput(e.target.value)}
                 placeholder="node_modules, .git, __pycache__"
               />
-              <p className="text-xs text-gray-500">Comma-separated list of directories to exclude</p>
+              <p className="text-xs text-muted-foreground">Comma-separated list of directories to exclude</p>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowProfileDialog(false)} className="border-gray-300 text-gray-900">
+            <Button variant="outline" onClick={() => setShowProfileDialog(false)} className="border-border text-foreground">
               Cancel
             </Button>
             <Button 
               onClick={handleSaveProfile} 
               disabled={!profileForm.name.trim() || configLoading}
-              className="bg-gray-900 text-white hover:bg-gray-800"
+              className=""
             >
               {configLoading ? "Saving..." : editingProfile ? "Update Profile" : "Create Profile"}
             </Button>

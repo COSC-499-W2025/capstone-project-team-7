@@ -188,56 +188,55 @@ export default function ConsentManagementPage() {
   };
 
   return (
-    <div className="p-8">
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 mb-6">
-        <Link href="/settings" className="text-sm text-gray-600 hover:text-gray-900 mb-2 inline-block">
-          ← Back to settings
+    <div className="page-container">
+      <div className="page-card page-hero">
+        <div className="page-header">
+        <Link href="/settings" className="text-sm text-muted-foreground hover:text-foreground mb-2 inline-block">
+          &larr; Back to settings
         </Link>
-        <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Consent Management</h1>
-        <p className="text-gray-600 mt-2">
+        <p className="page-kicker">Privacy Controls</p>
+        <h1 className="text-2xl font-bold text-foreground tracking-tight">Consent Management</h1>
+        <p className="page-summary">
           Review and update consent for data storage and external AI services.
         </p>
-        <p className="text-xs text-gray-500 mt-3">Last updated: {updatedAtLabel}</p>
+        <p className="text-xs text-muted-foreground mt-3">Last updated: {updatedAtLabel}</p>
+        </div>
       </div>
 
       {authChecked && !isAuthenticated && (
-        <Card className="bg-white border border-gray-200">
+        <Card>
           <CardHeader>
-            <CardTitle className="text-gray-900">Authentication Required</CardTitle>
+            <CardTitle>Authentication Required</CardTitle>
             <CardDescription>Please log in from Settings before managing consent.</CardDescription>
           </CardHeader>
           <CardContent>
             <Link href="/settings">
-              <Button className="bg-gray-900 text-white hover:bg-gray-800">Go to settings</Button>
+              <Button>Go to settings</Button>
             </Link>
           </CardContent>
         </Card>
       )}
 
       {isAuthenticated && loading && (
-        <Card className="bg-white border border-gray-200">
-          <CardContent className="p-6 text-sm text-gray-600">Loading consent preferences...</CardContent>
+        <Card>
+          <CardContent className="p-6 text-sm text-muted-foreground">Loading consent preferences...</CardContent>
         </Card>
       )}
 
       {isAuthenticated && !loading && (
         <div className="space-y-6">
           {error && (
-            <Card className="bg-red-50 border border-red-200">
-              <CardContent className="p-4 text-sm text-red-700">{error}</CardContent>
-            </Card>
+            <div className="alert alert-error">{error}</div>
           )}
 
           {message && (
-            <Card className="bg-green-50 border border-green-200">
-              <CardContent className="p-4 text-sm text-green-700">{message}</CardContent>
-            </Card>
+            <div className="alert alert-success">{message}</div>
           )}
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card className="bg-white border border-gray-200">
+            <Card>
               <CardHeader>
-                <CardTitle className="text-gray-900">File Access</CardTitle>
+                <CardTitle>File Access</CardTitle>
                 <CardDescription>
                   Allows file analysis and metadata storage for your account.
                 </CardDescription>
@@ -245,8 +244,8 @@ export default function ConsentManagementPage() {
               <CardContent className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <Label className="text-sm font-medium text-gray-900">File analysis and storage</Label>
-                    <p className="text-xs text-gray-500 mt-1">
+                    <Label className="text-sm font-medium">File analysis and storage</Label>
+                    <p className="text-xs text-muted-foreground mt-1">
                       Required for project scanning, history, and persistence.
                     </p>
                   </div>
@@ -257,20 +256,20 @@ export default function ConsentManagementPage() {
                   />
                 </div>
 
-                <div className="border-t border-gray-200 pt-3">
+                <div className="border-t border-border pt-3">
                   <div>
-                    <span className="text-sm text-gray-700 block">
+                    <span className="text-sm text-foreground block">
                       {status?.data_access ? "Granted" : "Not granted"}
                     </span>
-                    <span className="text-xs text-gray-500 block mt-1">Updated: {dataAccessUpdatedAtLabel}</span>
+                    <span className="text-xs text-muted-foreground block mt-1">Updated: {dataAccessUpdatedAtLabel}</span>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="bg-white border border-gray-200">
+            <Card>
               <CardHeader>
-                <CardTitle className="text-gray-900">External Data</CardTitle>
+                <CardTitle>External Data</CardTitle>
                 <CardDescription>
                   Allows external AI/LLM providers for advanced analysis features.
                 </CardDescription>
@@ -278,8 +277,8 @@ export default function ConsentManagementPage() {
               <CardContent className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <Label className="text-sm font-medium text-gray-900">External providers</Label>
-                    <p className="text-xs text-gray-500 mt-1">
+                    <Label className="text-sm font-medium">External providers</Label>
+                    <p className="text-xs text-muted-foreground mt-1">
                       Requires data access consent to be enabled.
                     </p>
                   </div>
@@ -294,32 +293,32 @@ export default function ConsentManagementPage() {
                   <p className="text-xs text-amber-600">Enable data access first to grant external services consent.</p>
                 )}
 
-                <div className="border-t border-gray-200 pt-3">
+                <div className="border-t border-border pt-3">
                   <div>
-                    <span className="text-sm text-gray-700 block">
+                    <span className="text-sm text-foreground block">
                       {status?.external_services ? "Granted" : "Not granted"}
                     </span>
-                    <span className="text-xs text-gray-500 block mt-1">Updated: {externalUpdatedAtLabel}</span>
+                    <span className="text-xs text-muted-foreground block mt-1">Updated: {externalUpdatedAtLabel}</span>
                   </div>
                 </div>
               </CardContent>
             </Card>
           </div>
 
-          <Card className="bg-white border border-gray-200">
+          <Card>
             <CardHeader>
-              <CardTitle className="text-gray-900">Consent Notices</CardTitle>
+              <CardTitle>Consent Notices</CardTitle>
               <CardDescription>
                 Transparency details for each consent category.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {[notices.dataAccess, notices.externalServices].filter(Boolean).map((notice) => (
-                <div key={notice!.service} className="border border-gray-200 rounded-lg p-4">
-                  <p className="text-sm font-semibold text-gray-900">{formatNoticeService(notice!.service)}</p>
-                  <p className="text-sm text-gray-600 mt-1">{notice!.privacy_notice}</p>
+                <div key={notice!.service} className="border-2 border-border rounded-md p-4">
+                  <p className="text-sm font-semibold text-foreground">{formatNoticeService(notice!.service)}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{notice!.privacy_notice}</p>
                   {notice!.implications.length > 0 && (
-                    <ul className="list-disc pl-5 mt-2 text-xs text-gray-600 space-y-1">
+                    <ul className="list-disc pl-5 mt-2 text-xs text-muted-foreground space-y-1">
                       {notice!.implications.map((item) => (
                         <li key={item}>{item}</li>
                       ))}
