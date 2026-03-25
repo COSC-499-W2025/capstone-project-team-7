@@ -20,7 +20,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { formatOperationError } from "@/lib/error-utils";
 import type { AuthSessionInfo } from "@/lib/auth";
 import type { ConfigResponse, ProfilesResponse, EncryptionStatus, SecretStatusItem } from "@/lib/api.types";
-import { AlertTriangle, ArrowLeft, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -605,22 +605,10 @@ export default function SettingsPage() {
         <div className="page-header">
           <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
             <div>
-              <div className="mb-3 flex items-center gap-3">
-                <Link
-                  href="/"
-                  className="inline-flex items-center gap-2 text-sm text-muted-foreground/70 transition-[color,transform] duration-200 hover:-translate-x-0.5 hover:text-foreground"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                  <span>Back</span>
-                </Link>
-                <span
-                  aria-hidden="true"
-                  className="h-4 w-px bg-gradient-to-b from-transparent via-border to-transparent"
-                />
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                  Operations Control
-                </p>
-              </div>
+              <Link href="/" className="text-sm text-muted-foreground hover:text-foreground mb-2 inline-block">
+                ← Back
+              </Link>
+              <p className="page-kicker">Operations Control</p>
               <h1 className="text-foreground">Settings</h1>
               <p className="page-summary mt-3">Manage appearance, security, privacy, and scanning configuration.</p>
               <div className="mt-4 flex flex-wrap gap-2">

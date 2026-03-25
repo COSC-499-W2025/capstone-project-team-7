@@ -22,57 +22,46 @@ kill_port 3000
 
 echo "=== Setting up environment ==="
 
-frontend_deps_healthy() {
-    [ -f "node_modules/react/cjs/react.development.js" ] && [ -f "node_modules/next/package.json" ]
-}
-
-electron_deps_healthy() {
-    [ -f "electron/node_modules/electron/package.json" ] || [ -f "node_modules/electron/package.json" ]
-}
-
 # Setup backend (Python)
-BACKEND_VENV=""
-if [ -x "backend/.venv/bin/python" ]; then
-    BACKEND_VENV="backend/.venv"
-elif [ -x "backend/venv/bin/python" ]; then
-    BACKEND_VENV="backend/venv"
-else
+if [ ! -d "backend/venv" ]; then
     echo "Creating Python virtual environment..."
     cd backend
-    python3.12 -m venv .venv
-    .venv/bin/python -m pip install -r requirements.txt
+    python3.12 -m venv venv
+    source venv/bin/activate
+    pip install -r requirements.txt
     cd ..
-    BACKEND_VENV="backend/.venv"
+else
+    echo "Python venv already exists, skipping..."
 fi
 
-echo "Using backend environment: $BACKEND_VENV"
-
-if frontend_deps_healthy && electron_deps_healthy; then
-    echo "Workspace frontend/electron dependencies look healthy, skipping npm install..."
+# Setup frontend
+if [ ! -d "frontend/node_modules" ]; then
+    echo "Installing frontend dependencies..."
+    cd frontend
+    npm install
+    cd ..
 else
-    echo "Installing workspace dependencies (frontend + electron + root)..."
-    npm run install:all
+    echo "Frontend already installed, skipping..."
+fi
+
+# Setup electron
+if [ ! -d "electron/node_modules" ]; then
+    echo "Installing Electron dependencies..."
+    cd electron
+    npm install
+    cd ..
+else
+    echo "Electron already installed, skipping..."
 fi
 
 echo "=== Starting services ==="
 
 # Start backend
-(cd backend && "../$BACKEND_VENV/bin/python" -m uvicorn src.main:app --reload --port 8000) &
+(source backend/venv/bin/activate && cd backend && uvicorn src.main:app --reload --port 8000) &
 BACK_PID=$!
 
 # Give backend a moment to start before frontend
-echo "Waiting for backend to start..."
-for i in {1..20}; do
-    if curl -s http://localhost:8000/health > /dev/null 2>&1; then
-        echo "Backend ready!"
-        break
-    fi
-    if ! kill -0 "$BACK_PID" 2>/dev/null; then
-        echo "Backend failed to start."
-        exit 1
-    fi
-    sleep 1
-done
+sleep 2
 
 # Start frontend
 (cd frontend && npm run dev) &

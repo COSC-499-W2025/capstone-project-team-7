@@ -398,13 +398,6 @@
       box-shadow 180ms ease;
   }
 
-  .dark .dashboard-panel {
-    background:
-      radial-gradient(circle at top right, hsl(var(--primary) / 0.08), transparent 24%),
-      linear-gradient(180deg, hsl(224 18% 17%), hsl(223 15% 24%));
-    box-shadow: 0 22px 52px rgba(0, 0, 0, 0.34);
-  }
-
   .dashboard-panel:hover {
     transform: translateY(-2px);
     border-color: hsl(var(--primary) / var(--opacity-hover));
