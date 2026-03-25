@@ -1153,6 +1153,31 @@ class ProjectsService:
             error = f"{type(exc).__name__}: {exc}"
             logging.error(f"Database update error: {error}")
             return False, error
+
+    def delete_project_thumbnail(self, project_id: str) -> Tuple[bool, Optional[str]]:
+        try:
+            bucket_name = os.getenv("THUMBNAIL_BUCKET", "thumbnails")
+
+            result = self.client.table("projects").select("thumbnail_url").eq("id", project_id).execute()
+            if not result.data:
+                return False, f"Project {project_id} not found"
+
+            thumbnail_url = result.data[0].get("thumbnail_url")
+            if isinstance(thumbnail_url, str):
+                file_path = self._extract_thumbnail_file_path(thumbnail_url, bucket_name)
+                if file_path:
+                    try:
+                        self.client.storage.from_(bucket_name).remove([file_path])
+                        logging.info(f"Deleted thumbnail from storage: {file_path}")
+                    except Exception as remove_exc:
+                        logging.warning(f"Failed to delete thumbnail from storage: {remove_exc}")
+
+            self.client.table("projects").update({"thumbnail_url": None}).eq("id", project_id).execute()
+            return True, None
+        except Exception as exc:
+            error = f"{type(exc).__name__}: {exc}"
+            logging.error(f"Failed to delete project thumbnail: {error}")
+            return False, error
     
     def _convert_image_to_jpg(self, image_path: str) -> Optional[bytes]:
         """Convert an image file to JPG format.
@@ -1231,19 +1256,29 @@ class ProjectsService:
                 return  # No existing thumbnail to delete
             
             thumbnail_url = result.data[0]["thumbnail_url"]
-            
-            # Extract file path from URL (format: .../storage/v1/object/public/bucket_name/file_path)
-            if "/storage/v1/object/public/" in thumbnail_url:
-                parts = thumbnail_url.split("/storage/v1/object/public/", 1)
-                if len(parts) == 2:
-                    # Remove bucket name prefix to get just the file path
-                    path_with_bucket = parts[1]
-                    if "/" in path_with_bucket:
-                        file_path = path_with_bucket.split("/", 1)[1]
-                        
-                        # Delete the old thumbnail from storage
-                        self.client.storage.from_(bucket_name).remove([file_path])
-                        logging.info(f"Deleted old thumbnail: {file_path}")
+            file_path = self._extract_thumbnail_file_path(thumbnail_url, bucket_name)
+            if file_path:
+                self.client.storage.from_(bucket_name).remove([file_path])
+                logging.info(f"Deleted old thumbnail: {file_path}")
         except Exception as exc:
             # Log but don't fail the upload if cleanup fails
             logging.warning(f"Failed to delete old thumbnail: {exc}")
+
+    def _extract_thumbnail_file_path(self, thumbnail_url: str, bucket_name: str) -> Optional[str]:
+        marker = "/storage/v1/object/public/"
+        if marker not in thumbnail_url:
+            return None
+
+        from urllib.parse import unquote
+
+        path_with_bucket = thumbnail_url.split(marker, 1)[1].split("?", 1)[0].lstrip("/")
+        if "/" not in path_with_bucket:
+            return None
+
+        raw_bucket, raw_file_path = path_with_bucket.split("/", 1)
+        decoded_bucket = unquote(raw_bucket)
+        if decoded_bucket != bucket_name:
+            return None
+
+        decoded_file_path = unquote(raw_file_path)
+        return decoded_file_path or None
