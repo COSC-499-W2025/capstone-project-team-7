@@ -15,6 +15,7 @@ import { ContributionsTab } from "@/components/project/contributions-tab";
 import { ToolsMainTab } from "@/components/project/tools-main-tab";
 import { PdfAnalysisTab } from "@/components/project/pdf-analysis-tab";
 import { getStoredToken } from "@/lib/auth";
+import { useAuth } from "@/hooks/use-auth";
 import { consent as consentApi, secrets as secretsApi } from "@/lib/api";
 import {CodeAnalysisTab} from "@/components/project/code-analysis-tab";
 import { GitAnalysisTab } from "@/components/project/git-analysis-tab";
@@ -144,6 +145,7 @@ export default function ProjectPage() {
     projectPageSelectors.setRetryLoadProject
   );
 
+  const { user: authUser } = useAuth();
   const isMountedRef = useRef(true);
 
   // Export HTML state
@@ -574,6 +576,59 @@ export default function ProjectPage() {
 
   const scanData =
     useProjectPageStore(projectPageSelectors.scanData) as ProjectScanData;
+
+  // Compute user's commit share by matching auth identity against contributors
+  const computedUserCommitShare = useMemo(() => {
+    const email = authUser?.email?.toLowerCase();
+    if (!email) return undefined;
+
+    const cm = scanData?.contribution_metrics;
+    if (!cm?.contributors?.length || !cm?.total_commits) return undefined;
+    const total = cm.total_commits;
+
+    // Strategy 1: exact email match against git analysis all_emails
+    if (scanData?.git_analysis) {
+      const repos = Array.isArray(scanData.git_analysis) ? scanData.git_analysis : [];
+      for (const repo of repos) {
+        const r = repo as Record<string, unknown>;
+        for (const c of (Array.isArray(r?.contributors) ? r.contributors : [])) {
+          const contrib = c as Record<string, unknown>;
+          const allEmails = [
+            ...(Array.isArray(contrib.all_emails) ? contrib.all_emails : []),
+            contrib.email,
+          ].filter(Boolean).map((e) => String(e).toLowerCase());
+          if (allEmails.includes(email)) {
+            const match = cm.contributors.find(
+              (ct) => ct.name?.toLowerCase() === String(contrib.name ?? "").toLowerCase(),
+            );
+            if (match) return (match.commits ?? 0) / total;
+          }
+        }
+      }
+    }
+
+    // Strategy 2: exact email match against contribution_metrics contributor emails
+    for (const c of cm.contributors) {
+      if (typeof c.email === "string" && c.email.toLowerCase() === email) {
+        return (c.commits ?? 0) / total;
+      }
+    }
+
+    // Strategy 3: check if all name-words of a contributor appear in the email local part
+    const emailLocal = email.split("@")[0].replace(/[^a-z]/gi, "").toLowerCase();
+    if (emailLocal.length >= 5) {
+      for (const c of cm.contributors) {
+        if (!c.name) continue;
+        const words = c.name.toLowerCase().split(/\s+/).filter((w) => w.length >= 3);
+        if (words.length >= 2 && words.every((w) => emailLocal.includes(w))) {
+          return (c.commits ?? 0) / total;
+        }
+      }
+    }
+
+    return undefined;
+  }, [authUser?.email, scanData?.git_analysis, scanData?.contribution_metrics]);
+
   const summary = scanData.summary ?? {};
   const skillsAnalysis: ProjectSkillsAnalysis = scanData.skills_analysis ?? {};
   const skillsByCategory = skillsAnalysis.skills_by_category ?? {};
@@ -1172,8 +1227,7 @@ export default function ProjectPage() {
               <TabsContent value="contributions">
                 <ContributionsTab contributionMetrics={scanData.contribution_metrics ? {
                   ...scanData.contribution_metrics,
-                  user_commit_share: scanData.contribution_metrics.user_commit_share
-                    ?? ((scanData.contribution_ranking as Record<string, unknown> | undefined)?.user_commit_share as number | undefined),
+                  user_commit_share: scanData.contribution_metrics.user_commit_share ?? computedUserCommitShare,
                 } : scanData.contribution_metrics} />
               </TabsContent>
             </Tabs>
