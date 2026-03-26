@@ -294,16 +294,21 @@ describe("ProfilePage", () => {
     });
   });
 
-  it("logout clears localStorage and redirects", async () => {
+  it("logout clears localStorage and dispatches signout event", async () => {
+    const signoutHandler = vi.fn();
+    window.addEventListener("auth:signout", signoutHandler);
+
     await renderAndWait();
     const logoutBtn = screen.getByRole("button", { name: "Log out" });
     await userEvent.click(logoutBtn);
 
     expect(localStorageMock.removeItem).toHaveBeenCalledWith("access_token");
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith("auth_access_token");
     expect(localStorageMock.removeItem).toHaveBeenCalledWith("refresh_token");
-    expect(localStorageMock.removeItem).toHaveBeenCalledWith("user_id");
-    expect(localStorageMock.removeItem).toHaveBeenCalledWith("email");
-    expect(locationMock.href).toBe("/");
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith("user");
+    expect(signoutHandler).toHaveBeenCalled();
+
+    window.removeEventListener("auth:signout", signoutHandler);
   });
 
   it("shows error message on API failure", async () => {

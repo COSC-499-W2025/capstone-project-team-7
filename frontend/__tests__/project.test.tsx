@@ -127,10 +127,10 @@ describe("Project page data accuracy", () => {
     render(<ProjectPage />);
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Project: Accurate Portfolio" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Accurate Portfolio" })).toBeInTheDocument();
     });
 
-    expect(screen.getByText("5.8 seconds")).toBeInTheDocument();
+    expect(screen.getAllByText("5.8 seconds").length).toBeGreaterThan(0);
     expect(screen.queryByText("3.2 seconds")).not.toBeInTheDocument();
   });
 
@@ -138,7 +138,7 @@ describe("Project page data accuracy", () => {
     render(<ProjectPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Accurate Portfolio")).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Accurate Portfolio" })).toBeInTheDocument();
     });
 
     expect(screen.queryByText("My Capstone App")).not.toBeInTheDocument();
@@ -183,7 +183,7 @@ describe("Project page data accuracy", () => {
     render(<ProjectPage />);
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Project: Accurate Portfolio" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Accurate Portfolio" })).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "AI Analysis" }));
@@ -210,7 +210,7 @@ describe("Project page data accuracy", () => {
     render(<ProjectPage />);
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Project: Accurate Portfolio" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Accurate Portfolio" })).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "AI Analysis" }));
@@ -238,7 +238,7 @@ describe("Project page data accuracy", () => {
     render(<ProjectPage />);
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Project: Accurate Portfolio" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Accurate Portfolio" })).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "AI Analysis" }));

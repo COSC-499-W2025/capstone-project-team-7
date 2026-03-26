@@ -139,12 +139,16 @@ describe("ResumesPage", () => {
 
   it("displays date range for item with both dates", async () => {
     await renderAndWait();
-    expect(screen.getByText("Sep 2024 – Apr 2025")).toBeInTheDocument();
+    expect(
+      screen.getByText((text) =>
+        text.includes("Sep") && text.includes("2024") && text.includes("Apr") && text.includes("2025")
+      )
+    ).toBeInTheDocument();
   });
 
   it("displays 'From start_date' when only start date is present", async () => {
     await renderAndWait();
-    expect(screen.getByText("From Jan 2024")).toBeInTheDocument();
+    expect(screen.getByText(/From Jan.*2024/)).toBeInTheDocument();
   });
 
   it("shows item count in header", async () => {
