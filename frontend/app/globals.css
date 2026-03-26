@@ -420,6 +420,11 @@
     background: hsl(214 62% 94% / 0.82);
   }
 
+  .tone-surface-emerald {
+    border-color: hsl(149 54% 80%);
+    background: hsl(145 56% 94% / 0.82);
+  }
+
   .tone-surface-slate {
     border-color: hsl(186 42% 76%);
     background: hsl(186 46% 91% / 0.82);
@@ -440,6 +445,11 @@
     background: hsl(214 88% 22% / 0.28);
   }
 
+  .dark .tone-surface-emerald {
+    border-color: hsl(154 60% 34% / 0.3);
+    background: hsl(156 74% 18% / 0.34);
+  }
+
   .dark .tone-surface-slate {
     border-color: hsl(184 44% 34% / 0.32);
     background: hsl(188 58% 18% / 0.34);
@@ -458,6 +468,10 @@
     color: hsl(218 65% 40%);
   }
 
+  .tone-copy-emerald {
+    color: hsl(152 60% 33%);
+  }
+
   .tone-copy-slate {
     color: hsl(186 62% 28%);
   }
@@ -472,6 +486,10 @@
 
   .dark .tone-copy-blue {
     color: hsl(212 92% 85%);
+  }
+
+  .dark .tone-copy-emerald {
+    color: hsl(152 76% 82%);
   }
 
   .dark .tone-copy-slate {
@@ -819,7 +837,7 @@
   .auth-showcase {
     position: relative;
     padding: 40px;
-    color: hsl(var(--primary-foreground));
+    color: hsl(0 0% 100% / 0.92);
     background:
       radial-gradient(circle at top right, hsl(198 100% 70% / 0.18), transparent 25%),
       linear-gradient(160deg, hsl(223 42% 11%), hsl(223 32% 17%) 55%, hsl(214 44% 22%));
@@ -1013,6 +1031,35 @@
     background: linear-gradient(90deg, hsl(var(--primary)), hsl(193 93% 58%));
     box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.28);
     transition: width 220ms ease;
+  }
+
+  .button-outline-danger,
+  .button-outline-danger:hover,
+  .button-outline-danger:focus-visible,
+  .button-outline-danger:active {
+    color: hsl(var(--destructive)) !important;
+  }
+
+  .button-outline-danger {
+    border-color: hsl(var(--destructive) / 0.42) !important;
+    background: hsl(var(--card) / 0.88) !important;
+  }
+
+  .button-outline-danger:hover,
+  .button-outline-danger:focus-visible,
+  .button-outline-danger:active {
+    border-color: hsl(var(--destructive) / 0.5) !important;
+    background: hsl(var(--destructive) / 0.12) !important;
+  }
+
+  .dark .button-outline-danger {
+    background: hsl(var(--card) / 0.88) !important;
+  }
+
+  .dark .button-outline-danger:hover,
+  .dark .button-outline-danger:focus-visible,
+  .dark .button-outline-danger:active {
+    background: hsl(var(--destructive) / 0.16) !important;
   }
 
   @media (max-width: 1280px) {

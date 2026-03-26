@@ -352,11 +352,11 @@ function ResumeEditorPageInner() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-muted">
+    <div className="flex h-screen min-w-0 flex-col overflow-hidden bg-muted">
       {/* Header */}
-      <header className="bg-card border-b border-border px-4 py-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+      <header className="border-b border-border bg-card px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
             <Button
               variant="ghost"
               size="sm"
@@ -372,13 +372,13 @@ function ResumeEditorPageInner() {
                 setResumeName(e.target.value);
                 setIsDirty(true);
               }}
-              className="w-64 h-8 text-sm font-medium border-transparent hover:border-border focus:border-border"
+              className="h-8 w-full max-w-full text-sm font-medium border-transparent hover:border-border focus:border-border sm:w-64"
             />
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center justify-end gap-3">
             {/* Save status */}
-            <span className="text-xs text-muted-foreground">
+            <span className="inline-flex min-h-[1.25rem] min-w-[10.5rem] items-center justify-end text-right text-xs tabular-nums text-muted-foreground sm:mr-1">
               {saving ? (
                 <span className="flex items-center gap-1">
                   <Spinner size={12} />
@@ -394,7 +394,7 @@ function ResumeEditorPageInner() {
             </span>
 
             {/* Mode toggle */}
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg">
+            <div className="flex items-center gap-2 rounded-lg bg-gray-100 px-3 py-1.5">
               <button
                 onClick={() => handleModeSwitch(true)}
                 className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium transition-colors ${
@@ -438,7 +438,7 @@ function ResumeEditorPageInner() {
       </header>
 
       {/* Main content */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
         {isLatexMode ? (
           <LatexEditor
             content={latexContent}
@@ -468,9 +468,9 @@ interface LatexEditorProps {
 
 function LatexEditor({ content, onChange }: LatexEditorProps) {
   return (
-    <div className="flex-1 flex">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
       {/* Editor pane */}
-      <div className="w-1/2 flex flex-col border-r border-gray-200 bg-white">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col border-b border-r-0 border-gray-200 bg-white lg:w-1/2 lg:border-b-0 lg:border-r">
         <div className="px-4 py-2 border-b border-gray-100 bg-gray-50">
           <span className="text-xs font-medium text-gray-600">LaTeX Source</span>
         </div>
@@ -486,11 +486,11 @@ function LatexEditor({ content, onChange }: LatexEditorProps) {
       </div>
 
       {/* Preview pane */}
-      <div className="w-1/2 flex flex-col bg-gray-100">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-gray-100 lg:w-1/2">
         <div className="px-4 py-2 border-b border-gray-200 bg-white">
           <span className="text-xs font-medium text-gray-600">Preview</span>
         </div>
-        <div className="flex-1 overflow-auto p-8">
+        <div className="flex-1 overflow-auto p-4 sm:p-5 lg:p-6 xl:p-8">
           <div className="bg-white shadow-lg rounded-lg p-8 max-w-[8.5in] mx-auto min-h-[11in]">
             <PreviewPlaceholder latex={content} />
           </div>
@@ -698,18 +698,20 @@ function FormEditor({ data, onChange, onAddResumeItems, onDetectSkills }: FormEd
   };
 
   return (
-    <div className="flex-1 flex">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
       {/* Form pane */}
-      <div className="w-1/2 flex flex-col border-r border-gray-200 bg-white overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-b border-r-0 border-gray-200 bg-white lg:w-1/2 lg:border-b-0 lg:border-r">
         <Tabs defaultValue="contact" onValueChange={setActiveTab} className="flex-1 flex flex-col">
-          <TabsList className="px-4 py-2 border-b border-gray-100 bg-gray-50 justify-start rounded-none h-auto">
-            <TabsTrigger value="contact" className="text-xs">Contact</TabsTrigger>
-            <TabsTrigger value="education" className="text-xs">Education</TabsTrigger>
-            <TabsTrigger value="experience" className="text-xs">Experience</TabsTrigger>
-            <TabsTrigger value="projects" className="text-xs">Projects</TabsTrigger>
-            <TabsTrigger value="skills" className="text-xs">Skills</TabsTrigger>
-            <TabsTrigger value="awards" className="text-xs">Awards</TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto border-b border-gray-100 bg-gray-50">
+            <TabsList className="h-auto min-w-max justify-start rounded-none border-0 bg-transparent px-4 py-2">
+              <TabsTrigger value="contact" className="text-xs">Contact</TabsTrigger>
+              <TabsTrigger value="education" className="text-xs">Education</TabsTrigger>
+              <TabsTrigger value="experience" className="text-xs">Experience</TabsTrigger>
+              <TabsTrigger value="projects" className="text-xs">Projects</TabsTrigger>
+              <TabsTrigger value="skills" className="text-xs">Skills</TabsTrigger>
+              <TabsTrigger value="awards" className="text-xs">Awards</TabsTrigger>
+            </TabsList>
+          </div>
 
           <div className="flex-1 overflow-auto p-4">
             <TabsContent value="contact" className="mt-0 space-y-4">
@@ -1249,11 +1251,11 @@ function FormEditor({ data, onChange, onAddResumeItems, onDetectSkills }: FormEd
       </Dialog>
 
       {/* Preview pane */}
-      <div className="w-1/2 flex flex-col bg-gray-100">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-gray-100 lg:w-1/2">
         <div className="px-4 py-2 border-b border-gray-200 bg-white">
           <span className="text-xs font-medium text-gray-600">Preview</span>
         </div>
-        <div className="flex-1 overflow-auto p-8">
+        <div className="flex-1 overflow-auto p-4 sm:p-5 lg:p-6 xl:p-8">
           <div className="bg-white shadow-lg rounded-lg p-8 max-w-[8.5in] mx-auto min-h-[11in]">
             <FormPreview data={data} />
           </div>

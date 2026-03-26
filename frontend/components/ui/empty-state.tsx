@@ -38,7 +38,7 @@ export function EmptyState({ title, description, onRetry, variant = "card", clas
 
   return (
     <Card className={cn(className)}>
-      <CardContent className="p-10 text-center space-y-3">
+      <CardContent className="flex min-h-[220px] flex-col justify-center space-y-3 p-10 text-center sm:p-10 sm:pt-10">
         {content}
       </CardContent>
     </Card>

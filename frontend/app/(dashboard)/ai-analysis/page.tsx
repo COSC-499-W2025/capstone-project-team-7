@@ -301,7 +301,7 @@ export default function AiAnalysisPage() {
                 Click a project to view or run AI analysis.
               </p>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-3 sm:p-3">
               {loadingProjects && (
                 <div className="flex items-center justify-center py-10">
                   <Loader2 size={20} className="animate-spin text-muted-foreground" />
@@ -327,23 +327,23 @@ export default function AiAnalysisPage() {
                     <button
                       key={project.id}
                       onClick={() => void handleSelectProject(project.id)}
-                      className={`flex w-full items-center justify-between gap-2 border-b border-border/70 px-4 py-3 text-left transition-colors last:border-b-0 ${
+                      className={`flex w-full items-center gap-3 rounded-[18px] border px-4 py-3 text-left transition-colors ${
                         isSelected
-                          ? "bg-primary text-primary-foreground"
-                          : "text-foreground hover:bg-muted/60"
+                          ? "border-primary/30 bg-[linear-gradient(180deg,hsl(213_78%_95%),hsl(214_72%_92%))] text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] dark:border-blue-500/25 dark:bg-[linear-gradient(180deg,hsl(223_26%_22%),hsl(222_24%_18%))] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+                          : "border-transparent text-foreground hover:border-border/70 hover:bg-muted/60"
                       }`}
                     >
                       <div className="min-w-0 flex-1">
                         <p
                           className={`text-sm font-medium truncate ${
-                            isSelected ? "text-primary-foreground" : "text-foreground"
+                            isSelected ? "text-foreground" : "text-foreground"
                           }`}
                         >
                           {project.project_name}
                         </p>
                         <p
                           className={`text-xs mt-0.5 flex items-center gap-1 ${
-                            isSelected ? "text-primary-foreground/80" : "text-muted-foreground"
+                            isSelected ? "text-primary/80 dark:text-blue-200/85" : "text-muted-foreground"
                           }`}
                         >
                           <Calendar size={11} />
@@ -359,9 +359,7 @@ export default function AiAnalysisPage() {
                         )}
                         <ChevronRight
                           size={14}
-                          className={
-                            isSelected ? "text-primary-foreground/75" : "text-muted-foreground"
-                          }
+                          className={isSelected ? "text-primary/75 dark:text-blue-200/80" : "text-muted-foreground"}
                         />
                       </div>
                     </button>
@@ -375,9 +373,14 @@ export default function AiAnalysisPage() {
         <div className="lg:col-span-2 space-y-4">
           {!selectedProject && (
             <Card>
-              <CardContent className="flex flex-col items-center gap-3 p-8 text-center text-muted-foreground">
-                <Sparkles size={32} className="mx-auto mb-3 opacity-40" />
-                <p className="text-sm">
+              <CardContent className="flex min-h-[15rem] flex-col items-start justify-center gap-4 p-5 sm:p-5">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-card/80 text-primary/80">
+                  <Sparkles size={30} />
+                </div>
+                <p className="text-lg font-semibold text-foreground">
+                  No project selected
+                </p>
+                <p className="max-w-[34ch] text-sm leading-6 text-muted-foreground">
                   Select a project from the list to view or run AI analysis.
                 </p>
               </CardContent>

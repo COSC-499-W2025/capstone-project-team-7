@@ -38,7 +38,6 @@ const variantClasses: Record<ButtonVariant, string> = {
     "shadow-[0_10px_22px_rgba(15,23,42,0.05)]",
     "hover:border-primary/35",
     "hover:bg-accent/70",
-    "hover:text-accent-foreground",
   ].join(" "),
   ghost: [
     "border border-transparent",

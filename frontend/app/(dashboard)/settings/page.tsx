@@ -592,7 +592,7 @@ export default function SettingsPage() {
               disabled={consentLoading}
               variant="outline"
               size="sm"
-              className="border-red-300 text-red-600 hover:bg-red-50"
+              className="button-outline-danger"
             >
               {consentLoading ? "Retrying..." : "Retry"}
             </Button>
@@ -632,7 +632,7 @@ export default function SettingsPage() {
                     variant="outline"
                     size="sm"
                     onClick={handleLogout}
-                    className="mt-2 border-red-300 text-red-600 hover:bg-red-50"
+                    className="button-outline-danger mt-2"
                   >
                     Logout
                   </Button>
@@ -827,7 +827,7 @@ export default function SettingsPage() {
                           onClick={handleRetryEncryptionStatus}
                           variant="outline"
                           size="sm"
-                          className="border-red-300 text-red-600 hover:bg-red-50"
+                          className="button-outline-danger"
                         >
                           Retry
                         </Button>
@@ -859,9 +859,9 @@ export default function SettingsPage() {
                       </div>
 
                       {encryptionReady ? (
-                        <div className="bg-green-50 border-2 border-green-300 rounded-md p-4">
-                          <p className="text-sm text-green-700 font-medium">Encryption is active.</p>
-                          <p className="text-xs text-green-700 mt-1">Your stored data will be encrypted using the current backend configuration.</p>
+                        <div className="tone-surface-emerald rounded-md border-2 p-4">
+                          <p className="tone-copy-emerald text-sm font-medium">Encryption is active.</p>
+                          <p className="tone-copy-emerald mt-1 text-xs">Your stored data will be encrypted using the current backend configuration.</p>
                         </div>
                       ) : (
                         <div className="bg-amber-50 border-2 border-amber-300 rounded-md p-4 space-y-2">
@@ -956,7 +956,7 @@ export default function SettingsPage() {
                               size="sm"
                               onClick={() => setShowClearConfirm(true)}
                               disabled={!openaiSecret}
-                              className="border-red-300 text-red-600 hover:bg-red-50"
+                              className="button-outline-danger"
                             >
                               Clear Key
                             </Button>
