@@ -10,6 +10,7 @@ import {
   getStoredRefreshToken,
   getStoredToken,
   logout as callBackendLogout,
+  setRememberMePreference,
   setStoredRefreshToken,
   setStoredToken,
 } from "@/lib/auth";
@@ -19,7 +20,7 @@ interface UseAuthReturn {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<ApiResult<AuthSessionResponse>>;
+  login: (email: string, password: string, rememberMe?: boolean) => Promise<ApiResult<AuthSessionResponse>>;
   signup: (
     email: string,
     password: string,
@@ -109,7 +110,8 @@ export function useAuth(): UseAuthReturn {
 
   const login = async (
     email: string,
-    password: string
+    password: string,
+    rememberMe = true
   ): Promise<ApiResult<AuthSessionResponse>> => {
     setIsLoading(true);
     const result = await api.auth.login(email, password);
@@ -119,6 +121,9 @@ export function useAuth(): UseAuthReturn {
 
       // Clear logout flag on successful login
       sessionStorage.removeItem(LOGOUT_FLAG_KEY);
+
+      // Set storage preference before storing tokens
+      setRememberMePreference(rememberMe);
 
       setStoredToken(access_token);
       if (refresh_token) {
@@ -183,6 +188,7 @@ export function useAuth(): UseAuthReturn {
     clearStoredToken();
     clearStoredRefreshToken();
     localStorage.removeItem("user");
+    localStorage.removeItem("auth_remember_me");
 
     setUser(null);
 

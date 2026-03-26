@@ -162,7 +162,6 @@ export const Sidebar: React.FC = () => {
               label="Resume Builder"
             />
           </div>
-
           <SectionLabel>Utilities</SectionLabel>
           <div className="space-y-1">
             <NavItem

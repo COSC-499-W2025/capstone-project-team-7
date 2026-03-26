@@ -102,7 +102,7 @@ export default function LoginPage() {
       return;
     }
 
-    const result = await login(trimmedEmail, password);
+    const result = await login(trimmedEmail, password, rememberMe);
 
     if (result.ok) {
       router.push("/");
