@@ -345,6 +345,155 @@
     background: linear-gradient(180deg, hsl(var(--card) / 0.95), hsl(var(--muted) / 0.75));
   }
 
+  .tone-pill {
+    border-style: solid;
+    border-width: 1px;
+  }
+
+  .tone-pill-blue {
+    border-color: hsl(217 76% 82%);
+    background: hsl(214 92% 95%);
+    color: hsl(221 72% 35%);
+  }
+
+  .tone-pill-emerald {
+    border-color: hsl(153 56% 76%);
+    background: hsl(152 52% 93%);
+    color: hsl(164 74% 24%);
+  }
+
+  .tone-pill-violet {
+    border-color: hsl(257 74% 84%);
+    background: hsl(258 86% 95%);
+    color: hsl(262 58% 38%);
+  }
+
+  .tone-pill-amber {
+    border-color: hsl(38 78% 78%);
+    background: hsl(42 86% 94%);
+    color: hsl(32 76% 26%);
+  }
+
+  .tone-pill-slate {
+    border-color: hsl(220 18% 78%);
+    background: hsl(220 25% 94%);
+    color: hsl(223 31% 30%);
+  }
+
+  .dark .tone-pill-blue {
+    border-color: hsl(214 72% 38% / 0.28);
+    background: hsl(214 88% 22% / 0.32);
+    color: hsl(212 92% 85%);
+  }
+
+  .dark .tone-pill-emerald {
+    border-color: hsl(154 60% 34% / 0.3);
+    background: hsl(156 74% 18% / 0.34);
+    color: hsl(152 76% 82%);
+  }
+
+  .dark .tone-pill-violet {
+    border-color: hsl(263 70% 42% / 0.28);
+    background: hsl(262 56% 22% / 0.34);
+    color: hsl(258 92% 86%);
+  }
+
+  .dark .tone-pill-amber {
+    border-color: hsl(35 76% 38% / 0.28);
+    background: hsl(31 88% 22% / 0.32);
+    color: hsl(42 88% 82%);
+  }
+
+  .dark .tone-pill-slate {
+    border-color: hsl(220 16% 38% / 0.28);
+    background: hsl(222 18% 24% / 0.42);
+    color: hsl(217 24% 82%);
+  }
+
+  .tone-surface-violet {
+    border-color: hsl(272 62% 82%);
+    background: hsl(274 55% 94% / 0.82);
+  }
+
+  .tone-surface-blue {
+    border-color: hsl(214 66% 82%);
+    background: hsl(214 62% 94% / 0.82);
+  }
+
+  .tone-surface-slate {
+    border-color: hsl(186 42% 76%);
+    background: hsl(186 46% 91% / 0.82);
+  }
+
+  .tone-surface-amber {
+    border-color: hsl(38 78% 78%);
+    background: hsl(42 86% 94% / 0.82);
+  }
+
+  .dark .tone-surface-violet {
+    border-color: hsl(263 70% 42% / 0.28);
+    background: hsl(262 56% 22% / 0.28);
+  }
+
+  .dark .tone-surface-blue {
+    border-color: hsl(214 72% 38% / 0.28);
+    background: hsl(214 88% 22% / 0.28);
+  }
+
+  .dark .tone-surface-slate {
+    border-color: hsl(184 44% 34% / 0.32);
+    background: hsl(188 58% 18% / 0.34);
+  }
+
+  .dark .tone-surface-amber {
+    border-color: hsl(35 76% 38% / 0.28);
+    background: hsl(31 88% 22% / 0.32);
+  }
+
+  .tone-copy-violet {
+    color: hsl(262 58% 38%);
+  }
+
+  .tone-copy-blue {
+    color: hsl(218 65% 40%);
+  }
+
+  .tone-copy-slate {
+    color: hsl(186 62% 28%);
+  }
+
+  .tone-copy-amber {
+    color: hsl(32 76% 26%);
+  }
+
+  .dark .tone-copy-violet {
+    color: hsl(258 92% 86%);
+  }
+
+  .dark .tone-copy-blue {
+    color: hsl(212 92% 85%);
+  }
+
+  .dark .tone-copy-slate {
+    color: hsl(184 72% 80%);
+  }
+
+  .dark .tone-copy-amber {
+    color: hsl(42 88% 82%);
+  }
+
+  .scan-project-mark {
+    border-color: hsl(221 34% 78%);
+    background: linear-gradient(180deg, hsl(221 58% 95%), hsl(222 44% 91%));
+    color: hsl(221 72% 44%);
+  }
+
+  .dark .scan-project-mark {
+    border-color: hsl(214 72% 38% / 0.28);
+    background: linear-gradient(180deg, hsl(223 28% 22%), hsl(223 22% 18%));
+    color: hsl(212 92% 85%);
+  }
+
   .section-shell {
     display: flex;
     flex-direction: column;

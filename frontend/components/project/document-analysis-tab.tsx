@@ -31,17 +31,17 @@ type DocumentAnalysisPayload = unknown;
 function getFileIcon(fileType: string) {
   switch (fileType) {
     case "pdf":
-      return <FileText className="h-5 w-5 text-red-500" />;
+      return <FileText className="h-5 w-5 text-red-500 dark:text-red-300" />;
     case "docx":
     case "doc":
-      return <FileType className="h-5 w-5 text-blue-500" />;
+      return <FileType className="h-5 w-5 text-blue-500 dark:text-blue-300" />;
     case "md":
     case "markdown":
-      return <BookOpen className="h-5 w-5 text-purple-500" />;
+      return <BookOpen className="h-5 w-5 text-purple-500 dark:text-purple-300" />;
     case "txt":
-      return <FileIcon className="h-5 w-5 text-gray-500" />;
+      return <FileIcon className="h-5 w-5 text-muted-foreground" />;
     default:
-      return <FileIcon className="h-5 w-5 text-gray-500" />;
+      return <FileIcon className="h-5 w-5 text-muted-foreground" />;
   }
 }
 
@@ -231,29 +231,29 @@ export function DocumentAnalysisTab({
     <div className="space-y-5">
       {/* Statistics Overview */}
       <Card>
-        <CardHeader className="border-b border-border/70 p-5 pb-4">
+        <CardHeader className="border-b border-border/70 p-5 pb-4 sm:p-5 sm:pb-4">
           <CardTitle className="text-lg font-semibold text-foreground">Document Statistics</CardTitle>
         </CardHeader>
-        <CardContent className="p-5 pt-4">
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <div className="stat-block p-4 text-center">
+        <CardContent className="p-5 pt-4 sm:p-5 sm:pt-4">
+          <div className="grid grid-cols-2 items-start gap-3 md:grid-cols-4">
+            <div className="stat-block self-start p-4 text-center">
               <p className="text-2xl font-bold text-foreground">{stats.total_documents}</p>
               <p className="mt-1 text-xs text-muted-foreground">Total Documents</p>
             </div>
-            <div className="stat-block p-4 text-center">
+            <div className="stat-block self-start p-4 text-center">
               <p className="text-2xl font-bold text-foreground">
                 {stats.total_words.toLocaleString()}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">Total Words</p>
             </div>
-            <div className="stat-block p-4 text-center">
+            <div className="stat-block self-start p-4 text-center">
               <p className="text-2xl font-bold text-foreground">{stats.documents_with_keywords}</p>
               <p className="mt-1 text-xs text-muted-foreground">Docs with key terms</p>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">
+              <p className="mx-auto mt-0.5 max-w-[16ch] text-[11px] leading-5 text-muted-foreground">
                 At least one extracted keyword or topic
               </p>
             </div>
-            <div className="stat-block p-4 text-center">
+            <div className="stat-block self-start p-4 text-center">
               <p className="text-2xl font-bold text-foreground">{stats.documents_with_headings}</p>
               <p className="mt-1 text-xs text-muted-foreground">With Headings</p>
             </div>
@@ -263,37 +263,37 @@ export function DocumentAnalysisTab({
 
       {/* Document Type Breakdown */}
       <Card>
-        <CardHeader className="border-b border-border/70 p-5 pb-4">
+        <CardHeader className="border-b border-border/70 p-5 pb-4 sm:p-5 sm:pb-4">
           <CardTitle className="text-lg font-semibold text-foreground">Document Types</CardTitle>
         </CardHeader>
-        <CardContent className="p-5 pt-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="flex items-center gap-3 rounded-[16px] border border-purple-200 bg-purple-50/80 p-3.5">
-              <BookOpen className="h-6 w-6 text-purple-500" />
+        <CardContent className="p-5 pt-4 sm:p-5 sm:pt-4">
+          <div className="grid grid-cols-2 items-start gap-4 md:grid-cols-4">
+            <div className="tone-surface-violet flex items-center gap-3 self-start rounded-[16px] border p-3.5">
+              <BookOpen className="h-6 w-6 text-purple-500 dark:text-purple-300" />
               <div>
-                <p className="text-lg font-bold text-foreground">{stats.md_count}</p>
-                <p className="text-xs text-muted-foreground">Markdown</p>
+                <p className="tone-copy-violet text-lg font-bold">{stats.md_count}</p>
+                <p className="tone-copy-violet text-xs">Markdown</p>
               </div>
             </div>
-            <div className="flex items-center gap-3 rounded-[16px] border border-border bg-muted/60 p-3.5">
-              <FileIcon className="h-6 w-6 text-gray-500" />
+            <div className="tone-surface-slate flex items-center gap-3 self-start rounded-[16px] border p-3.5">
+              <FileIcon className="tone-copy-slate h-6 w-6" />
               <div>
-                <p className="text-lg font-bold text-foreground">{stats.txt_count}</p>
-                <p className="text-xs text-muted-foreground">Text Files</p>
+                <p className="tone-copy-slate text-lg font-bold">{stats.txt_count}</p>
+                <p className="tone-copy-slate text-xs">Text Files</p>
               </div>
             </div>
-            <div className="flex items-center gap-3 rounded-[16px] border border-blue-200 bg-blue-50/80 p-3.5">
-              <FileType className="h-6 w-6 text-blue-500" />
+            <div className="tone-surface-blue flex items-center gap-3 self-start rounded-[16px] border p-3.5">
+              <FileType className="h-6 w-6 text-blue-500 dark:text-blue-300" />
               <div>
-                <p className="text-lg font-bold text-foreground">{stats.docx_count}</p>
-                <p className="text-xs text-muted-foreground">Word Docs</p>
+                <p className="tone-copy-blue text-lg font-bold">{stats.docx_count}</p>
+                <p className="tone-copy-blue text-xs">Word Docs</p>
               </div>
             </div>
-            <div className="flex items-center gap-3 rounded-[16px] border border-border bg-muted/60 p-3.5">
-              <FileIcon className="h-6 w-6 text-gray-500" />
+            <div className="tone-surface-amber flex items-center gap-3 self-start rounded-[16px] border p-3.5">
+              <FileIcon className="tone-copy-amber h-6 w-6" />
               <div>
-                <p className="text-lg font-bold text-foreground">{stats.other_count}</p>
-                <p className="text-xs text-muted-foreground">Other</p>
+                <p className="tone-copy-amber text-lg font-bold">{stats.other_count}</p>
+                <p className="tone-copy-amber text-xs">Other</p>
               </div>
             </div>
           </div>
@@ -302,7 +302,7 @@ export function DocumentAnalysisTab({
 
       {/* Search and Filter */}
       <Card>
-        <CardContent className="p-5">
+        <CardContent className="p-5 sm:p-5">
           <div className="flex flex-col sm:flex-row gap-3">
             <SearchInput
               value={searchQuery}
@@ -328,14 +328,14 @@ export function DocumentAnalysisTab({
 
       {/* Documents List */}
       <Card>
-        <CardHeader className="border-b border-border/70 p-5 pb-4">
+        <CardHeader className="border-b border-border/70 p-5 pb-4 sm:p-5 sm:pb-4">
           <CardTitle className="text-lg font-semibold text-foreground">
             Documents ({filteredDocuments.length})
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-5 pt-4">
+        <CardContent className="p-5 pt-4 sm:p-5 sm:pt-4">
           {resolvedIsLoading && (
-            <div className="text-center py-8 text-gray-500">
+            <div className="py-8 text-center text-muted-foreground">
               Loading document analysis…
             </div>
           )}
@@ -346,7 +346,7 @@ export function DocumentAnalysisTab({
           )}
           <div className="space-y-4">
             {!resolvedIsLoading && !resolvedErrorMessage && filteredDocuments.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
+              <div className="py-8 text-center text-muted-foreground">
                 {emptyMessage}
               </div>
             ) : (!resolvedIsLoading && !resolvedErrorMessage ? (
@@ -394,7 +394,7 @@ export function DocumentAnalysisTab({
                             {doc.headings.slice(0, 5).map((heading, idx) => (
                               <span
                                 key={idx}
-                                className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs text-blue-700"
+                                className="tone-pill tone-pill-blue rounded-md px-2 py-1 text-xs"
                               >
                                 {heading}
                               </span>
@@ -418,7 +418,7 @@ export function DocumentAnalysisTab({
                             {doc.keywords.slice(0, 8).map((keyword, idx) => (
                               <span
                                 key={idx}
-                                className="rounded-md border border-green-200 bg-green-50 px-2 py-1 text-xs text-green-700"
+                                className="tone-pill tone-pill-emerald rounded-md px-2 py-1 text-xs"
                               >
                                 {keyword}
                               </span>

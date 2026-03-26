@@ -257,7 +257,7 @@ function MediaAnalysisSummaryView({
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="grid grid-cols-2 items-start gap-3 md:grid-cols-4">
         <StatCard label="Total Media Files" value={totalFiles.toLocaleString()} />
         <StatCard label="Images" value={imageCount.toLocaleString()} />
         <StatCard label="Audio" value={audioCount.toLocaleString()} />
@@ -266,7 +266,7 @@ function MediaAnalysisSummaryView({
 
       {totalSize > 0 && (
         <Card>
-          <CardContent className="p-4 text-sm text-muted-foreground">
+          <CardContent className="p-4 text-sm text-muted-foreground sm:p-4">
             Total media size: <span className="font-semibold text-foreground">{formatBytes(totalSize)}</span>
           </CardContent>
         </Card>
@@ -362,12 +362,12 @@ function MediaTypeCard({
 }) {
   return (
     <Card>
-      <CardHeader className="border-b border-border/70 p-5 pb-4">
+      <CardHeader className="border-b border-border/70 p-5 pb-4 sm:p-5 sm:pb-4">
         <CardTitle className="text-sm font-semibold text-foreground">
           {title} ({count.toLocaleString()})
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3 p-5 pt-4 text-sm text-muted-foreground">
+      <CardContent className="space-y-3 p-5 pt-4 text-sm text-muted-foreground sm:p-5 sm:pt-4">
         <div className="space-y-1">
           {details.filter(Boolean).length === 0 ? (
             <p className="text-xs text-muted-foreground">No metrics available.</p>
@@ -415,10 +415,10 @@ function InsightCard({
 }) {
   return (
     <Card>
-      <CardHeader className="border-b border-border/70 p-5 pb-4">
+      <CardHeader className="border-b border-border/70 p-5 pb-4 sm:p-5 sm:pb-4">
         <CardTitle className="text-sm font-semibold text-foreground">{title}</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-2 p-5 pt-4 text-sm text-muted-foreground">
+      <CardContent className="space-y-2 p-5 pt-4 text-sm text-muted-foreground sm:p-5 sm:pt-4">
         {items && items.length > 0 ? (
           items.map((item, idx) => <p key={`${title}-${idx}`}>• {item}</p>)
         ) : (
