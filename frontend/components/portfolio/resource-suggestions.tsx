@@ -274,6 +274,11 @@ export function ResourceSuggestions() {
       critical: flat.filter((r) => r.importance === "critical"),
       recommended: flat.filter((r) => r.importance === "recommended"),
       nice_to_have: flat.filter((r) => r.importance === "nice_to_have"),
+      other: flat.filter(
+        (r) =>
+          r.importance === null ||
+          !["critical", "recommended", "nice_to_have"].includes(r.importance ?? ""),
+      ),
     };
   }, [flat, hasImportance]);
 
@@ -352,6 +357,12 @@ export function ResourceSuggestions() {
             label="Nice to Have"
             dotColor="bg-muted-foreground/50"
             items={grouped.nice_to_have}
+            defaultOpen={false}
+          />
+          <ImportanceGroup
+            label="Other"
+            dotColor="bg-primary/50"
+            items={grouped.other}
             defaultOpen={false}
           />
         </div>
