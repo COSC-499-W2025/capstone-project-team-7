@@ -3899,6 +3899,11 @@ async def delete_project_thumbnail(
 
         success, error_msg = service.delete_project_thumbnail(project_id)
         if not success:
+            if error_msg and "not found" in error_msg.lower():
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=error_msg,
+                )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to delete thumbnail: {error_msg}",

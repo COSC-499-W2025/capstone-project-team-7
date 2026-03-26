@@ -78,6 +78,24 @@ def test_delete_thumbnail_service_error(monkeypatch):
     assert "Failed to delete thumbnail: storage failure" in response.json()["detail"]
 
 
+def test_delete_thumbnail_service_not_found_maps_404(monkeypatch):
+    project_id = str(uuid.uuid4())
+    fake = _FakeProjectsService(
+        project_exists=True,
+        delete_ok=False,
+        delete_error=f"Project {project_id} not found",
+    )
+    monkeypatch.setattr(project_routes, "get_projects_service", lambda: fake)
+
+    response = client.delete(
+        f"/api/projects/{project_id}/thumbnail",
+        headers={"Authorization": f"Bearer {TEST_TOKEN}"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == f"Project {project_id} not found"
+
+
 def test_delete_thumbnail_requires_auth(monkeypatch):
     fake = _FakeProjectsService(project_exists=True, delete_ok=True)
     monkeypatch.setattr(project_routes, "get_projects_service", lambda: fake)
