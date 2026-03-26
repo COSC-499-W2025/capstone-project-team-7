@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
   Folder,
@@ -11,6 +11,7 @@ import {
   Settings,
   Search,
   Sparkles,
+  LogOut,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/hooks/use-auth';
@@ -53,7 +54,8 @@ const SectionLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 };
 
 export const Sidebar: React.FC = () => {
-  const { user, isAuthenticated } = useAuth();
+  const router = useRouter();
+  const { user, isAuthenticated, logout } = useAuth();
   const [profile, setProfile] = useState<SidebarProfile>({
     displayName: "Guest",
     email: "",
@@ -150,16 +152,16 @@ export const Sidebar: React.FC = () => {
               label="Projects"
             />
             <NavItem
-            href="/ai-analysis"
-            icon={<Sparkles size={18} />}
-            label="AI Analysis"
-          />
-          <NavItem
-            href="/resume-builder"
-            icon={<FileEdit size={18} />}
-            label="Resume Builder"
-          />
-        </div>
+              href="/ai-analysis"
+              icon={<Sparkles size={18} />}
+              label="AI Analysis"
+            />
+            <NavItem
+              href="/resume-builder"
+              icon={<FileEdit size={18} />}
+              label="Resume Builder"
+            />
+          </div>
 
           <SectionLabel>Utilities</SectionLabel>
           <div className="space-y-1">
@@ -173,6 +175,21 @@ export const Sidebar: React.FC = () => {
               icon={<Search size={18} />}
               label="Search"
             />
+            {isAuthenticated && (
+              <button
+                type="button"
+                onClick={() => {
+                  logout();
+                  router.push('/auth/login');
+                }}
+                className="flex w-full items-center gap-3 rounded-2xl border border-transparent px-[14px] py-[13px] text-sm font-medium text-neutral-400 transition-all duration-200 hover:border-red-500/20 hover:bg-red-500/10 hover:text-red-300"
+              >
+                <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center">
+                  <LogOut size={18} />
+                </span>
+                <span>Logout</span>
+              </button>
+            )}
           </div>
         </div>
 
