@@ -50,8 +50,11 @@ export function DropdownMenuTrigger({ className, onClick, ...props }: React.Butt
       aria-haspopup="menu"
       aria-expanded={ctx.open}
       onClick={(e) => {
-        onClick?.(e);
+        // Toggle first, then forward to consumer — ordering prevents
+        // double-toggle if the consumer's handler also calls setOpen.
+        e.stopPropagation();
         ctx.setOpen(!ctx.open);
+        onClick?.(e);
       }}
       {...props}
     />

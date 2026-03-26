@@ -1583,6 +1583,11 @@ async def create_project_from_upload(
         )
 
 
+def _is_jwt_expired_error(exc: Exception) -> bool:
+    error_str = str(exc).lower()
+    return ("jwt expired" in error_str) or ("jwt" in error_str and "expired" in error_str)
+
+
 @router.get(
     "",
     response_model=ProjectListResponse,
@@ -1621,8 +1626,7 @@ async def list_projects(
         )
     
     except ProjectsServiceError as exc:
-        error_str = str(exc).lower()
-        if "jwt expired" in error_str or "jwt" in error_str and "expired" in error_str:
+        if _is_jwt_expired_error(exc):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Session expired",
@@ -1633,8 +1637,7 @@ async def list_projects(
             detail=f"Failed to retrieve projects: {str(exc)}",
         )
     except Exception as exc:
-        error_str = str(exc).lower()
-        if "jwt expired" in error_str or "jwt" in error_str and "expired" in error_str:
+        if _is_jwt_expired_error(exc):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Session expired",

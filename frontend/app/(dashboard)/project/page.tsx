@@ -614,13 +614,15 @@ export default function ProjectPage() {
       }
     }
 
-    // Strategy 3: check if all name-words of a contributor appear in the email local part
+    // Strategy 3: check if all name-words of a contributor appear in the email local part.
+    // Require at least 3 name words of length >= 4 to reduce false positives
+    // (e.g. "Li Wei" matching "oliverweiss@..." via short substrings).
     const emailLocal = email.split("@")[0].replace(/[^a-z]/gi, "").toLowerCase();
     if (emailLocal.length >= 5) {
       for (const c of cm.contributors) {
         if (!c.name) continue;
-        const words = c.name.toLowerCase().split(/\s+/).filter((w) => w.length >= 3);
-        if (words.length >= 2 && words.every((w) => emailLocal.includes(w))) {
+        const words = c.name.toLowerCase().split(/\s+/).filter((w) => w.length >= 4);
+        if (words.length >= 3 && words.every((w) => emailLocal.includes(w))) {
           return (c.commits ?? 0) / total;
         }
       }
@@ -1152,9 +1154,9 @@ export default function ProjectPage() {
 
               {/* Code Analysis */}
               <TabsContent value="code-analysis" className="space-y-4">
-                <Card className="bg-white border border-gray-200">
-                  <CardHeader className="border-b border-gray-200 flex flex-row items-center justify-between">
-                    <CardTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <Card className="bg-card border border-border">
+                  <CardHeader className="border-b border-border flex flex-row items-center justify-between">
+                    <CardTitle className="text-xl font-bold text-foreground flex items-center gap-2">
                       <FileCode2 size={18} />
                       Code Analysis
                     </CardTitle>
