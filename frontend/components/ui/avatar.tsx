@@ -15,7 +15,7 @@ export const Avatar = React.forwardRef<HTMLSpanElement, AvatarProps>(function Av
     <span
       ref={ref}
       className={cn(
-        "relative inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-border bg-muted text-sm font-medium text-muted-foreground",
+        "relative inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border-2 border-border bg-muted text-sm font-medium text-muted-foreground",
         className
       )}
       {...props}

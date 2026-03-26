@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Briefcase,
   Calendar,
   Lightbulb,
   Plus,
-  Loader2,
   Edit2,
   Trash2,
   RefreshCw,
@@ -55,6 +54,8 @@ import type {
 import type { ProjectMetadata } from "@/types/project";
 import type { UserProfile } from "@/lib/api.types";
 import { PortfolioOverview } from "@/components/portfolio/portfolio-overview";
+import { LoadingState } from "@/components/ui/loading-state";
+import { Spinner } from "@/components/ui/spinner";
 import { ResourceSuggestions } from "@/components/portfolio/resource-suggestions";
 import { LinkedInShareDialog } from "@/components/portfolio/linkedin-share-dialog";
 
@@ -87,11 +88,30 @@ function formatDate(dateStr: string | null | undefined): string {
   }
 }
 
+function formatDateForDisplay(dateStr: string | null | undefined): string {
+  if (!dateStr) return "";
+  try {
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return dateStr;
+    return date.toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  } catch {
+    return dateStr;
+  }
+}
+
 function formatDateRange(start?: string | null, end?: string | null): string {
   if (!start && !end) return "Dates unknown";
-  if (start && end) return `${start} – ${end}`;
-  if (start) return `From ${start}`;
-  return `Until ${end}`;
+  const formattedStart = formatDateForDisplay(start);
+  const formattedEnd = formatDateForDisplay(end);
+
+  if (formattedStart && formattedEnd) return `${formattedStart} – ${formattedEnd}`;
+  if (formattedStart) return `From ${formattedStart}`;
+  if (formattedEnd) return `Until ${formattedEnd}`;
+  return "Dates unknown";
 }
 
 export default function PortfolioPage() {
@@ -117,6 +137,9 @@ export default function PortfolioPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [refreshResult, setRefreshResult] =
     useState<PortfolioRefreshResponse | null>(null);
+  const [activeTab, setActiveTab] = useState("overview");
+  const [stableTabHeight, setStableTabHeight] = useState(0);
+  const activePanelRef = useRef<HTMLDivElement | null>(null);
   const [linkedInOpen, setLinkedInOpen] = useState(false);
 
   const fetchAll = useCallback(async () => {
@@ -178,6 +201,31 @@ export default function PortfolioPage() {
   useEffect(() => {
     fetchAll();
   }, [fetchAll]);
+
+  useEffect(() => {
+    const node = activePanelRef.current;
+    if (!node) return;
+
+    const measure = () => {
+      const nextHeight = node.offsetHeight;
+      if (nextHeight > 0) {
+        setStableTabHeight((current) => Math.max(current, nextHeight));
+      }
+    };
+
+    measure();
+    const frame = window.requestAnimationFrame(measure);
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    activeTab,
+    items.length,
+    timeline.length,
+    skills.length,
+    projects.length,
+    chronology,
+    portfolioSettings,
+    profile,
+  ]);
 
   const handleRefresh = async () => {
     const token = getStoredToken();
@@ -317,59 +365,56 @@ export default function PortfolioPage() {
 
   if (loading) {
     return (
-      <div className="min-h-full bg-slate-50/80 p-4 sm:p-6 lg:p-8">
-        <div className="portfolio-shell mx-auto max-w-[1500px] p-8">
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
-            <span className="ml-3 text-slate-500">Loading portfolio...</span>
-          </div>
+      <div className="page-container">
+        <div className="mx-auto w-full max-w-[1500px]">
+          <LoadingState message="Loading portfolio..." />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-full bg-slate-50/80 p-4 sm:p-6 lg:p-8">
+    <div className="page-container">
       <div className="mx-auto max-w-[1500px] space-y-4">
-        <div className="portfolio-shell overflow-hidden">
-          <div className="border-b border-slate-200 px-5 py-5 sm:px-6 sm:py-6">
+        <div className="portfolio-shell page-hero overflow-hidden">
+          <div className="page-header">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-sky-700">
-                  Career Snapshot
-                </p>
-                <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">
-                  Portfolio
-                </h1>
-                <p className="mt-2 text-sm text-slate-600">
+                <p className="page-kicker">Career Snapshot</p>
+                <h1 className="mt-1 text-foreground">Portfolio</h1>
+                <p className="page-summary mt-3">
                   {items.length === 0
                     ? "No portfolio items yet"
                     : `${items.length} item${items.length === 1 ? "" : "s"}`}
                 </p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <span className="portfolio-chip">{items.length} curated item{items.length === 1 ? "" : "s"}</span>
+                  <span className="portfolio-chip">{timeline.length} timeline entr{timeline.length === 1 ? "y" : "ies"}</span>
+                  <span className="portfolio-chip">{skills.length} extracted skill{skills.length === 1 ? "" : "s"}</span>
+                </div>
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
-                <button
+                <Button
                   onClick={handleRefresh}
                   disabled={refreshing}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  variant="outline"
                 >
-                  <RefreshCw size={18} className={refreshing ? "animate-spin" : ""} />
+                  {refreshing ? <Spinner size={18} /> : <RefreshCw size={18} />}
                   <span>{refreshing ? "Refreshing…" : "Refresh"}</span>
-                </button>
-                <button
+                </Button>
+                <Button
                   onClick={openCreateDialog}
-                  className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-slate-800"
                 >
                   <Plus size={18} />
                   <span>New Item</span>
-                </button>
+                </Button>
               </div>
             </div>
           </div>
 
           {error && (
-            <div className="mx-5 mt-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm sm:mx-6">
+            <div className="mx-5 mt-5 alert alert-error text-sm sm:mx-6">
               <div className="flex">
                 <svg className="h-5 w-5 flex-shrink-0 text-red-400" viewBox="0 0 20 20" fill="currentColor">
                   <path
@@ -387,7 +432,7 @@ export default function PortfolioPage() {
           )}
 
           {refreshResult && (
-            <div className="mx-5 mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm sm:mx-6">
+            <div className="mx-5 mt-5 alert alert-success text-sm sm:mx-6">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex gap-3">
                   <svg className="mt-0.5 h-5 w-5 flex-shrink-0 text-emerald-500" viewBox="0 0 20 20" fill="currentColor">
@@ -424,7 +469,7 @@ export default function PortfolioPage() {
                 </div>
                 <button
                   onClick={() => setRefreshResult(null)}
-                  className="flex-shrink-0 text-emerald-500 hover:text-emerald-700"
+                  className="flex-shrink-0 rounded-full border border-emerald-200 bg-white/70 p-1 text-emerald-500 transition-colors hover:text-emerald-700"
                   aria-label="Dismiss"
                 >
                   <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
@@ -440,15 +485,19 @@ export default function PortfolioPage() {
           )}
 
           <div className="px-5 pb-5 pt-5 sm:px-6 sm:pb-6">
-            <Tabs defaultValue="overview" className="space-y-4">
-              <TabsList className="mb-0 h-auto w-full justify-start gap-2 overflow-x-auto rounded-2xl border border-slate-200 bg-slate-50/80 p-2 text-slate-500">
-                <TabsTrigger value="overview" className="rounded-xl">
+            <Tabs
+              defaultValue="overview"
+              onValueChange={setActiveTab}
+              className="space-y-4"
+            >
+              <TabsList className="mb-0 h-auto w-full justify-start gap-2 overflow-x-auto">
+                <TabsTrigger value="overview">
                   Overview
                 </TabsTrigger>
-                <TabsTrigger value="items" className="rounded-xl">
+                <TabsTrigger value="items">
                   Portfolio Items
                 </TabsTrigger>
-                <TabsTrigger value="timeline" className="rounded-xl">
+                <TabsTrigger value="timeline">
                   Project Timeline
                 </TabsTrigger>
                 <TabsTrigger value="resources" className="rounded-xl">
@@ -457,154 +506,210 @@ export default function PortfolioPage() {
                 </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="overview" className="mt-0 border-0 bg-transparent p-0 shadow-none">
-                <PortfolioOverview
-                  profile={profile}
-                  chronology={chronology}
-                  projects={projects}
-                  skills={skills}
-                  initialSettings={portfolioSettings}
-                  onShareLinkedIn={() => setLinkedInOpen(true)}
-                />
-              </TabsContent>
+              <div
+                className="transition-[min-height] duration-200 ease-out"
+                style={{ minHeight: stableTabHeight > 0 ? `${stableTabHeight}px` : undefined }}
+              >
+                <TabsContent value="overview" className="mt-0 border-0 bg-transparent p-0">
+                  <div ref={activeTab === "overview" ? activePanelRef : null}>
+                    <PortfolioOverview
+                      profile={profile}
+                      chronology={chronology}
+                      projects={projects}
+                      skills={skills}
+                      initialSettings={portfolioSettings}
+                      onShareLinkedIn={() => setLinkedInOpen(true)}
+                    />
+                  </div>
+                </TabsContent>
 
-              <TabsContent value="items" className="mt-0 border-0 bg-transparent p-0 shadow-none">
-                <div className="portfolio-panel p-4 sm:p-5">
-                  {items.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 py-16 text-center">
-                      <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-full bg-white">
-                        <Briefcase className="h-6 w-6 text-slate-400" />
+                <TabsContent value="items" className="mt-0 border-0 bg-transparent p-0">
+                  <div ref={activeTab === "items" ? activePanelRef : null} className="space-y-4">
+                    <div className="split-callout">
+                      <div className="split-callout-card">
+                        <p className="page-kicker mb-2">Curated Highlights</p>
+                        <p className="text-sm text-muted-foreground">
+                          Portfolio items should read like concise proof points: clear role, measurable impact, and strong summary copy.
+                        </p>
                       </div>
-                      <p className="mb-2 text-slate-600">No portfolio items yet</p>
-                      <p className="mb-6 text-sm text-slate-500">
-                        Create your first portfolio item or generate one from a project.
-                      </p>
-                      <button
-                        onClick={openCreateDialog}
-                        className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-slate-800"
-                      >
-                        <Plus size={18} />
-                        New Item
-                      </button>
                     </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {items.map((item) => (
-                        <div
-                          key={item.id}
-                          className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 transition-colors hover:border-slate-300 hover:bg-white"
-                        >
-                          <div className="flex items-start justify-between gap-4">
-                            {item.thumbnail && (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={item.thumbnail}
-                                alt={item.title}
-                                className="h-16 w-16 flex-shrink-0 rounded-xl border border-slate-200 object-cover"
-                                onError={(e) => {
-                                  (e.currentTarget as HTMLImageElement).style.display = "none";
-                                }}
-                              />
-                            )}
-                            <div className="min-w-0 flex-1">
-                              <p className="text-sm font-semibold text-slate-950">{item.title}</p>
-                              {item.role && <p className="mt-0.5 text-xs text-slate-500">{item.role}</p>}
-                              {item.summary && (
-                                <p className="mt-2 line-clamp-2 text-sm text-slate-600">{item.summary}</p>
-                              )}
-                              {item.evidence && (
-                                <p className="mt-1.5 line-clamp-1 text-xs text-slate-500">{item.evidence}</p>
-                              )}
-                              <p className="mt-2 text-xs text-slate-400">
-                                Added {formatDate(item.created_at)}
-                              </p>
-                            </div>
-                            <div className="flex flex-shrink-0 items-center gap-2">
-                              <button
-                                onClick={() => openEditDialog(item)}
-                                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-100"
-                              >
-                                <Edit2 size={14} />
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => handleDelete(item.id)}
-                                disabled={deletingId === item.id}
-                                className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                <Trash2 size={14} />
-                                {deletingId === item.id ? "Deleting…" : "Delete"}
-                              </button>
-                            </div>
-                          </div>
+                    {items.length === 0 ? (
+                      <div className="rounded-[24px] border border-dashed border-border bg-background/80 py-16 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]">
+                        <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-card shadow-[0_14px_30px_rgba(15,23,42,0.08)]">
+                          <Briefcase className="h-6 w-6 text-muted-foreground" />
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </TabsContent>
-
-              <TabsContent value="timeline" className="mt-0 border-0 bg-transparent p-0 shadow-none">
-                <div className="portfolio-panel p-4 sm:p-5">
-                  {timeline.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 py-16 text-center">
-                      <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-full bg-white">
-                        <Calendar className="h-6 w-6 text-slate-400" />
-                      </div>
-                      <p className="mb-2 text-slate-600">No project timeline data</p>
-                      <p className="text-sm text-slate-500">
-                        Scan projects to see them here in chronological order.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {timeline.map((project) => (
-                        <div
-                          key={project.project_id}
-                          className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 transition-colors hover:border-slate-300 hover:bg-white"
+                        <p className="mb-2 text-base font-medium text-foreground">No portfolio items yet</p>
+                        <p className="mb-6 text-sm text-muted-foreground">
+                          Create your first portfolio item or generate one from a project.
+                        </p>
+                        <Button
+                          onClick={openCreateDialog}
                         >
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="min-w-0 flex-1">
-                              <p className="text-sm font-semibold text-slate-950">{project.name}</p>
-                              {project.role && (
-                                <p className="mt-0.5 text-xs text-slate-500">{project.role}</p>
-                              )}
-                              <p className="mt-1 text-xs text-slate-400">
-                                {formatDateRange(project.start_date, project.end_date)}
-                                {project.duration_days != null && (
-                                  <span className="ml-2">({project.duration_days} days)</span>
+                          <Plus size={18} />
+                          New Item
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="grid gap-4 xl:grid-cols-2">
+                        {items.map((item) => (
+                          <div
+                            key={item.id}
+                            className="rounded-[22px] border border-border bg-card/92 p-5 shadow-[0_18px_38px_rgba(15,23,42,0.06)] transition-[transform,border-color,background-color] hover:-translate-y-0.5 hover:border-primary/20 hover:bg-background"
+                          >
+                            <div className="flex items-start gap-4">
+                              <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center overflow-hidden rounded-[14px] border-2 border-border bg-muted">
+                                {item.thumbnail ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={item.thumbnail}
+                                    alt={item.title}
+                                    className="h-full w-full object-cover"
+                                    onError={(e) => {
+                                      (e.currentTarget as HTMLImageElement).style.display = "none";
+                                    }}
+                                  />
+                                ) : (
+                                  <Briefcase className="h-6 w-6 text-muted-foreground" />
                                 )}
-                              </p>
-                              {project.evidence.length > 0 && (
-                                <ul className="mt-2 space-y-0.5">
-                                  {project.evidence.slice(0, 3).map((point, index) => (
-                                    <li
-                                      key={`${project.project_id}-e${index}`}
-                                      className="flex gap-1.5 text-xs text-slate-600"
-                                    >
-                                      <span className="flex-shrink-0 text-slate-400">•</span>
-                                      <span>{point}</span>
-                                    </li>
-                                  ))}
-                                  {project.evidence.length > 3 && (
-                                    <li className="text-xs text-slate-400">
-                                      +{project.evidence.length - 3} more
-                                    </li>
-                                  )}
-                                </ul>
-                              )}
+                              </div>
+                              <div className="min-w-0 flex-1 space-y-3">
+                                <div className="space-y-1">
+                                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                    Portfolio Item
+                                  </p>
+                                  <p className="text-base font-semibold text-foreground">{item.title}</p>
+                                </div>
+                                {item.role && <p className="mt-0.5 text-xs text-muted-foreground">{item.role}</p>}
+                                {item.summary && (
+                                  <p className="text-sm leading-6 text-muted-foreground">{item.summary}</p>
+                                )}
+                                {item.evidence && (
+                                  <p className="rounded-[12px] border border-border bg-muted/70 px-3 py-2 text-xs leading-5 text-muted-foreground">
+                                    {item.evidence}
+                                  </p>
+                                )}
+                                <p className="text-xs text-muted-foreground">
+                                  Added {formatDate(item.created_at)}
+                                </p>
+                                <div className="flex flex-wrap items-center gap-2 pt-1">
+                                  <Button
+                                    onClick={() => openEditDialog(item)}
+                                    variant="outline"
+                                    size="sm"
+                                  >
+                                    <Edit2 size={14} />
+                                    Edit
+                                  </Button>
+                                  <Button
+                                    onClick={() => handleDelete(item.id)}
+                                    disabled={deletingId === item.id}
+                                    variant="destructive"
+                                    size="sm"
+                                  >
+                                    <Trash2 size={14} />
+                                    {deletingId === item.id ? "Deleting…" : "Delete"}
+                                  </Button>
+                                </div>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </TabsContent>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </TabsContent>
 
-              <TabsContent value="resources" className="mt-0 border-0 bg-transparent p-0 shadow-none">
-                <ResourceSuggestions />
-              </TabsContent>
+                <TabsContent value="timeline" className="mt-0 border-0 bg-transparent p-0">
+                  <div ref={activeTab === "timeline" ? activePanelRef : null} className="space-y-4">
+                    <div className="split-callout">
+                      <div className="split-callout-card">
+                        <p className="page-kicker mb-2">Chronology</p>
+                        <p className="text-sm text-muted-foreground">
+                          Timeline entries should feel sequential and scannable, with dates and evidence separated cleanly from the project title.
+                        </p>
+                      </div>
+                    </div>
+                    {timeline.length === 0 ? (
+                      <div className="rounded-[24px] border border-dashed border-border bg-background/80 py-16 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]">
+                        <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-card shadow-[0_14px_30px_rgba(15,23,42,0.08)]">
+                          <Calendar className="h-6 w-6 text-muted-foreground" />
+                        </div>
+                        <p className="mb-2 text-base font-medium text-foreground">No project timeline data</p>
+                        <p className="text-sm text-muted-foreground">
+                          Scan projects to see them here in chronological order.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {timeline.map((project, index) => (
+                          <div
+                            key={project.project_id}
+                            className="relative rounded-[22px] border border-border bg-card/92 p-5 shadow-[0_18px_38px_rgba(15,23,42,0.06)] transition-[transform,border-color,background-color] hover:-translate-y-0.5 hover:border-primary/20 hover:bg-background"
+                          >
+                            <div className="flex items-start gap-4">
+                              <div className="flex w-16 flex-shrink-0 flex-col items-center">
+                                <div className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-border bg-muted text-sm font-semibold text-foreground">
+                                  {index + 1}
+                                </div>
+                                <div className="mt-2 h-full min-h-[2rem] w-px bg-border" />
+                              </div>
+                              <div className="min-w-0 flex-1 space-y-3">
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                  <div className="space-y-1">
+                                    <p className="text-sm font-semibold text-foreground">{project.name}</p>
+                                    {project.role && (
+                                      <p className="text-xs text-muted-foreground">{project.role}</p>
+                                    )}
+                                  </div>
+                                  <div className="rounded-[12px] border border-border bg-muted/70 px-3 py-2 text-right">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                                      Timeline
+                                    </p>
+                                    <p className="mt-1 text-xs text-foreground">
+                                      {formatDateRange(project.start_date, project.end_date)}
+                                    </p>
+                                  </div>
+                                </div>
+                                {project.duration_days != null && (
+                                  <p className="text-xs text-muted-foreground">
+                                    Duration: {project.duration_days} day{project.duration_days === 1 ? "" : "s"}
+                                  </p>
+                                )}
+                                {project.evidence.length > 0 ? (
+                                  <ul className="space-y-2">
+                                    {project.evidence.slice(0, 3).map((point, index) => (
+                                      <li
+                                        key={`${project.project_id}-e${index}`}
+                                        className="flex gap-2 rounded-[12px] border border-border bg-muted/55 px-3 py-2 text-xs leading-5 text-muted-foreground"
+                                      >
+                                        <span className="flex-shrink-0 text-muted-foreground">•</span>
+                                        <span>{point}</span>
+                                      </li>
+                                    ))}
+                                    {project.evidence.length > 3 && (
+                                      <li className="text-xs text-muted-foreground">
+                                        +{project.evidence.length - 3} more
+                                      </li>
+                                    )}
+                                  </ul>
+                                ) : (
+                                  <p className="text-xs text-muted-foreground">No evidence attached yet.</p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="resources" className="mt-0 border-0 bg-transparent p-0">
+                  <div ref={activeTab === "resources" ? activePanelRef : null}>
+                    <ResourceSuggestions />
+                  </div>
+                </TabsContent>
+              </div>
             </Tabs>
           </div>
         </div>
@@ -622,14 +727,14 @@ export default function PortfolioPage() {
 
             <div className="flex-1 space-y-4 overflow-y-auto py-2 pr-1">
               {formError && (
-                <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+                <p className="rounded-[16px] border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
                   {formError}
                 </p>
               )}
 
               {!editing && projects.length > 0 && (
-                <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">
+                <div className="space-y-3 rounded-[18px] border border-border bg-muted/70 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-foreground">
                     Generate from Project
                   </p>
                   <div className="flex gap-2">
@@ -653,7 +758,7 @@ export default function PortfolioPage() {
                       className="flex-shrink-0"
                     >
                       {generating ? (
-                        <Loader2 size={14} className="animate-spin" />
+                        <Spinner size={14} />
                       ) : (
                         <Sparkles size={14} />
                       )}
@@ -662,7 +767,7 @@ export default function PortfolioPage() {
                       </span>
                     </Button>
                   </div>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-muted-foreground">
                     Auto-fill form fields from a scanned project using AI.
                   </p>
                 </div>

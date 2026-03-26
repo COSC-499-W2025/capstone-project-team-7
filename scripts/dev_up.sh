@@ -5,7 +5,14 @@ cd "$(dirname "$0")/.."
 
 bash scripts/dev_setup.sh
 
-(cd backend && source venv/bin/activate && uvicorn src.main:app --reload --port 8000) &
+BACKEND_PY="backend/venv/bin/python"
+
+if [ ! -x "$BACKEND_PY" ]; then
+    echo "Backend virtualenv is missing or incomplete: $BACKEND_PY"
+    exit 1
+fi
+
+(cd backend && ../"$BACKEND_PY" -m uvicorn src.main:app --reload --port 8000) &
 BACK_PID=$!
 
 (cd frontend && npm run dev) &

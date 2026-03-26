@@ -101,23 +101,42 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold text-center">
-            Create an account
-          </CardTitle>
-          <CardDescription className="text-center">
-            Enter your details to get started
-          </CardDescription>
-        </CardHeader>
+    <div className="auth-shell">
+      <div className="auth-panel">
+        <section className="auth-showcase">
+          <p className="page-kicker text-white/70">Secure onboarding</p>
+          <h1 className="text-4xl font-bold text-white">Create your Lumen workspace</h1>
+          <p className="mt-4 max-w-md text-sm leading-7 text-white/78">
+            Build a polished portfolio analysis workspace with explicit consent controls and presentation-ready outputs.
+          </p>
+          <div className="mt-8 grid gap-3">
+            <div className="auth-metric">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/62">Privacy</p>
+              <p className="mt-1 text-sm text-white">Clear consent prompts for data storage and external AI services.</p>
+            </div>
+            <div className="auth-metric">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/62">Workflow</p>
+              <p className="mt-1 text-sm text-white">Move from project scans to resumes and portfolio views in one system.</p>
+            </div>
+          </div>
+        </section>
 
-        <form onSubmit={handleSubmit}>
-          <CardContent className="space-y-4">
+        <Card className="auth-card w-full border-0 bg-transparent">
+          <CardHeader className="space-y-1 px-0 pt-0">
+            <CardTitle className="text-3xl font-bold">
+              Create an account
+            </CardTitle>
+            <CardDescription>
+              Enter your details to get started
+            </CardDescription>
+          </CardHeader>
+
+          <form onSubmit={handleSubmit}>
+            <CardContent className="space-y-4 px-0">
             {error && (
               <div
                 data-testid="error-message"
-                className="p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-md"
+                className="p-3 text-sm text-red-800 bg-red-50 border-2 border-red-300 rounded-md"
               >
                 {error}
               </div>
@@ -200,7 +219,7 @@ export default function SignupPage() {
                     {activeNotice === "privacy" ? "Hide" : "Read"}
                   </Button>
                   {activeNotice === "privacy" && (
-                    <div className="absolute right-0 z-20 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-border/70 bg-background p-4 text-sm text-muted-foreground shadow-lg sm:w-80">
+                    <div className="absolute right-0 z-20 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-md border-2 border-border bg-background p-4 text-sm text-muted-foreground sm:w-80">
                       <p className="font-semibold text-foreground">Data consent notice</p>
                       <p className="mt-2">
                         We store your email address and authentication tokens to create your account, sign you in, and
@@ -241,7 +260,7 @@ export default function SignupPage() {
                     {activeNotice === "external" ? "Hide" : "Read"}
                   </Button>
                   {activeNotice === "external" && (
-                    <div className="absolute right-0 z-20 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-border/70 bg-background p-4 text-sm text-muted-foreground shadow-lg sm:w-80">
+                    <div className="absolute right-0 z-20 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-md border-2 border-border bg-background p-4 text-sm text-muted-foreground sm:w-80">
                       <p className="font-semibold text-foreground">External services consent</p>
                       <p className="mt-2">
                         When enabled, selected content you submit may be sent to external AI providers for analysis to
@@ -269,27 +288,28 @@ export default function SignupPage() {
                 </Label>
               </div>
             </div>
-          </CardContent>
+            </CardContent>
 
-          <CardFooter className="flex flex-col space-y-4">
-            <Button
-              type="submit"
-              data-testid="submit"
-              className="w-full"
-              disabled={!canSubmit || isLoading}
-            >
-              {isSubmitting ? "Creating account..." : "Create account"}
-            </Button>
+            <CardFooter className="flex flex-col space-y-4 px-0 pb-0">
+              <Button
+                type="submit"
+                data-testid="submit"
+                className="w-full"
+                disabled={!canSubmit || isLoading}
+              >
+                {isSubmitting ? "Creating account..." : "Create account"}
+              </Button>
 
-            <p className="text-sm text-center text-muted-foreground">
-              Already have an account?{" "}
-              <Link href="/auth/login" className="text-primary hover:underline">
-                Log in
-              </Link>
-            </p>
-          </CardFooter>
-        </form>
-      </Card>
+              <p className="text-sm text-center text-muted-foreground">
+                Already have an account?{" "}
+                <Link href="/auth/login" className="text-primary hover:underline">
+                  Log in
+                </Link>
+              </p>
+            </CardFooter>
+          </form>
+        </Card>
+      </div>
     </div>
   );
 }
