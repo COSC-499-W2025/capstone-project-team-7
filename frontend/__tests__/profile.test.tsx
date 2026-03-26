@@ -3,6 +3,10 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ProfilePage from "../app/(dashboard)/profile/page";
 
+const { mockLogout } = vi.hoisted(() => ({
+  mockLogout: vi.fn(),
+}));
+
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
@@ -29,6 +33,10 @@ vi.mock("@/lib/api", () => ({
       changePassword: vi.fn(),
     },
   },
+}));
+
+vi.mock("@/hooks/use-auth", () => ({
+  useAuth: () => ({ logout: mockLogout }),
 }));
 
 import { api } from "@/lib/api";
@@ -77,6 +85,7 @@ URL.revokeObjectURL = vi.fn();
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockLogout.mockReset();
   localStorageMock.clear();
   localStorageMock.setItem("access_token", "test-token");
   locationMock.href = "";
@@ -294,16 +303,12 @@ describe("ProfilePage", () => {
     });
   });
 
-  it("logout clears localStorage and redirects", async () => {
+  it("logout calls auth logout handler", async () => {
     await renderAndWait();
     const logoutBtn = screen.getByRole("button", { name: "Log out" });
     await userEvent.click(logoutBtn);
 
-    expect(localStorageMock.removeItem).toHaveBeenCalledWith("access_token");
-    expect(localStorageMock.removeItem).toHaveBeenCalledWith("refresh_token");
-    expect(localStorageMock.removeItem).toHaveBeenCalledWith("user_id");
-    expect(localStorageMock.removeItem).toHaveBeenCalledWith("email");
-    expect(locationMock.href).toBe("/");
+    expect(mockLogout).toHaveBeenCalledTimes(1);
   });
 
   it("shows error message on API failure", async () => {

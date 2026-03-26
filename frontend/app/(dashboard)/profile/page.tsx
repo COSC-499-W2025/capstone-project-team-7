@@ -303,6 +303,13 @@ export default function ProfilePage() {
             <h1 className="text-[30px] leading-[36px] font-bold tracking-tight">Profile</h1>
             <p className="page-summary">Manage your public identity, supporting links, and account security.</p>
           </div>
+          <Button
+            variant="outline"
+            className="w-fit rounded-md"
+            onClick={() => window.history.back()}
+          >
+            Back
+          </Button>
         </div>
       </section>
 
