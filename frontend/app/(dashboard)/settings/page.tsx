@@ -567,7 +567,7 @@ export default function SettingsPage() {
     }
   };
 
-  const isPageLoading = sessionLoading || (Boolean(userSession) && consentLoading);
+  const isPageLoading = sessionLoading;
 
   if (isPageLoading) {
     return (
