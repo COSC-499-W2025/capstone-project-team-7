@@ -103,8 +103,8 @@ function setupLoggedIn(opts?: { externalConsent?: boolean; hasKey?: boolean }) {
   });
 }
 
-function openSecurityAndPrivacyTab() {
-  fireEvent.click(screen.getByRole("button", { name: "Security & Privacy" }));
+async function openSecurityAndPrivacyTab() {
+  fireEvent.click(await screen.findByRole("button", { name: "Security & Privacy" }));
 }
 
 describe("Settings — External Services (secrets)", () => {
@@ -115,7 +115,7 @@ describe("Settings — External Services (secrets)", () => {
   it("shows 'Not configured' when no secret exists", async () => {
     setupLoggedIn({ externalConsent: true, hasKey: false });
     render(<SettingsPage />);
-    openSecurityAndPrivacyTab();
+    await openSecurityAndPrivacyTab();
 
     await waitFor(() => {
       expect(screen.getByText("Not configured")).toBeInTheDocument();
@@ -125,7 +125,7 @@ describe("Settings — External Services (secrets)", () => {
   it("shows 'Configured' when secret exists", async () => {
     setupLoggedIn({ externalConsent: true, hasKey: true });
     render(<SettingsPage />);
-    openSecurityAndPrivacyTab();
+    await openSecurityAndPrivacyTab();
 
     await waitFor(() => {
       expect(screen.getByText("Configured")).toBeInTheDocument();
@@ -146,7 +146,7 @@ describe("Settings — External Services (secrets)", () => {
   it("shows consent required banner when external services not enabled", async () => {
     setupLoggedIn({ externalConsent: false, hasKey: false });
     render(<SettingsPage />);
-    openSecurityAndPrivacyTab();
+    await openSecurityAndPrivacyTab();
 
     await waitFor(() => {
       expect(
@@ -170,7 +170,7 @@ describe("Settings — External Services (secrets)", () => {
       });
 
     render(<SettingsPage />);
-    openSecurityAndPrivacyTab();
+    await openSecurityAndPrivacyTab();
 
     await waitFor(() => {
       expect(screen.getByText("Not configured")).toBeInTheDocument();
@@ -199,7 +199,7 @@ describe("Settings — External Services (secrets)", () => {
     });
 
     render(<SettingsPage />);
-    openSecurityAndPrivacyTab();
+    await openSecurityAndPrivacyTab();
 
     await waitFor(() => {
       expect(screen.getByText("Configured")).toBeInTheDocument();
@@ -224,7 +224,7 @@ describe("Settings — External Services (secrets)", () => {
       .mockResolvedValueOnce({ ok: true, data: { secrets: [] } });
 
     render(<SettingsPage />);
-    openSecurityAndPrivacyTab();
+    await openSecurityAndPrivacyTab();
 
     await waitFor(() => {
       expect(screen.getByText("Configured")).toBeInTheDocument();
