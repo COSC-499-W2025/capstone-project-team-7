@@ -20,6 +20,7 @@ const SelectTrigger = React.forwardRef<
     ref={ref}
     className={cn(
       "flex h-11 w-full items-center justify-between rounded-[14px] border border-border bg-[linear-gradient(180deg,hsl(var(--card)),hsl(var(--background))/0.82)] px-3.5 py-2.5 text-sm text-foreground ring-offset-background shadow-[inset_0_1px_0_rgba(255,255,255,0.75),0_8px_18px_rgba(15,23,42,0.04)] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/40 focus:ring-offset-2 focus:border-primary/40 disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1",
+      "flex h-11 w-full items-center justify-between rounded-[14px] border border-border bg-[linear-gradient(180deg,hsl(var(--card)),hsl(var(--background))/0.82)] px-3.5 py-2.5 text-sm text-foreground ring-offset-background shadow-[inset_0_1px_0_rgba(255,255,255,0.75),0_8px_18px_rgba(15,23,42,0.04)] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/40 focus:ring-offset-2 focus:border-primary/40 disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1",
       className
     )}
     {...props}

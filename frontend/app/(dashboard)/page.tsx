@@ -69,9 +69,15 @@ export default function HomePage() {
         <div className="page-body space-y-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0 space-y-2">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                Overview
-              </p>
+              <div className="flex items-center gap-2">
+                <span
+                  aria-hidden="true"
+                  className="h-px w-7 bg-gradient-to-r from-primary/75 to-primary/0"
+                />
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Overview
+                </p>
+              </div>
               <div className="space-y-2">
                 <h1 className="text-[2rem] font-semibold tracking-[-0.04em] text-foreground md:text-[2.2rem]">
                   Dashboard

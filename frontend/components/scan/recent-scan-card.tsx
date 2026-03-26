@@ -48,7 +48,6 @@ function toFiniteNumber(value: unknown): number | undefined {
 
   return isFiniteNumber(value) ? value : undefined;
 }
-
 function extractLanguages(
   rawLanguages: ProjectScanData["languages"],
   projectLanguages: string[],
@@ -192,7 +191,6 @@ function getContributionMetrics(
     user_commit_share: toFiniteNumber(metrics.user_commit_share),
   };
 }
-
 function extractLanguageMetrics(
   rawLanguages: ProjectScanData["languages"],
   projectLanguages: string[],
@@ -685,7 +683,7 @@ export function RecentScanCard({ project }: RecentScanCardProps) {
                       {card.value}
                     </p>
                   </div>
-                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[hsl(220_35%_97%)] text-muted-foreground">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-[hsl(220_18%_82%)] bg-[linear-gradient(180deg,hsl(220_20%_93%),hsl(220_16%_88%))] text-[hsl(220_11%_53%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/10 dark:bg-[linear-gradient(180deg,hsl(223_12%_25%),hsl(223_11%_21%))] dark:text-[hsl(220_14%_72%)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
                     <Icon className="size-[1.125rem]" />
                   </div>
                 </div>
