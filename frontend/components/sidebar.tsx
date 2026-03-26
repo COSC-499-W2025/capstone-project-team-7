@@ -122,13 +122,13 @@ export const Sidebar: React.FC = () => {
     <aside className="sidebar-shell">
       <div className="sidebar-rail flex-1 min-h-0">
         <div className="sidebar-brand">
-          <div className="sidebar-brand-mark">L</div>
+          <div className="sidebar-brand-mark">D</div>
           <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
               Workspace
             </p>
             <div className="mt-1 flex items-center gap-2">
-              <span className="text-xl font-semibold tracking-tight text-white">Lumen</span>
+              <span className="text-xl font-semibold tracking-tight text-white">DevFolio</span>
             </div>
           </div>
         </div>

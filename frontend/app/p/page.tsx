@@ -246,7 +246,7 @@ function PublicPortfolioContent() {
 
       {/* Footer */}
       <footer className="text-center text-xs text-muted-foreground py-4">
-        Built with Lumen
+        Built with DevFolio
       </footer>
     </div>
   );
