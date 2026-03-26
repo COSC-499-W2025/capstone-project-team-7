@@ -68,13 +68,6 @@ Object.defineProperty(window, "location", {
   writable: true,
 });
 
-// Mock window.history.back
-const historyBackMock = vi.fn();
-Object.defineProperty(window, "history", {
-  value: { back: historyBackMock },
-  writable: true,
-});
-
 // Mock URL.createObjectURL / revokeObjectURL
 URL.createObjectURL = vi.fn(() => "blob:mock-url");
 URL.revokeObjectURL = vi.fn();
@@ -135,11 +128,9 @@ describe("ProfilePage", () => {
     expect(emailInput).toHaveAttribute("readonly");
   });
 
-  it("back button calls history.back()", async () => {
+  it("does not render a back button in the hero", async () => {
     await renderAndWait();
-    const backBtn = screen.getByRole("button", { name: "Back" });
-    await userEvent.click(backBtn);
-    expect(historyBackMock).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "Back" })).not.toBeInTheDocument();
   });
 
   it("editing fields enables Save button", async () => {
