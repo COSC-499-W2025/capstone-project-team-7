@@ -3,8 +3,8 @@ import { Toaster } from "@/lib/notifications";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Lumen - Capstone Desktop",
-  description: "Next.js renderer scaffold for the Electron migration"
+  title: "DevFolio",
+  description: "AI-powered developer portfolio platform"
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

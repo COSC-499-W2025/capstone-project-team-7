@@ -234,7 +234,7 @@ export default function PublicPortfolioPage() {
 
       {/* Footer */}
       <footer className="text-center text-xs text-gray-400 py-4">
-        Built with Lumen
+        Built with DevFolio
       </footer>
     </div>
   );
