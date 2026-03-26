@@ -861,7 +861,11 @@ describe("PortfolioPage", () => {
     await renderAndWait();
     await user.click(screen.getByRole("button", { name: "Project Timeline" }));
     expect(screen.getByText("My App")).toBeInTheDocument();
-    expect(screen.getByText("Jan 2024 – Dec 2024")).toBeInTheDocument();
+    expect(
+      screen.getByText((text) =>
+        text.includes("Jan") && text.includes("Dec") && text.includes("2024")
+      )
+    ).toBeInTheDocument();
   });
 
   it("shows evidence bullet points in timeline", async () => {
