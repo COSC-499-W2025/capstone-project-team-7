@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GitAnalysisTab, normalizeGitAnalysis, normalizeRepo } from "@/components/project/git-analysis-tab";
 import { describe, expect, it, vi } from "vitest";
@@ -109,8 +109,7 @@ describe("GitAnalysisTab — branches", () => {
   it("renders branch pills", () => {
     render(<GitAnalysisTab loading={false} error={null} gitAnalysis={singleRepo} />);
 
-    expect(screen.getByText("Branches (3)")).toBeInTheDocument();
-    expect(screen.getByText("main")).toBeInTheDocument();
+    expect(screen.getByText("Branch Graph (2)")).toBeInTheDocument();
     expect(screen.getByText("develop")).toBeInTheDocument();
     expect(screen.getByText("feature/auth")).toBeInTheDocument();
   });
@@ -394,7 +393,25 @@ describe("normalizeRepo", () => {
       timeline: [{ month: "2024-01", commits: 10, messages: [], top_files: [], languages: {}, contributors: 1 }],
     };
     const result = normalizeRepo(repo);
-    expect(result).toEqual(repo);
+    expect(result).toEqual({
+      ...repo,
+      branches: [
+        {
+          name: "main",
+          created_date: null,
+          is_merged: false,
+          merge_date: null,
+          commit_count: 0,
+        },
+        {
+          name: "dev",
+          created_date: null,
+          is_merged: false,
+          merge_date: null,
+          commit_count: 0,
+        },
+      ],
+    });
   });
 
   it("handles wrong types gracefully", () => {

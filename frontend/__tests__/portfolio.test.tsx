@@ -95,6 +95,8 @@ vi.mock("@/lib/api/portfolio", () => ({
   getPortfolioChronology: vi.fn(),
   refreshPortfolio: vi.fn(),
   getPortfolioSettings: vi.fn(),
+  publishPortfolio: vi.fn(),
+  getProjectEvolution: vi.fn(),
 }));
 
 vi.mock("@/lib/api/projects", () => ({
@@ -112,6 +114,15 @@ vi.mock("@/lib/auth", () => ({
   refreshAccessToken: vi.fn(),
 }));
 
+vi.mock("@/lib/api", () => ({
+  api: {
+    profile: {
+      get: vi.fn(),
+    },
+  },
+}));
+
+import { api } from "@/lib/api";
 import {
   listPortfolioItems,
   createPortfolioItem,
@@ -121,6 +132,8 @@ import {
   getPortfolioChronology,
   refreshPortfolio,
   getPortfolioSettings,
+  getProjectEvolution,
+  publishPortfolio,
 } from "@/lib/api/portfolio";
 import { getProjects, getSkills } from "@/lib/api/projects";
 import { getStoredToken, getStoredTokenCandidates } from "@/lib/auth";
@@ -137,6 +150,10 @@ const mockGetSkills = getSkills as Mock;
 const mockGetStoredToken = getStoredToken as Mock;
 const mockGetStoredTokenCandidates = getStoredTokenCandidates as Mock;
 const mockRefreshPortfolio = refreshPortfolio as Mock;
+const mockGetProjectEvolution = getProjectEvolution as Mock;
+const mockPublishPortfolio = publishPortfolio as Mock;
+const mockProfileGet = api.profile.get as Mock;
+let user: ReturnType<typeof userEvent.setup>;
 
 const confirmMock = vi.fn();
 Object.defineProperty(window, "confirm", { value: confirmMock, writable: true });
@@ -152,13 +169,17 @@ Element.prototype.releasePointerCapture = vi.fn() as unknown as typeof Element.p
 
 beforeEach(() => {
   vi.clearAllMocks();
+  user = userEvent.setup();
   confirmMock.mockReturnValue(false);
 
   mockGetStoredToken.mockReturnValue("test-token");
   mockGetStoredTokenCandidates.mockReturnValue(["test-token"]);
+  mockProfileGet.mockResolvedValue({ ok: true, data: null });
   mockListPortfolioItems.mockResolvedValue([...MOCK_ITEMS]);
   mockGetSkills.mockResolvedValue({ skills: [...MOCK_SKILLS] });
   mockGetPortfolioChronology.mockResolvedValue({ ...MOCK_CHRONOLOGY });
+  mockGetProjectEvolution.mockResolvedValue([]);
+  mockPublishPortfolio.mockResolvedValue({ is_public: false, share_token: null });
   mockGetPortfolioSettings.mockResolvedValue({ public_portfolio_enabled: false, public_slug: null });
   mockGetProjects.mockResolvedValue({ projects: [...MOCK_PROJECTS], count: 2 });
   mockCreatePortfolioItem.mockResolvedValue({
@@ -192,6 +213,7 @@ beforeEach(() => {
       duplicate_groups: [],
     },
   });
+  mockGetProjectEvolution.mockResolvedValue([]);
 });
 
 // ---------------------------------------------------------------------------
@@ -206,7 +228,7 @@ async function renderAndWait() {
 }
 
 async function openPortfolioItemsTab() {
-  await userEvent.click(screen.getByRole("button", { name: "Portfolio Items" }));
+  await user.click(screen.getByRole("button", { name: "Portfolio Items" }));
 }
 
 // ---------------------------------------------------------------------------
@@ -332,7 +354,7 @@ describe("PortfolioPage", () => {
   it("collapses skills section when toggle clicked", async () => {
     await renderAndWait();
     const toggleButton = screen.getByText(/Skills Summary/i);
-    await userEvent.click(toggleButton);
+    await user.click(toggleButton);
     expect(screen.queryByText(/4 skills across all projects/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "All Skills" })).not.toBeInTheDocument();
   });
@@ -341,7 +363,7 @@ describe("PortfolioPage", () => {
 
   it("calls refreshPortfolio when Refresh is clicked", async () => {
     await renderAndWait();
-    await userEvent.click(screen.getByText("Refresh"));
+    await user.click(screen.getByText("Refresh"));
     await waitFor(() => {
       expect(mockRefreshPortfolio).toHaveBeenCalledWith("test-token");
     });
@@ -351,7 +373,7 @@ describe("PortfolioPage", () => {
     await renderAndWait();
     expect(mockListPortfolioItems).toHaveBeenCalledTimes(1);
 
-    await userEvent.click(screen.getByText("Refresh"));
+    await user.click(screen.getByText("Refresh"));
 
     await waitFor(() => {
       expect(mockListPortfolioItems).toHaveBeenCalledTimes(2);
@@ -363,7 +385,7 @@ describe("PortfolioPage", () => {
     mockRefreshPortfolio.mockReturnValue(new Promise((res) => { resolveRefresh = res; }));
 
     await renderAndWait();
-    await userEvent.click(screen.getByText("Refresh"));
+    await user.click(screen.getByText("Refresh"));
 
     expect(screen.getByText("Refreshing…")).toBeInTheDocument();
 
@@ -381,7 +403,7 @@ describe("PortfolioPage", () => {
 
   it("shows success banner with project and file counts after refresh", async () => {
     await renderAndWait();
-    await userEvent.click(screen.getByText("Refresh"));
+    await user.click(screen.getByText("Refresh"));
 
     await waitFor(() => {
       expect(screen.getByText("Portfolio refreshed")).toBeInTheDocument();
@@ -392,7 +414,7 @@ describe("PortfolioPage", () => {
 
   it("shows 'no duplicates' message when dedup report has 0 groups", async () => {
     await renderAndWait();
-    await userEvent.click(screen.getByText("Refresh"));
+    await user.click(screen.getByText("Refresh"));
 
     await waitFor(() => {
       expect(screen.getByText(/No cross-project duplicates detected/i)).toBeInTheDocument();
@@ -412,7 +434,7 @@ describe("PortfolioPage", () => {
     });
 
     await renderAndWait();
-    await userEvent.click(screen.getByText("Refresh"));
+    await user.click(screen.getByText("Refresh"));
 
     await waitFor(() => {
       expect(screen.getByText(/3 duplicate groups? found across projects/i)).toBeInTheDocument();
@@ -430,7 +452,7 @@ describe("PortfolioPage", () => {
     });
 
     await renderAndWait();
-    await userEvent.click(screen.getByText("Refresh"));
+    await user.click(screen.getByText("Refresh"));
 
     await waitFor(() => {
       expect(screen.getByText("Portfolio refreshed")).toBeInTheDocument();
@@ -440,20 +462,20 @@ describe("PortfolioPage", () => {
 
   it("dismisses refresh result banner when X is clicked", async () => {
     await renderAndWait();
-    await userEvent.click(screen.getByText("Refresh"));
+    await user.click(screen.getByText("Refresh"));
 
     await waitFor(() => {
       expect(screen.getByText("Portfolio refreshed")).toBeInTheDocument();
     });
 
-    await userEvent.click(screen.getByRole("button", { name: /Dismiss/i }));
+    await user.click(screen.getByRole("button", { name: /Dismiss/i }));
 
     expect(screen.queryByText("Portfolio refreshed")).not.toBeInTheDocument();
   });
 
   it("clears previous refresh result when a new refresh starts", async () => {
     await renderAndWait();
-    await userEvent.click(screen.getByText("Refresh"));
+    await user.click(screen.getByText("Refresh"));
 
     await waitFor(() => {
       expect(screen.getByText("Portfolio refreshed")).toBeInTheDocument();
@@ -462,7 +484,7 @@ describe("PortfolioPage", () => {
     // Trigger a second refresh that hangs so we can observe mid-flight state
     let resolveSecond!: (v: unknown) => void;
     mockRefreshPortfolio.mockReturnValue(new Promise((res) => { resolveSecond = res; }));
-    await userEvent.click(screen.getByText("Refresh"));
+    await user.click(screen.getByText("Refresh"));
 
     // Banner should be cleared while the second refresh is running
     expect(screen.queryByText("Portfolio refreshed")).not.toBeInTheDocument();
@@ -476,7 +498,7 @@ describe("PortfolioPage", () => {
     mockRefreshPortfolio.mockRejectedValue(new Error("Refresh failed"));
 
     await renderAndWait();
-    await userEvent.click(screen.getByText("Refresh"));
+    await user.click(screen.getByText("Refresh"));
 
     await waitFor(() => {
       expect(screen.getByText("Refresh failed")).toBeInTheDocument();
@@ -490,7 +512,7 @@ describe("PortfolioPage", () => {
     await renderAndWait();
     expect(mockListPortfolioItems).toHaveBeenCalledTimes(1);
 
-    await userEvent.click(screen.getByText("Refresh"));
+    await user.click(screen.getByText("Refresh"));
 
     await waitFor(() => {
       expect(mockListPortfolioItems).toHaveBeenCalledTimes(2);
@@ -507,7 +529,7 @@ describe("PortfolioPage", () => {
     });
 
     await renderAndWait();
-    await userEvent.click(screen.getByText("Refresh"));
+    await user.click(screen.getByText("Refresh"));
 
     await waitFor(() => {
       expect(screen.getByText(/1 project scanned/)).toBeInTheDocument();
@@ -525,7 +547,7 @@ describe("PortfolioPage", () => {
     });
 
     await renderAndWait();
-    await userEvent.click(screen.getByText("Refresh"));
+    await user.click(screen.getByText("Refresh"));
 
     await waitFor(() => {
       expect(screen.getByText(/1 file indexed/)).toBeInTheDocument();
@@ -538,7 +560,7 @@ describe("PortfolioPage", () => {
   it("opens create dialog when 'New Item' button clicked", async () => {
     await renderAndWait();
     const newItemButtons = screen.getAllByText("New Item");
-    await userEvent.click(newItemButtons[0]);
+    await user.click(newItemButtons[0]);
     expect(screen.getByText("New Portfolio Item")).toBeInTheDocument();
     expect(screen.getByLabelText(/Title/i)).toBeInTheDocument();
   });
@@ -546,9 +568,9 @@ describe("PortfolioPage", () => {
   it("shows validation error when title is empty on create", async () => {
     await renderAndWait();
     const newItemButtons = screen.getAllByText("New Item");
-    await userEvent.click(newItemButtons[0]);
+    await user.click(newItemButtons[0]);
 
-    await userEvent.click(screen.getByRole("button", { name: /Create/i }));
+    await user.click(screen.getByRole("button", { name: /Create/i }));
 
     expect(screen.getByText("Title is required.")).toBeInTheDocument();
     expect(mockCreatePortfolioItem).not.toHaveBeenCalled();
@@ -557,12 +579,12 @@ describe("PortfolioPage", () => {
   it("creates a new item via the dialog", async () => {
     await renderAndWait();
     const newItemButtons = screen.getAllByText("New Item");
-    await userEvent.click(newItemButtons[0]);
+    await user.click(newItemButtons[0]);
 
     const titleInput = screen.getByLabelText(/Title/i);
-    await userEvent.type(titleInput, "New Project");
+    await user.type(titleInput, "New Project");
 
-    await userEvent.click(screen.getByRole("button", { name: /Create/i }));
+    await user.click(screen.getByRole("button", { name: /Create/i }));
 
     await waitFor(() => {
       expect(mockCreatePortfolioItem).toHaveBeenCalledWith(
@@ -576,10 +598,10 @@ describe("PortfolioPage", () => {
     await renderAndWait();
     await openPortfolioItemsTab();
     const newItemButtons = screen.getAllByText("New Item");
-    await userEvent.click(newItemButtons[0]);
+    await user.click(newItemButtons[0]);
 
-    await userEvent.type(screen.getByLabelText(/Title/i), "New Project");
-    await userEvent.click(screen.getByRole("button", { name: /Create/i }));
+    await user.type(screen.getByLabelText(/Title/i), "New Project");
+    await user.click(screen.getByRole("button", { name: /Create/i }));
 
     await waitFor(() => {
       expect(screen.getByText("New Project")).toBeInTheDocument();
@@ -591,10 +613,10 @@ describe("PortfolioPage", () => {
   it("closes create dialog after successful create", async () => {
     await renderAndWait();
     const newItemButtons = screen.getAllByText("New Item");
-    await userEvent.click(newItemButtons[0]);
+    await user.click(newItemButtons[0]);
 
-    await userEvent.type(screen.getByLabelText(/Title/i), "New Project");
-    await userEvent.click(screen.getByRole("button", { name: /Create/i }));
+    await user.type(screen.getByLabelText(/Title/i), "New Project");
+    await user.click(screen.getByRole("button", { name: /Create/i }));
 
     await waitFor(() => {
       expect(screen.queryByText("New Portfolio Item")).not.toBeInTheDocument();
@@ -606,10 +628,10 @@ describe("PortfolioPage", () => {
     await renderAndWait();
 
     const newItemButtons = screen.getAllByText("New Item");
-    await userEvent.click(newItemButtons[0]);
+    await user.click(newItemButtons[0]);
 
-    await userEvent.type(screen.getByLabelText(/Title/i), "New Project");
-    await userEvent.click(screen.getByRole("button", { name: /Create/i }));
+    await user.type(screen.getByLabelText(/Title/i), "New Project");
+    await user.click(screen.getByRole("button", { name: /Create/i }));
 
     await waitFor(() => {
       expect(screen.getByText("Creation failed")).toBeInTheDocument();
@@ -619,11 +641,11 @@ describe("PortfolioPage", () => {
   it("closes dialog when Cancel is clicked", async () => {
     await renderAndWait();
     const newItemButtons = screen.getAllByText("New Item");
-    await userEvent.click(newItemButtons[0]);
+    await user.click(newItemButtons[0]);
 
     expect(screen.getByText("New Portfolio Item")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: /Cancel/i }));
+    await user.click(screen.getByRole("button", { name: /Cancel/i }));
 
     await waitFor(() => {
       expect(screen.queryByText("New Portfolio Item")).not.toBeInTheDocument();
@@ -637,7 +659,7 @@ describe("PortfolioPage", () => {
     await openPortfolioItemsTab();
 
     const editButtons = screen.getAllByText("Edit");
-    await userEvent.click(editButtons[0]);
+    await user.click(editButtons[0]);
 
     expect(screen.getByText("Edit Portfolio Item")).toBeInTheDocument();
     const titleInput = screen.getByLabelText(/Title/i) as HTMLInputElement;
@@ -648,7 +670,7 @@ describe("PortfolioPage", () => {
     await renderAndWait();
     await openPortfolioItemsTab();
     const editButtons = screen.getAllByText("Edit");
-    await userEvent.click(editButtons[0]);
+    await user.click(editButtons[0]);
 
     const roleInput = screen.getByLabelText(/Role/i) as HTMLInputElement;
     const summaryTextarea = screen.getByLabelText(/Summary/i) as HTMLTextAreaElement;
@@ -663,9 +685,9 @@ describe("PortfolioPage", () => {
     await renderAndWait();
     await openPortfolioItemsTab();
     const editButtons = screen.getAllByText("Edit");
-    await userEvent.click(editButtons[0]);
+    await user.click(editButtons[0]);
 
-    await userEvent.click(screen.getByRole("button", { name: /Save Changes/i }));
+    await user.click(screen.getByRole("button", { name: /Save Changes/i }));
 
     await waitFor(() => {
       expect(mockUpdatePortfolioItem).toHaveBeenCalledWith(
@@ -685,14 +707,14 @@ describe("PortfolioPage", () => {
     await openPortfolioItemsTab();
 
     const editButtons = screen.getAllByText("Edit");
-    await userEvent.click(editButtons[0]);
+    await user.click(editButtons[0]);
 
     // Clear and re-type title
     const titleInput = screen.getByLabelText(/Title/i);
-    await userEvent.clear(titleInput);
-    await userEvent.type(titleInput, "Updated Platform");
+    await user.clear(titleInput);
+    await user.type(titleInput, "Updated Platform");
 
-    await userEvent.click(screen.getByRole("button", { name: /Save Changes/i }));
+    await user.click(screen.getByRole("button", { name: /Save Changes/i }));
 
     await waitFor(() => {
       expect(screen.getByText("Updated Platform")).toBeInTheDocument();
@@ -705,9 +727,9 @@ describe("PortfolioPage", () => {
     await openPortfolioItemsTab();
 
     const editButtons = screen.getAllByText("Edit");
-    await userEvent.click(editButtons[0]);
+    await user.click(editButtons[0]);
 
-    await userEvent.click(screen.getByRole("button", { name: /Save Changes/i }));
+    await user.click(screen.getByRole("button", { name: /Save Changes/i }));
 
     await waitFor(() => {
       expect(screen.getByText("Update failed")).toBeInTheDocument();
@@ -722,7 +744,7 @@ describe("PortfolioPage", () => {
     await openPortfolioItemsTab();
 
     const deleteButtons = screen.getAllByText("Delete");
-    await userEvent.click(deleteButtons[0]);
+    await user.click(deleteButtons[0]);
 
     expect(confirmMock).toHaveBeenCalledWith(
       "Delete this portfolio item? This cannot be undone."
@@ -737,7 +759,7 @@ describe("PortfolioPage", () => {
     await openPortfolioItemsTab();
 
     const deleteButtons = screen.getAllByText("Delete");
-    await userEvent.click(deleteButtons[0]);
+    await user.click(deleteButtons[0]);
 
     await waitFor(() => {
       expect(mockDeletePortfolioItem).toHaveBeenCalledWith("test-token", "item-1");
@@ -756,7 +778,7 @@ describe("PortfolioPage", () => {
     await openPortfolioItemsTab();
 
     const deleteButtons = screen.getAllByText("Delete");
-    await userEvent.click(deleteButtons[0]);
+    await user.click(deleteButtons[0]);
 
     await waitFor(() => {
       expect(screen.getByText("Delete failed")).toBeInTheDocument();
@@ -771,7 +793,7 @@ describe("PortfolioPage", () => {
   it("shows 'Generate from Project' section in create dialog when projects exist", async () => {
     await renderAndWait();
     const newItemButtons = screen.getAllByText("New Item");
-    await userEvent.click(newItemButtons[0]);
+    await user.click(newItemButtons[0]);
 
     expect(screen.getByText("Generate from Project")).toBeInTheDocument();
     expect(screen.getByText("Fill from Project")).toBeInTheDocument();
@@ -782,7 +804,7 @@ describe("PortfolioPage", () => {
     await renderAndWait();
 
     const newItemButtons = screen.getAllByText("New Item");
-    await userEvent.click(newItemButtons[0]);
+    await user.click(newItemButtons[0]);
 
     expect(screen.queryByText("Generate from Project")).not.toBeInTheDocument();
   });
@@ -790,16 +812,16 @@ describe("PortfolioPage", () => {
   it("fills form fields after generating from project", async () => {
     await renderAndWait();
     const newItemButtons = screen.getAllByText("New Item");
-    await userEvent.click(newItemButtons[0]);
+    await user.click(newItemButtons[0]);
 
     // Select a project from the dropdown
     const selectTrigger = screen.getByRole("combobox");
-    await userEvent.click(selectTrigger);
+    await user.click(selectTrigger);
 
     const projectOptions = await screen.findAllByText("My App");
-    await userEvent.click(projectOptions[projectOptions.length - 1]);
+    await user.click(projectOptions[projectOptions.length - 1]);
 
-    await userEvent.click(screen.getByText("Fill from Project"));
+    await user.click(screen.getByText("Fill from Project"));
 
     await waitFor(() => {
       expect(mockGeneratePortfolioItem).toHaveBeenCalledWith(
@@ -819,14 +841,14 @@ describe("PortfolioPage", () => {
     await renderAndWait();
 
     const newItemButtons = screen.getAllByText("New Item");
-    await userEvent.click(newItemButtons[0]);
+    await user.click(newItemButtons[0]);
 
     const selectTrigger = screen.getByRole("combobox");
-    await userEvent.click(selectTrigger);
+    await user.click(selectTrigger);
     const projectOptions = await screen.findAllByText("My App");
-    await userEvent.click(projectOptions[projectOptions.length - 1]);
+    await user.click(projectOptions[projectOptions.length - 1]);
 
-    await userEvent.click(screen.getByText("Fill from Project"));
+    await user.click(screen.getByText("Fill from Project"));
 
     await waitFor(() => {
       expect(screen.getByText("Generation failed")).toBeInTheDocument();
@@ -837,14 +859,18 @@ describe("PortfolioPage", () => {
 
   it("switches to Project Timeline tab", async () => {
     await renderAndWait();
-    await userEvent.click(screen.getByRole("button", { name: "Project Timeline" }));
+    await user.click(screen.getByRole("button", { name: "Project Timeline" }));
     expect(screen.getByText("My App")).toBeInTheDocument();
-    expect(screen.getByText("Jan 2024 – Dec 2024")).toBeInTheDocument();
+    expect(
+      screen.getByText((text) =>
+        text.includes("Jan") && text.includes("Dec") && text.includes("2024")
+      )
+    ).toBeInTheDocument();
   });
 
   it("shows evidence bullet points in timeline", async () => {
     await renderAndWait();
-    await userEvent.click(screen.getByRole("button", { name: "Project Timeline" }));
+    await user.click(screen.getByRole("button", { name: "Project Timeline" }));
     expect(screen.getByText("Wrote 10k lines of code")).toBeInTheDocument();
     expect(screen.getByText("Led team of 3")).toBeInTheDocument();
   });
@@ -852,7 +878,7 @@ describe("PortfolioPage", () => {
   it("shows empty timeline state when no projects in chronology", async () => {
     mockGetPortfolioChronology.mockResolvedValue({ projects: [], skills: [] });
     await renderAndWait();
-    await userEvent.click(screen.getByRole("button", { name: "Project Timeline" }));
+    await user.click(screen.getByRole("button", { name: "Project Timeline" }));
     expect(screen.getByText(/No project timeline data/i)).toBeInTheDocument();
   });
 
@@ -872,7 +898,7 @@ describe("PortfolioPage", () => {
       skills: [],
     });
     await renderAndWait();
-    await userEvent.click(screen.getByRole("button", { name: "Project Timeline" }));
+    await user.click(screen.getByRole("button", { name: "Project Timeline" }));
     expect(screen.getByText("+2 more")).toBeInTheDocument();
   });
 

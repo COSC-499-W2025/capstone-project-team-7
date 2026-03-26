@@ -58,6 +58,7 @@ The routes below are extracted from the active routers included by `backend/src/
 - `DELETE /api/projects/{project_id}/insights`
 - `POST /api/projects/{project_id}/thumbnail`
 - `PATCH /api/projects/{project_id}/thumbnail`
+- `DELETE /api/projects/{project_id}/thumbnail`
 - `GET /api/projects/{project_id}/overrides`
 - `PATCH /api/projects/{project_id}/overrides`
 - `DELETE /api/projects/{project_id}/overrides`

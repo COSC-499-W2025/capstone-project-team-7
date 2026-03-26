@@ -4,8 +4,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import {
+  Section,
+  SectionActions,
+  SectionBody,
+  SectionDescription,
+  SectionHeader,
+  SectionHeading,
+  SectionInset,
+  SectionTitle,
+} from "@/components/ui/section";
 import { DocumentAnalysisTab } from "@/components/project/document-analysis-tab";
 import { OverviewTab } from "@/components/project/overview-tab";
 import { LanguagesTab } from "@/components/project/languages-tab";
@@ -84,6 +94,7 @@ import {
 import { FileTreeView } from "@/components/project/file-tree-view";
 import { SearchFilterTab } from "@/components/project/search-filter-tab";
 import type { FileEntry } from "@/lib/file-tree";
+import { LoadingState } from "@/components/ui/loading-state";
 
 const mainTabs = [
   { value: "overview", label: "Overview & Analysis", icon: LayoutDashboard },
@@ -973,6 +984,19 @@ export default function ProjectPage() {
 
   const aiEligibilityReady =
     externalServicesConsentEnabled && openAiKeyValid;
+  const primaryTabsListClass =
+    "flex w-full flex-nowrap items-center gap-2 overflow-x-auto rounded-[20px] bg-muted/55 p-1.5";
+  const secondaryTabsListClass =
+    "flex w-full flex-nowrap items-center gap-1.5 overflow-x-auto rounded-[18px] bg-muted/45 p-1";
+  const mainTabTriggerClass = "px-5 text-sm";
+  const subTabTriggerClass = "h-9 px-3.5 text-sm";
+
+  const projectHighlights = [
+    { label: "Files", value: filesProcessedLabel },
+    { label: "Lines", value: totalLinesLabel },
+    { label: "Git Repos", value: formatCount(gitRepos) },
+    { label: "Primary Language", value: topLanguages[0]?.name ?? "N/A" },
+  ];
 
   const handleGenerateSummary = async () => {
     const effectiveProjectId = projectId ?? project?.id ?? null;
@@ -1006,35 +1030,75 @@ export default function ProjectPage() {
   };
 
   return (
-    <div className="p-8">
-      <div className="mb-6">
-        <button
-          onClick={() => router.back()}
-          className="text-sm text-gray-600 hover:text-gray-900 mb-2 inline-block"
-        >
-          ← Back
-        </button>
+    <div className="page-container">
+      <section className="page-card">
+        <div className="page-body space-y-6">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.back()}
+              className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+            >
+              ← Back
+            </button>
+            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              Project Detail
+            </span>
+          </div>
 
-        <h1 className="text-4xl font-bold text-gray-900 tracking-tight">
-          {hasProject ? `Project: ${projectName}` : "Project"}
-        </h1>
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)]">
+            <div className="min-w-0 space-y-4">
+              <div className="space-y-2">
+                <h1 className="text-[2.2rem] font-semibold tracking-[-0.04em] text-foreground md:text-[2.5rem]">
+                  {hasProject ? projectName : "Project"}
+                </h1>
+                <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
+                  Review scan metadata, analysis outputs, and project tools in one workspace.
+                </p>
+              </div>
 
-        <p className="text-gray-500 mt-1 text-sm">Scanned project analysis and reports</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="info-tile p-4 sm:col-span-2">
+                  <p className="info-tile-kicker">Path</p>
+                  <p className="mt-2 break-all text-sm font-medium leading-6 text-foreground">
+                    {projectPath || "Unavailable"}
+                  </p>
+                </div>
+                <div className="info-tile p-4">
+                  <p className="info-tile-kicker">Scanned</p>
+                  <p className="mt-2 text-sm font-medium text-foreground">{scanTimestamp}</p>
+                </div>
+                <div className="info-tile p-4">
+                  <p className="info-tile-kicker">Duration</p>
+                  <p className="mt-2 text-sm font-medium text-foreground">{scanDurationLabel}</p>
+                </div>
+              </div>
 
-        {projectLoading && (
-          <p className="text-xs text-gray-400 mt-2">Loading project data…</p>
-        )}
-        {projectError && <p className="text-xs text-red-600 mt-2">{projectError}</p>}
-      </div>
+              {projectLoading && (
+                <p className="text-xs text-muted-foreground">Loading project data…</p>
+              )}
+              {projectError && <p className="text-xs text-red-600">{projectError}</p>}
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              {projectHighlights.map((item) => (
+                <div key={item.label} className="info-tile p-4">
+                  <p className="info-tile-kicker">{item.label}</p>
+                  <p className="mt-2 break-words text-lg font-semibold text-foreground">{item.value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
 
       {!projectLoading && !projectError && !hasProject && (
-        <Card className="bg-white border border-gray-200">
+        <Card className="bg-card border-2 border-border rounded-md">
           <CardContent className="p-8 text-center space-y-3">
-            <p className="text-lg font-semibold text-gray-900">No project selected</p>
-            <p className="text-sm text-gray-600">
+            <p className="text-lg font-semibold text-foreground">No project selected</p>
+            <p className="text-sm text-muted-foreground">
               Select a project from your scanned results to view its analysis.
             </p>
-            <Link href="/projects" className="text-sm text-gray-900 underline">
+            <Link href="/projects" className="text-sm text-foreground underline-offset-2 hover:underline">
               Go to projects
             </Link>
           </CardContent>
@@ -1042,12 +1106,19 @@ export default function ProjectPage() {
       )}
 
       {projectError && !hasProject && (
-        <Card className="bg-white border border-red-200">
+        <Card className="border-2 border-red-300 bg-red-50 rounded-md">
           <CardContent className="p-8 text-center space-y-2">
-            <p className="text-sm font-semibold text-red-700">Unable to load project data</p>
-            <p className="text-sm text-gray-600">Please return to Settings and verify your session.</p>
+            <p className="text-sm font-semibold text-red-800">Unable to load project data</p>
+            <p className="text-sm text-muted-foreground">Please return to Settings and verify your session.</p>
           </CardContent>
         </Card>
+      )}
+
+      {projectLoading && !hasProject && !projectError && (
+        <LoadingState
+          message="Loading project analysis..."
+          className="min-h-[22rem]"
+        />
       )}
 
       {hasProject && (
@@ -1055,16 +1126,16 @@ export default function ProjectPage() {
           key={activeMainTab}
           defaultValue={activeMainTab}
           onValueChange={(value) => setActiveMainTab(value as MainTabValue)}
+          className="space-y-6"
         >
-          {/* Main 4 tabs */}
-          <TabsList className="flex justify-start gap-2 h-auto bg-gray-100 rounded-lg p-2 mb-6">
+          <TabsList className={primaryTabsListClass}>
             {mainTabs.map((tab) => {
               const Icon = tab.icon;
               return (
                 <TabsTrigger
                   key={tab.value}
                   value={tab.value}
-                  className="text-sm px-5 py-2.5 font-medium"
+                  className={mainTabTriggerClass}
                 >
                   <Icon size={18} className="mr-2" />
                   {tab.label}
@@ -1076,21 +1147,21 @@ export default function ProjectPage() {
           {/* ============================================
               TAB 1: OVERVIEW & ANALYSIS
           ============================================ */}
-          <TabsContent value="overview">
+          <TabsContent value="overview" className="mt-0 border-0 bg-transparent p-0">
             <Tabs
               key={activeOverviewTab}
               defaultValue={activeOverviewTab}
               onValueChange={(value) => setActiveOverviewTab(value as OverviewTabValue)}
               className="space-y-6"
             >
-              <TabsList className="flex justify-start gap-1 h-auto bg-transparent p-0 border-b border-gray-200 rounded-none">
+              <TabsList className={secondaryTabsListClass}>
                 {overviewSubTabs.map((tab) => {
                   const Icon = tab.icon;
                   return (
                     <TabsTrigger
                       key={tab.value}
                       value={tab.value}
-                      className="text-xs px-4 py-2 rounded-t-lg rounded-b-none border-b-2 border-transparent data-[state=active]:border-gray-900 data-[state=active]:bg-white"
+                      className={subTabTriggerClass}
                     >
                       <Icon size={14} className="mr-1.5" />
                       {tab.label}
@@ -1100,7 +1171,7 @@ export default function ProjectPage() {
               </TabsList>
 
               {/* Overview Main - Project Info & Stats */}
-              <TabsContent value="overview-main">
+              <TabsContent value="overview-main" className="mt-0 border-0 bg-transparent p-0">
                 <OverviewTab
                   projectName={projectName}
                   projectPath={projectPath}
@@ -1120,36 +1191,18 @@ export default function ProjectPage() {
               </TabsContent>
 
               {/* Languages Breakdown */}
-              <TabsContent value="languages">
+              <TabsContent value="languages" className="mt-0 border-0 bg-transparent p-0">
                 <LanguagesTab topLanguages={topLanguages} />
               </TabsContent>
 
               {/* Git Analysis */}
               <TabsContent value="git-analysis" className="space-y-4">
-                <Card className="bg-white border border-gray-200">
-                  <CardHeader className="border-b border-gray-200 flex flex-row items-center justify-between">
-                    <CardTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                      <GitBranch size={18} />
-                      Git Analysis
-                    </CardTitle>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setActiveOverviewTab("overview-main")}
-                    >
-                      Back to Overview
-                    </Button>
-                  </CardHeader>
-                  <CardContent className="p-6">
-                    <GitAnalysisTab
-                      loading={projectLoading}
-                      error={projectError}
-                      gitAnalysis={scanData.git_analysis}
-                      onRetry={loadProject}
-                    />
-                  </CardContent>
-                </Card>
+                <GitAnalysisTab
+                  loading={projectLoading}
+                  error={projectError}
+                  gitAnalysis={scanData.git_analysis}
+                  onRetry={loadProject}
+                />
               </TabsContent>
 
               {/* Code Analysis */}
@@ -1185,16 +1238,16 @@ export default function ProjectPage() {
           {/* ============================================
               TAB 2: SKILLS & PROGRESS
           ============================================ */}
-          <TabsContent value="skills">
+          <TabsContent value="skills" className="mt-0 border-0 bg-transparent p-0">
             <Tabs defaultValue="skills-main" className="space-y-6">
-              <TabsList className="flex justify-start gap-1 h-auto bg-transparent p-0 border-b border-gray-200 rounded-none">
+              <TabsList className={secondaryTabsListClass}>
                 {skillsSubTabs.map((tab) => {
                   const Icon = tab.icon;
                   return (
                     <TabsTrigger
                       key={tab.value}
                       value={tab.value}
-                      className="text-xs px-4 py-2 rounded-t-lg rounded-b-none border-b-2 border-transparent data-[state=active]:border-gray-900 data-[state=active]:bg-white"
+                      className={subTabTriggerClass}
                     >
                       <Icon size={14} className="mr-1.5" />
                       {tab.label}
@@ -1204,7 +1257,7 @@ export default function ProjectPage() {
               </TabsList>
 
               {/* Skills Main */}
-              <TabsContent value="skills-main">
+              <TabsContent value="skills-main" className="mt-0 border-0 bg-transparent p-0">
                 <SkillsTab
                   highlight={{
                     skills: highlightedSkills,
@@ -1240,7 +1293,7 @@ export default function ProjectPage() {
               </TabsContent>
 
               {/* Skills Progress */}
-              <TabsContent value="progress">
+              <TabsContent value="progress" className="mt-0 border-0 bg-transparent p-0">
                 <ProgressTab
                   skillsTimeline={skillsTimeline}
                   topSkills={topSkills}
@@ -1253,7 +1306,7 @@ export default function ProjectPage() {
               </TabsContent>
 
               {/* Contributions */}
-              <TabsContent value="contributions">
+              <TabsContent value="contributions" className="mt-0 border-0 bg-transparent p-0">
                 <ContributionsTab contributionMetrics={scanData.contribution_metrics ? {
                   ...scanData.contribution_metrics,
                   user_commit_share: scanData.contribution_metrics.user_commit_share ?? computedUserCommitShare,
@@ -1262,27 +1315,28 @@ export default function ProjectPage() {
             </Tabs>
           </TabsContent>
 
-          <TabsContent value="ai-analysis" className="space-y-6">
-            <Card className="bg-white border border-gray-200">
-              <CardHeader className="border-b border-gray-200">
-                <CardTitle className="text-xl font-bold text-gray-900">
-                  AI Analysis Status
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6 space-y-4">
+          <TabsContent value="ai-analysis" className="mt-0 space-y-6 border-0 bg-transparent p-0">
+            <Section>
+              <SectionHeader>
+                <SectionHeading>
+                  <SectionTitle>AI Analysis Status</SectionTitle>
+                  <SectionDescription>Consent and API-key checks required before AI features can run.</SectionDescription>
+                </SectionHeading>
+              </SectionHeader>
+              <SectionBody className="space-y-4 pt-0">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-                    <p className="text-xs font-semibold text-gray-500 uppercase">External Data Consent</p>
-                    <p className={`mt-2 text-sm font-medium ${externalServicesConsentEnabled ? "text-green-700" : "text-gray-600"}`}>
+                  <SectionInset className="space-y-2">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase">External Data Consent</p>
+                    <p className={`mt-2 text-sm font-medium ${externalServicesConsentEnabled ? "text-green-700" : "text-muted-foreground"}`}>
                       {externalServicesConsentEnabled ? "Enabled" : "Not enabled"}
                     </p>
-                  </div>
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-                    <p className="text-xs font-semibold text-gray-500 uppercase">OpenAI API Key</p>
-                    <p className={`mt-2 text-sm font-medium ${openAiKeyValid ? "text-green-700" : "text-gray-600"}`}>
+                  </SectionInset>
+                  <SectionInset className="space-y-2">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase">OpenAI API Key</p>
+                    <p className={`mt-2 text-sm font-medium ${openAiKeyValid ? "text-green-700" : "text-muted-foreground"}`}>
                       {openAiKeyValid ? "Verified" : "Missing or invalid"}
                     </p>
-                  </div>
+                  </SectionInset>
                 </div>
 
                 <div className="flex items-center gap-3">
@@ -1291,66 +1345,64 @@ export default function ProjectPage() {
                     variant="outline"
                     onClick={() => void checkAiEligibility()}
                     disabled={aiEligibilityLoading}
-                    className="border-gray-300"
+                    className="border-border"
                   >
                     {aiEligibilityLoading ? "Checking..." : "Re-check requirements"}
                   </Button>
-                  <Link href="/settings" className="text-sm text-gray-700 underline">
+                  <Link href="/settings" className="text-sm text-foreground underline-offset-2 hover:underline">
                     Open Settings
                   </Link>
                 </div>
 
                 {!aiEligibilityChecked && (
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-muted-foreground">
                     Open this tab to validate consent and API key requirements.
                   </p>
                 )}
 
                 {aiEligibilityChecked && !aiEligibilityReady && (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                  <SectionInset className="bg-amber-50">
                     <p className="text-sm text-amber-800">
                       {aiEligibilityMessage ||
                         "AI analysis is currently blocked. Enable External Data consent and verify your OpenAI API key in Settings."}
                     </p>
-                  </div>
+                  </SectionInset>
                 )}
-              </CardContent>
-            </Card>
+              </SectionBody>
+            </Section>
 
-            <Card className="bg-white border border-gray-200">
-              <CardHeader className="border-b border-gray-200 flex flex-row items-center justify-between">
-                <div>
-                  <CardTitle className="text-xl font-bold text-gray-900">
-                    AI Summary
-                  </CardTitle>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Summarize skill growth from the timeline.
-                  </p>
-                </div>
-                <button
+            <Section>
+              <SectionHeader>
+                <SectionHeading>
+                  <SectionTitle>AI Summary</SectionTitle>
+                  <SectionDescription>Summarize skill growth from the timeline.</SectionDescription>
+                </SectionHeading>
+                <SectionActions>
+                  <Button
                   onClick={handleGenerateSummary}
                   disabled={summaryLoading || aiEligibilityLoading || !aiEligibilityReady}
-                  className="px-3 py-2 text-xs font-semibold rounded-md bg-gray-900 text-white disabled:opacity-60"
+                  size="sm"
                 >
                   {summaryLoading
                     ? "Generating..."
                     : skillsSummary
                     ? "Regenerate"
                     : "Generate"}
-                </button>
-              </CardHeader>
-              <CardContent className="p-6 space-y-4">
-                {skillsNote && <p className="text-sm text-gray-500">{skillsNote}</p>}
+                  </Button>
+                </SectionActions>
+              </SectionHeader>
+              <SectionBody className="space-y-4 pt-0">
+                {skillsNote && <p className="text-sm text-muted-foreground">{skillsNote}</p>}
                 {!aiEligibilityReady && (
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-muted-foreground">
                     AI summary generation stays disabled until External Data consent is enabled and a valid OpenAI API key is verified in Settings.
                   </p>
                 )}
                 {skillsSummary && (
                   <div className="space-y-4">
                     <div>
-                      <p className="text-sm font-semibold text-gray-700">Overview</p>
-                      <p className="text-sm text-gray-700 mt-1">
+                      <p className="text-sm font-semibold text-foreground">Overview</p>
+                      <p className="text-sm text-foreground mt-1">
                         {skillsSummary.overview}
                       </p>
                       {skillsSummary.validation_warning && (
@@ -1362,15 +1414,15 @@ export default function ProjectPage() {
 
                     <div className="grid gap-4 md:grid-cols-2">
                       <div>
-                        <p className="text-sm font-semibold text-gray-700">
+                        <p className="text-sm font-semibold text-foreground">
                           Timeline highlights
                         </p>
-                        <ul className="mt-2 space-y-1 text-sm text-gray-700 list-disc list-inside">
+                        <ul className="mt-2 space-y-1 text-sm text-foreground list-disc list-inside">
                           {skillsSummary.timeline.map((item, index) => (
                             <li key={`timeline-${index}`}>{item}</li>
                           ))}
                           {skillsSummary.timeline.length === 0 && (
-                            <li className="text-xs text-gray-400">
+                            <li className="text-xs text-muted-foreground">
                               No timeline highlights.
                             </li>
                           )}
@@ -1378,15 +1430,15 @@ export default function ProjectPage() {
                       </div>
 
                       <div>
-                        <p className="text-sm font-semibold text-gray-700">
+                        <p className="text-sm font-semibold text-foreground">
                           Skills focus
                         </p>
-                        <ul className="mt-2 space-y-1 text-sm text-gray-700 list-disc list-inside">
+                        <ul className="mt-2 space-y-1 text-sm text-foreground list-disc list-inside">
                           {skillsSummary.skills_focus.map((item, index) => (
                             <li key={`skills-${index}`}>{item}</li>
                           ))}
                           {skillsSummary.skills_focus.length === 0 && (
-                            <li className="text-xs text-gray-400">
+                            <li className="text-xs text-muted-foreground">
                               No skill focus notes.
                             </li>
                           )}
@@ -1395,15 +1447,15 @@ export default function ProjectPage() {
                     </div>
 
                     <div>
-                      <p className="text-sm font-semibold text-gray-700">
+                      <p className="text-sm font-semibold text-foreground">
                         Suggested next steps
                       </p>
-                      <ul className="mt-2 space-y-1 text-sm text-gray-700 list-disc list-inside">
+                      <ul className="mt-2 space-y-1 text-sm text-foreground list-disc list-inside">
                         {skillsSummary.suggested_next_steps.map((item, index) => (
                           <li key={`steps-${index}`}>{item}</li>
                         ))}
                         {skillsSummary.suggested_next_steps.length === 0 && (
-                          <li className="text-xs text-gray-400">
+                          <li className="text-xs text-muted-foreground">
                             No suggestions yet.
                           </li>
                         )}
@@ -1411,23 +1463,23 @@ export default function ProjectPage() {
                     </div>
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </SectionBody>
+            </Section>
           </TabsContent>
 
           {/* ============================================
               TAB 3: CONTENT ANALYSIS
           ============================================ */}
-          <TabsContent value="content">
+          <TabsContent value="content" className="mt-0 border-0 bg-transparent p-0">
             <Tabs defaultValue="documents" className="space-y-6">
-              <TabsList className="flex justify-start gap-1 h-auto bg-transparent p-0 border-b border-gray-200 rounded-none">
+              <TabsList className={secondaryTabsListClass}>
                 {contentSubTabs.map((tab) => {
                   const Icon = tab.icon;
                   return (
                     <TabsTrigger
                       key={tab.value}
                       value={tab.value}
-                      className="text-xs px-4 py-2 rounded-t-lg rounded-b-none border-b-2 border-transparent data-[state=active]:border-gray-900 data-[state=active]:bg-white"
+                      className={subTabTriggerClass}
                     >
                       <Icon size={14} className="mr-1.5" />
                       {tab.label}
@@ -1437,7 +1489,7 @@ export default function ProjectPage() {
               </TabsList>
 
               {/* Documents */}
-              <TabsContent value="documents">
+              <TabsContent value="documents" className="mt-0 border-0 bg-transparent p-0">
                 <DocumentAnalysisTab
                   documentAnalysis={scanData.document_analysis}
                   isLoading={projectLoading}
@@ -1445,8 +1497,17 @@ export default function ProjectPage() {
                 />
               </TabsContent>
 
+              {/* Code Analysis */}
+              <TabsContent value="code-analysis" className="mt-0 border-0 bg-transparent p-0">
+                <CodeAnalysisTab
+                  codeAnalysis={isPlainObject(scanData.code_analysis) ? scanData.code_analysis : null}
+                  isLoading={projectLoading}
+                  errorMessage={projectError}
+                />
+              </TabsContent>
+
               {/* Media */}
-              <TabsContent value="media">
+              <TabsContent value="media" className="mt-0 border-0 bg-transparent p-0">
                 <MediaAnalysisTab
                   loading={projectLoading}
                   error={projectError}
@@ -1456,7 +1517,7 @@ export default function ProjectPage() {
               </TabsContent>
 
               {/* PDFs */}
-              <TabsContent value="pdfs">
+              <TabsContent value="pdfs" className="mt-0 border-0 bg-transparent p-0">
                 <PdfAnalysisTab
                   pdfAnalysis={scanData.pdf_analysis}
                   isLoading={projectLoading}
@@ -1469,21 +1530,21 @@ export default function ProjectPage() {
           {/* ============================================
               TAB 4: TOOLS & EXPORT
           ============================================ */}
-          <TabsContent value="tools">
+          <TabsContent value="tools" className="mt-0 border-0 bg-transparent p-0">
             <Tabs
               key={activeToolsTab}
               defaultValue={activeToolsTab}
               onValueChange={(value) => setActiveToolsTab(value as ToolsTabValue)}
               className="space-y-6"
             >
-              <TabsList className="flex justify-start gap-1 h-auto bg-transparent p-0 border-b border-gray-200 rounded-none">
+              <TabsList className={secondaryTabsListClass}>
                 {toolsSubTabs.map((tab) => {
                   const Icon = tab.icon;
                   return (
                     <TabsTrigger
                       key={tab.value}
                       value={tab.value}
-                      className="text-xs px-4 py-2 rounded-t-lg rounded-b-none border-b-2 border-transparent data-[state=active]:border-gray-900 data-[state=active]:bg-white"
+                      className={subTabTriggerClass}
                     >
                       <Icon size={14} className="mr-1.5" />
                       {tab.label}
@@ -1492,7 +1553,7 @@ export default function ProjectPage() {
                 })}
               </TabsList>
 
-              <TabsContent value="tools-main">
+              <TabsContent value="tools-main" className="mt-0 border-0 bg-transparent p-0">
                 <ToolsMainTab
                   openToolsTab={openToolsTab}
                   openGitAnalysis={openGitAnalysis}
@@ -1510,14 +1571,17 @@ export default function ProjectPage() {
                 />
               </TabsContent>
 
-              <TabsContent value="file-browser" className="space-y-4">
-                <Card className="bg-white border border-gray-200">
-                  <CardHeader className="border-b border-gray-200 flex flex-row items-center justify-between">
-                    <CardTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
+              <TabsContent value="file-browser" className="mt-0 space-y-4 border-0 bg-transparent p-0">
+                <Section>
+                  <SectionHeader>
+                    <SectionHeading>
+                      <SectionTitle className="flex items-center gap-2">
                       <FileText size={18} />
                       Files Explorer
-                    </CardTitle>
-                    <Button
+                      </SectionTitle>
+                    </SectionHeading>
+                    <SectionActions>
+                      <Button
                       type="button"
                       variant="outline"
                       size="sm"
@@ -1525,10 +1589,11 @@ export default function ProjectPage() {
                     >
                       Back to Overview
                     </Button>
-                  </CardHeader>
-                  <CardContent className="p-6">
+                    </SectionActions>
+                  </SectionHeader>
+                  <SectionBody className="pt-0">
                     <Tabs defaultValue="tree-browser" className="space-y-4">
-                      <TabsList className="h-auto w-fit gap-2 border border-gray-200 bg-white p-1.5">
+                      <TabsList className="h-auto w-fit gap-2 bg-muted/55 p-1">
                         <TabsTrigger value="tree-browser" className="px-3 py-1.5 text-xs">
                           Tree Browser
                         </TabsTrigger>
@@ -1537,11 +1602,11 @@ export default function ProjectPage() {
                         </TabsTrigger>
                       </TabsList>
 
-                      <TabsContent value="tree-browser">
+                      <TabsContent value="tree-browser" className="mt-0 border-0 bg-transparent p-0">
                         <FileTreeView files={projectFiles} />
                       </TabsContent>
 
-                      <TabsContent value="filtered-list">
+                      <TabsContent value="filtered-list" className="mt-0 border-0 bg-transparent p-0">
                         <SearchFilterTab
                           files={projectFiles}
                           loading={projectLoading}
@@ -1550,18 +1615,21 @@ export default function ProjectPage() {
                         />
                       </TabsContent>
                     </Tabs>
-                  </CardContent>
-                </Card>
+                  </SectionBody>
+                </Section>
               </TabsContent>
 
-              <TabsContent value="duplicate-finder" className="space-y-4">
-                <Card className="bg-white border border-gray-200">
-                  <CardHeader className="border-b border-gray-200 flex flex-row items-center justify-between">
-                    <CardTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
+              <TabsContent value="duplicate-finder" className="mt-0 space-y-4 border-0 bg-transparent p-0">
+                <Section>
+                  <SectionHeader>
+                    <SectionHeading>
+                      <SectionTitle className="flex items-center gap-2">
                       <Copy size={18} />
                       Duplicate Finder
-                    </CardTitle>
-                    <Button
+                      </SectionTitle>
+                    </SectionHeading>
+                    <SectionActions>
+                      <Button
                       type="button"
                       variant="outline"
                       size="sm"
@@ -1569,16 +1637,17 @@ export default function ProjectPage() {
                     >
                       Back to Overview
                     </Button>
-                  </CardHeader>
-                  <CardContent className="p-6">
+                    </SectionActions>
+                  </SectionHeader>
+                  <SectionBody className="pt-0">
                     <DuplicateFinderTab
                       duplicateReport={scanData.duplicate_report}
                       isLoading={projectLoading}
                       errorMessage={projectError}
                       onRetry={loadProject}
                     />
-                  </CardContent>
-                </Card>
+                  </SectionBody>
+                </Section>
               </TabsContent>
             </Tabs>
           </TabsContent>

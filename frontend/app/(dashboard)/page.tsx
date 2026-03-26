@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Loader2, FolderOpen } from "lucide-react";
+import { Plus, FolderOpen } from "lucide-react";
 import { ScanDialog } from "@/components/scan/scan-dialog";
 import { RecentScanCard } from "@/components/scan/recent-scan-card";
 import { getProjects, getProjectById } from "@/lib/api/projects";
 import { getStoredToken } from "@/lib/auth";
 import type { ProjectDetail } from "@/types/project";
+import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 
 export default function HomePage() {
   const [scanDialogOpen, setScanDialogOpen] = useState(false);
@@ -50,54 +52,140 @@ export default function HomePage() {
     fetchRecentProject();
   }, [fetchRecentProject]);
 
-  return (
-    <div className="p-8 space-y-6">
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
-        <div className="flex items-center justify-between">
-          <h1 className="text-4xl font-bold text-gray-900 tracking-tight">Dashboard</h1>
-          <button
-            onClick={() => setScanDialogOpen(true)}
-            className="flex items-center gap-2 px-5 py-2.5 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors shadow-sm"
-          >
-            <Plus size={20} />
-            <span className="font-medium">New Scan</span>
-          </button>
-        </div>
-      </div>
+  const heroProjectName = recentProject?.project_name ?? "No active scan yet";
+  const heroFiles = recentProject?.total_files ?? 0;
+  const heroLanguages = recentProject?.languages?.length ?? 0;
+  const heroUpdated = recentProject?.scan_timestamp
+    ? new Date(recentProject.scan_timestamp).toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    : "Awaiting first scan";
 
-      {/* Recent Scan Section */}
-      <div>
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Recent Scan</h2>
-        
+  return (
+    <div className="page-container">
+      <section className="page-card">
+        <div className="page-body space-y-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0 space-y-2">
+              <div className="flex items-center gap-2">
+                <span
+                  aria-hidden="true"
+                  className="h-px w-7 bg-gradient-to-r from-primary/75 to-primary/0"
+                />
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Overview
+                </p>
+              </div>
+              <div className="space-y-2">
+                <h1 className="text-[2rem] font-semibold tracking-[-0.04em] text-foreground md:text-[2.2rem]">
+                  Dashboard
+                </h1>
+                <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
+                  Review the latest scan, key project totals, and recent analysis in one place.
+                </p>
+              </div>
+            </div>
+            <Button
+              onClick={() => setScanDialogOpen(true)}
+              size="lg"
+              className="self-start"
+            >
+              <Plus size={18} />
+              <span>New Scan</span>
+            </Button>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="info-tile p-4">
+              <p className="info-tile-kicker">Latest Project</p>
+              <p className="mt-2 truncate text-base font-semibold text-foreground">{heroProjectName}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{heroUpdated}</p>
+            </div>
+            <div className="info-tile p-4">
+              <p className="info-tile-kicker">Indexed Files</p>
+              <p className="mt-2 text-[1.55rem] font-semibold tracking-[-0.04em] text-foreground">
+                {heroFiles.toLocaleString()}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">Files in the latest scan</p>
+            </div>
+            <div className="info-tile p-4">
+              <p className="info-tile-kicker">Languages</p>
+              <p className="mt-2 text-[1.55rem] font-semibold tracking-[-0.04em] text-foreground">
+                {heroLanguages.toLocaleString()}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">Detected in the latest project</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="section-shell gap-4">
+        <div className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
+          <div className="space-y-1">
+            <h2 className="text-[1.35rem] font-semibold tracking-[-0.03em] text-foreground md:text-[1.5rem]">
+              Recent Scan
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              The most recent project scan, summarized for quick review.
+            </p>
+          </div>
+          {recentProject?.scan_timestamp && (
+            <p className="text-xs text-muted-foreground">
+              Updated {heroUpdated}
+            </p>
+          )}
+        </div>
+
         {loading ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
-              <span className="ml-3 text-gray-500">Loading recent scan...</span>
+          <div className="dashboard-panel p-6">
+            <div className="flex min-h-[220px] flex-col items-center justify-center gap-4 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full border border-border bg-card">
+                <Spinner size="lg" className="text-muted-foreground" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-base font-medium text-foreground">Loading recent scan</p>
+                <p className="text-sm text-muted-foreground">
+                  Pulling the latest project summary into the dashboard.
+                </p>
+              </div>
             </div>
           </div>
         ) : error ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
-            <div className="text-center py-8">
-              <p className="text-red-600 text-sm">{error}</p>
+          <div className="dashboard-panel p-6">
+            <div className="flex min-h-[220px] flex-col items-center justify-center gap-4 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full border border-destructive/20 bg-destructive/10 text-destructive">
+                <FolderOpen className="h-5 w-5" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-base font-medium text-foreground">Unable to load the latest scan</p>
+                <p className="text-sm text-muted-foreground">{error}</p>
+              </div>
             </div>
           </div>
         ) : recentProject ? (
           <RecentScanCard project={recentProject} />
         ) : (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
-            <div className="text-center py-8">
-              <div className="inline-flex items-center justify-center w-12 h-12 bg-gray-100 rounded-full mb-4">
-                <FolderOpen className="h-6 w-6 text-gray-400" />
+          <div className="dashboard-panel p-6">
+            <div className="flex min-h-[240px] flex-col items-center justify-center gap-5 text-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-border bg-card/90">
+                <FolderOpen className="h-7 w-7 text-muted-foreground" />
               </div>
-              <p className="text-gray-600 mb-2">No scans yet</p>
-              <p className="text-sm text-gray-500">
-                Click &quot;New Scan&quot; to analyze your first project
-              </p>
+              <div className="space-y-2">
+                <p className="text-lg font-medium text-foreground">No scans yet</p>
+                <p className="max-w-md text-sm text-muted-foreground">
+                  Start a scan to populate the dashboard with files, languages, and recent analysis metrics.
+                </p>
+              </div>
+              <Button onClick={() => setScanDialogOpen(true)} className="rounded-[14px] px-5">
+                <Plus size={18} />
+                <span>New Scan</span>
+              </Button>
             </div>
           </div>
         )}
-      </div>
+      </section>
 
       <ScanDialog open={scanDialogOpen} onOpenChange={setScanDialogOpen} onScanComplete={handleScanComplete} />
     </div>

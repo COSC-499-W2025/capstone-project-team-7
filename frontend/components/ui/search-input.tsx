@@ -7,6 +7,7 @@ interface SearchInputProps {
   onChange: (value: string) => void;
   placeholder?: string;
   onClear?: () => void;
+  onKeyDown?: React.KeyboardEventHandler<HTMLInputElement>;
   className?: string;
 }
 
@@ -15,6 +16,7 @@ export function SearchInput({
   onChange,
   placeholder = "Search…",
   onClear,
+  onKeyDown,
   className,
 }: SearchInputProps) {
   const showClear = onClear && value.length > 0;
@@ -22,20 +24,21 @@ export function SearchInput({
   return (
     <div className={cn("relative", className)}>
       <Search
-        className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+        className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"
         size={16}
       />
       <Input
         placeholder={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className={`pl-9 h-9 text-sm border-gray-300 ${showClear ? "pr-9" : ""}`}
+        onKeyDown={onKeyDown}
+        className={`h-11 rounded-[16px] pl-11 text-sm ${showClear ? "pr-10" : ""}`}
       />
       {showClear && (
         <button
           type="button"
           onClick={onClear}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+          className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
           aria-label="Clear search"
         >
           <X size={14} />

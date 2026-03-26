@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   Save,
-  Loader2,
   Download,
   Eye,
   Code,
@@ -14,6 +13,8 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { LoadingState } from "@/components/ui/loading-state";
+import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -332,8 +333,8 @@ function ResumeEditorPageInner() {
 
   if (loading) {
     return (
-      <div className="h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+      <div className="page-container py-6">
+        <LoadingState message="Loading resume editor..." className="min-h-[calc(100vh-3rem)]" />
       </div>
     );
   }
@@ -341,7 +342,7 @@ function ResumeEditorPageInner() {
   if (error || !resume) {
     return (
       <div className="h-screen flex flex-col items-center justify-center gap-4">
-        <p className="text-red-600">{error || "Resume not found"}</p>
+        <p className="text-destructive">{error || "Resume not found"}</p>
         <Button variant="outline" onClick={() => router.push("/resume-builder" as Parameters<typeof router.push>[0])}>
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back to Resumes
@@ -351,9 +352,9 @@ function ResumeEditorPageInner() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
+    <div className="h-screen flex flex-col bg-muted">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-4 py-3">
+      <header className="bg-card border-b border-border px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Button
@@ -364,23 +365,23 @@ function ResumeEditorPageInner() {
               <ArrowLeft className="h-4 w-4 mr-1" />
               Back
             </Button>
-            <div className="h-6 w-px bg-gray-200" />
+            <div className="h-6 w-px bg-border" />
             <Input
               value={resumeName}
               onChange={(e) => {
                 setResumeName(e.target.value);
                 setIsDirty(true);
               }}
-              className="w-64 h-8 text-sm font-medium border-transparent hover:border-gray-200 focus:border-gray-300"
+              className="w-64 h-8 text-sm font-medium border-transparent hover:border-border focus:border-border"
             />
           </div>
 
           <div className="flex items-center gap-3">
             {/* Save status */}
-            <span className="text-xs text-gray-500">
+            <span className="text-xs text-muted-foreground">
               {saving ? (
                 <span className="flex items-center gap-1">
-                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <Spinner size={12} />
                   Saving...
                 </span>
               ) : lastSaved ? (

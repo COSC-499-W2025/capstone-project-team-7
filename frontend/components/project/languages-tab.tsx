@@ -1,6 +1,13 @@
 "use client";
 
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import {
+  Section,
+  SectionBody,
+  SectionDescription,
+  SectionHeader,
+  SectionHeading,
+  SectionTitle,
+} from "@/components/ui/section";
 
 interface LanguageEntry {
   name: string;
@@ -13,28 +20,29 @@ interface LanguagesTabProps {
 
 export function LanguagesTab({ topLanguages }: LanguagesTabProps) {
   return (
-    <Card className="bg-white border border-gray-200">
-      <CardHeader className="border-b border-gray-200">
-        <CardTitle className="text-xl font-bold text-gray-900">
-          Language Breakdown
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="p-6">
+    <Section>
+      <SectionHeader>
+        <SectionHeading>
+          <SectionTitle>Language Breakdown</SectionTitle>
+          <SectionDescription>Relative language share across the scanned codebase.</SectionDescription>
+        </SectionHeading>
+      </SectionHeader>
+      <SectionBody className="pt-0">
         {topLanguages.length === 0 ? (
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-muted-foreground">
             No language data available for this project.
           </p>
         ) : (
           <div className="space-y-4">
             {topLanguages.map((lang) => (
-              <div key={lang.name} className="space-y-1">
+              <div key={lang.name} className="space-y-2 rounded-[16px] bg-muted/55 p-4">
                 <div className="flex justify-between text-sm">
-                  <span className="font-medium text-gray-900">{lang.name}</span>
-                  <span className="text-gray-500">{lang.percentage}%</span>
+                  <span className="font-medium text-foreground">{lang.name}</span>
+                  <span className="text-muted-foreground">{lang.percentage}%</span>
                 </div>
-                <div className="w-full bg-gray-100 rounded-full h-2">
+                <div className="w-full bg-background rounded-md h-2">
                   <div
-                    className="bg-gray-900 h-2 rounded-full transition-all"
+                    className="bg-foreground h-2 rounded-md transition-all"
                     style={{ width: `${lang.percentage}%` }}
                   />
                 </div>
@@ -42,7 +50,7 @@ export function LanguagesTab({ topLanguages }: LanguagesTabProps) {
             ))}
           </div>
         )}
-      </CardContent>
-    </Card>
+      </SectionBody>
+    </Section>
   );
 }

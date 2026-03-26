@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   User,
@@ -19,6 +19,14 @@ import { LoadingState } from "@/components/ui/loading-state";
 import { EmptyState } from "@/components/ui/empty-state";
 
 export default function PublicPortfolioPage() {
+  return (
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center px-6"><div className="w-full max-w-5xl"><LoadingState message="Loading portfolio..." /></div></div>}>
+      <PublicPortfolioContent />
+    </Suspense>
+  );
+}
+
+function PublicPortfolioContent() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
 
@@ -49,8 +57,10 @@ export default function PublicPortfolioPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <LoadingState message="Loading portfolio..." />
+      <div className="flex min-h-screen items-center justify-center px-6">
+        <div className="w-full max-w-5xl">
+          <LoadingState message="Loading portfolio..." />
+        </div>
       </div>
     );
   }
@@ -75,11 +85,12 @@ export default function PublicPortfolioPage() {
     : all_skills;
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-10 space-y-8">
+    <div className="max-w-6xl mx-auto px-6 py-10 space-y-8">
       {/* Profile header */}
-      <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl p-8 text-white">
+      <div className="page-card overflow-hidden">
+        <div className="page-header bg-primary text-primary-foreground">
         <div className="flex items-center gap-5">
-          <div className="w-20 h-20 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0 overflow-hidden">
+          <div className="w-20 h-20 rounded-full bg-white/15 flex items-center justify-center flex-shrink-0 overflow-hidden">
             {profile.avatar_url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -88,7 +99,7 @@ export default function PublicPortfolioPage() {
                 className="w-full h-full object-cover rounded-full"
               />
             ) : (
-              <User size={32} className="text-white/80" />
+              <User size={32} className="text-primary-foreground/80" />
             )}
           </div>
           <div>
@@ -96,15 +107,16 @@ export default function PublicPortfolioPage() {
               {profile.display_name || "Portfolio"}
             </h1>
             {profile.career_title && (
-              <p className="text-white/80 text-sm mt-0.5">{profile.career_title}</p>
+              <p className="text-primary-foreground/80 text-sm mt-0.5">{profile.career_title}</p>
             )}
             {profile.education && (
-              <p className="text-white/70 text-xs mt-0.5">{profile.education}</p>
+              <p className="text-primary-foreground/80 text-xs mt-0.5">{profile.education}</p>
             )}
             {profile.bio && (
-              <p className="text-white/70 text-sm mt-2">{profile.bio}</p>
+              <p className="text-primary-foreground/80 text-sm mt-2">{profile.bio}</p>
             )}
           </div>
+        </div>
         </div>
       </div>
 
@@ -118,14 +130,14 @@ export default function PublicPortfolioPage() {
         ].map((stat) => (
           <div
             key={stat.label}
-            className="bg-white border border-gray-200 rounded-lg p-4 flex items-center gap-3"
+            className="bg-card border-2 border-border rounded-md p-4 flex items-center gap-3"
           >
-            <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center flex-shrink-0">
+            <div className="w-9 h-9 rounded-md bg-muted text-foreground flex items-center justify-center flex-shrink-0">
               {stat.icon}
             </div>
             <div>
-              <div className="text-xl font-bold text-gray-900">{stat.value.toLocaleString()}</div>
-              <div className="text-xs text-gray-500">{stat.label}</div>
+              <div className="text-xl font-bold text-foreground">{stat.value.toLocaleString()}</div>
+              <div className="text-xs text-muted-foreground">{stat.label}</div>
             </div>
           </div>
         ))}
@@ -133,9 +145,9 @@ export default function PublicPortfolioPage() {
 
       {/* Activity Heatmap */}
       {settings.show_heatmap && heatmap_data.length > 0 && (
-        <section className="bg-white border border-gray-200 rounded-xl p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <Calendar size={18} className="text-indigo-600" />
+        <section className="bg-card border-2 border-border rounded-md p-6">
+          <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+            <Calendar size={18} className="text-muted-foreground" />
             Activity Heatmap
           </h2>
           <ActivityHeatmap data={heatmap_data} />
@@ -144,9 +156,9 @@ export default function PublicPortfolioPage() {
 
       {/* Skills Timeline */}
       {settings.show_skills_timeline && skills_timeline.length > 0 && (
-        <section className="bg-white border border-gray-200 rounded-xl p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <Award size={18} className="text-indigo-600" />
+        <section className="bg-card border-2 border-border rounded-md p-6">
+          <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+            <Award size={18} className="text-muted-foreground" />
             Skills Timeline
           </h2>
           <SkillsTimeline data={skills_timeline} />
@@ -155,38 +167,38 @@ export default function PublicPortfolioPage() {
 
       {/* Top Projects */}
       {settings.show_top_projects && top_projects.length > 0 && (
-        <section className="bg-white border border-gray-200 rounded-xl p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <Trophy size={18} className="text-indigo-600" />
+        <section className="bg-card border-2 border-border rounded-md p-6">
+          <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+            <Trophy size={18} className="text-muted-foreground" />
             Top Projects
           </h2>
           <div className="grid gap-4 md:grid-cols-3">
             {top_projects.map((project, idx) => (
               <div
                 key={idx}
-                className="border border-gray-200 rounded-lg p-4"
+                className="border-2 border-border rounded-md p-4"
               >
                 <div className="flex items-start justify-between mb-2">
-                  <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
+                  <span className="text-xs font-bold text-foreground bg-muted border border-border px-2 py-0.5 rounded-md">
                     #{idx + 1}
                   </span>
                   {project.contribution_score != null && (
-                    <span className="text-xs text-gray-400">
+                    <span className="text-xs text-muted-foreground">
                       Score: {Math.round(project.contribution_score)}
                     </span>
                   )}
                 </div>
-                <h3 className="font-semibold text-gray-900 text-sm mb-1 truncate">
+                <h3 className="font-semibold text-foreground text-sm mb-1 truncate">
                   {project.project_name}
                 </h3>
                 <div className="flex flex-wrap gap-1 mt-2">
                   {project.total_commits != null && (
-                    <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
+                    <span className="text-[10px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded-md">
                       {project.total_commits} commits
                     </span>
                   )}
                   {project.user_commit_share != null && (
-                    <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
+                    <span className="text-[10px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded-md">
                       {Math.round(project.user_commit_share * 100)}% contribution
                     </span>
                   )}
@@ -199,20 +211,20 @@ export default function PublicPortfolioPage() {
 
       {/* All Skills with search filter */}
       {settings.show_all_skills && all_skills.length > 0 && (
-        <section className="bg-white border border-gray-200 rounded-xl p-6">
+        <section className="bg-card border-2 border-border rounded-md p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-              <Award size={18} className="text-indigo-600" />
+            <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+              <Award size={18} className="text-muted-foreground" />
               Skills
             </h2>
             <div className="relative">
-              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <input
                 type="text"
                 placeholder="Filter skills..."
                 value={skillFilter}
                 onChange={(e) => setSkillFilter(e.target.value)}
-                className="pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className="pl-8 pr-3 py-1.5 text-xs border-2 border-border rounded-md focus:outline-none focus:ring-1 focus:ring-ring"
               />
             </div>
           </div>
@@ -220,21 +232,21 @@ export default function PublicPortfolioPage() {
             {filteredSkills.map((skill) => (
               <span
                 key={skill}
-                className="px-2.5 py-1 text-xs font-medium bg-indigo-50 text-indigo-700 rounded-full border border-indigo-100"
+                className="px-2.5 py-1 text-xs font-medium bg-muted text-foreground rounded-md border border-border"
               >
                 {skill}
               </span>
             ))}
             {filteredSkills.length === 0 && (
-              <p className="text-sm text-gray-400 italic">No skills match your filter.</p>
+              <p className="text-sm text-muted-foreground italic">No skills match your filter.</p>
             )}
           </div>
         </section>
       )}
 
       {/* Footer */}
-      <footer className="text-center text-xs text-gray-400 py-4">
-        Built with Lumen
+      <footer className="text-center text-xs text-muted-foreground py-4">
+        Built with DevFolio
       </footer>
     </div>
   );

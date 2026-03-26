@@ -42,7 +42,7 @@ export function DropdownMenuTrigger({ className, onClick, ...props }: React.Butt
     <button
       type="button"
       className={cn(
-        "inline-flex items-center justify-center gap-1 rounded-md border border-border bg-card px-3 py-2 text-sm shadow-sm",
+        "inline-flex items-center justify-center gap-1 rounded-md border-2 border-border bg-card px-3 py-2 text-sm",
         "transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
         "ring-offset-background",
         className
@@ -71,7 +71,7 @@ export function DropdownMenuContent({ className, children, ...props }: DropdownM
     <div
       role="menu"
       className={cn(
-        "absolute right-0 z-50 mt-2 min-w-[12rem] rounded-md border border-border bg-popover p-2 text-sm shadow-md shadow-black/20",
+        "absolute right-0 z-50 mt-2 min-w-[12rem] rounded-md border-2 border-border bg-popover p-2 text-sm shadow-md shadow-black/20",
         className
       )}
       {...props}

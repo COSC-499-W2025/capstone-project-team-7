@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import {
   FileText,
   GitBranch,
@@ -10,7 +11,6 @@ import {
   Search,
   FileJson,
   FileCode2,
-  Loader2,
   Check,
   AlertCircle,
   Download,
@@ -55,27 +55,27 @@ export function ToolsMainTab({
   handleExportHtml,
 }: ToolsMainTabProps) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      <Card className="bg-white border border-gray-200">
-        <CardHeader className="border-b border-gray-200">
-          <CardTitle className="text-base font-bold text-gray-900">
+    <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+      <Card>
+        <CardHeader className="border-b border-border/70 p-5 pb-4">
+          <CardTitle className="text-base font-semibold text-foreground">
             <button
               type="button"
               onClick={() => openToolsTab("file-browser")}
-              className="inline-flex items-center gap-2 hover:text-gray-700"
+              className="inline-flex items-center gap-2 hover:text-foreground"
             >
               <FileText size={18} />
               Files Explorer
             </button>
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-6 space-y-4">
-          <p className="text-sm text-gray-500">
+        <CardContent className="flex h-full flex-col gap-5 p-5 pt-4">
+          <p className="text-sm text-muted-foreground">
             Browse and filter indexed project files in one full view.
           </p>
-          <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-            <p className="text-xs text-gray-500">Indexed files</p>
-            <p className="mt-1 text-lg font-semibold text-gray-900">
+          <div className="stat-block p-4">
+            <p className="text-xs text-muted-foreground">Indexed files</p>
+            <p className="mt-1 text-lg font-semibold text-foreground">
               {formatCount(projectFilesCount)}
             </p>
           </div>
@@ -90,33 +90,33 @@ export function ToolsMainTab({
         </CardContent>
       </Card>
 
-      <Card className="bg-white border border-gray-200">
-        <CardHeader className="border-b border-gray-200">
-          <CardTitle className="text-base font-bold text-gray-900">
+      <Card>
+        <CardHeader className="border-b border-border/70 p-5 pb-4">
+          <CardTitle className="text-base font-semibold text-foreground">
             <button
               type="button"
               onClick={() => openGitAnalysis?.()}
-              className="inline-flex items-center gap-2 hover:text-gray-700"
+              className="inline-flex items-center gap-2 hover:text-foreground"
             >
               <GitBranch size={18} />
               Git Analysis
             </button>
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-6 space-y-4">
-          <p className="text-sm text-gray-500">
+        <CardContent className="flex h-full flex-col gap-5 p-5 pt-4">
+          <p className="text-sm text-muted-foreground">
             Compact view of repositories and commit activity.
           </p>
           <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-              <p className="text-xs text-gray-500">Repositories</p>
-              <p className="mt-1 text-lg font-semibold text-gray-900">
+            <div className="stat-block p-4">
+              <p className="text-xs text-muted-foreground">Repositories</p>
+              <p className="mt-1 text-lg font-semibold text-foreground">
                 {gitRepoTotal}
               </p>
             </div>
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-              <p className="text-xs text-gray-500">Commits</p>
-              <p className="mt-1 text-lg font-semibold text-gray-900">
+            <div className="stat-block p-4">
+              <p className="text-xs text-muted-foreground">Commits</p>
+              <p className="mt-1 text-lg font-semibold text-foreground">
                 {formatCount(gitCommitTotal)}
               </p>
             </div>
@@ -132,33 +132,33 @@ export function ToolsMainTab({
         </CardContent>
       </Card>
 
-      <Card className="bg-white border border-gray-200">
-        <CardHeader className="border-b border-gray-200">
-          <CardTitle className="text-base font-bold text-gray-900">
+      <Card>
+        <CardHeader className="border-b border-border/70 p-5 pb-4">
+          <CardTitle className="text-base font-semibold text-foreground">
             <button
               type="button"
               onClick={() => openToolsTab("duplicate-finder")}
-              className="inline-flex items-center gap-2 hover:text-gray-700"
+              className="inline-flex items-center gap-2 hover:text-foreground"
             >
               <Copy size={18} />
               Duplicate Finder
             </button>
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-6 space-y-4">
-          <p className="text-sm text-gray-500">
+        <CardContent className="flex h-full flex-col gap-5 p-5 pt-4">
+          <p className="text-sm text-muted-foreground">
             Quick snapshot of duplicate groups and storage waste.
           </p>
           <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-              <p className="text-xs text-gray-500">Groups</p>
-              <p className="mt-1 text-lg font-semibold text-gray-900">
+            <div className="stat-block p-4">
+              <p className="text-xs text-muted-foreground">Groups</p>
+              <p className="mt-1 text-lg font-semibold text-foreground">
                 {duplicateOverview?.totalGroups ?? 0}
               </p>
             </div>
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-              <p className="text-xs text-gray-500">Wasted</p>
-              <p className="mt-1 text-lg font-semibold text-gray-900">
+            <div className="stat-block p-4">
+              <p className="text-xs text-muted-foreground">Wasted</p>
+              <p className="mt-1 text-lg font-semibold text-foreground">
                 {formatBytes(duplicateOverview?.totalWastedBytes ?? 0)}
               </p>
             </div>
@@ -175,36 +175,35 @@ export function ToolsMainTab({
       </Card>
 
       {/* Search & Filter */}
-      <Card className="bg-white border border-gray-200">
-        <CardHeader className="border-b border-gray-200">
-          <CardTitle className="text-base font-bold text-gray-900 flex items-center gap-2">
+      <Card>
+        <CardHeader className="border-b border-border/70 p-5 pb-4">
+          <CardTitle className="flex items-center gap-2 text-base font-semibold text-foreground">
             <Search size={18} />
             Global Search
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-6">
-          <p className="text-sm text-gray-500 mb-4">
+        <CardContent className="flex h-full flex-col gap-5 p-5 pt-4">
+          <p className="text-sm text-muted-foreground">
             Use the dedicated search workspace to query files and skills across all projects.
           </p>
           <Link
             href="/search"
-            className="inline-flex items-center rounded-md bg-gray-900 px-3 py-2 text-xs font-semibold text-white hover:bg-gray-800"
+            className="inline-flex h-9 shrink-0 items-center justify-center rounded-[14px] border border-border bg-card px-3.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
           >
             Open Search
           </Link>
         </CardContent>
       </Card>
 
-      {/* Export Options */}
-      <Card className="bg-white border border-gray-200">
-        <CardHeader className="border-b border-gray-200">
-          <CardTitle className="text-base font-bold text-gray-900 flex items-center gap-2">
+      <Card>
+        <CardHeader className="border-b border-border/70 p-5 pb-4">
+          <CardTitle className="flex items-center gap-2 text-base font-semibold text-foreground">
             <FileJson size={18} />
             Export Options
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-6 space-y-3">
-          <p className="text-sm text-gray-500">
+        <CardContent className="space-y-4 p-5 pt-4">
+          <p className="text-sm text-muted-foreground">
             Export project analysis in various formats.
           </p>
           <div className="flex flex-wrap gap-2">
@@ -219,12 +218,12 @@ export function ToolsMainTab({
                   : exportStatus === "error"
                     ? "bg-red-100 text-red-700"
                     : !hasProject
-                      ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                      : "bg-gray-900 text-white hover:bg-gray-700 cursor-pointer",
+                      ? "bg-muted text-muted-foreground cursor-not-allowed"
+                      : "bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer",
               ].join(" ")}
             >
               {exportStatus === "exporting" ? (
-                <><Loader2 size={14} className="animate-spin" /> Exporting…</>
+                <><Spinner size={14} /> Exporting…</>
               ) : exportStatus === "success" ? (
                 <><Check size={14} /> Downloaded!</>
               ) : exportStatus === "error" ? (
@@ -243,12 +242,12 @@ export function ToolsMainTab({
                   : htmlExportStatus === "error"
                     ? "bg-red-100 text-red-700"
                     : !hasProject
-                      ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                      : "bg-gray-900 text-white hover:bg-gray-700 cursor-pointer",
+                      ? "bg-muted text-muted-foreground cursor-not-allowed"
+                      : "bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer",
               ].join(" ")}
             >
               {htmlExportStatus === "exporting" ? (
-                <><Loader2 size={14} className="animate-spin" /> Exporting…</>
+                <><Spinner size={14} /> Exporting…</>
               ) : htmlExportStatus === "success" ? (
                 <><Check size={14} /> Downloaded!</>
               ) : htmlExportStatus === "error" ? (

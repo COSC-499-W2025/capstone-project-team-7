@@ -30,10 +30,10 @@ import {
   AlertTriangle,
   CheckCircle2,
   XCircle,
-  Loader2,
   Plus,
   FolderPlus,
 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 
 type ScanMode = "new" | "append";
 
@@ -307,11 +307,11 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
           {/* Failed state */}
           {isFailed && (
             <div className="space-y-4">
-              <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-lg">
-                <XCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <div className="flex items-start gap-3 rounded-lg border border-destructive/20 bg-destructive/10 p-3">
+                <XCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-destructive" />
                 <div className="text-sm">
-                  <p className="font-medium text-red-800">Scan failed</p>
-                  <p className="text-red-700 mt-0.5">
+                  <p className="font-medium text-destructive">Scan failed</p>
+                  <p className="mt-0.5 text-muted-foreground">
                     {typeof error === "string"
                       ? error
                       : error?.message || "An unexpected error occurred."}
@@ -331,17 +331,17 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
           {/* Scanning state */}
           {isScanning && (
             <div className="space-y-4">
-              <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+              <div className="rounded-lg border border-border bg-muted p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Loader2 className="h-4 w-4 animate-spin text-gray-600" />
-                  <span className="text-sm font-medium text-gray-700">
+                  <Spinner size="md" className="text-muted-foreground" />
+                  <span className="text-sm font-medium text-muted-foreground">
                     {scanMode === "append" ? "Scanning and merging..." : "Scanning in progress..."}
                   </span>
                 </div>
                 <ScanProgress percent={progress?.percent} message={progress?.message} />
               </div>
 
-              <p className="text-xs text-gray-500 text-center">
+              <p className="text-center text-xs text-muted-foreground">
                 {scanMode === "append" && selectedProject && (
                   <>Adding to: {selectedProject.project_name} • </>
                 )}
@@ -360,25 +360,25 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
                   <label
                     className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${
                       scanMode === "new"
-                        ? "border-gray-900 bg-gray-50"
-                        : "border-gray-200 bg-white hover:border-gray-300"
+                        ? "border-primary/40 bg-accent"
+                        : "border-border bg-card hover:border-primary/30"
                     } ${!isAuthenticated ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
                   >
                     <input
                       type="radio"
                       name="scan-mode"
                       value="new"
-                      className="mt-0.5 h-4 w-4 accent-gray-900"
+                      className="mt-0.5 h-4 w-4 accent-primary"
                       checked={scanMode === "new"}
                       onChange={() => handleModeChange("new")}
                       disabled={!isAuthenticated}
                     />
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                      <p className="flex items-center gap-2 text-sm font-medium text-foreground">
                         <Plus className="h-4 w-4" />
                         New Project
                       </p>
-                      <p className="text-xs text-gray-500 mt-1">
+                      <p className="mt-1 text-xs text-muted-foreground">
                         Create a new project from selected files.
                       </p>
                     </div>
@@ -387,31 +387,33 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
                   <label
                     className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${
                       scanMode === "append"
-                        ? "border-gray-900 bg-gray-50"
-                        : "border-gray-200 bg-white hover:border-gray-300"
+                        ? "border-primary/40 bg-accent"
+                        : "border-border bg-card hover:border-primary/30"
                     } ${!isAuthenticated ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
                   >
                     <input
                       type="radio"
                       name="scan-mode"
                       value="append"
-                      className="mt-0.5 h-4 w-4 accent-gray-900"
+                      className="mt-0.5 h-4 w-4 accent-primary"
                       checked={scanMode === "append"}
                       onChange={() => handleModeChange("append")}
                       disabled={!isAuthenticated}
                     />
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                      <p className="flex items-center gap-2 text-sm font-medium text-foreground">
                         <FolderPlus className="h-4 w-4" />
                         Add to Existing
                       </p>
-                      <p className="text-xs text-gray-500 mt-1">
+                      <p className="mt-1 text-xs text-muted-foreground">
                         Merge new files into a project you already created.
                       </p>
                     </div>
                   </label>
                 </div>
-                <p className="text-xs text-gray-500">Choose a scan type, then pick a folder or ZIP below.</p>
+                <p className="text-xs text-muted-foreground">
+                  Choose a scan type, then pick a folder or ZIP below.
+                </p>
               </div>
 
               {/* Project selector (append mode only) */}
@@ -419,8 +421,8 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
                 <div className="space-y-2">
                   <Label htmlFor="project-select">Select Project</Label>
                   {projectLoadError && (
-                    <div className="flex items-start justify-between gap-3 rounded-md border border-red-200 bg-red-50 p-2">
-                      <p className="text-xs text-red-700">{projectLoadError}</p>
+                    <div className="flex items-start justify-between gap-3 rounded-md border border-destructive/20 bg-destructive/10 p-2">
+                      <p className="text-xs text-destructive">{projectLoadError}</p>
                       <Button
                         type="button"
                         variant="outline"
@@ -453,7 +455,7 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
                         <SelectItem key={project.id} value={project.id}>
                           <div className="flex flex-col">
                             <span>{project.project_name}</span>
-                            <span className="text-xs text-gray-500">
+                            <span className="text-xs text-muted-foreground">
                               {project.total_files} files
                               {project.languages && project.languages.length > 0 && (
                                 <> • {project.languages.slice(0, 3).join(", ")}</>
@@ -497,7 +499,7 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
                       disabled={!isAuthenticated || isBrowsing}
                     >
                       {isBrowsing ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        <Spinner size="md" className="mr-2" />
                       ) : (
                         <FolderOpen className="h-4 w-4 mr-2" />
                       )}
