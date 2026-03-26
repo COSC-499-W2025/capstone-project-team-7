@@ -3,11 +3,13 @@ import { Spinner } from "@/components/ui/spinner";
 
 interface LoadingStateProps {
   message?: string;
+  description?: string;
   className?: string;
 }
 
 export function LoadingState({
   message = "Loading...",
+  description = "Organizing content and analysis into the current layout.",
   className,
 }: LoadingStateProps) {
   return (
@@ -28,9 +30,7 @@ export function LoadingState({
         <div className="space-y-2">
           <p className="page-kicker mb-0 justify-center">Preparing View</p>
           <p className="text-base font-medium text-foreground">{message}</p>
-          <p className="text-sm text-muted-foreground">
-            Organizing content and analysis into the current layout.
-          </p>
+          {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
         </div>
       </div>
     </section>

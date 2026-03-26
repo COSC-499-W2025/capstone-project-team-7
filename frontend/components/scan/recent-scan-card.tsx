@@ -3,7 +3,6 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import type {
-  ProjectContributionMetrics,
   ProjectDetail,
   ProjectScanData,
   ProjectScanLanguageEntry,
@@ -31,10 +30,11 @@ interface RecentScanCardProps {
   project: ProjectDetail;
 }
 
-type ContributionMetrics = Pick<
-  ProjectContributionMetrics,
-  "total_commits" | "total_contributors" | "user_commit_share"
->;
+interface ContributionMetrics {
+  total_commits?: number;
+  total_contributors?: number;
+  user_commit_share?: number;
+}
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
@@ -183,7 +183,7 @@ function getContributionMetrics(
     return null;
   }
 
-  const metrics = rawMetrics as ProjectContributionMetrics;
+  const metrics = rawMetrics as Record<string, unknown>;
 
   return {
     total_commits: toFiniteNumber(metrics.total_commits),
@@ -400,7 +400,7 @@ export function RecentScanCard({ project }: RecentScanCardProps) {
   };
 
   return (
-    <article className="dashboard-panel">
+    <article className="dashboard-panel dashboard-panel-interactive">
       <div className="flex flex-col gap-6 p-6 lg:p-7">
         <div className="flex flex-col gap-5 border-b border-border/70 pb-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-center gap-4">

@@ -328,7 +328,7 @@ export default function ProfilePage() {
       )}
 
       {/* 2-column layout */}
-      <div className="grid gap-6 md:grid-cols-[280px_1fr]">
+      <div className="grid gap-6 xl:grid-cols-[280px_minmax(0,1fr)]">
         {/* -------- LEFT COLUMN -------- */}
         <div className="space-y-4">
           {/* Avatar */}
@@ -341,7 +341,7 @@ export default function ProfilePage() {
                 className="h-28 w-28 border-2 border-border text-3xl font-bold"
               />
 
-              <div className="flex gap-2">
+              <div className="flex flex-wrap justify-center gap-2">
                 <Button size="sm" className="rounded-md" onClick={pickAvatar}>
                   Change
                 </Button>
@@ -388,7 +388,7 @@ export default function ProfilePage() {
         </div>
 
         {/* -------- RIGHT COLUMN -------- */}
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
           {/* Basic info */}
           <Card>
             <CardHeader className="p-4 pb-0">
@@ -525,7 +525,7 @@ export default function ProfilePage() {
           </Card>
 
           {/* Action bar */}
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             <Button
               className="rounded-md"
               onClick={handleSave}

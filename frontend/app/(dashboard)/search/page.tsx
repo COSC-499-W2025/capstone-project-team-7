@@ -135,8 +135,8 @@ export default function SearchPage() {
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                   Query Builder
                 </p>
-                <div className="mt-3 flex flex-col gap-4 sm:flex-row">
-                  <div className="flex-1">
+                <div className="mt-3 grid gap-4 lg:grid-cols-[minmax(0,1fr)_140px_180px_132px] lg:items-center">
+                  <div className="min-w-0">
                     <SearchInput
                       value={query}
                       onChange={setQuery}
@@ -157,7 +157,7 @@ export default function SearchPage() {
                       setScope(value as "all" | "files" | "skills")
                     }
                   >
-                    <SelectTrigger className="w-full sm:w-[160px]">
+                    <SelectTrigger className="w-full">
                       <SelectValue placeholder="Scope" />
                     </SelectTrigger>
                     <SelectContent>
@@ -168,7 +168,7 @@ export default function SearchPage() {
                   </Select>
 
                   <Select value={selectedSkill} onValueChange={setSelectedSkill}>
-                    <SelectTrigger className="w-full sm:w-[220px]">
+                    <SelectTrigger className="w-full">
                       <SelectValue placeholder="Filter by skill" />
                     </SelectTrigger>
                     <SelectContent>
@@ -191,7 +191,7 @@ export default function SearchPage() {
                     onClick={handleSearch}
                     onKeyDown={handleKeyDown}
                     disabled={loading || !query.trim()}
-                    className="sm:min-w-[132px]"
+                    className="w-full lg:min-w-[132px]"
                   >
                     {loading ? (
                       <Spinner size="md" />

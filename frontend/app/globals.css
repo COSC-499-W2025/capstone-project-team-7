@@ -109,10 +109,9 @@
   }
 
   body {
-    background:
-      radial-gradient(circle at top left, hsl(var(--background-accent-left)), transparent 24%),
-      radial-gradient(circle at top right, hsl(var(--background-accent-right)), transparent 30%),
-      linear-gradient(180deg, hsl(var(--background)), hsl(var(--background-depth-end)));
+    position: relative;
+    isolation: isolate;
+    background: hsl(var(--background));
     color: hsl(var(--foreground));
     font-family: var(--font-sans);
     font-feature-settings: "ss01" 1, "ss02" 1;
@@ -121,7 +120,20 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
-  .dark body {
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at top left, hsl(var(--background-accent-left)), transparent 24%),
+      radial-gradient(circle at top right, hsl(var(--background-accent-right)), transparent 30%),
+      linear-gradient(180deg, hsl(var(--background)), hsl(var(--background-depth-end)));
+    will-change: opacity;
+  }
+
+  .dark body::before {
     background:
       radial-gradient(circle at top left, hsl(var(--background-dark-accent-left) / 0.42), transparent 22%),
       radial-gradient(circle at top right, hsl(var(--background-dark-accent-right) / 0.8), transparent 30%),
@@ -272,6 +284,10 @@
     background: linear-gradient(90deg, hsl(var(--primary) / 0.75), hsl(var(--primary) / 0));
   }
 
+  .page-kicker-no-line::before {
+    content: none;
+  }
+
   .page-summary {
     max-width: 760px;
     font-size: 14px;
@@ -291,7 +307,14 @@
     gap: 14px;
   }
 
-  .split-callout-card,
+  .split-callout-card {
+    padding: 18px 20px;
+    border-radius: 18px;
+    background:
+      linear-gradient(180deg, hsl(var(--card) / 0.88), hsl(var(--muted) / 0.72));
+    box-shadow: var(--shadow-inset);
+  }
+
   .portfolio-panel-subtle,
   .dashboard-card-subtle {
     border-radius: 18px;
@@ -300,7 +323,12 @@
     box-shadow: var(--shadow-inset);
   }
 
-  .dark .split-callout-card,
+  .dark .split-callout-card {
+    background:
+      linear-gradient(180deg, hsl(var(--card) / 0.95), hsl(var(--muted) / 0.8));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+
   .dark .portfolio-panel-subtle,
   .dark .dashboard-card-subtle {
     background:
@@ -411,13 +439,13 @@
       linear-gradient(180deg, hsl(224 18% 17%), hsl(223 15% 24%));
     box-shadow: 0 22px 52px rgba(0, 0, 0, 0.34);
   }
-  .dashboard-panel:hover {
+  .dashboard-panel-interactive:hover {
     transform: translateY(-2px);
     border-color: hsl(var(--primary) / var(--opacity-hover));
     box-shadow: 0 28px 60px rgba(15, 23, 42, 0.12);
   }
 
-  .dark .dashboard-panel:hover {
+  .dark .dashboard-panel-interactive:hover {
     box-shadow: 0 28px 60px rgba(0, 0, 0, 0.4);
   }
 
@@ -683,6 +711,7 @@
     width: var(--sidebar-width);
     display: flex;
     flex-direction: column;
+    contain: paint;
     background:
       radial-gradient(circle at top right, hsl(214 82% 58% / 0.18), transparent 24%),
       linear-gradient(180deg, hsl(225 27% 10%), hsl(225 23% 12%) 44%, hsl(223 20% 9%));
@@ -895,10 +924,10 @@
 }
 
 /*
- * Migration bridge: this app temporarily remaps a small set of legacy Tailwind
- * utilities to design tokens while components are migrated off hardcoded colors
- * and shadows. This intentionally diverges from vanilla Tailwind semantics here;
- * remove these aliases once the remaining legacy usages are replaced.
+ * Migration bridge: these overrides keep legacy Tailwind utility usage aligned
+ * with the design-token system during the token migration. Developers should
+ * not assume vanilla Tailwind behavior for the classes below; remove these
+ * aliases once the remaining legacy usages are replaced.
  */
 @layer utilities {
   .pc-no-shadow,
