@@ -5,7 +5,6 @@ import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { LoadingState } from "@/components/ui/loading-state";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -566,16 +565,6 @@ export default function SettingsPage() {
       setTimeout(() => setApiKeyStatus(null), 4000);
     }
   };
-
-  const isPageLoading = sessionLoading;
-
-  if (isPageLoading) {
-    return (
-      <div className="page-container">
-        <LoadingState message="Loading settings..." />
-      </div>
-    );
-  }
 
   return (
     <div className="page-container relative">
