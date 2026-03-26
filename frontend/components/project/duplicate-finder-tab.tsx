@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import {
   projectPageSelectors,
   useProjectPageStore,
@@ -158,8 +158,8 @@ export function DuplicateFinderTab({
 
   if (resolvedIsLoading) {
     return (
-      <div className="rounded-lg border border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-600">
-        <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin text-gray-500" />
+      <div className="rounded-[18px] border border-border bg-muted/60 p-6 text-center text-sm text-muted-foreground">
+        <Spinner size="lg" className="mx-auto mb-2 text-muted-foreground" />
         Loading duplicate analysis...
       </div>
     );
@@ -167,7 +167,7 @@ export function DuplicateFinderTab({
 
   if (resolvedErrorMessage) {
     return (
-      <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 space-y-3">
+      <div className="space-y-3 rounded-[18px] border border-red-200 bg-red-50 p-4 text-sm text-red-700">
         <p>{resolvedErrorMessage}</p>
         {resolvedRetry && (
           <Button variant="outline" size="sm" onClick={resolvedRetry}>
@@ -182,9 +182,9 @@ export function DuplicateFinderTab({
 
   if (!normalized) {
     return (
-      <div className="rounded-lg border border-gray-200 bg-gray-50 p-6 text-center">
-        <p className="text-sm font-medium text-gray-900">No duplicate groups found</p>
-        <p className="mt-1 text-xs text-gray-500">
+      <div className="rounded-[18px] border border-border bg-muted/60 p-6 text-center">
+        <p className="text-sm font-medium text-foreground">No duplicate groups found</p>
+        <p className="mt-1 text-xs text-muted-foreground">
           This scan did not detect duplicate files.
         </p>
       </div>
@@ -194,34 +194,34 @@ export function DuplicateFinderTab({
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-          <p className="text-xs text-gray-500">Duplicate groups</p>
-          <p className="mt-1 text-lg font-semibold text-gray-900">{normalized.total_duplicates}</p>
+        <div className="stat-block p-4">
+          <p className="text-xs text-muted-foreground">Duplicate groups</p>
+          <p className="mt-1 text-lg font-semibold text-foreground">{normalized.total_duplicates}</p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-          <p className="text-xs text-gray-500">Wasted storage</p>
-          <p className="mt-1 text-lg font-semibold text-gray-900">{formatBytes(normalized.total_wasted_bytes)}</p>
+        <div className="stat-block p-4">
+          <p className="text-xs text-muted-foreground">Wasted storage</p>
+          <p className="mt-1 text-lg font-semibold text-foreground">{formatBytes(normalized.total_wasted_bytes)}</p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-          <p className="text-xs text-gray-500">Wasted MB</p>
-          <p className="mt-1 text-lg font-semibold text-gray-900">{normalized.total_wasted_mb.toFixed(2)} MB</p>
+        <div className="stat-block p-4">
+          <p className="text-xs text-muted-foreground">Wasted MB</p>
+          <p className="mt-1 text-lg font-semibold text-foreground">{normalized.total_wasted_mb.toFixed(2)} MB</p>
         </div>
       </div>
 
       <div className="space-y-2">
         {normalized.duplicate_groups.map((group, index) => (
-          <div key={`${group.hash}-${index}`} className="rounded-lg border border-gray-200 p-3">
+          <div key={`${group.hash}-${index}`} className="rounded-[16px] border border-border bg-background/70 p-4">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <p className="text-xs font-medium text-gray-500">
+              <p className="text-xs font-medium text-muted-foreground">
                 Hash {shortenHash(group.hash)}
               </p>
-              <p className="text-xs text-gray-600">
+              <p className="text-xs text-muted-foreground">
                 {group.count} file{group.count === 1 ? "" : "s"} • {formatBytes(group.wasted_bytes)} wasted
               </p>
             </div>
             <ul className="space-y-1">
               {group.files.map((filePath, fileIndex) => (
-                <li key={`${filePath}-${fileIndex}`} className="truncate text-xs text-gray-700" title={filePath}>
+                <li key={`${filePath}-${fileIndex}`} className="truncate text-xs text-foreground" title={filePath}>
                   {filePath}
                 </li>
               ))}

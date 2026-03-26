@@ -95,8 +95,8 @@ vi.mock("@/lib/api/portfolio", () => ({
   getPortfolioChronology: vi.fn(),
   refreshPortfolio: vi.fn(),
   getPortfolioSettings: vi.fn(),
-  getProjectEvolution: vi.fn(),
   publishPortfolio: vi.fn(),
+  getProjectEvolution: vi.fn(),
 }));
 
 vi.mock("@/lib/api/projects", () => ({
@@ -213,6 +213,7 @@ beforeEach(() => {
       duplicate_groups: [],
     },
   });
+  mockGetProjectEvolution.mockResolvedValue([]);
 });
 
 // ---------------------------------------------------------------------------

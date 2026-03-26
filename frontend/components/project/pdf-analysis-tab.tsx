@@ -115,42 +115,42 @@ export function PdfAnalysisTab({
     : "No PDFs match your criteria";
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Statistics Overview */}
-      <Card className="bg-white border border-gray-200">
-        <CardHeader className="border-b border-gray-200">
-          <CardTitle className="text-xl font-bold text-gray-900">PDF Statistics</CardTitle>
+      <Card>
+        <CardHeader className="border-b border-border/70 p-5 pb-4">
+          <CardTitle className="text-lg font-semibold text-foreground">PDF Statistics</CardTitle>
         </CardHeader>
-        <CardContent className="p-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            <div className="bg-gray-50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-gray-900">{stats.total_pdfs}</p>
-              <p className="text-xs text-gray-500 mt-1">Total PDFs</p>
+        <CardContent className="p-5 pt-4">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="stat-block p-4 text-center">
+              <p className="text-2xl font-bold text-foreground">{stats.total_pdfs}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Total PDFs</p>
             </div>
-            <div className="bg-gray-50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-gray-900">{stats.total_pages}</p>
-              <p className="text-xs text-gray-500 mt-1">Total Pages</p>
+            <div className="stat-block p-4 text-center">
+              <p className="text-2xl font-bold text-foreground">{stats.total_pages}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Total Pages</p>
             </div>
-            <div className="bg-gray-50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-gray-900">{stats.avg_pages}</p>
-              <p className="text-xs text-gray-500 mt-1">Avg Pages/PDF</p>
+            <div className="stat-block p-4 text-center">
+              <p className="text-2xl font-bold text-foreground">{stats.avg_pages}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Avg Pages/PDF</p>
             </div>
-            <div className="bg-gray-50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-gray-900">{Math.round(stats.total_reading_time)}</p>
-              <p className="text-xs text-gray-500 mt-1">Total Minutes</p>
+            <div className="stat-block p-4 text-center">
+              <p className="text-2xl font-bold text-foreground">{Math.round(stats.total_reading_time)}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Total Minutes</p>
             </div>
           </div>
         </CardContent>
       </Card>
 
       {/* PDF Documents List */}
-      <Card className="bg-white border border-gray-200">
-        <CardHeader className="border-b border-gray-200">
-          <CardTitle className="text-xl font-bold text-gray-900">
+      <Card>
+        <CardHeader className="border-b border-border/70 p-5 pb-4">
+          <CardTitle className="text-lg font-semibold text-foreground">
             PDF Documents ({documents.length})
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-6">
+        <CardContent className="p-5 pt-4">
           {resolvedIsLoading && (
             <div className="text-center py-8 text-gray-500">
               Loading PDF analysis…
@@ -170,7 +170,7 @@ export function PdfAnalysisTab({
               documents.map((doc, index) => (
                 <div
                   key={index}
-                  className="border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors"
+                  className="rounded-[16px] border border-border bg-background/70 p-4 transition-colors hover:border-border/90"
                 >
                   <div className="flex items-start gap-4">
                     <div className="mt-1">
@@ -180,14 +180,14 @@ export function PdfAnalysisTab({
                       {/* Header */}
                       <div className="flex items-start justify-between gap-4 mb-3">
                         <div className="flex-1 min-w-0">
-                          <h3 className="text-sm font-semibold text-gray-900 truncate">
+                          <h3 className="truncate text-sm font-semibold text-foreground">
                             {doc.file_name}
                           </h3>
                           {doc.file_path && doc.file_path !== doc.file_name && (
-                            <p className="text-xs text-gray-500 mt-1 truncate">{doc.file_path}</p>
+                            <p className="mt-1 truncate text-xs text-muted-foreground">{doc.file_path}</p>
                           )}
                         </div>
-                        <div className="flex gap-4 text-xs text-gray-600 shrink-0">
+                        <div className="flex shrink-0 gap-4 text-xs text-muted-foreground">
                           <div className="flex items-center gap-1">
                             <FileText className="h-3 w-3" />
                             <span>{doc.page_count} pages</span>
@@ -204,7 +204,7 @@ export function PdfAnalysisTab({
                       {/* Summary */}
                       {doc.summary && (
                         <div className="mb-3">
-                          <p className="text-sm text-gray-700 leading-relaxed">
+                          <p className="text-sm leading-relaxed text-muted-foreground">
                             {doc.summary}
                           </p>
                         </div>
@@ -215,13 +215,13 @@ export function PdfAnalysisTab({
                         <div className="mb-3">
                           <div className="flex items-center gap-2 mb-2">
                             <TrendingUp className="h-4 w-4 text-blue-600" />
-                            <span className="text-xs font-medium text-gray-700">Key Topics:</span>
+                            <span className="text-xs font-medium text-foreground">Key Topics:</span>
                           </div>
                           <div className="flex flex-wrap gap-2">
                             {doc.key_topics.map((topic, idx) => (
                               <span
                                 key={idx}
-                                className="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded-md border border-blue-200"
+                                className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs text-blue-700"
                               >
                                 {topic}
                               </span>
@@ -235,20 +235,20 @@ export function PdfAnalysisTab({
                         <div>
                           <div className="flex items-center gap-2 mb-2">
                             <Tag className="h-4 w-4 text-green-600" />
-                            <span className="text-xs font-medium text-gray-700">Keywords:</span>
+                            <span className="text-xs font-medium text-foreground">Keywords:</span>
                           </div>
                           <div className="flex flex-wrap gap-2">
                             {doc.keywords.slice(0, 10).map((kw, idx) => (
                               <span
                                 key={idx}
-                                className="px-2 py-1 bg-green-50 text-green-700 text-xs rounded-md border border-green-200 flex items-center gap-1"
+                                className="flex items-center gap-1 rounded-md border border-green-200 bg-green-50 px-2 py-1 text-xs text-green-700"
                               >
                                 {kw.word}
                                 <span className="text-green-500">({kw.count})</span>
                               </span>
                             ))}
                             {doc.keywords.length > 10 && (
-                              <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded">
+                              <span className="rounded-md border border-border bg-muted px-2 py-1 text-xs text-muted-foreground">
                                 +{doc.keywords.length - 10} more
                               </span>
                             )}

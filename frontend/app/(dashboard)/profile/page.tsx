@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import type { UserProfile, UpdateProfileRequest } from "@/lib/api.types";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { LoadingState } from "@/components/ui/loading-state";
 import { Input } from "@/components/ui/input";
 import { Avatar } from "@/components/ui/avatar";
 import { Label } from "@/components/ui/label";
@@ -148,9 +149,9 @@ export default function ProfilePage() {
             return;
           }
           if (avatarPreview?.startsWith("blob:")) URL.revokeObjectURL(avatarPreview);
-          const bytes = base64ToBytes(desktopFile.data);
-          const arrayBuffer = new Uint8Array(bytes).buffer as ArrayBuffer;
-          const file = new File([arrayBuffer], desktopFile.name, {
+          const fileBytes = base64ToBytes(desktopFile.data);
+          const normalizedBytes = new Uint8Array(Array.from(fileBytes));
+          const file = new File([normalizedBytes], desktopFile.name, {
             type: desktopFile.type,
           });
           const previewUrl = URL.createObjectURL(file);
@@ -287,39 +288,39 @@ export default function ProfilePage() {
   // ---- render ----
   if (loading) {
     return (
-      <main className="flex items-center justify-center py-24">
-        <p className="text-sm text-muted-foreground">Loading profile...</p>
+      <main className="page-container py-6">
+        <LoadingState message="Loading profile..." className="min-h-[22rem]" />
       </main>
     );
   }
 
   return (
-    <main className="max-w-4xl mx-auto p-6 space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-[30px] leading-[36px] font-bold tracking-tight">Profile</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">Manage your account settings</p>
+    <main className="page-container max-w-6xl mx-auto">
+      <section className="page-card page-hero">
+        <div className="page-header flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="page-kicker">Account Identity</p>
+            <h1 className="text-[30px] leading-[36px] font-bold tracking-tight">Profile</h1>
+            <p className="page-summary">Manage your public identity, supporting links, and account security.</p>
+          </div>
+          <Button
+            variant="outline"
+            className="rounded-md"
+            onClick={() => window.history.back()}
+          >
+            Back
+          </Button>
         </div>
-        <Button
-          variant="outline"
-          className="rounded-full"
-          onClick={() => window.history.back()}
-        >
-          Back
-        </Button>
-      </div>
-
-      <hr className="border-border" />
+      </section>
 
       {/* Feedback banner */}
       {message && (
         <div
           role="alert"
-          className={`rounded-[4px] border px-3 py-2 text-sm ${
+          className={`rounded-md border-2 px-3 py-2 text-sm ${
             message.type === "ok"
-              ? "border-green-600 text-green-700 bg-green-50"
-              : "border-red-600 text-red-700 bg-red-50"
+              ? "border-green-300 text-green-700 bg-green-50"
+              : "border-red-300 text-red-700 bg-red-50"
           }`}
         >
           {message.text}
@@ -327,11 +328,11 @@ export default function ProfilePage() {
       )}
 
       {/* 2-column layout */}
-      <div className="grid gap-6 md:grid-cols-[260px_1fr]">
+      <div className="grid gap-6 md:grid-cols-[280px_1fr]">
         {/* -------- LEFT COLUMN -------- */}
         <div className="space-y-4">
           {/* Avatar */}
-          <Card className="shadow-none">
+          <Card>
             <CardContent className="flex flex-col items-center gap-3 p-4">
               <Avatar
                 src={avatarPreview ?? undefined}
@@ -341,11 +342,11 @@ export default function ProfilePage() {
               />
 
               <div className="flex gap-2">
-                <Button size="sm" className="rounded-full" onClick={pickAvatar}>
+                <Button size="sm" className="rounded-md" onClick={pickAvatar}>
                   Change
                 </Button>
                 {avatarPreview && (
-                  <Button variant="outline" size="sm" className="rounded-full" onClick={removeAvatar}>
+                  <Button variant="outline" size="sm" className="rounded-md" onClick={removeAvatar}>
                     Remove
                   </Button>
                 )}
@@ -364,12 +365,12 @@ export default function ProfilePage() {
           </Card>
 
           {/* Identity summary */}
-          <Card className="shadow-none">
+          <Card>
             <CardContent className="space-y-1 p-4">
               <p className="text-sm font-semibold">{draft.display_name || "No display name"}</p>
               <p className="text-xs text-muted-foreground">{draft.email || "No email"}</p>
               {draft.career_title && (
-                <span className="inline-block rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+                <span className="inline-block rounded-md border-2 border-border px-2 py-0.5 text-xs text-muted-foreground">
                   {draft.career_title}
                 </span>
               )}
@@ -379,7 +380,7 @@ export default function ProfilePage() {
           {/* Logout */}
           <Button
             variant="outline"
-            className="w-full rounded-full border-red-500 text-red-600 hover:bg-red-50"
+            className="w-full rounded-md border-2 border-red-300 text-red-600 hover:bg-red-50"
             onClick={handleLogout}
           >
             Log out
@@ -389,7 +390,7 @@ export default function ProfilePage() {
         {/* -------- RIGHT COLUMN -------- */}
         <div className="space-y-4">
           {/* Basic info */}
-          <Card className="shadow-none">
+          <Card>
             <CardHeader className="p-4 pb-0">
               <CardTitle className="text-sm">Basic Information</CardTitle>
             </CardHeader>
@@ -398,7 +399,6 @@ export default function ProfilePage() {
                 <Label htmlFor="display_name">Display Name</Label>
                 <Input
                   id="display_name"
-                  className="rounded-[4px] shadow-none"
                   value={draft.display_name ?? ""}
                   onChange={(e) => set("display_name", e.target.value)}
                 />
@@ -408,7 +408,7 @@ export default function ProfilePage() {
                 <Label htmlFor="email">Email</Label>
                 <Input
                   id="email"
-                  className="rounded-[4px] shadow-none opacity-60"
+                  className="opacity-60"
                   value={draft.email ?? ""}
                   readOnly
                   title="Email is managed by your auth provider"
@@ -420,7 +420,6 @@ export default function ProfilePage() {
                 <Label htmlFor="education">Education</Label>
                 <Input
                   id="education"
-                  className="rounded-[4px] shadow-none"
                   placeholder="e.g. B.Sc. Computer Science"
                   value={draft.education ?? ""}
                   onChange={(e) => set("education", e.target.value)}
@@ -431,7 +430,6 @@ export default function ProfilePage() {
                 <Label htmlFor="career_title">Career Title</Label>
                 <Input
                   id="career_title"
-                  className="rounded-[4px] shadow-none"
                   placeholder="e.g. Software Engineer"
                   value={draft.career_title ?? ""}
                   onChange={(e) => set("career_title", e.target.value)}
@@ -441,7 +439,7 @@ export default function ProfilePage() {
           </Card>
 
           {/* Links */}
-          <Card className="shadow-none">
+          <Card>
             <CardHeader className="p-4 pb-0">
               <CardTitle className="text-sm">Links &amp; Resources</CardTitle>
             </CardHeader>
@@ -450,7 +448,6 @@ export default function ProfilePage() {
                 <Label htmlFor="schema_url">GitHub Profile URL</Label>
                 <Input
                   id="schema_url"
-                  className="rounded-[4px] shadow-none"
                   type="url"
                   placeholder="https://github.com/username"
                   value={draft.schema_url ?? ""}
@@ -465,7 +462,6 @@ export default function ProfilePage() {
                 <Label htmlFor="drive_url">Team Google Drive URL</Label>
                 <Input
                   id="drive_url"
-                  className="rounded-[4px] shadow-none"
                   type="url"
                   placeholder="https://drive.google.com/..."
                   value={draft.drive_url ?? ""}
@@ -479,7 +475,7 @@ export default function ProfilePage() {
           </Card>
 
           {/* Password */}
-          <Card className="shadow-none">
+          <Card>
             <CardHeader className="p-4 pb-0">
               <CardTitle className="text-sm">Change Password</CardTitle>
             </CardHeader>
@@ -488,7 +484,6 @@ export default function ProfilePage() {
                 <Label htmlFor="current_password">Current Password</Label>
                 <Input
                   id="current_password"
-                  className="rounded-[4px] shadow-none"
                   type="password"
                   autoComplete="current-password"
                   value={currentPassword}
@@ -500,7 +495,6 @@ export default function ProfilePage() {
                 <Label htmlFor="new_password">New Password</Label>
                 <Input
                   id="new_password"
-                  className="rounded-[4px] shadow-none"
                   type="password"
                   autoComplete="new-password"
                   value={newPassword}
@@ -512,7 +506,6 @@ export default function ProfilePage() {
                 <Label htmlFor="confirm_password">Confirm New Password</Label>
                 <Input
                   id="confirm_password"
-                  className="rounded-[4px] shadow-none"
                   type="password"
                   autoComplete="new-password"
                   value={confirmPassword}
@@ -523,7 +516,7 @@ export default function ProfilePage() {
               <Button
                 variant="outline"
                 size="sm"
-                className="rounded-full"
+                className="rounded-md"
                 onClick={handlePasswordChange}
               >
                 Update Password
@@ -534,7 +527,7 @@ export default function ProfilePage() {
           {/* Action bar */}
           <div className="flex gap-3">
             <Button
-              className="rounded-full"
+              className="rounded-md"
               onClick={handleSave}
               disabled={!dirty || saving}
             >
@@ -542,7 +535,7 @@ export default function ProfilePage() {
             </Button>
             <Button
               variant="outline"
-              className="rounded-full"
+              className="rounded-md"
               onClick={handleCancel}
               disabled={!dirty}
             >

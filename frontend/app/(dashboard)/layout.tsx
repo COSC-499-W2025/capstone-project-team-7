@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
+import { LoadingState } from "@/components/ui/loading-state";
 import { useAuth } from "@/hooks/use-auth";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -36,9 +37,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         aria-busy="true"
         aria-live="polite"
       >
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-2 border-primary border-t-transparent mx-auto mb-4" />
-          <p className="text-sm text-muted-foreground">Loading...</p>
+        <div className="w-full max-w-3xl px-6">
+          <LoadingState message="Loading workspace..." />
         </div>
       </main>
     );
@@ -47,7 +47,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <>
       <Sidebar />
-      <main className="ml-[280px]">
+      <main className="dashboard-stage">
         {children}
       </main>
     </>

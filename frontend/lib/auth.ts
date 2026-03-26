@@ -5,51 +5,89 @@ const TOKEN_STORAGE_KEY = "auth_access_token";
 const LEGACY_TOKEN_STORAGE_KEY = "access_token";
 const REFRESH_TOKEN_STORAGE_KEY = "refresh_token";
 const LEGACY_REFRESH_TOKEN_STORAGE_KEY = "refresh token";
+const REMEMBER_ME_KEY = "auth_remember_me";
 
 const getApiBaseUrl = () => {
   return process.env.NEXT_PUBLIC_API_BASE_URL || DEFAULT_API_BASE_URL;
 };
 
+// Remember Me preference — stored in localStorage so it survives page reloads
+export const setRememberMePreference = (value: boolean): void => {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(REMEMBER_ME_KEY, value ? "1" : "0");
+};
+
+export const getRememberMePreference = (): boolean => {
+  if (typeof window === "undefined") return true;
+  const stored = localStorage.getItem(REMEMBER_ME_KEY);
+  // Default to true (localStorage) for backwards compatibility
+  return stored !== "0";
+};
+
+/** Returns the storage backend based on the remember-me preference. */
+const getTokenStorage = (): Storage => {
+  return getRememberMePreference() ? localStorage : sessionStorage;
+};
+
 // Token management functions
 export const getStoredToken = (): string | null => {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem(TOKEN_STORAGE_KEY) || localStorage.getItem(LEGACY_TOKEN_STORAGE_KEY);
+  // Check both storages to handle preference transitions
+  return (
+    sessionStorage.getItem(TOKEN_STORAGE_KEY) ||
+    localStorage.getItem(TOKEN_STORAGE_KEY) ||
+    localStorage.getItem(LEGACY_TOKEN_STORAGE_KEY)
+  );
 };
 
 export const getStoredTokenCandidates = (): string[] => {
   if (typeof window === "undefined") return [];
+  const session = sessionStorage.getItem(TOKEN_STORAGE_KEY);
   const primary = localStorage.getItem(TOKEN_STORAGE_KEY);
   const legacy = localStorage.getItem(LEGACY_TOKEN_STORAGE_KEY);
-  return [primary, legacy].filter((value, index, arr): value is string => Boolean(value) && arr.indexOf(value) === index);
+  return [session, primary, legacy].filter((value, index, arr): value is string => Boolean(value) && arr.indexOf(value) === index);
 };
 
 export const setStoredToken = (token: string): void => {
   if (typeof window === "undefined") return;
-  localStorage.setItem(TOKEN_STORAGE_KEY, token);
-  localStorage.setItem(LEGACY_TOKEN_STORAGE_KEY, token);
+  const storage = getTokenStorage();
+  storage.setItem(TOKEN_STORAGE_KEY, token);
+  // Also write to legacy key in the same storage for compat
+  storage.setItem(LEGACY_TOKEN_STORAGE_KEY, token);
 };
 
 export const getStoredRefreshToken = (): string | null => {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY) || localStorage.getItem(LEGACY_REFRESH_TOKEN_STORAGE_KEY);
+  return (
+    sessionStorage.getItem(REFRESH_TOKEN_STORAGE_KEY) ||
+    localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY) ||
+    localStorage.getItem(LEGACY_REFRESH_TOKEN_STORAGE_KEY)
+  );
 };
 
 export const setStoredRefreshToken = (token: string): void => {
   if (typeof window === "undefined") return;
-  localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, token);
-  localStorage.setItem(LEGACY_REFRESH_TOKEN_STORAGE_KEY, token);
+  const storage = getTokenStorage();
+  storage.setItem(REFRESH_TOKEN_STORAGE_KEY, token);
+  storage.setItem(LEGACY_REFRESH_TOKEN_STORAGE_KEY, token);
 };
 
 export const clearStoredRefreshToken = (): void => {
   if (typeof window === "undefined") return;
-  localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
-  localStorage.removeItem(LEGACY_REFRESH_TOKEN_STORAGE_KEY);
+  // Clear from both storages
+  for (const s of [localStorage, sessionStorage]) {
+    s.removeItem(REFRESH_TOKEN_STORAGE_KEY);
+    s.removeItem(LEGACY_REFRESH_TOKEN_STORAGE_KEY);
+  }
 };
 
 export const clearStoredToken = (): void => {
   if (typeof window === "undefined") return;
-  localStorage.removeItem(TOKEN_STORAGE_KEY);
-  localStorage.removeItem(LEGACY_TOKEN_STORAGE_KEY);
+  // Clear from both storages
+  for (const s of [localStorage, sessionStorage]) {
+    s.removeItem(TOKEN_STORAGE_KEY);
+    s.removeItem(LEGACY_TOKEN_STORAGE_KEY);
+  }
 };
 
 export const refreshAccessToken = async (): Promise<string | null> => {

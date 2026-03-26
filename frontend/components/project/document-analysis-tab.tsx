@@ -228,72 +228,72 @@ export function DocumentAnalysisTab({
       : "No documents found matching your criteria";
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Statistics Overview */}
-      <Card className="bg-white border border-gray-200">
-        <CardHeader className="border-b border-gray-200">
-          <CardTitle className="text-xl font-bold text-gray-900">Document Statistics</CardTitle>
+      <Card>
+        <CardHeader className="border-b border-border/70 p-5 pb-4">
+          <CardTitle className="text-lg font-semibold text-foreground">Document Statistics</CardTitle>
         </CardHeader>
-        <CardContent className="p-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            <div className="bg-gray-50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-gray-900">{stats.total_documents}</p>
-              <p className="text-xs text-gray-500 mt-1">Total Documents</p>
+        <CardContent className="p-5 pt-4">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="stat-block p-4 text-center">
+              <p className="text-2xl font-bold text-foreground">{stats.total_documents}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Total Documents</p>
             </div>
-            <div className="bg-gray-50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-gray-900">
+            <div className="stat-block p-4 text-center">
+              <p className="text-2xl font-bold text-foreground">
                 {stats.total_words.toLocaleString()}
               </p>
-              <p className="text-xs text-gray-500 mt-1">Total Words</p>
+              <p className="mt-1 text-xs text-muted-foreground">Total Words</p>
             </div>
-            <div className="bg-gray-50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-gray-900">{stats.documents_with_keywords}</p>
-              <p className="text-xs text-gray-500 mt-1">Docs with key terms</p>
-              <p className="text-[11px] text-gray-400 mt-0.5">
+            <div className="stat-block p-4 text-center">
+              <p className="text-2xl font-bold text-foreground">{stats.documents_with_keywords}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Docs with key terms</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
                 At least one extracted keyword or topic
               </p>
             </div>
-            <div className="bg-gray-50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-gray-900">{stats.documents_with_headings}</p>
-              <p className="text-xs text-gray-500 mt-1">With Headings</p>
+            <div className="stat-block p-4 text-center">
+              <p className="text-2xl font-bold text-foreground">{stats.documents_with_headings}</p>
+              <p className="mt-1 text-xs text-muted-foreground">With Headings</p>
             </div>
           </div>
         </CardContent>
       </Card>
 
       {/* Document Type Breakdown */}
-      <Card className="bg-white border border-gray-200">
-        <CardHeader className="border-b border-gray-200">
-          <CardTitle className="text-xl font-bold text-gray-900">Document Types</CardTitle>
+      <Card>
+        <CardHeader className="border-b border-border/70 p-5 pb-4">
+          <CardTitle className="text-lg font-semibold text-foreground">Document Types</CardTitle>
         </CardHeader>
-        <CardContent className="p-6">
+        <CardContent className="p-5 pt-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="flex items-center gap-3 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+            <div className="flex items-center gap-3 rounded-[16px] border border-purple-200 bg-purple-50/80 p-3.5">
               <BookOpen className="h-6 w-6 text-purple-500" />
               <div>
-                <p className="text-lg font-bold text-gray-900">{stats.md_count}</p>
-                <p className="text-xs text-gray-600">Markdown</p>
+                <p className="text-lg font-bold text-foreground">{stats.md_count}</p>
+                <p className="text-xs text-muted-foreground">Markdown</p>
               </div>
             </div>
-            <div className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+            <div className="flex items-center gap-3 rounded-[16px] border border-border bg-muted/60 p-3.5">
               <FileIcon className="h-6 w-6 text-gray-500" />
               <div>
-                <p className="text-lg font-bold text-gray-900">{stats.txt_count}</p>
-                <p className="text-xs text-gray-600">Text Files</p>
+                <p className="text-lg font-bold text-foreground">{stats.txt_count}</p>
+                <p className="text-xs text-muted-foreground">Text Files</p>
               </div>
             </div>
-            <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-center gap-3 rounded-[16px] border border-blue-200 bg-blue-50/80 p-3.5">
               <FileType className="h-6 w-6 text-blue-500" />
               <div>
-                <p className="text-lg font-bold text-gray-900">{stats.docx_count}</p>
-                <p className="text-xs text-gray-600">Word Docs</p>
+                <p className="text-lg font-bold text-foreground">{stats.docx_count}</p>
+                <p className="text-xs text-muted-foreground">Word Docs</p>
               </div>
             </div>
-            <div className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+            <div className="flex items-center gap-3 rounded-[16px] border border-border bg-muted/60 p-3.5">
               <FileIcon className="h-6 w-6 text-gray-500" />
               <div>
-                <p className="text-lg font-bold text-gray-900">{stats.other_count}</p>
-                <p className="text-xs text-gray-600">Other</p>
+                <p className="text-lg font-bold text-foreground">{stats.other_count}</p>
+                <p className="text-xs text-muted-foreground">Other</p>
               </div>
             </div>
           </div>
@@ -301,8 +301,8 @@ export function DocumentAnalysisTab({
       </Card>
 
       {/* Search and Filter */}
-      <Card className="bg-white border border-gray-200">
-        <CardContent className="p-4">
+      <Card>
+        <CardContent className="p-5">
           <div className="flex flex-col sm:flex-row gap-3">
             <SearchInput
               value={searchQuery}
@@ -314,7 +314,7 @@ export function DocumentAnalysisTab({
               <select
                 value={selectedType}
                 onChange={(e) => setSelectedType(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                className="h-10 rounded-[14px] border border-border bg-background px-3.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/40"
               >
                 <option value="all">All Types</option>
                 <option value="md">Markdown</option>
@@ -327,13 +327,13 @@ export function DocumentAnalysisTab({
       </Card>
 
       {/* Documents List */}
-      <Card className="bg-white border border-gray-200">
-        <CardHeader className="border-b border-gray-200">
-          <CardTitle className="text-xl font-bold text-gray-900">
+      <Card>
+        <CardHeader className="border-b border-border/70 p-5 pb-4">
+          <CardTitle className="text-lg font-semibold text-foreground">
             Documents ({filteredDocuments.length})
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-6">
+        <CardContent className="p-5 pt-4">
           {resolvedIsLoading && (
             <div className="text-center py-8 text-gray-500">
               Loading document analysis…
@@ -353,7 +353,7 @@ export function DocumentAnalysisTab({
               filteredDocuments.map((doc, index) => (
                 <div
                   key={index}
-                  className="border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors"
+                  className="rounded-[16px] border border-border bg-background/70 p-4 transition-colors hover:border-border/90"
                 >
                   <div className="flex items-start gap-4">
                     <div className="mt-1">{getFileIcon(getFileType(doc.path))}</div>
@@ -361,24 +361,24 @@ export function DocumentAnalysisTab({
                       {/* File Header */}
                       <div className="flex items-start justify-between gap-4 mb-3">
                         <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-gray-900 mb-1 truncate">
+                          <h3 className="mb-1 truncate font-semibold text-foreground">
                             {getFileName(doc.path)}
                           </h3>
-                          <p className="text-xs text-gray-500 font-mono truncate">{doc.path}</p>
+                          <p className="truncate font-mono text-xs text-muted-foreground">{doc.path}</p>
                         </div>
-                        <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded uppercase">
+                        <span className="rounded-full border border-border bg-muted px-2.5 py-1 text-xs uppercase text-muted-foreground">
                           {getFileType(doc.path)}
                         </span>
                       </div>
 
                       {/* Summary */}
                       {doc.summary_text && (
-                        <p className="text-sm text-gray-600 mb-3">{doc.summary_text}</p>
+                        <p className="mb-3 text-sm text-muted-foreground">{doc.summary_text}</p>
                       )}
 
                       {/* Metadata */}
                       {doc.word_count && (
-                        <div className="flex items-center gap-2 text-xs text-gray-600 mb-3">
+                        <div className="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
                           <FileType className="h-3 w-3" />
                           <span>{doc.word_count.toLocaleString()} words</span>
                         </div>
@@ -387,20 +387,20 @@ export function DocumentAnalysisTab({
                       {/* Headings */}
                       {doc.headings.length > 0 && (
                         <div className="mb-3">
-                          <p className="text-xs font-semibold text-gray-700 mb-1.5">
+                          <p className="mb-1.5 text-xs font-semibold text-foreground">
                             Headings ({doc.headings.length}):
                           </p>
                           <div className="flex flex-wrap gap-1.5">
                             {doc.headings.slice(0, 5).map((heading, idx) => (
                               <span
                                 key={idx}
-                                className="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded"
+                                className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs text-blue-700"
                               >
                                 {heading}
                               </span>
                             ))}
                             {doc.headings.length > 5 && (
-                              <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded">
+                              <span className="rounded-md border border-border bg-muted px-2 py-1 text-xs text-muted-foreground">
                                 +{doc.headings.length - 5} more
                               </span>
                             )}
@@ -411,20 +411,20 @@ export function DocumentAnalysisTab({
                       {/* Keywords */}
                       {doc.keywords.length > 0 && (
                         <div>
-                          <p className="text-xs font-semibold text-gray-700 mb-1.5">
+                          <p className="mb-1.5 text-xs font-semibold text-foreground">
                             Keywords ({doc.keywords.length}):
                           </p>
                           <div className="flex flex-wrap gap-1.5">
                             {doc.keywords.slice(0, 8).map((keyword, idx) => (
                               <span
                                 key={idx}
-                                className="px-2 py-1 bg-green-50 text-green-700 text-xs rounded"
+                                className="rounded-md border border-green-200 bg-green-50 px-2 py-1 text-xs text-green-700"
                               >
                                 {keyword}
                               </span>
                             ))}
                             {doc.keywords.length > 8 && (
-                              <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded">
+                              <span className="rounded-md border border-border bg-muted px-2 py-1 text-xs text-muted-foreground">
                                 +{doc.keywords.length - 8} more
                               </span>
                             )}

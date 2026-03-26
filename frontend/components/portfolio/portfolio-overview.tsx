@@ -15,11 +15,11 @@ import {
   Globe,
   Linkedin,
   Lock,
-  Loader2,
   Sparkles,
   Trophy,
   User,
 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { getStoredToken } from "@/lib/auth";
 import { publishPortfolio, getProjectEvolution } from "@/lib/api/portfolio";
 import type { PortfolioChronology, PortfolioSettings, ProjectEvolutionItem } from "@/types/portfolio";
@@ -305,7 +305,7 @@ export function PortfolioOverview({
       <section id="portfolio-summary" className="portfolio-panel p-5 sm:p-6">
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.82fr)]">
           <div className="flex gap-4">
-            <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
+            <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center overflow-hidden rounded-md border-2 border-border bg-muted">
               {profile?.avatar_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -314,81 +314,113 @@ export function PortfolioOverview({
                   className="h-full w-full object-cover"
                 />
               ) : (
-                <User className="h-7 w-7 text-slate-500" />
+                <User className="h-7 w-7 text-muted-foreground" />
               )}
             </div>
 
             <div className="min-w-0 space-y-3">
               <div className="space-y-1">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-sky-700">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
                   Portfolio Dashboard
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
+                  <h2 className="text-[2.2rem] font-semibold tracking-[-0.04em] text-foreground">
                     {profile?.display_name || profile?.email || "Portfolio"}
                   </h2>
-                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600">
-                    Compact overview
+                  <span className="rounded-full border border-primary/15 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[hsl(var(--accent-foreground))]">
+                    Storyboard
                   </span>
                 </div>
                 {profile?.career_title && (
-                  <p className="text-sm font-medium text-slate-700">
+                  <p className="text-base font-medium text-foreground">
                     {profile.career_title}
                   </p>
                 )}
                 {(profile?.education || profile?.email) && (
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-muted-foreground">
                     {profile?.education || profile?.email}
                   </p>
                 )}
               </div>
 
-              <p className="max-w-2xl text-sm leading-6 text-slate-600">
+              <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
                 Project output, contribution activity, and extracted skills are grouped
                 into a tighter dashboard so the strongest signals are visible quickly.
               </p>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleTogglePublish}
-                  disabled={publishing}
-                  className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-medium transition-colors ${
-                    pubSettings?.is_public
-                      ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                  } disabled:cursor-not-allowed disabled:opacity-50`}
-                >
-                  {publishing ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : pubSettings?.is_public ? (
-                    <Globe className="h-3.5 w-3.5" />
-                  ) : (
-                    <Lock className="h-3.5 w-3.5" />
-                  )}
-                  {pubSettings?.is_public ? "Public" : "Private"}
-                </button>
+              {publishError && (
+                <div className="rounded-[12px] border border-red-300 bg-red-50/80 px-3 py-2 text-xs text-red-700">
+                  {publishError}
+                </div>
+              )}
 
-                {pubSettings?.is_public && pubSettings.share_token && (
-                  <button
-                    type="button"
-                    onClick={handleCopyLink}
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50"
-                  >
-                    {copied ? (
-                      <Check className="h-3.5 w-3.5 text-emerald-600" />
-                    ) : (
-                      <Copy className="h-3.5 w-3.5" />
+              <div className="rounded-[16px] border border-primary/25 bg-primary/5 p-3 shadow-[0_4px_12px_rgba(15,23,42,0.04)]">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground mb-0.5">
+                      Visibility
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {pubSettings?.is_public
+                        ? "Public • Share with anyone"
+                        : "Private • Link only"}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={handleTogglePublish}
+                      disabled={publishing}
+                      className={`inline-flex items-center gap-1.5 rounded-[12px] border px-3.5 py-2 text-xs font-semibold transition-all ${
+                        pubSettings?.is_public
+                          ? "border-primary bg-primary text-primary-foreground shadow-[0_6px_16px_hsl(var(--primary)/0.25)] hover:shadow-[0_8px_20px_hsl(var(--primary)/0.3)]"
+                          : "border-border bg-card text-foreground hover:bg-muted hover:border-primary/30 shadow-[0_2px_8px_rgba(15,23,42,0.04)]"
+                      } disabled:cursor-not-allowed disabled:opacity-50`}
+                    >
+                      {publishing ? (
+                        <>
+                          <Spinner size={14} />
+                          Updating...
+                        </>
+                      ) : pubSettings?.is_public ? (
+                        <>
+                          <Globe className="h-3.5 w-3.5" />
+                          Make Private
+                        </>
+                      ) : (
+                        <>
+                          <Globe className="h-3.5 w-3.5" />
+                          Make Public
+                        </>
+                      )}
+                    </button>
+
+                    {pubSettings?.is_public && pubSettings.share_token && (
+                      <button
+                        type="button"
+                        onClick={handleCopyLink}
+                        className="inline-flex items-center gap-1.5 rounded-[12px] border border-primary/30 bg-primary/10 px-3.5 py-2 text-xs font-semibold text-primary transition-all hover:bg-primary/15 hover:border-primary/50 shadow-[0_2px_8px_rgba(15,23,42,0.04)]"
+                      >
+                        {copied ? (
+                          <>
+                            <Check className="h-3.5 w-3.5" />
+                            Copied!
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="h-3.5 w-3.5" />
+                            Copy Link
+                          </>
+                        )}
+                      </button>
                     )}
-                    {copied ? "Copied!" : "Copy Link"}
-                  </button>
-                )}
-
+                  </div>
+                </div>
                 {onShareLinkedIn && (
                   <button
                     type="button"
                     onClick={onShareLinkedIn}
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-[#0A66C2]/30 bg-white px-3 py-1.5 text-xs font-medium text-[#0A66C2] transition-colors hover:bg-[#0A66C2]/5"
+                    className="inline-flex items-center gap-1.5 rounded-[12px] border border-[#0A66C2]/30 bg-white px-3.5 py-2 text-xs font-semibold text-[#0A66C2] transition-colors hover:bg-[#0A66C2]/5"
                   >
                     <Linkedin className="h-3.5 w-3.5" />
                     Share on LinkedIn
@@ -414,64 +446,64 @@ export function PortfolioOverview({
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-            <div className="portfolio-panel-subtle p-3.5">
+            <div className="portfolio-panel-subtle p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                     Top Project
                   </p>
-                  <p className="mt-1 truncate text-sm font-semibold text-slate-950">
+                  <p className="mt-1 truncate text-sm font-semibold text-foreground">
                     {leadProject?.project_name || "No ranked project yet"}
                   </p>
-                  <p className="mt-1 text-xs text-slate-500">
+                  <p className="mt-1 text-xs text-muted-foreground">
                     {leadProject?.contribution_score != null
                       ? `Score ${Math.round(leadProject.contribution_score)}`
                       : "Contribution ranking appears here once available."}
                   </p>
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-white p-2 text-sky-700">
+                <div className="rounded-2xl border border-border bg-white p-2.5 text-foreground shadow-[0_10px_20px_rgba(15,23,42,0.07)]">
                   <Trophy className="h-4 w-4" />
                 </div>
               </div>
             </div>
 
-            <div className="portfolio-panel-subtle p-3.5">
+            <div className="portfolio-panel-subtle p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                     Peak Activity
                   </p>
-                  <p className="mt-1 text-sm font-semibold text-slate-950">
+                  <p className="mt-1 text-sm font-semibold text-foreground">
                     {peakActivity.label}
                   </p>
-                  <p className="mt-1 text-xs text-slate-500">
+                  <p className="mt-1 text-xs text-muted-foreground">
                     {peakActivity.commits > 0
                       ? `${peakActivity.commits.toLocaleString()} commits in the busiest period`
                       : "Scan git history to surface your busiest period."}
                   </p>
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-white p-2 text-sky-700">
+                <div className="rounded-2xl border border-border bg-white p-2.5 text-foreground shadow-[0_10px_20px_rgba(15,23,42,0.07)]">
                   <GitCommit className="h-4 w-4" />
                 </div>
               </div>
             </div>
 
-            <div className="portfolio-panel-subtle p-3.5">
+            <div className="portfolio-panel-subtle p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                     Skills Coverage
                   </p>
-                  <p className="mt-1 text-sm font-semibold text-slate-950">
+                  <p className="mt-1 text-sm font-semibold text-foreground">
                     {skills.length > 0 ? `${skills.length} tracked skills` : "Awaiting extraction"}
                   </p>
-                  <p className="mt-1 text-xs text-slate-500">
+                  <p className="mt-1 text-xs text-muted-foreground">
                     {skills.length > 0
                       ? "Skill signals stay grouped with timeline activity for faster review."
                       : "Run project scans to populate the skills library."}
                   </p>
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-white p-2 text-sky-700">
+                <div className="rounded-2xl border border-border bg-white p-2.5 text-foreground shadow-[0_10px_20px_rgba(15,23,42,0.07)]">
                   <Sparkles className="h-4 w-4" />
                 </div>
               </div>
@@ -479,7 +511,7 @@ export function PortfolioOverview({
           </div>
         </div>
 
-        <div className="mt-5 grid gap-3 border-t border-slate-200 pt-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+        <div className="mt-5 grid gap-3 border-t border-border pt-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
           <div className="overflow-x-auto pb-1">
             <div className="flex w-max gap-2">
               {summaryLinks.map((section) => (
@@ -540,17 +572,17 @@ export function PortfolioOverview({
         ].map((stat) => (
           <div key={stat.label} className="portfolio-panel-subtle p-4">
             <div className="flex items-start justify-between gap-3">
-              <div className="rounded-xl border border-slate-200 bg-white p-2 text-sky-700">
+              <div className="rounded-md border border-border bg-white p-2 text-foreground">
                 {stat.icon}
               </div>
-              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                 {stat.label}
               </span>
             </div>
-            <p className="mt-4 text-2xl font-semibold tracking-tight text-slate-950">
+            <p className="mt-4 text-2xl font-semibold tracking-tight text-foreground">
               {stat.value.toLocaleString()}
             </p>
-            <p className="mt-1 text-xs text-slate-500">{stat.detail}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{stat.detail}</p>
           </div>
         ))}
       </section>
@@ -564,17 +596,17 @@ export function PortfolioOverview({
             <article className="portfolio-panel p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                     Activity
                   </p>
-                  <h3 className="mt-1 text-lg font-semibold tracking-tight text-slate-950">
+                  <h3 className="mt-1 text-lg font-semibold tracking-tight text-foreground">
                     Activity Heatmap
                   </h3>
-                  <p className="mt-1 text-sm text-slate-500">
+                  <p className="mt-1 text-sm text-muted-foreground">
                     Monthly contribution density, compressed into a year-by-year dashboard view.
                   </p>
                 </div>
-                <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-500">
+                <div className="rounded-md border border-border bg-muted px-3 py-1.5 text-xs font-medium text-muted-foreground">
                   Peak: {peakActivity.label}
                 </div>
               </div>
@@ -589,17 +621,17 @@ export function PortfolioOverview({
             <article className="portfolio-panel p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                     Skills Insights
                   </p>
-                  <h3 className="mt-1 text-lg font-semibold tracking-tight text-slate-950">
+                  <h3 className="mt-1 text-lg font-semibold tracking-tight text-foreground">
                     Skills Timeline
                   </h3>
-                  <p className="mt-1 text-sm text-slate-500">
+                  <p className="mt-1 text-sm text-muted-foreground">
                     Monthly skill adoption, arranged into compact cards that read cleanly on desktop and mobile.
                   </p>
                 </div>
-                <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-500">
+                <div className="rounded-md border border-border bg-muted px-3 py-1.5 text-xs font-medium text-muted-foreground">
                   {chronology?.skills.length ?? 0} periods
                 </div>
               </div>
@@ -620,23 +652,23 @@ export function PortfolioOverview({
             <article id="portfolio-projects" className="portfolio-panel p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                     Showcase
                   </p>
-                  <h3 className="mt-1 text-lg font-semibold tracking-tight text-slate-950">
+                  <h3 className="mt-1 text-lg font-semibold tracking-tight text-foreground">
                     Top Projects
                   </h3>
-                  <p className="mt-1 text-sm text-slate-500">
+                  <p className="mt-1 text-sm text-muted-foreground">
                     Ranked work surfaced with the clearest contribution and output signals.
                   </p>
                 </div>
-                <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-500">
+                <div className="rounded-md border border-border bg-muted px-3 py-1.5 text-xs font-medium text-muted-foreground">
                   {topProjects.length} shown
                 </div>
               </div>
 
               {topProjects.length === 0 ? (
-                <p className="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-8 text-sm text-slate-500">
+                <p className="mt-5 rounded-md border border-dashed border-border bg-muted/80 px-4 py-8 text-sm text-muted-foreground">
                   No projects available yet. Scan and rank your projects to see the top showcase.
                 </p>
               ) : (
@@ -649,25 +681,25 @@ export function PortfolioOverview({
                     return (
                       <article
                         key={project.id}
-                        className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/85 p-4 transition-colors hover:border-slate-300 hover:bg-white"
+                        className="min-w-0 overflow-hidden rounded-md border border-border bg-muted/85 p-4 transition-colors hover:border-border hover:bg-white"
                       >
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex min-w-0 items-start gap-3">
-                            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-700">
+                            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border border-border bg-white text-sm font-semibold text-foreground">
                               #{index + 1}
                             </div>
                             <div className="min-w-0">
                               <div className="flex flex-wrap items-center gap-2">
-                                <h4 className="truncate text-sm font-semibold text-slate-950">
+                                <h4 className="truncate text-sm font-semibold text-foreground">
                                   {project.project_name}
                                 </h4>
                                 {project.role && (
-                                  <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-500">
+                                  <span className="rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-muted-foreground">
                                     {project.role}
                                   </span>
                                 )}
                               </div>
-                              <p className="mt-1 break-all text-xs leading-5 text-slate-500">
+                              <p className="mt-1 break-all text-xs leading-5 text-muted-foreground">
                                 {project.primary_contributor
                                   ? `Primary contributor: ${project.primary_contributor}`
                                   : projectPathLabel}
@@ -676,9 +708,9 @@ export function PortfolioOverview({
                           </div>
 
                           {project.contribution_score != null && (
-                            <div className="rounded-xl border border-sky-100 bg-sky-50 px-2.5 py-1.5 text-right text-xs font-semibold text-sky-700">
+                            <div className="rounded-md border border-border bg-muted px-2.5 py-1.5 text-right text-xs font-semibold text-foreground">
                               {Math.round(project.contribution_score)}
-                              <div className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-sky-500">
+                              <div className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
                                 score
                               </div>
                             </div>
@@ -687,30 +719,30 @@ export function PortfolioOverview({
 
                         <div className="mt-3 flex flex-wrap gap-2">
                           {project.total_commits != null && (
-                            <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600">
+                            <span className="rounded-md border border-border bg-white px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
                               {project.total_commits.toLocaleString()} commits
                             </span>
                           )}
                           {shareLabel && (
-                            <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600">
+                            <span className="rounded-md border border-border bg-white px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
                               {shareLabel}
                             </span>
                           )}
-                          <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600">
+                          <span className="rounded-md border border-border bg-white px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
                             {project.total_files.toLocaleString()} files
                           </span>
-                          <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600">
+                          <span className="rounded-md border border-border bg-white px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
                             {project.total_lines.toLocaleString()} lines
                           </span>
                         </div>
 
                         <div className="mt-4 flex items-start justify-between gap-3">
-                          <p className="min-w-0 flex-1 break-all text-xs leading-5 text-slate-400">
+                          <p className="min-w-0 flex-1 break-all text-xs leading-5 text-muted-foreground">
                             {projectPathLabel}
                           </p>
                           <Link
                             href={`/project?projectId=${project.id}`}
-                            className="inline-flex flex-shrink-0 items-center gap-1 text-xs font-semibold text-sky-700 transition-colors hover:text-sky-800"
+                            className="inline-flex flex-shrink-0 items-center gap-1 text-xs font-semibold text-foreground transition-colors hover:text-sky-800"
                           >
                             View details
                             <ArrowUpRight className="h-3.5 w-3.5" />
@@ -747,27 +779,27 @@ export function PortfolioOverview({
             <article id="portfolio-skills" className="portfolio-panel p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                     Skills Library
                   </p>
-                  <h3 className="mt-1 text-lg font-semibold tracking-tight text-slate-950">
+                  <h3 className="mt-1 text-lg font-semibold tracking-tight text-foreground">
                     All Skills
                   </h3>
-                  <p className="mt-1 text-sm text-slate-500">
+                  <p className="mt-1 text-sm text-muted-foreground">
                     {skills.length > 0
                       ? `${skills.length} skills across all projects`
                       : "No skills found yet. Scan projects to discover skills."}
                   </p>
                 </div>
                 {skills.length > 0 && (
-                  <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-500">
+                  <div className="rounded-md border border-border bg-muted px-3 py-1.5 text-xs font-medium text-muted-foreground">
                     Scrollable list
                   </div>
                 )}
               </div>
 
               {skills.length === 0 ? (
-                <p className="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-8 text-sm text-slate-500">
+                <p className="mt-5 rounded-md border border-dashed border-border bg-muted/80 px-4 py-8 text-sm text-muted-foreground">
                   No skills found yet. Scan projects to discover skills.
                 </p>
               ) : (
@@ -776,7 +808,7 @@ export function PortfolioOverview({
                     {skills.map((skill) => (
                       <div
                         key={skill}
-                        className="rounded-2xl border border-slate-200 bg-slate-50/85 px-3 py-2.5 text-sm font-medium text-slate-700"
+                        className="rounded-md border border-border bg-muted/85 px-3 py-2.5 text-sm font-medium text-foreground"
                       >
                         {skill}
                       </div>

@@ -94,23 +94,32 @@ function ResetPasswordForm() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold text-center">Set a new password</CardTitle>
-          <CardDescription className="text-center">
-            Create a strong password to secure your account.
-          </CardDescription>
-        </CardHeader>
-        <form onSubmit={handleSubmit}>
-          <CardContent className="space-y-4">
+    <div className="auth-shell">
+      <div className="auth-panel">
+        <section className="auth-showcase">
+          <p className="page-kicker text-white/70">Credential update</p>
+          <h1 className="text-4xl font-bold text-white">Set a strong password</h1>
+          <p className="mt-4 max-w-md text-sm leading-7 text-white/78">
+            Re-establish secure access to your workspace and continue building a polished project narrative.
+          </p>
+        </section>
+
+        <Card className="auth-card w-full border-0 bg-transparent">
+          <CardHeader className="space-y-1 px-0 pt-0">
+            <CardTitle className="text-3xl font-bold">Set a new password</CardTitle>
+            <CardDescription>
+              Create a strong password to secure your account.
+            </CardDescription>
+          </CardHeader>
+          <form onSubmit={handleSubmit}>
+            <CardContent className="space-y-4 px-0">
             {error && (
-              <div className="p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-md">
+              <div className="p-3 text-sm text-red-800 bg-red-50 border-2 border-red-300 rounded-md">
                 {error}
               </div>
             )}
             {success && (
-              <div className="p-3 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md">
+              <div className="p-3 text-sm text-emerald-800 bg-emerald-50 border-2 border-emerald-300 rounded-md">
                 {success}
               </div>
             )}
@@ -173,20 +182,21 @@ function ResetPasswordForm() {
                 </p>
               ))}
             </div>
-          </CardContent>
-          <CardFooter className="flex flex-col space-y-4">
-            <Button type="submit" className="w-full" disabled={isSubmitting}>
-              {isSubmitting ? "Updating password..." : "Update password"}
-            </Button>
-            <Link href="/auth/login" className="text-sm text-primary hover:underline">
-              Back to login
-            </Link>
-            <Link href="/auth/forgot-password" className="text-sm text-muted-foreground hover:underline">
-              Need a new reset link?
-            </Link>
-          </CardFooter>
-        </form>
-      </Card>
+            </CardContent>
+            <CardFooter className="flex flex-col space-y-4 px-0 pb-0">
+              <Button type="submit" className="w-full" disabled={isSubmitting}>
+                {isSubmitting ? "Updating password..." : "Update password"}
+              </Button>
+              <Link href="/auth/login" className="text-sm text-primary hover:underline">
+                Back to login
+              </Link>
+              <Link href="/auth/forgot-password" className="text-sm text-muted-foreground hover:underline">
+                Need a new reset link?
+              </Link>
+            </CardFooter>
+          </form>
+        </Card>
+      </div>
     </div>
   );
 }
