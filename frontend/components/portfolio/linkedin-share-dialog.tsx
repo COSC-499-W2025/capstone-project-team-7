@@ -110,16 +110,24 @@ export function LinkedInShareDialog({
     }
   }, [open, generate, checkStatus]);
 
-  // Listen for popup message when LinkedIn OAuth completes
+  // Poll for connection status after OAuth popup opens (works in Electron
+  // where the system browser handles the callback and can't postMessage back)
+  const [polling, setPolling] = useState(false);
   useEffect(() => {
-    const handler = (event: MessageEvent) => {
-      if (event.data?.type === "linkedin-connected") {
-        checkStatus();
-      }
-    };
-    window.addEventListener("message", handler);
-    return () => window.removeEventListener("message", handler);
-  }, [checkStatus]);
+    if (!polling) return;
+    const interval = setInterval(async () => {
+      const token = getStoredToken();
+      if (!token) return;
+      try {
+        const res = await getLinkedInStatus(token);
+        if (res.connected) {
+          setConnection(res);
+          setPolling(false);
+        }
+      } catch { /* keep polling */ }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [polling]);
 
   const handleCopy = async () => {
     try {
@@ -136,11 +144,15 @@ export function LinkedInShareDialog({
     if (!token) return;
     try {
       const res = await getLinkedInAuthUrl(token);
+      // Opens in system browser in Electron, popup in regular browser
       window.open(
         res.auth_url,
         "linkedin-oauth",
         "width=600,height=700,left=200,top=100",
       );
+      // Start polling for connection status (needed for Electron where
+      // the system browser can't communicate back via postMessage)
+      setPolling(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start LinkedIn connection");
     }

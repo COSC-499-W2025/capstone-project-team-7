@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from api.dependencies import AuthContext, get_auth_context
@@ -19,6 +20,8 @@ router = APIRouter(prefix="/api/linkedin", tags=["LinkedIn"])
 
 # ---------------------------------------------------------------------------
 # CSRF state store (in-memory, single-server)
+# Stores the Supabase access_token alongside so the backend GET callback
+# can exchange the LinkedIn code without the browser needing auth.
 # ---------------------------------------------------------------------------
 
 _STATE_TTL = 600  # 10 minutes
@@ -27,17 +30,19 @@ _STATE_TTL = 600  # 10 minutes
 @dataclass
 class _OAuthState:
     state: str
+    user_id: str
+    access_token: str
     created_at: float = field(default_factory=time.time)
 
 
-_oauth_states: Dict[str, _OAuthState] = {}
+_oauth_states: Dict[str, _OAuthState] = {}  # keyed by state value
 
 
 def _cleanup_states() -> None:
     now = time.time()
-    expired = [uid for uid, s in _oauth_states.items() if now - s.created_at > _STATE_TTL]
-    for uid in expired:
-        del _oauth_states[uid]
+    expired = [k for k, s in _oauth_states.items() if now - s.created_at > _STATE_TTL]
+    for k in expired:
+        del _oauth_states[k]
 
 
 def _require_linkedin_config() -> None:
@@ -57,11 +62,6 @@ class LinkedInAuthUrlResponse(BaseModel):
     auth_url: str
 
 
-class LinkedInCallbackRequest(BaseModel):
-    code: str
-    state: str
-
-
 class LinkedInConnectionStatus(BaseModel):
     connected: bool
     linkedin_name: Optional[str] = None
@@ -78,6 +78,41 @@ class LinkedInDirectPostResponse(BaseModel):
     error: Optional[str] = None
 
 
+_CALLBACK_SUCCESS_HTML = """<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>LinkedIn Connected</title>
+<style>
+body {{ font-family: -apple-system, sans-serif; display: flex; align-items: center;
+       justify-content: center; min-height: 100vh; margin: 0; background: #f8fafc; }}
+.card {{ text-align: center; padding: 2.5rem; border-radius: 1rem;
+         border: 1px solid #e2e8f0; background: #fff; max-width: 24rem; box-shadow: 0 4px 12px rgba(0,0,0,0.06); }}
+.icon {{ font-size: 2rem; margin-bottom: 0.75rem; }}
+h2 {{ margin: 0 0 0.25rem; font-size: 1rem; color: #1a202c; }}
+p {{ margin: 0; font-size: 0.8rem; color: #64748b; }}
+</style></head>
+<body><div class="card">
+<div class="icon">&#9989;</div>
+<h2>Connected as {name}</h2>
+<p>You can close this window and return to the app.</p>
+</div></body></html>"""
+
+_CALLBACK_ERROR_HTML = """<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>LinkedIn Error</title>
+<style>
+body {{ font-family: -apple-system, sans-serif; display: flex; align-items: center;
+       justify-content: center; min-height: 100vh; margin: 0; background: #f8fafc; }}
+.card {{ text-align: center; padding: 2.5rem; border-radius: 1rem;
+         border: 1px solid #e2e8f0; background: #fff; max-width: 24rem; box-shadow: 0 4px 12px rgba(0,0,0,0.06); }}
+.icon {{ font-size: 2rem; margin-bottom: 0.75rem; }}
+h2 {{ margin: 0 0 0.25rem; font-size: 1rem; color: #1a202c; }}
+p {{ margin: 0; font-size: 0.8rem; color: #ef4444; }}
+</style></head>
+<body><div class="card">
+<div class="icon">&#10060;</div>
+<h2>Connection Failed</h2>
+<p>{error}</p>
+</div></body></html>"""
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -90,7 +125,11 @@ async def get_auth_url(auth: AuthContext = Depends(get_auth_context)):
     _cleanup_states()
 
     state = secrets.token_urlsafe(32)
-    _oauth_states[auth.user_id] = _OAuthState(state=state)
+    _oauth_states[state] = _OAuthState(
+        state=state,
+        user_id=auth.user_id,
+        access_token=auth.access_token,
+    )
 
     from services.services.linkedin_api_service import get_authorization_url
 
@@ -98,36 +137,30 @@ async def get_auth_url(auth: AuthContext = Depends(get_auth_context)):
     return LinkedInAuthUrlResponse(auth_url=auth_url)
 
 
-@router.post("/callback", response_model=LinkedInConnectionStatus)
-async def oauth_callback(
-    body: LinkedInCallbackRequest,
-    auth: AuthContext = Depends(get_auth_context),
-):
-    """Exchange an OAuth authorization code for LinkedIn tokens."""
-    _require_linkedin_config()
+@router.get("/oauth/callback", response_class=HTMLResponse)
+async def oauth_callback_get(code: str = "", state: str = "", error: str = ""):
+    """Backend-handled OAuth callback. LinkedIn redirects here directly.
+
+    This is a GET endpoint so it works in the system browser without needing
+    the user's auth token (which lives in Electron's localStorage).
+    """
+    if error:
+        return HTMLResponse(_CALLBACK_ERROR_HTML.format(error=error))
+
     _cleanup_states()
 
-    stored = _oauth_states.pop(auth.user_id, None)
-    if not stored or stored.state != body.state:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"code": "invalid_state", "message": "Invalid or expired OAuth state"},
-        )
+    stored = _oauth_states.pop(state, None)
+    if not stored:
+        return HTMLResponse(_CALLBACK_ERROR_HTML.format(error="Invalid or expired OAuth state. Please try again."))
 
     from services.services.linkedin_api_service import exchange_code
 
-    result = await exchange_code(body.code, auth.user_id, auth.access_token)
+    result = await exchange_code(code, stored.user_id, stored.access_token)
     if not result.get("connected"):
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail={"code": "exchange_failed", "message": result.get("error", "Token exchange failed")},
-        )
+        return HTMLResponse(_CALLBACK_ERROR_HTML.format(error=result.get("error", "Token exchange failed")))
 
-    return LinkedInConnectionStatus(
-        connected=True,
-        linkedin_name=result.get("linkedin_name"),
-        expires_at=result.get("expires_at"),
-    )
+    name = result.get("linkedin_name", "LinkedIn user")
+    return HTMLResponse(_CALLBACK_SUCCESS_HTML.format(name=name))
 
 
 @router.get("/status", response_model=LinkedInConnectionStatus)
