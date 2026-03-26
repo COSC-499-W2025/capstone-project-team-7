@@ -295,7 +295,7 @@ async def _do_post(
     }
     headers = {
         "Authorization": f"Bearer {li_token}",
-        "LinkedIn-Version": "202501",
+        "LinkedIn-Version": "202603",
         "X-Restli-Protocol-Version": "2.0.0",
         "Content-Type": "application/json",
     }
