@@ -23,15 +23,15 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
 export function CategoryCard({ cat }: { cat: ProjectAiAnalysisCategory }) {
   const icon = CATEGORY_ICONS[cat.category] ?? <Sparkles size={15} />;
   return (
-    <div className="rounded-lg border border-gray-100 bg-gray-50 p-4 space-y-2">
-      <p className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
+    <div className="dashboard-card-subtle space-y-3 border border-border/70 p-4">
+      <p className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
         {icon} {cat.label}
       </p>
       {cat.summary && (
-        <p className="text-sm text-gray-600 leading-relaxed">{cat.summary}</p>
+        <p className="text-sm leading-relaxed text-muted-foreground">{cat.summary}</p>
       )}
       {cat.insights && cat.insights.length > 0 && (
-        <ul className="space-y-1 list-disc list-inside text-sm text-gray-700">
+        <ul className="list-inside list-disc space-y-1 text-sm text-muted-foreground marker:text-muted-foreground/70">
           {cat.insights.map((ins, i) => (
             <li key={i}>{ins}</li>
           ))}

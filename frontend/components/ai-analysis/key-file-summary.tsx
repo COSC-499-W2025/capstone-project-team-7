@@ -46,17 +46,17 @@ export function KeyFileSummary({ text, keyPrefix }: { text: string; keyPrefix: s
     if (lines.length === 0) return null;
     return (
       <div className="space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{title}</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
         {asList ? (
-          <ul className="space-y-1 list-disc pl-5 marker:text-gray-400">
+          <ul className="list-disc space-y-1 pl-5 marker:text-muted-foreground/70">
             {lines.map((line, idx) => (
-              <li key={`${keyPrefix}-${sectionKey}-${idx}`} className="text-sm text-gray-700 leading-6">
+              <li key={`${keyPrefix}-${sectionKey}-${idx}`} className="text-sm leading-6 text-muted-foreground">
                 {renderInlineMarkdown(line, `${keyPrefix}-${sectionKey}-${idx}`)}
               </li>
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-gray-700 leading-7">
+          <p className="text-sm leading-7 text-muted-foreground">
             {renderInlineMarkdown(lines.join(" "), `${keyPrefix}-${sectionKey}`)}
           </p>
         )}
