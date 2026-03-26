@@ -65,7 +65,7 @@ export const SkillsTimeline: React.FC<SkillsTimelineProps> = ({ data }) => {
 
   if (timeline.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-8 text-sm text-slate-500">
+      <div className="rounded-2xl border border-dashed border-border bg-background px-4 py-8 text-sm text-muted-foreground">
         No skills timeline data available yet. Scan projects with git history to see skill progression.
       </div>
     );
@@ -79,30 +79,30 @@ export const SkillsTimeline: React.FC<SkillsTimelineProps> = ({ data }) => {
         return (
           <article
             key={item.period_label}
-            className="rounded-2xl border border-slate-200 bg-slate-50/85 p-3.5"
+            className="rounded-2xl border border-border bg-card p-3.5"
           >
             <div className="grid gap-3 sm:grid-cols-[112px_minmax(0,1fr)] sm:items-center">
-              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              <div className="rounded-xl border border-border bg-background px-3 py-2.5">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                   {formatPeriod(item.period_label)}
                 </p>
-                <p className="mt-1 text-xl font-semibold tracking-tight text-slate-950">
+                <p className="mt-1 text-xl font-semibold tracking-tight text-foreground">
                   {item.commits}
                 </p>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-muted-foreground">
                   commit{item.commits === 1 ? "" : "s"}
                 </p>
               </div>
 
               <div className="space-y-2.5">
                 <div className="flex items-center gap-2">
-                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-200">
+                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-background">
                     <div
-                      className="h-full rounded-full bg-sky-600 transition-all duration-300"
+                      className="h-full rounded-full bg-primary transition-all duration-300"
                       style={{ width: `${barWidth}%` }}
                     />
                   </div>
-                  <span className="text-[11px] font-medium text-slate-500">
+                  <span className="text-[11px] font-medium text-muted-foreground">
                     {item.projects.length} project{item.projects.length === 1 ? "" : "s"}
                   </span>
                 </div>
@@ -112,19 +112,19 @@ export const SkillsTimeline: React.FC<SkillsTimelineProps> = ({ data }) => {
                     {item.skills.slice(0, 6).map((skill) => (
                       <span
                         key={skill}
-                        className="rounded-full border border-sky-100 bg-sky-50 px-2.5 py-1 text-[11px] font-medium text-sky-700"
+                        className="rounded-full border border-primary/15 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-[hsl(var(--accent-foreground))]"
                       >
                         {skill}
                       </span>
                     ))}
                     {item.skills.length > 6 && (
-                      <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-500">
+                      <span className="rounded-full border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
                         +{item.skills.length - 6} more
                       </span>
                     )}
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-muted-foreground">
                     No skill tags were attributed to this period.
                   </p>
                 )}

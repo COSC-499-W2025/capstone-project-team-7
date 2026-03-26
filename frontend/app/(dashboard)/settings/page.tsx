@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { LoadingState } from "@/components/ui/loading-state";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -23,7 +23,6 @@ import type { ConfigResponse, ProfilesResponse, EncryptionStatus, SecretStatusIt
 import { AlertTriangle, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
 
 export default function SettingsPage() {
-  const router = useRouter();
   const { logout } = useAuth();
   
   // User session
@@ -568,6 +567,16 @@ export default function SettingsPage() {
     }
   };
 
+  const isPageLoading = sessionLoading || (Boolean(userSession) && consentLoading);
+
+  if (isPageLoading) {
+    return (
+      <div className="page-container">
+        <LoadingState message="Loading settings..." />
+      </div>
+    );
+  }
+
   return (
     <div className="page-container relative">
       {/* Error Banner */}
@@ -591,24 +600,19 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Loading Overlay */}
-      {consentLoading && (
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
-          <div className="text-center">
-            <Spinner size={48} className="mx-auto mb-4 text-primary" />
-            <p className="text-sm text-muted-foreground">Loading settings...</p>
-          </div>
-        </div>
-      )}
-
       <section className="page-card page-hero">
         <div className="page-header">
           <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
             <div>
-              <Link href="/" className="text-sm text-muted-foreground hover:text-foreground mb-2 inline-block">
-                ← Back
-              </Link>
-              <p className="page-kicker">Operations Control</p>
+              <div className="flex items-center gap-2">
+                <span
+                  aria-hidden="true"
+                  className="h-px w-7 bg-gradient-to-r from-primary/75 to-primary/0"
+                />
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Operations Control
+                </p>
+              </div>
               <h1 className="text-foreground">Settings</h1>
               <p className="page-summary mt-3">Manage appearance, security, privacy, and scanning configuration.</p>
               <div className="mt-4 flex flex-wrap gap-2">
@@ -780,7 +784,7 @@ export default function SettingsPage() {
                     <p className="text-xs text-muted-foreground mt-1">Comma-separated emails to include in contribution matching</p>
                   </div>
                 </CardContent>
-                <CardFooter className="bg-muted/60 p-6">
+                <CardFooter className="border-t border-border/70 bg-transparent p-6 pt-5">
                   <div className="flex items-center gap-3">
                     <Button onClick={onSave} className="">
                       Save Changes

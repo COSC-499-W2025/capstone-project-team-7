@@ -8,10 +8,10 @@ interface ProjectEvolutionProps {
 }
 
 const COLOR_SCHEMES = [
-  { fill: "#0284c7", fillLight: "rgba(2,132,199,0.12)", stroke: "#0284c7" },   // sky-600
-  { fill: "#7c3aed", fillLight: "rgba(124,58,237,0.12)", stroke: "#7c3aed" },  // violet-600
-  { fill: "#d97706", fillLight: "rgba(217,119,6,0.12)", stroke: "#d97706" },    // amber-600
-  { fill: "#059669", fillLight: "rgba(5,150,105,0.12)", stroke: "#059669" },    // emerald-600
+  { fill: "hsl(201 90% 48%)", fillLight: "hsl(201 90% 48% / 0.14)", stroke: "hsl(201 90% 48%)" },
+  { fill: "hsl(259 83% 63%)", fillLight: "hsl(259 83% 63% / 0.14)", stroke: "hsl(259 83% 63%)" },
+  { fill: "hsl(35 92% 52%)", fillLight: "hsl(35 92% 52% / 0.14)", stroke: "hsl(35 92% 52%)" },
+  { fill: "hsl(160 84% 39%)", fillLight: "hsl(160 84% 39% / 0.14)", stroke: "hsl(160 84% 39%)" },
 ];
 
 function formatPeriod(label: string): string {
@@ -105,7 +105,7 @@ function GrowthChart({
           y1={label.y}
           x2={chartWidth - padding.right}
           y2={label.y}
-          stroke="#e2e8f0"
+          stroke="hsl(var(--border) / 0.9)"
           strokeWidth={1}
         />
       ))}
@@ -123,7 +123,7 @@ function GrowthChart({
           cx={getX(i)}
           cy={getY(p.cumulative)}
           r={hoverIdx === i ? 5 : 3}
-          fill={hoverIdx === i ? color.fill : "white"}
+          fill={hoverIdx === i ? color.fill : "hsl(var(--background))"}
           stroke={color.stroke}
           strokeWidth={2}
           className="cursor-pointer transition-all duration-150"
@@ -151,7 +151,7 @@ function GrowthChart({
           x={padding.left - 6}
           y={label.y + 3}
           textAnchor="end"
-          className="fill-slate-400"
+          fill="hsl(var(--muted-foreground))"
           fontSize={9}
           fontWeight={500}
         >
@@ -166,7 +166,7 @@ function GrowthChart({
           x={getX(i)}
           y={chartHeight - 4}
           textAnchor="middle"
-          className="fill-slate-400"
+          fill="hsl(var(--muted-foreground))"
           fontSize={9}
           fontWeight={500}
         >
@@ -203,14 +203,25 @@ function GrowthChart({
               width={96}
               height={36}
               rx={6}
-              fill="white"
-              stroke="#e2e8f0"
+              fill="hsl(var(--background))"
+              stroke="hsl(var(--border))"
               strokeWidth={1}
             />
-            <text x={tooltipX + 6} y={tooltipY + 14} fontSize={10} fontWeight={600} className="fill-slate-900">
+            <text
+              x={tooltipX + 6}
+              y={tooltipY + 14}
+              fontSize={10}
+              fontWeight={600}
+              fill="hsl(var(--foreground))"
+            >
               {formatPeriod(p.period_label)}
             </text>
-            <text x={tooltipX + 6} y={tooltipY + 28} fontSize={9} className="fill-slate-500">
+            <text
+              x={tooltipX + 6}
+              y={tooltipY + 28}
+              fontSize={9}
+              fill="hsl(var(--muted-foreground))"
+            >
               +{p.commits} commits ({p.cumulative} total)
             </text>
           </g>
@@ -231,7 +242,7 @@ export const ProjectEvolution: React.FC<ProjectEvolutionProps> = ({ data }) => {
 
   if (data.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-8 text-sm text-slate-500">
+      <div className="rounded-2xl border border-dashed border-border bg-background px-4 py-8 text-sm text-muted-foreground">
         No evolution data available yet. Scan projects with git history to see how they grew over time.
       </div>
     );
@@ -252,42 +263,42 @@ export const ProjectEvolution: React.FC<ProjectEvolutionProps> = ({ data }) => {
         return (
           <article
             key={project.project_id}
-            className="rounded-2xl border border-slate-200 bg-slate-50/85 p-4"
+            className="rounded-[22px] border border-border bg-card p-5 shadow-[0_18px_38px_rgba(15,23,42,0.06)]"
           >
             {/* Header */}
-            <div className="flex items-start justify-between gap-3 mb-2">
+            <div className="mb-4 flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <h4 className="truncate text-sm font-semibold text-slate-950">
+                <h4 className="truncate text-lg font-semibold tracking-tight text-foreground">
                   {project.project_name}
                 </h4>
-                <p className="text-xs text-slate-500">
+                <p className="mt-1 text-sm text-muted-foreground">
                   {totalCumulative.toLocaleString()} commits over{" "}
                   {points.length} month{points.length === 1 ? "" : "s"} &middot;{" "}
                   {project.total_lines.toLocaleString()} lines
                 </p>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-right">
+              <div className="rounded-2xl border border-border bg-background px-3 py-2 text-right shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]">
                 <div className="text-sm font-semibold" style={{ color: color.fill }}>
                   {totalCumulative.toLocaleString()}
                 </div>
-                <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-400">
+                <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
                   commits
                 </div>
               </div>
             </div>
 
             {/* Cumulative growth chart */}
-            <div className="rounded-xl border border-slate-200 bg-white p-2">
-              <GrowthChart points={points} color={color} chartHeight={140} />
+            <div className="rounded-[20px] border border-border bg-background/90 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+              <GrowthChart points={points} color={color} chartHeight={148} />
             </div>
 
             {/* Activity type badges */}
             {activityTypes.length > 0 && (
-              <div className="mt-2.5 flex flex-wrap gap-1.5">
+              <div className="mt-3 flex flex-wrap gap-2">
                 {activityTypes.map((type) => (
                   <span
                     key={type}
-                    className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-600"
+                    className="rounded-full border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-muted-foreground"
                   >
                     {type}
                   </span>
