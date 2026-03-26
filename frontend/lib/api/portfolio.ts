@@ -12,6 +12,11 @@ import type {
   ResourceSuggestionsResponse,
   LinkedInPostRequest,
   LinkedInPostResponse,
+  LinkedInAuthUrlResponse,
+  LinkedInCallbackRequest,
+  LinkedInConnectionStatus,
+  LinkedInDirectPostRequest,
+  LinkedInDirectPostResponse,
 } from "@/types/portfolio";
 import { request } from "@/lib/api";
 
@@ -171,5 +176,57 @@ export async function generateLinkedInPost(
     "/api/portfolio/linkedin-post",
     { method: "POST", headers: authHeaders(token), body: JSON.stringify(body) },
     "Failed to generate LinkedIn post",
+  );
+}
+
+// ── LinkedIn Direct Posting ─────────────────────────────────────────
+
+export async function getLinkedInAuthUrl(
+  token: string,
+): Promise<LinkedInAuthUrlResponse> {
+  return call(
+    "/api/linkedin/auth-url",
+    { headers: authHeaders(token) },
+    "Failed to get LinkedIn auth URL",
+  );
+}
+
+export async function linkedInCallback(
+  token: string,
+  body: LinkedInCallbackRequest,
+): Promise<LinkedInConnectionStatus> {
+  return call(
+    "/api/linkedin/callback",
+    { method: "POST", headers: authHeaders(token), body: JSON.stringify(body) },
+    "Failed to connect LinkedIn",
+  );
+}
+
+export async function getLinkedInStatus(
+  token: string,
+): Promise<LinkedInConnectionStatus> {
+  return call(
+    "/api/linkedin/status",
+    { headers: authHeaders(token) },
+    "Failed to check LinkedIn status",
+  );
+}
+
+export async function postToLinkedIn(
+  token: string,
+  body: LinkedInDirectPostRequest,
+): Promise<LinkedInDirectPostResponse> {
+  return call(
+    "/api/linkedin/post",
+    { method: "POST", headers: authHeaders(token), body: JSON.stringify(body) },
+    "Failed to post to LinkedIn",
+  );
+}
+
+export async function disconnectLinkedIn(token: string): Promise<void> {
+  await call<Record<string, unknown>>(
+    "/api/linkedin/disconnect",
+    { method: "DELETE", headers: authHeaders(token) },
+    "Failed to disconnect LinkedIn",
   );
 }

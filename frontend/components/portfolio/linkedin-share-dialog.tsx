@@ -1,7 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Check, Copy, ExternalLink, Linkedin, Loader2 } from "lucide-react";
+import {
+  Check,
+  Copy,
+  ExternalLink,
+  Linkedin,
+  Loader2,
+  Send,
+  Unplug,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -11,8 +19,17 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { getStoredToken } from "@/lib/auth";
-import { generateLinkedInPost } from "@/lib/api/portfolio";
-import type { LinkedInPostRequest } from "@/types/portfolio";
+import {
+  generateLinkedInPost,
+  getLinkedInStatus,
+  getLinkedInAuthUrl,
+  postToLinkedIn,
+  disconnectLinkedIn,
+} from "@/lib/api/portfolio";
+import type {
+  LinkedInPostRequest,
+  LinkedInConnectionStatus,
+} from "@/types/portfolio";
 
 const LINKEDIN_CHAR_LIMIT = 3000;
 
@@ -34,6 +51,14 @@ export function LinkedInShareDialog({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
+  // LinkedIn connection state
+  const [connection, setConnection] = useState<LinkedInConnectionStatus | null>(null);
+  const [statusLoading, setStatusLoading] = useState(false);
+  const [posting, setPosting] = useState(false);
+  const [posted, setPosted] = useState(false);
+  const [postError, setPostError] = useState<string | null>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
+
   const generate = useCallback(async () => {
     const token = getStoredToken();
     if (!token) {
@@ -46,7 +71,6 @@ export function LinkedInShareDialog({
       const body: LinkedInPostRequest = { scope };
       if (projectId) body.project_id = projectId;
       const res = await generateLinkedInPost(token, body);
-      // Replace bare share token with full URL if present
       let text = res.post_text;
       if (res.share_url && !res.share_url.startsWith("http")) {
         const fullUrl = `${window.location.origin}/p?token=${res.share_url}`;
@@ -60,13 +84,42 @@ export function LinkedInShareDialog({
     }
   }, [scope, projectId]);
 
-  // Generate when dialog opens
+  const checkStatus = useCallback(async () => {
+    const token = getStoredToken();
+    if (!token) return;
+    setStatusLoading(true);
+    try {
+      const res = await getLinkedInStatus(token);
+      setConnection(res);
+    } catch {
+      // LinkedIn not configured — leave connection null
+      setConnection(null);
+    } finally {
+      setStatusLoading(false);
+    }
+  }, []);
+
+  // Fetch post text + connection status on dialog open
   useEffect(() => {
     if (open) {
       generate();
+      checkStatus();
       setCopied(false);
+      setPosted(false);
+      setPostError(null);
     }
-  }, [open, generate]);
+  }, [open, generate, checkStatus]);
+
+  // Listen for popup message when LinkedIn OAuth completes
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      if (event.data?.type === "linkedin-connected") {
+        checkStatus();
+      }
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, [checkStatus]);
 
   const handleCopy = async () => {
     try {
@@ -78,12 +131,62 @@ export function LinkedInShareDialog({
     }
   };
 
+  const handleConnect = async () => {
+    const token = getStoredToken();
+    if (!token) return;
+    try {
+      const res = await getLinkedInAuthUrl(token);
+      window.open(
+        res.auth_url,
+        "linkedin-oauth",
+        "width=600,height=700,left=200,top=100",
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to start LinkedIn connection");
+    }
+  };
+
+  const handlePost = async () => {
+    const token = getStoredToken();
+    if (!token || !postText.trim()) return;
+    setPosting(true);
+    setPostError(null);
+    try {
+      const res = await postToLinkedIn(token, { post_text: postText });
+      if (res.success) {
+        setPosted(true);
+        setTimeout(() => setPosted(false), 3000);
+      } else {
+        setPostError(res.error ?? "Failed to post");
+      }
+    } catch (err) {
+      setPostError(err instanceof Error ? err.message : "Failed to post");
+    } finally {
+      setPosting(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    const token = getStoredToken();
+    if (!token) return;
+    setDisconnecting(true);
+    try {
+      await disconnectLinkedIn(token);
+      setConnection({ connected: false });
+    } catch {
+      // silently fail
+    } finally {
+      setDisconnecting(false);
+    }
+  };
+
   const handleOpenLinkedIn = () => {
     window.open("https://www.linkedin.com/feed/", "_blank");
   };
 
   const charCount = postText.length;
   const overLimit = charCount > LINKEDIN_CHAR_LIMIT;
+  const isConnected = connection?.connected === true;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -97,14 +200,12 @@ export function LinkedInShareDialog({
 
         {loading && (
           <div className="flex items-center justify-center py-8">
-            <Loader2 size={20} className="animate-spin text-gray-400" />
+            <Loader2 size={20} className="animate-spin text-muted-foreground" />
           </div>
         )}
 
         {error && !loading && (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-            {error}
-          </div>
+          <div className="alert alert-error text-sm">{error}</div>
         )}
 
         {!loading && !error && (
@@ -118,7 +219,7 @@ export function LinkedInShareDialog({
             />
 
             <div className="flex items-center justify-between text-xs">
-              <span className={overLimit ? "text-red-600 font-medium" : "text-gray-400"}>
+              <span className={overLimit ? "text-red-600 font-medium" : "text-muted-foreground"}>
                 {charCount.toLocaleString()} / {LINKEDIN_CHAR_LIMIT.toLocaleString()} characters
               </span>
               <Button variant="ghost" size="sm" onClick={generate} className="text-xs h-7">
@@ -126,36 +227,107 @@ export function LinkedInShareDialog({
               </Button>
             </div>
 
-            <div className="flex items-center gap-3">
+            {/* Post error */}
+            {postError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400">
+                {postError}
+              </div>
+            )}
+
+            {/* Connection status */}
+            {isConnected && (
+              <div className="flex items-center justify-between rounded-lg border border-emerald-200/60 bg-emerald-50/50 px-3 py-2 dark:border-emerald-500/20 dark:bg-emerald-500/10">
+                <span className="text-xs text-emerald-700 dark:text-emerald-400">
+                  Connected as <strong>{connection?.linkedin_name || "LinkedIn user"}</strong>
+                </span>
+                <button
+                  onClick={handleDisconnect}
+                  disabled={disconnecting}
+                  className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <Unplug size={10} />
+                  {disconnecting ? "..." : "Disconnect"}
+                </button>
+              </div>
+            )}
+
+            {/* Action buttons */}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Direct post button (when connected) */}
+              {isConnected && (
+                <Button
+                  onClick={handlePost}
+                  disabled={!postText || posting || overLimit}
+                  className="flex-1 bg-[#0A66C2] text-white hover:bg-[#004182]"
+                >
+                  {posted ? (
+                    <>
+                      <Check size={14} className="mr-1.5 text-emerald-300" />
+                      Posted!
+                    </>
+                  ) : posting ? (
+                    <>
+                      <Loader2 size={14} className="mr-1.5 animate-spin" />
+                      Posting...
+                    </>
+                  ) : (
+                    <>
+                      <Send size={14} className="mr-1.5" />
+                      Post to LinkedIn
+                    </>
+                  )}
+                </Button>
+              )}
+
+              {/* Connect button (when not connected) */}
+              {!isConnected && !statusLoading && connection !== null && (
+                <Button
+                  onClick={handleConnect}
+                  className="flex-1 bg-[#0A66C2] text-white hover:bg-[#004182]"
+                >
+                  <Linkedin size={14} className="mr-1.5" />
+                  Connect LinkedIn
+                </Button>
+              )}
+
+              {/* Copy button */}
               <Button
                 onClick={handleCopy}
                 disabled={!postText}
-                className="flex-1 bg-gray-900 text-white hover:bg-gray-800"
+                variant={isConnected ? "outline" : "default"}
+                className={isConnected ? "flex-1" : "flex-1 bg-foreground text-background hover:bg-foreground/90"}
               >
                 {copied ? (
                   <>
-                    <Check size={14} className="mr-1.5 text-emerald-400" />
+                    <Check size={14} className="mr-1.5 text-emerald-500" />
                     Copied!
                   </>
                 ) : (
                   <>
                     <Copy size={14} className="mr-1.5" />
-                    Copy to Clipboard
+                    Copy
                   </>
                 )}
               </Button>
-              <Button
-                variant="outline"
-                onClick={handleOpenLinkedIn}
-                className="flex-1 border-[#0A66C2] text-[#0A66C2] hover:bg-[#0A66C2]/5"
-              >
-                <ExternalLink size={14} className="mr-1.5" />
-                Open LinkedIn
-              </Button>
+
+              {/* Open LinkedIn button (only when not connected) */}
+              {!isConnected && (
+                <Button
+                  variant="outline"
+                  onClick={handleOpenLinkedIn}
+                  className="flex-1 border-[#0A66C2] text-[#0A66C2] hover:bg-[#0A66C2]/5"
+                >
+                  <ExternalLink size={14} className="mr-1.5" />
+                  Open LinkedIn
+                </Button>
+              )}
             </div>
 
-            <p className="text-[10px] text-gray-400 text-center leading-relaxed">
-              Copy your post text, then paste it into the LinkedIn compose box.
+            {/* Help text */}
+            <p className="text-[10px] text-muted-foreground text-center leading-relaxed">
+              {isConnected
+                ? "Click 'Post to LinkedIn' to publish directly, or copy and paste manually."
+                : "Copy your post text and paste it into LinkedIn, or connect your account for direct posting."}
             </p>
           </div>
         )}
