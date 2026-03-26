@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  NODE_VERSION: "18"
+  NODE_VERSION: "20"
 
 jobs:
   # Determine release type and version
@@ -130,6 +130,7 @@ jobs:
 
       - name: Build Electron app
         working-directory: electron
+        shell: bash
         run: |
           case "${{ matrix.platform }}" in
             mac)
