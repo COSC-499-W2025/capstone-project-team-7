@@ -331,17 +331,17 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
           {/* Scanning state */}
           {isScanning && (
             <div className="space-y-4">
-              <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+              <div className="rounded-lg border border-border bg-muted p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Spinner size="md" className="text-gray-600" />
-                  <span className="text-sm font-medium text-gray-700">
+                  <Spinner size="md" className="text-muted-foreground" />
+                  <span className="text-sm font-medium text-muted-foreground">
                     {scanMode === "append" ? "Scanning and merging..." : "Scanning in progress..."}
                   </span>
                 </div>
                 <ScanProgress percent={progress?.percent} message={progress?.message} />
               </div>
 
-              <p className="text-xs text-gray-500 text-center">
+              <p className="text-center text-xs text-muted-foreground">
                 {scanMode === "append" && selectedProject && (
                   <>Adding to: {selectedProject.project_name} • </>
                 )}

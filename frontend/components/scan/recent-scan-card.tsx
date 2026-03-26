@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import type {
+  ProjectContributionMetrics,
   ProjectDetail,
   ProjectScanData,
   ProjectScanLanguageEntry,
@@ -30,8 +31,22 @@ interface RecentScanCardProps {
   project: ProjectDetail;
 }
 
+type ContributionMetrics = Pick<
+  ProjectContributionMetrics,
+  "total_commits" | "total_contributors" | "user_commit_share"
+>;
+
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
+}
+
+function toFiniteNumber(value: unknown): number | undefined {
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  return isFiniteNumber(value) ? value : undefined;
 }
 
 function extractLanguages(
@@ -162,6 +177,22 @@ function getDocumentCount(raw: unknown): number {
   return 0;
 }
 
+function getContributionMetrics(
+  rawMetrics: ProjectScanData["contribution_metrics"],
+): ContributionMetrics | null {
+  if (!rawMetrics || typeof rawMetrics !== "object") {
+    return null;
+  }
+
+  const metrics = rawMetrics as ProjectContributionMetrics;
+
+  return {
+    total_commits: toFiniteNumber(metrics.total_commits),
+    total_contributors: toFiniteNumber(metrics.total_contributors),
+    user_commit_share: toFiniteNumber(metrics.user_commit_share),
+  };
+}
+
 function extractLanguageMetrics(
   rawLanguages: ProjectScanData["languages"],
   projectLanguages: string[],
@@ -286,10 +317,7 @@ export function RecentScanCard({ project }: RecentScanCardProps) {
         minute: "2-digit",
       })
     : "Unknown";
-  const contributionMetrics =
-    scanData.contribution_metrics && typeof scanData.contribution_metrics === "object"
-      ? scanData.contribution_metrics
-      : null;
+  const contributionMetrics = getContributionMetrics(scanData.contribution_metrics);
   const languageMetrics = extractLanguageMetrics(scanData.languages, project.languages ?? []);
   const topLanguageMetrics = languageMetrics.slice(0, 5);
   const topLanguageTotal = topLanguageMetrics.reduce((sum, entry) => sum + entry.value, 0) || 1;
@@ -422,7 +450,7 @@ export function RecentScanCard({ project }: RecentScanCardProps) {
                     {metric.label}
                   </p>
                   <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-card/80 text-muted-foreground">
-                    <Icon className="h-4.5 w-4.5" />
+                    <Icon className="size-[1.125rem]" />
                   </div>
                 </div>
                 <div>
@@ -509,7 +537,7 @@ export function RecentScanCard({ project }: RecentScanCardProps) {
 
             <div className="mt-4">
               <div className="dashboard-codeblock">
-                <FolderOpen className="h-4.5 w-4.5 flex-shrink-0 text-muted-foreground" />
+                <FolderOpen className="size-[1.125rem] flex-shrink-0 text-muted-foreground" />
                 <code className="min-w-0 break-all font-mono text-[13px] leading-6">
                   {project.project_path || "Path unavailable"}
                 </code>
@@ -529,7 +557,7 @@ export function RecentScanCard({ project }: RecentScanCardProps) {
                   Composition
                 </h4>
               </div>
-              <Activity className="h-4.5 w-4.5 text-muted-foreground" />
+              <Activity className="size-[1.125rem] text-muted-foreground" />
             </div>
 
             <div className="mt-5 space-y-3">
@@ -604,7 +632,7 @@ export function RecentScanCard({ project }: RecentScanCardProps) {
                   Contribution snapshot
                 </h4>
               </div>
-              <Users className="h-4.5 w-4.5 text-muted-foreground" />
+              <Users className="size-[1.125rem] text-muted-foreground" />
             </div>
 
             <div className="mt-5 grid gap-3">
@@ -658,7 +686,7 @@ export function RecentScanCard({ project }: RecentScanCardProps) {
                     </p>
                   </div>
                   <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[hsl(220_35%_97%)] text-muted-foreground">
-                    <Icon className="h-4.5 w-4.5" />
+                    <Icon className="size-[1.125rem]" />
                   </div>
                 </div>
 

@@ -149,7 +149,7 @@ export default function HomePage() {
         ) : error ? (
           <div className="dashboard-panel p-6">
             <div className="flex min-h-[220px] flex-col items-center justify-center gap-4 text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-full border border-red-200 bg-red-50 text-red-600">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full border border-destructive/20 bg-destructive/10 text-destructive">
                 <FolderOpen className="h-5 w-5" />
               </div>
               <div className="space-y-1">

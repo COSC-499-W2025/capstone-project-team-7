@@ -56,8 +56,16 @@ fi
 
 echo "=== Starting services ==="
 
+BACKEND_PY="backend/venv/bin/python"
+
+if [ ! -x "$BACKEND_PY" ]; then
+    echo "Backend virtualenv is missing or incomplete: $BACKEND_PY"
+    echo "Run scripts/dev_setup.sh or remove backend/venv and retry."
+    exit 1
+fi
+
 # Start backend
-(source backend/venv/bin/activate && cd backend && uvicorn src.main:app --reload --port 8000) &
+(cd backend && ../"$BACKEND_PY" -m uvicorn src.main:app --reload --port 8000) &
 BACK_PID=$!
 
 # Give backend a moment to start before frontend

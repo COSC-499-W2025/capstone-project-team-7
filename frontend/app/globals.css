@@ -6,6 +6,12 @@
   :root {
     --background: 220 30% 97%;
     --foreground: 224 28% 14%;
+    --background-accent-left: 213 100% 97%;
+    --background-accent-right: 212 90% 96%;
+    --background-depth-end: 220 29% 95%;
+    --background-dark-accent-left: 214 68% 21%;
+    --background-dark-accent-right: 230 36% 18%;
+    --background-dark-depth-end: 226 20% 9%;
 
     --muted: 220 25% 94%;
     --muted-foreground: 221 12% 43%;
@@ -42,6 +48,7 @@
 
     --font-sans: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
     --font-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+    --sidebar-width: 296px;
 
     /* Opacity standards */
     --opacity-border-strong: 0.88;
@@ -103,9 +110,9 @@
 
   body {
     background:
-      radial-gradient(circle at top left, hsl(213 100% 97%), transparent 24%),
-      radial-gradient(circle at top right, hsl(212 90% 96%), transparent 30%),
-      linear-gradient(180deg, hsl(var(--background)), hsl(220 29% 95%));
+      radial-gradient(circle at top left, hsl(var(--background-accent-left)), transparent 24%),
+      radial-gradient(circle at top right, hsl(var(--background-accent-right)), transparent 30%),
+      linear-gradient(180deg, hsl(var(--background)), hsl(var(--background-depth-end)));
     color: hsl(var(--foreground));
     font-family: var(--font-sans);
     font-feature-settings: "ss01" 1, "ss02" 1;
@@ -116,9 +123,9 @@
 
   .dark body {
     background:
-      radial-gradient(circle at top left, hsl(214 68% 21% / 0.42), transparent 22%),
-      radial-gradient(circle at top right, hsl(230 36% 18% / 0.8), transparent 30%),
-      linear-gradient(180deg, hsl(var(--background)), hsl(226 20% 9%));
+      radial-gradient(circle at top left, hsl(var(--background-dark-accent-left) / 0.42), transparent 22%),
+      radial-gradient(circle at top right, hsl(var(--background-dark-accent-right) / 0.8), transparent 30%),
+      linear-gradient(180deg, hsl(var(--background)), hsl(var(--background-dark-depth-end)));
   }
 
   h1,
@@ -667,7 +674,7 @@
   .sidebar-shell {
     position: fixed;
     inset: 0 auto 0 0;
-    width: 296px;
+    width: var(--sidebar-width);
     display: flex;
     flex-direction: column;
     background:
@@ -803,7 +810,25 @@
 
   .dashboard-stage {
     min-height: 100vh;
-    margin-left: 296px;
+    margin-left: var(--sidebar-width);
+  }
+
+  .metric-bar {
+    height: 10px;
+    overflow: hidden;
+    border: 1px solid hsl(var(--border) / 0.72);
+    border-radius: 999px;
+    background:
+      linear-gradient(180deg, hsl(var(--card) / 0.7), hsl(var(--muted) / 0.9)),
+      hsl(var(--muted));
+  }
+
+  .metric-bar-fill {
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, hsl(var(--primary)), hsl(193 93% 58%));
+    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.28);
+    transition: width 220ms ease;
   }
 
   @media (max-width: 1280px) {
@@ -863,6 +888,12 @@
   }
 }
 
+/*
+ * Migration bridge: this app temporarily remaps a small set of legacy Tailwind
+ * utilities to design tokens while components are migrated off hardcoded colors
+ * and shadows. This intentionally diverges from vanilla Tailwind semantics here;
+ * remove these aliases once the remaining legacy usages are replaced.
+ */
 @layer utilities {
   .pc-no-shadow,
   .pc-no-shadow * {
