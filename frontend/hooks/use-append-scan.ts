@@ -79,7 +79,18 @@ export function useAppendScan(onScanComplete?: () => void): UseAppendScanReturn 
         setIsScanning(false);
         onScanComplete?.();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to append files");
+        let message = "Failed to append files to project.";
+        if (err instanceof Error) {
+          // Try to extract a human-readable message from JSON error responses
+          // e.g. {"detail":"Method Not Allowed"} → "Method Not Allowed"
+          try {
+            const parsed = JSON.parse(err.message);
+            message = parsed.detail ?? parsed.message ?? message;
+          } catch {
+            message = err.message;
+          }
+        }
+        setError(message);
         setState("failed");
         setIsScanning(false);
       }

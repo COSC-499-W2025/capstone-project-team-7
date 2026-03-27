@@ -1449,15 +1449,6 @@ def delete_insights(project_id: str):
     return
 
 
-@router.post("/api/projects/{project_id}/append-upload/{upload_id}", status_code=status.HTTP_202_ACCEPTED)
-def append_upload(project_id: str, upload_id: str):
-    if project_id not in _project_store:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-    if upload_id not in _upload_store:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found")
-    return {"project_id": project_id, "upload_id": upload_id, "state": JobState.succeeded}
-
-
 # Commented out - Real implementations now in project_routes.py
 # @router.post("/api/projects/{project_id}/rank", response_model=RankResponse)
 # def rank_project(project_id: str, payload: RankRequest):
