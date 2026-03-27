@@ -207,15 +207,19 @@ async def exchange_code(
     expires_at = (datetime.now(timezone.utc) + timedelta(seconds=expires_in)).isoformat()
     refresh_expires_at = (datetime.now(timezone.utc) + timedelta(seconds=refresh_expires_in)).isoformat()
 
-    await _store_secret(
-        user_id, access_token, "linkedin_access_token", li_access_token,
-        metadata={"expires_at": expires_at, "member_id": member_id, "name": member_name},
-    )
-    if li_refresh_token:
+    try:
         await _store_secret(
-            user_id, access_token, "linkedin_refresh_token", li_refresh_token,
-            metadata={"expires_at": refresh_expires_at},
+            user_id, access_token, "linkedin_access_token", li_access_token,
+            metadata={"expires_at": expires_at, "member_id": member_id, "name": member_name},
         )
+        if li_refresh_token:
+            await _store_secret(
+                user_id, access_token, "linkedin_refresh_token", li_refresh_token,
+                metadata={"expires_at": refresh_expires_at},
+            )
+    except RuntimeError as exc:
+        logger.error("Failed to persist LinkedIn tokens: %s", exc)
+        return {"connected": False, "error": "Failed to save LinkedIn tokens"}
 
     return {
         "connected": True,
@@ -347,16 +351,20 @@ async def _refresh_token(user_id: str, access_token: str) -> bool:
     meta = await _fetch_secret_metadata(user_id, access_token, "linkedin_access_token") or {}
     meta["expires_at"] = expires_at
 
-    await _store_secret(user_id, access_token, "linkedin_access_token", new_token, metadata=meta)
+    try:
+        await _store_secret(user_id, access_token, "linkedin_access_token", new_token, metadata=meta)
 
-    new_refresh = data.get("refresh_token")
-    if new_refresh:
-        refresh_expires_in = data.get("refresh_token_expires_in", 31536000)
-        refresh_expires_at = (datetime.now(timezone.utc) + timedelta(seconds=refresh_expires_in)).isoformat()
-        await _store_secret(
-            user_id, access_token, "linkedin_refresh_token", new_refresh,
-            metadata={"expires_at": refresh_expires_at},
-        )
+        new_refresh = data.get("refresh_token")
+        if new_refresh:
+            refresh_expires_in = data.get("refresh_token_expires_in", 31536000)
+            refresh_expires_at = (datetime.now(timezone.utc) + timedelta(seconds=refresh_expires_in)).isoformat()
+            await _store_secret(
+                user_id, access_token, "linkedin_refresh_token", new_refresh,
+                metadata={"expires_at": refresh_expires_at},
+            )
+    except RuntimeError as exc:
+        logger.error("Failed to persist refreshed LinkedIn tokens: %s", exc)
+        return False
 
     return True
 
