@@ -111,11 +111,18 @@ export function LinkedInShareDialog({
   }, [open, generate, checkStatus]);
 
   // Poll for connection status after OAuth popup opens (works in Electron
-  // where the system browser handles the callback and can't postMessage back)
+  // where the system browser handles the callback and can't postMessage back).
+  // Automatically stops after ~2 minutes to avoid running indefinitely.
+  const POLL_TIMEOUT_MS = 120_000;
   const [polling, setPolling] = useState(false);
   useEffect(() => {
     if (!polling) return;
+    const start = Date.now();
     const interval = setInterval(async () => {
+      if (Date.now() - start > POLL_TIMEOUT_MS) {
+        setPolling(false);
+        return;
+      }
       const token = getStoredToken();
       if (!token) return;
       try {
@@ -217,7 +224,7 @@ export function LinkedInShareDialog({
         )}
 
         {error && !loading && (
-          <div className="alert alert-error text-sm">{error}</div>
+          <div className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-sm text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400">{error}</div>
         )}
 
         {!loading && !error && (
