@@ -81,6 +81,7 @@ async def _store_secret(
         resp = await client.post(url, json=payload, headers=headers)
     if resp.status_code >= 400:
         logger.error("Failed to store secret %s: %s", secret_key, resp.text)
+        raise RuntimeError(f"Failed to store secret {secret_key}: {resp.status_code}")
 
 
 async def _fetch_secret(

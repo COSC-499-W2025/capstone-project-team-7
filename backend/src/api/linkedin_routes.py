@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import logging
 import os
 import secrets
@@ -19,9 +20,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/linkedin", tags=["LinkedIn"])
 
 # ---------------------------------------------------------------------------
-# CSRF state store (in-memory, single-server)
-# Stores the Supabase access_token alongside so the backend GET callback
-# can exchange the LinkedIn code without the browser needing auth.
+# CSRF state store (in-memory, single-instance only)
+# NOTE: This will not work across multiple server instances because the
+# callback may hit a different process. For multi-instance deployments,
+# move this to a shared store (e.g. Redis or a DB table with TTL).
 # ---------------------------------------------------------------------------
 
 _STATE_TTL = 600  # 10 minutes
@@ -31,7 +33,6 @@ _STATE_TTL = 600  # 10 minutes
 class _OAuthState:
     state: str
     user_id: str
-    access_token: str
     created_at: float = field(default_factory=time.time)
 
 
@@ -128,7 +129,6 @@ async def get_auth_url(auth: AuthContext = Depends(get_auth_context)):
     _oauth_states[state] = _OAuthState(
         state=state,
         user_id=auth.user_id,
-        access_token=auth.access_token,
     )
 
     from services.services.linkedin_api_service import get_authorization_url
@@ -145,7 +145,7 @@ async def oauth_callback_get(code: str = "", state: str = "", error: str = ""):
     the user's auth token (which lives in Electron's localStorage).
     """
     if error:
-        return HTMLResponse(_CALLBACK_ERROR_HTML.format(error=error))
+        return HTMLResponse(_CALLBACK_ERROR_HTML.format(error=html.escape(error)))
 
     _cleanup_states()
 
@@ -155,11 +155,14 @@ async def oauth_callback_get(code: str = "", state: str = "", error: str = ""):
 
     from services.services.linkedin_api_service import exchange_code
 
-    result = await exchange_code(code, stored.user_id, stored.access_token)
+    # Use service role key for Supabase calls since the system browser
+    # handling this callback doesn't have the user's auth token.
+    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    result = await exchange_code(code, stored.user_id, service_key)
     if not result.get("connected"):
-        return HTMLResponse(_CALLBACK_ERROR_HTML.format(error=result.get("error", "Token exchange failed")))
+        return HTMLResponse(_CALLBACK_ERROR_HTML.format(error=html.escape(result.get("error", "Token exchange failed"))))
 
-    name = result.get("linkedin_name", "LinkedIn user")
+    name = html.escape(result.get("linkedin_name", "LinkedIn user"))
     return HTMLResponse(_CALLBACK_SUCCESS_HTML.format(name=name))
 
 
@@ -184,6 +187,12 @@ async def post_to_linkedin(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"code": "empty_post", "message": "Post text cannot be empty"},
+        )
+
+    if len(body.post_text) > 3000:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "post_too_long", "message": "Post text exceeds LinkedIn's 3,000 character limit"},
         )
 
     from services.services.linkedin_api_service import create_post
