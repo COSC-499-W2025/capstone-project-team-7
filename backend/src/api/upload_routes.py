@@ -13,12 +13,12 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, status, Body, Header, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, status, Body, Depends
 from pydantic import BaseModel, Field
 
 from scanner.parser import parse_zip
 from scanner.models import ParseResult, ScanPreferences, FileMetadata as ScanFileMetadata, ParseIssue as ScanParseIssue
-from api.request_context import set_request_access_token
+from api.dependencies import AuthContext, get_auth_context
 
 logger = logging.getLogger(__name__)
 
@@ -27,45 +27,8 @@ router = APIRouter(prefix="/api/uploads", tags=["uploads"])
 
 
 # Authentication helper
-async def verify_auth_token(authorization: Optional[str] = Header(None)) -> str:
-    """
-    Verify JWT token from Authorization header.
-    Returns user_id from token.
-    """
-    if not authorization:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing authorization token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    parts = authorization.split()
-    if len(parts) != 2 or parts[0].lower() != "bearer":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authorization header format. Use 'Bearer <token>'",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    token = parts[1]
-    set_request_access_token(token)
-
-    try:
-        import jwt
-
-        payload = jwt.decode(token, options={"verify_signature": False})
-        user_id = payload.get("sub")
-        if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token: missing user ID",
-            )
-        return user_id
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-        )
+async def verify_auth_token(auth: AuthContext = Depends(get_auth_context)) -> str:
+    return auth.user_id
 
 
 # Pydantic models

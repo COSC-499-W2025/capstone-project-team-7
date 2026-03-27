@@ -7,8 +7,11 @@
 #   - Enforce blocking of external calls unless consent is granted.
 
 import datetime
+import logging
 import os
 from typing import Optional, Dict, Any
+
+logger = logging.getLogger(__name__)
 
 try:
     from supabase.client import create_client, Client
@@ -38,8 +41,8 @@ if SUPABASE_AVAILABLE and SUPABASE_URL and SUPABASE_KEY:
     try:
         from supabase.client import create_client as _create_client
         _supabase_client = _create_client(SUPABASE_URL, SUPABASE_KEY)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Failed to initialize Supabase consent client: %s", exc)
 
 # In-memory fallback store for consent records (used when Supabase unavailable)
 # Keys   → (user_id, service_name)
@@ -102,8 +105,8 @@ def _get_authenticated_client(access_token: Optional[str] = None):
             _authenticated_client = client
             _authenticated_client_token = token
             return client
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Failed to create authenticated consent client: %s", exc)
 
     return client
 
@@ -119,8 +122,8 @@ def stop_authenticated_client_auto_refresh() -> None:
     if timer:
         try:
             timer.cancel()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Failed to cancel consent refresh timer: %s", exc)
         setattr(auth_client, "_refresh_token_timer", None)
 
 # Versioned Privacy Notice (single source of truth)

@@ -44,14 +44,29 @@ app = FastAPI(
     version="1.0.0"
 )
 
-allowed_origins = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "*").split(",")]
+environment = os.getenv("ENVIRONMENT", "development").strip().lower()
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "").strip()
+
+if allowed_origins_env:
+    allowed_origins = [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()]
+else:
+    if environment in {"production", "prod"}:
+        raise RuntimeError("ALLOWED_ORIGINS must be configured in production")
+    allowed_origins = ["http://localhost:3000", "http://localhost:8000"]
+
+if "*" in allowed_origins:
+    if environment in {"production", "prod"}:
+        raise RuntimeError("Wildcard CORS origin is not allowed in production")
+    allowed_origins = [origin for origin in allowed_origins if origin != "*"]
+    if not allowed_origins:
+        allowed_origins = ["http://localhost:3000", "http://localhost:8000"]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"]
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "Origin"],
 )
 
 @app.get("/")
