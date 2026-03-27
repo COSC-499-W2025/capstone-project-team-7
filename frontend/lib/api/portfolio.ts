@@ -13,7 +13,6 @@ import type {
   LinkedInPostRequest,
   LinkedInPostResponse,
   LinkedInAuthUrlResponse,
-  LinkedInCallbackRequest,
   LinkedInConnectionStatus,
   LinkedInDirectPostRequest,
   LinkedInDirectPostResponse,
@@ -188,17 +187,6 @@ export async function getLinkedInAuthUrl(
     "/api/linkedin/auth-url",
     { headers: authHeaders(token) },
     "Failed to get LinkedIn auth URL",
-  );
-}
-
-export async function linkedInCallback(
-  token: string,
-  body: LinkedInCallbackRequest,
-): Promise<LinkedInConnectionStatus> {
-  return call(
-    "/api/linkedin/callback",
-    { method: "POST", headers: authHeaders(token), body: JSON.stringify(body) },
-    "Failed to connect LinkedIn",
   );
 }
 

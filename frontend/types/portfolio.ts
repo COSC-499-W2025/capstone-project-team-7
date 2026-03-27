@@ -193,11 +193,6 @@ export interface LinkedInAuthUrlResponse {
   auth_url: string;
 }
 
-export interface LinkedInCallbackRequest {
-  code: string;
-  state: string;
-}
-
 export interface LinkedInConnectionStatus {
   connected: boolean;
   linkedin_name?: string | null;
