@@ -172,6 +172,7 @@ function ImportanceGroup({
     <div className="space-y-3">
       <button
         type="button"
+        aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
         className="flex w-full items-center gap-2.5 rounded-[14px] px-1 py-1.5 text-left transition-colors duration-150 hover:bg-muted/40"
       >
@@ -189,16 +190,19 @@ function ImportanceGroup({
       </button>
 
       <div
-        className={`grid gap-4 md:grid-cols-2 transition-[grid-template-rows,opacity] duration-300 ease-out ${
+        className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
           open
             ? "grid-rows-[1fr] opacity-100"
-            : "grid-rows-[0fr] opacity-0 overflow-hidden pointer-events-none h-0"
+            : "grid-rows-[0fr] opacity-0 pointer-events-none"
         }`}
       >
-        {open &&
-          items.map((item, i) => (
-            <ResourceCard key={`${item.url}-${i}`} item={item} />
-          ))}
+        <div className="overflow-hidden">
+          <div className="grid gap-4 md:grid-cols-2">
+            {items.map((item, i) => (
+              <ResourceCard key={`${item.url}-${i}`} item={item} />
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
