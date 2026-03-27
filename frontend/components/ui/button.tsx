@@ -9,17 +9,51 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
   size?: ButtonSize;
 }
 
+const PRIMARY_BUTTON_GRADIENT =
+  "bg-[linear-gradient(180deg,hsl(var(--primary)),hsl(215_84%_52%))]";
+const DESTRUCTIVE_BUTTON_GRADIENT =
+  "bg-[linear-gradient(180deg,hsl(var(--destructive)),hsl(0_74%_52%))]";
+
 const variantClasses: Record<ButtonVariant, string> = {
-  default:
-    "border border-primary/80 bg-[linear-gradient(180deg,hsl(var(--primary)),hsl(215_84%_52%))] text-primary-foreground shadow-[0_16px_28px_hsl(var(--primary)/0.22)] hover:border-primary hover:shadow-[0_18px_32px_hsl(var(--primary)/0.3)]",
-  secondary:
-    "border border-border/80 bg-[linear-gradient(180deg,hsl(var(--secondary)),hsl(var(--card)))] text-secondary-foreground shadow-[0_10px_20px_rgba(15,23,42,0.08)] hover:border-border hover:bg-secondary/85",
-  outline:
-    "border border-border bg-card/88 text-foreground shadow-[0_10px_22px_rgba(15,23,42,0.05)] hover:border-primary/35 hover:bg-accent/70 hover:text-accent-foreground",
-  ghost:
-    "border border-transparent bg-transparent text-muted-foreground hover:bg-accent/75 hover:text-foreground",
-  destructive:
-    "border border-destructive/80 bg-[linear-gradient(180deg,hsl(var(--destructive)),hsl(0_74%_52%))] text-destructive-foreground shadow-[0_16px_26px_hsl(var(--destructive)/0.18)] hover:border-destructive hover:shadow-[0_18px_30px_hsl(var(--destructive)/0.24)]"
+  default: [
+    "border border-primary/80",
+    PRIMARY_BUTTON_GRADIENT,
+    "text-primary-foreground",
+    "shadow-[0_16px_28px_hsl(var(--primary)/0.22)]",
+    "hover:border-primary",
+    "hover:shadow-[0_18px_32px_hsl(var(--primary)/0.3)]",
+  ].join(" "),
+  secondary: [
+    "border border-border/80",
+    "bg-[linear-gradient(180deg,hsl(var(--secondary)),hsl(var(--card)))]",
+    "text-secondary-foreground",
+    "shadow-[0_10px_20px_rgba(15,23,42,0.08)]",
+    "hover:border-border",
+    "hover:bg-secondary/85",
+  ].join(" "),
+  outline: [
+    "border border-border",
+    "bg-card/88",
+    "text-foreground",
+    "shadow-[0_10px_22px_rgba(15,23,42,0.05)]",
+    "hover:border-primary/35",
+    "hover:bg-accent/70",
+  ].join(" "),
+  ghost: [
+    "border border-transparent",
+    "bg-transparent",
+    "text-muted-foreground",
+    "hover:bg-accent/75",
+    "hover:text-foreground",
+  ].join(" "),
+  destructive: [
+    "border border-destructive/80",
+    DESTRUCTIVE_BUTTON_GRADIENT,
+    "text-destructive-foreground",
+    "shadow-[0_16px_26px_hsl(var(--destructive)/0.18)]",
+    "hover:border-destructive",
+    "hover:shadow-[0_18px_30px_hsl(var(--destructive)/0.24)]",
+  ].join(" "),
 };
 
 const sizeClasses: Record<ButtonSize, string> = {

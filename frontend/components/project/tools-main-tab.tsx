@@ -54,11 +54,16 @@ export function ToolsMainTab({
   htmlExportError,
   handleExportHtml,
 }: ToolsMainTabProps) {
+  const overviewCardClass = "flex h-full flex-col";
+  const overviewHeaderClass =
+    "justify-start border-b border-border/70 px-5 pb-4 pt-7 sm:px-5 sm:pb-4 sm:pt-7";
+  const overviewContentClass = "flex flex-1 flex-col gap-5 p-5 pt-5 sm:p-5 sm:pt-5";
+
   return (
     <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-      <Card>
-        <CardHeader className="border-b border-border/70 p-5 pb-4">
-          <CardTitle className="text-base font-semibold text-foreground">
+      <Card className={overviewCardClass}>
+        <CardHeader className={overviewHeaderClass}>
+          <CardTitle className="text-base font-semibold leading-[1.2] text-foreground">
             <button
               type="button"
               onClick={() => openToolsTab("file-browser")}
@@ -69,7 +74,7 @@ export function ToolsMainTab({
             </button>
           </CardTitle>
         </CardHeader>
-        <CardContent className="flex h-full flex-col gap-5 p-5 pt-4">
+        <CardContent className={overviewContentClass}>
           <p className="text-sm text-muted-foreground">
             Browse and filter indexed project files in one full view.
           </p>
@@ -90,9 +95,9 @@ export function ToolsMainTab({
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader className="border-b border-border/70 p-5 pb-4">
-          <CardTitle className="text-base font-semibold text-foreground">
+      <Card className={overviewCardClass}>
+        <CardHeader className={overviewHeaderClass}>
+          <CardTitle className="text-base font-semibold leading-[1.2] text-foreground">
             <button
               type="button"
               onClick={() => openGitAnalysis?.()}
@@ -103,7 +108,7 @@ export function ToolsMainTab({
             </button>
           </CardTitle>
         </CardHeader>
-        <CardContent className="flex h-full flex-col gap-5 p-5 pt-4">
+        <CardContent className={overviewContentClass}>
           <p className="text-sm text-muted-foreground">
             Compact view of repositories and commit activity.
           </p>
@@ -132,9 +137,9 @@ export function ToolsMainTab({
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader className="border-b border-border/70 p-5 pb-4">
-          <CardTitle className="text-base font-semibold text-foreground">
+      <Card className={overviewCardClass}>
+        <CardHeader className={overviewHeaderClass}>
+          <CardTitle className="text-base font-semibold leading-[1.2] text-foreground">
             <button
               type="button"
               onClick={() => openToolsTab("duplicate-finder")}
@@ -145,7 +150,7 @@ export function ToolsMainTab({
             </button>
           </CardTitle>
         </CardHeader>
-        <CardContent className="flex h-full flex-col gap-5 p-5 pt-4">
+        <CardContent className={overviewContentClass}>
           <p className="text-sm text-muted-foreground">
             Quick snapshot of duplicate groups and storage waste.
           </p>
@@ -175,14 +180,14 @@ export function ToolsMainTab({
       </Card>
 
       {/* Search & Filter */}
-      <Card>
-        <CardHeader className="border-b border-border/70 p-5 pb-4">
-          <CardTitle className="flex items-center gap-2 text-base font-semibold text-foreground">
+      <Card className={overviewCardClass}>
+        <CardHeader className={overviewHeaderClass}>
+          <CardTitle className="flex items-center gap-2 text-base font-semibold leading-[1.2] text-foreground">
             <Search size={18} />
             Global Search
           </CardTitle>
         </CardHeader>
-        <CardContent className="flex h-full flex-col gap-5 p-5 pt-4">
+        <CardContent className={overviewContentClass}>
           <p className="text-sm text-muted-foreground">
             Use the dedicated search workspace to query files and skills across all projects.
           </p>
@@ -195,14 +200,14 @@ export function ToolsMainTab({
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader className="border-b border-border/70 p-5 pb-4">
-          <CardTitle className="flex items-center gap-2 text-base font-semibold text-foreground">
+      <Card className={overviewCardClass}>
+        <CardHeader className={overviewHeaderClass}>
+          <CardTitle className="flex items-center gap-2 text-base font-semibold leading-[1.2] text-foreground">
             <FileJson size={18} />
             Export Options
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4 p-5 pt-4">
+        <CardContent className="flex flex-1 flex-col gap-4 p-5 pt-5 sm:p-5 sm:pt-5">
           <p className="text-sm text-muted-foreground">
             Export project analysis in various formats.
           </p>

@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Code2, FileCode, Braces, Box, TrendingUp, AlertCircle, AlertTriangle, Copy, GitBranch, Hash, XCircle, Type, Layers, ChevronDown, ChevronUp } from "lucide-react";
 import { useState } from "react";
+import { cn } from "@/lib/utils";
 import {
   projectPageSelectors,
   useProjectPageStore,
@@ -103,6 +104,78 @@ interface CodeAnalysisTabProps {
   errorMessage?: string | null;
   useStore?: boolean;
 }
+
+const overviewCardStyles = {
+  blue: {
+    card: "border-blue-200 bg-gradient-to-br from-blue-50 to-white dark:border-blue-500/20 dark:from-blue-500/10 dark:to-card",
+    icon: "text-blue-600 dark:text-blue-300",
+  },
+  purple: {
+    card: "border-purple-200 bg-gradient-to-br from-purple-50 to-white dark:border-purple-500/20 dark:from-purple-500/10 dark:to-card",
+    icon: "text-purple-600 dark:text-purple-300",
+  },
+  emerald: {
+    card: "border-emerald-200 bg-gradient-to-br from-emerald-50 to-white dark:border-emerald-500/20 dark:from-emerald-500/10 dark:to-card",
+    icon: "text-emerald-600 dark:text-emerald-300",
+  },
+  amber: {
+    card: "border-amber-200 bg-gradient-to-br from-amber-50 to-white dark:border-amber-500/20 dark:from-amber-500/10 dark:to-card",
+    icon: "text-amber-600 dark:text-amber-300",
+  },
+} as const;
+
+const issueCardStyles = {
+  orange: {
+    card: "border-orange-200 bg-orange-50 dark:border-orange-500/20 dark:bg-orange-500/10",
+    icon: "text-orange-600 dark:text-orange-300",
+    metric: "text-orange-700 dark:text-orange-200",
+    divider: "border-orange-200 dark:border-orange-500/20",
+    button: "text-orange-700 hover:text-orange-900 dark:text-orange-300 dark:hover:text-orange-200",
+    example: "border-orange-100 bg-white dark:border-orange-500/20 dark:bg-card",
+    exampleText: "text-orange-800 dark:text-orange-200",
+  },
+  purple: {
+    card: "border-purple-200 bg-purple-50 dark:border-purple-500/20 dark:bg-purple-500/10",
+    icon: "text-purple-600 dark:text-purple-300",
+    metric: "text-purple-700 dark:text-purple-200",
+    divider: "border-purple-200 dark:border-purple-500/20",
+    button: "text-purple-700 hover:text-purple-900 dark:text-purple-300 dark:hover:text-purple-200",
+    example: "border-purple-100 bg-white dark:border-purple-500/20 dark:bg-card",
+  },
+  yellow: {
+    card: "border-yellow-200 bg-yellow-50 dark:border-yellow-500/20 dark:bg-yellow-500/10",
+    icon: "text-yellow-600 dark:text-yellow-300",
+    metric: "text-yellow-700 dark:text-yellow-200",
+    divider: "border-yellow-200 dark:border-yellow-500/20",
+    button: "text-yellow-700 hover:text-yellow-900 dark:text-yellow-300 dark:hover:text-yellow-200",
+    example: "border-yellow-100 bg-white dark:border-yellow-500/20 dark:bg-card",
+    exampleText: "text-yellow-800 dark:text-yellow-200",
+    suggestion: "text-yellow-600 dark:text-yellow-300",
+  },
+  red: {
+    card: "border-red-200 bg-red-50 dark:border-red-500/20 dark:bg-red-500/10",
+    icon: "text-red-600 dark:text-red-300",
+    metric: "text-red-700 dark:text-red-200",
+    divider: "border-red-200 dark:border-red-500/20",
+    button: "text-red-700 hover:text-red-900 dark:text-red-300 dark:hover:text-red-200",
+    example: "border-red-100 bg-white dark:border-red-500/20 dark:bg-card",
+    exampleText: "text-red-800 dark:text-red-200",
+  },
+  blue: {
+    card: "border-blue-200 bg-blue-50 dark:border-blue-500/20 dark:bg-blue-500/10",
+    icon: "text-blue-600 dark:text-blue-300",
+    metric: "text-blue-700 dark:text-blue-200",
+    divider: "border-blue-200 dark:border-blue-500/20",
+    button: "text-blue-700 hover:text-blue-900 dark:text-blue-300 dark:hover:text-blue-200",
+    example: "border-blue-100 bg-white dark:border-blue-500/20 dark:bg-card",
+    exampleText: "text-blue-800 dark:text-blue-200",
+  },
+  indigo: {
+    card: "border-indigo-200 bg-indigo-50 dark:border-indigo-500/20 dark:bg-indigo-500/10",
+    icon: "text-indigo-600 dark:text-indigo-300",
+    metric: "text-indigo-700 dark:text-indigo-200",
+  },
+} as const;
 
 // Helper to get short filename from path
 function getShortPath(fullPath: string): string {
@@ -283,7 +356,7 @@ export function CodeAnalysisTab({
   return (
     <div className="space-y-6">
       <Card className="bg-white border border-gray-200">
-        <CardHeader className="border-b border-gray-200">
+        <CardHeader className="border-b border-gray-200 p-5 pb-4 sm:p-5 sm:pb-4">
           <CardTitle className="text-xl font-bold text-gray-900">
             Code Analysis Overview
           </CardTitle>
@@ -291,51 +364,51 @@ export function CodeAnalysisTab({
             Comprehensive metrics about your codebase structure and quality
           </p>
         </CardHeader>
-        <CardContent className="p-6">
+        <CardContent className="p-5 sm:p-5">
           {/* Overview Cards */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
+          <div className="mb-5 grid items-start gap-4 md:grid-cols-2 lg:grid-cols-4">
             {/* Total Files */}
-            <div className="rounded-lg border border-gray-200 p-4 bg-gradient-to-br from-blue-50 to-white">
+            <div className={cn("self-start rounded-lg border p-4", overviewCardStyles.blue.card)}>
               <div className="flex items-center justify-between mb-2">
-                <FileCode className="h-5 w-5 text-blue-600" />
+                <FileCode className={cn("h-5 w-5", overviewCardStyles.blue.icon)} />
               </div>
-              <p className="text-3xl font-bold text-gray-900">
+              <p className="text-3xl font-bold text-gray-900 dark:text-foreground">
                 {total_files.toLocaleString()}
               </p>
-              <p className="text-xs text-gray-600 mt-1">Total Files Analyzed</p>
+              <p className="mt-1 text-xs text-gray-600 dark:text-muted-foreground">Total Files Analyzed</p>
             </div>
 
             {/* Total Lines */}
-            <div className="rounded-lg border border-gray-200 p-4 bg-gradient-to-br from-purple-50 to-white">
+            <div className={cn("self-start rounded-lg border p-4", overviewCardStyles.purple.card)}>
               <div className="flex items-center justify-between mb-2">
-                <Code2 className="h-5 w-5 text-purple-600" />
+                <Code2 className={cn("h-5 w-5", overviewCardStyles.purple.icon)} />
               </div>
-              <p className="text-3xl font-bold text-gray-900">
+              <p className="text-3xl font-bold text-gray-900 dark:text-foreground">
                 {total_lines.toLocaleString()}
               </p>
-              <p className="text-xs text-gray-600 mt-1">Total Lines of Code</p>
+              <p className="mt-1 text-xs text-gray-600 dark:text-muted-foreground">Total Lines of Code</p>
             </div>
 
             {/* Functions */}
-            <div className="rounded-lg border border-gray-200 p-4 bg-gradient-to-br from-emerald-50 to-white">
+            <div className={cn("self-start rounded-lg border p-4", overviewCardStyles.emerald.card)}>
               <div className="flex items-center justify-between mb-2">
-                <Braces className="h-5 w-5 text-emerald-600" />
+                <Braces className={cn("h-5 w-5", overviewCardStyles.emerald.icon)} />
               </div>
-              <p className="text-3xl font-bold text-gray-900">
+              <p className="text-3xl font-bold text-gray-900 dark:text-foreground">
                 {functions.toLocaleString()}
               </p>
-              <p className="text-xs text-gray-600 mt-1">Functions</p>
+              <p className="mt-1 text-xs text-gray-600 dark:text-muted-foreground">Functions</p>
             </div>
 
             {/* Classes */}
-            <div className="rounded-lg border border-gray-200 p-4 bg-gradient-to-br from-amber-50 to-white">
+            <div className={cn("self-start rounded-lg border p-4", overviewCardStyles.amber.card)}>
               <div className="flex items-center justify-between mb-2">
-                <Box className="h-5 w-5 text-amber-600" />
+                <Box className={cn("h-5 w-5", overviewCardStyles.amber.icon)} />
               </div>
-              <p className="text-3xl font-bold text-gray-900">
+              <p className="text-3xl font-bold text-gray-900 dark:text-foreground">
                 {classes.toLocaleString()}
               </p>
-              <p className="text-xs text-gray-600 mt-1">Classes</p>
+              <p className="mt-1 text-xs text-gray-600 dark:text-muted-foreground">Classes</p>
             </div>
           </div>
 
@@ -456,44 +529,44 @@ export function CodeAnalysisTab({
       {/* Code Quality Issues Card */}
       {(dead_code || duplicates || magic_values > 0 || error_handling_issues || naming_issues > 0 || nesting_issues > 0) && (
         <Card className="bg-white border border-gray-200">
-          <CardHeader className="border-b border-gray-200">
+          <CardHeader className="border-b border-gray-200 p-5 pb-4 sm:p-5 sm:pb-4">
             <CardTitle className="text-base font-bold text-gray-900">
               Code Quality Issues
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-6">
+          <CardContent className="p-5 sm:p-5">
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {/* Dead Code */}
               {dead_code && dead_code.total > 0 && (
-                <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
+                <div className={cn("rounded-lg border p-4", issueCardStyles.orange.card)}>
                   <div className="flex items-center gap-2 mb-3">
-                    <XCircle className="h-5 w-5 text-orange-600" />
-                    <h3 className="text-sm font-semibold text-gray-900">
+                    <XCircle className={cn("h-5 w-5", issueCardStyles.orange.icon)} />
+                    <h3 className="text-sm font-semibold text-gray-900 dark:text-foreground">
                       Dead Code Detection
                     </h3>
                   </div>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Total items:</span>
-                      <span className="font-semibold text-orange-700">
+                      <span className="text-gray-600 dark:text-muted-foreground">Total items:</span>
+                      <span className={cn("font-semibold", issueCardStyles.orange.metric)}>
                         {dead_code.total}
                       </span>
                     </div>
-                    <div className="pl-3 space-y-1 text-xs text-gray-600">
+                    <div className="pl-3 space-y-1 text-xs text-gray-600 dark:text-muted-foreground">
                       <div>• Unused functions: {dead_code.unused_functions}</div>
                       <div>• Unused imports: {dead_code.unused_imports}</div>
                       <div>• Unused variables: {dead_code.unused_variables}</div>
                     </div>
                   </div>
-                  <p className="text-xs text-gray-500 mt-3">
+                  <p className="mt-3 text-xs text-gray-500 dark:text-muted-foreground">
                     Remove unused code to improve maintainability
                   </p>
                   {/* Examples */}
                   {examples?.dead_code && examples.dead_code.length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-orange-200">
+                    <div className={cn("mt-3 border-t pt-3", issueCardStyles.orange.divider)}>
                       <button
                         onClick={() => toggleSection('deadCode')}
-                        className="flex items-center gap-1 text-xs text-orange-700 hover:text-orange-900"
+                        className={cn("flex items-center gap-1 text-xs", issueCardStyles.orange.button)}
                       >
                         {expandedSections.deadCode ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                         {expandedSections.deadCode ? 'Hide' : 'Show'} examples
@@ -501,10 +574,10 @@ export function CodeAnalysisTab({
                       {expandedSections.deadCode && (
                         <div className="mt-2 space-y-2 max-h-48 overflow-y-auto">
                           {examples.dead_code.map((ex, i) => (
-                            <div key={i} className="bg-white rounded p-2 text-xs border border-orange-100">
-                              <div className="font-mono text-orange-800">{ex.name}</div>
-                              <div className="text-gray-500">{getShortPath(ex.file)}:{ex.line}</div>
-                              <code className="block mt-1 text-gray-700 bg-gray-50 p-1 rounded truncate">{ex.code_snippet}</code>
+                            <div key={i} className={cn("rounded border p-2 text-xs", issueCardStyles.orange.example)}>
+                              <div className={cn("font-mono", issueCardStyles.orange.exampleText)}>{ex.name}</div>
+                              <div className="text-gray-500 dark:text-muted-foreground">{getShortPath(ex.file)}:{ex.line}</div>
+                              <code className="mt-1 block truncate rounded bg-gray-50 p-1 text-gray-700 dark:bg-muted dark:text-foreground">{ex.code_snippet}</code>
                             </div>
                           ))}
                         </div>
@@ -516,35 +589,35 @@ export function CodeAnalysisTab({
 
               {/* Duplicate Code */}
               {duplicates && (duplicates.within_file > 0 || duplicates.cross_file > 0) && (
-                <div className="rounded-lg border border-purple-200 bg-purple-50 p-4">
+                <div className={cn("rounded-lg border p-4", issueCardStyles.purple.card)}>
                   <div className="flex items-center gap-2 mb-3">
-                    <Copy className="h-5 w-5 text-purple-600" />
-                    <h3 className="text-sm font-semibold text-gray-900">
+                    <Copy className={cn("h-5 w-5", issueCardStyles.purple.icon)} />
+                    <h3 className="text-sm font-semibold text-gray-900 dark:text-foreground">
                       Duplicate Code Detection
                     </h3>
                   </div>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Total blocks:</span>
-                      <span className="font-semibold text-purple-700">
+                      <span className="text-gray-600 dark:text-muted-foreground">Total blocks:</span>
+                      <span className={cn("font-semibold", issueCardStyles.purple.metric)}>
                         {duplicates.within_file + duplicates.cross_file}
                       </span>
                     </div>
-                    <div className="pl-3 space-y-1 text-xs text-gray-600">
+                    <div className="pl-3 space-y-1 text-xs text-gray-600 dark:text-muted-foreground">
                       <div>• Within-file: {duplicates.within_file}</div>
                       <div>• Cross-file: {duplicates.cross_file}</div>
                       <div>• Duplicate lines: ~{duplicates.total_duplicate_lines}</div>
                     </div>
                   </div>
-                  <p className="text-xs text-gray-500 mt-3">
+                  <p className="mt-3 text-xs text-gray-500 dark:text-muted-foreground">
                     Extract duplicates into reusable functions
                   </p>
                   {/* Examples */}
                   {examples?.duplicates && examples.duplicates.length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-purple-200">
+                    <div className={cn("mt-3 border-t pt-3", issueCardStyles.purple.divider)}>
                       <button
                         onClick={() => toggleSection('duplicates')}
-                        className="flex items-center gap-1 text-xs text-purple-700 hover:text-purple-900"
+                        className={cn("flex items-center gap-1 text-xs", issueCardStyles.purple.button)}
                       >
                         {expandedSections.duplicates ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                         {expandedSections.duplicates ? 'Hide' : 'Show'} examples
@@ -552,16 +625,16 @@ export function CodeAnalysisTab({
                       {expandedSections.duplicates && (
                         <div className="mt-2 space-y-2 max-h-48 overflow-y-auto">
                           {examples.duplicates.map((ex, i) => (
-                            <div key={i} className="bg-white rounded p-2 text-xs border border-purple-100">
+                            <div key={i} className={cn("rounded border p-2 text-xs", issueCardStyles.purple.example)}>
                               {ex.file1 && ex.file2 ? (
                                 <>
-                                  <div className="text-gray-500">{getShortPath(ex.file1)}:{ex.line1}</div>
-                                  <div className="text-gray-500">{getShortPath(ex.file2)}:{ex.line2}</div>
+                                  <div className="text-gray-500 dark:text-muted-foreground">{getShortPath(ex.file1)}:{ex.line1}</div>
+                                  <div className="text-gray-500 dark:text-muted-foreground">{getShortPath(ex.file2)}:{ex.line2}</div>
                                 </>
                               ) : ex.file ? (
-                                <div className="text-gray-500">{getShortPath(ex.file)}:{ex.lines || ex.line1}</div>
+                                <div className="text-gray-500 dark:text-muted-foreground">{getShortPath(ex.file)}:{ex.lines || ex.line1}</div>
                               ) : null}
-                              {ex.similarity && <div className="text-purple-700">Similarity: {(ex.similarity * 100).toFixed(0)}%</div>}
+                              {ex.similarity && <div className={cn(issueCardStyles.purple.metric)}>Similarity: {(ex.similarity * 100).toFixed(0)}%</div>}
                             </div>
                           ))}
                         </div>
@@ -573,30 +646,30 @@ export function CodeAnalysisTab({
 
               {/* Magic Values */}
               {magic_values > 0 && (
-                <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4">
+                <div className={cn("rounded-lg border p-4", issueCardStyles.yellow.card)}>
                   <div className="flex items-center gap-2 mb-3">
-                    <Hash className="h-5 w-5 text-yellow-600" />
-                    <h3 className="text-sm font-semibold text-gray-900">
+                    <Hash className={cn("h-5 w-5", issueCardStyles.yellow.icon)} />
+                    <h3 className="text-sm font-semibold text-gray-900 dark:text-foreground">
                       Magic Value Detection
                     </h3>
                   </div>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Hardcoded values:</span>
-                      <span className="font-semibold text-yellow-700">
+                      <span className="text-gray-600 dark:text-muted-foreground">Hardcoded values:</span>
+                      <span className={cn("font-semibold", issueCardStyles.yellow.metric)}>
                         {magic_values}
                       </span>
                     </div>
                   </div>
-                  <p className="text-xs text-gray-500 mt-3">
+                  <p className="mt-3 text-xs text-gray-500 dark:text-muted-foreground">
                     Replace magic numbers/strings with named constants
                   </p>
                   {/* Examples */}
                   {examples?.magic_values && examples.magic_values.length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-yellow-200">
+                    <div className={cn("mt-3 border-t pt-3", issueCardStyles.yellow.divider)}>
                       <button
                         onClick={() => toggleSection('magicValues')}
-                        className="flex items-center gap-1 text-xs text-yellow-700 hover:text-yellow-900"
+                        className={cn("flex items-center gap-1 text-xs", issueCardStyles.yellow.button)}
                       >
                         {expandedSections.magicValues ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                         {expandedSections.magicValues ? 'Hide' : 'Show'} examples
@@ -604,14 +677,14 @@ export function CodeAnalysisTab({
                       {expandedSections.magicValues && (
                         <div className="mt-2 space-y-2 max-h-48 overflow-y-auto">
                           {examples.magic_values.map((ex, i) => (
-                            <div key={i} className="bg-white rounded p-2 text-xs border border-yellow-100">
+                            <div key={i} className={cn("rounded border p-2 text-xs", issueCardStyles.yellow.example)}>
                               <div className="flex justify-between">
-                                <span className="font-mono text-yellow-800">{ex.value}</span>
-                                <span className="text-gray-400">{ex.type}</span>
+                                <span className={cn("font-mono", issueCardStyles.yellow.exampleText)}>{ex.value}</span>
+                                <span className="text-gray-400 dark:text-muted-foreground">{ex.type}</span>
                               </div>
-                              <div className="text-gray-500">{getShortPath(ex.file)}:{ex.line}</div>
-                              <code className="block mt-1 text-gray-700 bg-gray-50 p-1 rounded truncate">{ex.code_snippet}</code>
-                              {ex.suggested_name && <div className="text-yellow-600 mt-1">Suggest: {ex.suggested_name}</div>}
+                              <div className="text-gray-500 dark:text-muted-foreground">{getShortPath(ex.file)}:{ex.line}</div>
+                              <code className="mt-1 block truncate rounded bg-gray-50 p-1 text-gray-700 dark:bg-muted dark:text-foreground">{ex.code_snippet}</code>
+                              {ex.suggested_name && <div className={cn("mt-1", issueCardStyles.yellow.suggestion)}>Suggest: {ex.suggested_name}</div>}
                             </div>
                           ))}
                         </div>
@@ -623,34 +696,34 @@ export function CodeAnalysisTab({
 
               {/* Error Handling */}
               {error_handling_issues && error_handling_issues.total > 0 && (
-                <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+                <div className={cn("rounded-lg border p-4", issueCardStyles.red.card)}>
                   <div className="flex items-center gap-2 mb-3">
-                    <AlertTriangle className="h-5 w-5 text-red-600" />
-                    <h3 className="text-sm font-semibold text-gray-900">
+                    <AlertTriangle className={cn("h-5 w-5", issueCardStyles.red.icon)} />
+                    <h3 className="text-sm font-semibold text-gray-900 dark:text-foreground">
                       Error Handling Quality
                     </h3>
                   </div>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Total issues:</span>
-                      <span className="font-semibold text-red-700">
+                      <span className="text-gray-600 dark:text-muted-foreground">Total issues:</span>
+                      <span className={cn("font-semibold", issueCardStyles.red.metric)}>
                         {error_handling_issues.total}
                       </span>
                     </div>
-                    <div className="pl-3 space-y-1 text-xs text-gray-600">
+                    <div className="pl-3 space-y-1 text-xs text-gray-600 dark:text-muted-foreground">
                       <div>• Critical: {error_handling_issues.critical}</div>
                       <div>• Warnings: {error_handling_issues.warning}</div>
                     </div>
                   </div>
-                  <p className="text-xs text-gray-500 mt-3">
+                  <p className="mt-3 text-xs text-gray-500 dark:text-muted-foreground">
                     Fix empty catch blocks and broad exceptions
                   </p>
                   {/* Examples */}
                   {examples?.error_handling && examples.error_handling.length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-red-200">
+                    <div className={cn("mt-3 border-t pt-3", issueCardStyles.red.divider)}>
                       <button
                         onClick={() => toggleSection('errorHandling')}
-                        className="flex items-center gap-1 text-xs text-red-700 hover:text-red-900"
+                        className={cn("flex items-center gap-1 text-xs", issueCardStyles.red.button)}
                       >
                         {expandedSections.errorHandling ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                         {expandedSections.errorHandling ? 'Hide' : 'Show'} examples
@@ -658,13 +731,13 @@ export function CodeAnalysisTab({
                       {expandedSections.errorHandling && (
                         <div className="mt-2 space-y-2 max-h-48 overflow-y-auto">
                           {examples.error_handling.map((ex, i) => (
-                            <div key={i} className="bg-white rounded p-2 text-xs border border-red-100">
+                            <div key={i} className={cn("rounded border p-2 text-xs", issueCardStyles.red.example)}>
                               <div className="flex justify-between">
-                                <span className="font-medium text-red-800">{ex.issue_type}</span>
-                                <span className={ex.severity === 'critical' ? 'text-red-600' : 'text-yellow-600'}>{ex.severity}</span>
+                                <span className={cn("font-medium", issueCardStyles.red.exampleText)}>{ex.issue_type}</span>
+                                <span className={ex.severity === 'critical' ? 'text-red-600 dark:text-red-300' : 'text-yellow-600 dark:text-yellow-300'}>{ex.severity}</span>
                               </div>
-                              <div className="text-gray-500">{getShortPath(ex.file)}:{ex.line}</div>
-                              {ex.code_snippet && <code className="block mt-1 text-gray-700 bg-gray-50 p-1 rounded truncate">{ex.code_snippet}</code>}
+                              <div className="text-gray-500 dark:text-muted-foreground">{getShortPath(ex.file)}:{ex.line}</div>
+                              {ex.code_snippet && <code className="mt-1 block truncate rounded bg-gray-50 p-1 text-gray-700 dark:bg-muted dark:text-foreground">{ex.code_snippet}</code>}
                             </div>
                           ))}
                         </div>
@@ -676,30 +749,30 @@ export function CodeAnalysisTab({
 
               {/* Naming Issues */}
               {naming_issues > 0 && (
-                <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                <div className={cn("rounded-lg border p-4", issueCardStyles.blue.card)}>
                   <div className="flex items-center gap-2 mb-3">
-                    <Type className="h-5 w-5 text-blue-600" />
-                    <h3 className="text-sm font-semibold text-gray-900">
+                    <Type className={cn("h-5 w-5", issueCardStyles.blue.icon)} />
+                    <h3 className="text-sm font-semibold text-gray-900 dark:text-foreground">
                       Naming Convention Checking
                     </h3>
                   </div>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Violations:</span>
-                      <span className="font-semibold text-blue-700">
+                      <span className="text-gray-600 dark:text-muted-foreground">Violations:</span>
+                      <span className={cn("font-semibold", issueCardStyles.blue.metric)}>
                         {naming_issues}
                       </span>
                     </div>
                   </div>
-                  <p className="text-xs text-gray-500 mt-3">
+                  <p className="mt-3 text-xs text-gray-500 dark:text-muted-foreground">
                     Follow language naming conventions
                   </p>
                   {/* Examples */}
                   {examples?.naming_issues && examples.naming_issues.length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-blue-200">
+                    <div className={cn("mt-3 border-t pt-3", issueCardStyles.blue.divider)}>
                       <button
                         onClick={() => toggleSection('namingIssues')}
-                        className="flex items-center gap-1 text-xs text-blue-700 hover:text-blue-900"
+                        className={cn("flex items-center gap-1 text-xs", issueCardStyles.blue.button)}
                       >
                         {expandedSections.namingIssues ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                         {expandedSections.namingIssues ? 'Hide' : 'Show'} examples
@@ -707,11 +780,11 @@ export function CodeAnalysisTab({
                       {expandedSections.namingIssues && (
                         <div className="mt-2 space-y-2 max-h-48 overflow-y-auto">
                           {examples.naming_issues.map((ex, i) => (
-                            <div key={i} className="bg-white rounded p-2 text-xs border border-blue-100">
-                              <div className="font-mono text-blue-800">{ex.name}</div>
-                              <div className="text-gray-500">{getShortPath(ex.file)}:{ex.line}</div>
-                              <div className="text-blue-600">{ex.issue_type}</div>
-                              {ex.suggestion && <div className="text-green-600 mt-1">→ {ex.suggestion}</div>}
+                            <div key={i} className={cn("rounded border p-2 text-xs", issueCardStyles.blue.example)}>
+                              <div className={cn("font-mono", issueCardStyles.blue.exampleText)}>{ex.name}</div>
+                              <div className="text-gray-500 dark:text-muted-foreground">{getShortPath(ex.file)}:{ex.line}</div>
+                              <div className="text-blue-600 dark:text-blue-300">{ex.issue_type}</div>
+                              {ex.suggestion && <div className="mt-1 text-green-600 dark:text-green-300">→ {ex.suggestion}</div>}
                             </div>
                           ))}
                         </div>
@@ -722,22 +795,22 @@ export function CodeAnalysisTab({
               )}
               {/* Nesting Depth */}
               {nesting_issues > 0 && (
-                <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4">
+                <div className={cn("rounded-lg border p-4", issueCardStyles.indigo.card)}>
                   <div className="flex items-center gap-2 mb-3">
-                    <Layers className="h-5 w-5 text-indigo-600" />
-                    <h3 className="text-sm font-semibold text-gray-900">
+                    <Layers className={cn("h-5 w-5", issueCardStyles.indigo.icon)} />
+                    <h3 className="text-sm font-semibold text-gray-900 dark:text-foreground">
                       Nesting Depth Analysis
                     </h3>
                   </div>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Deep functions:</span>
-                      <span className="font-semibold text-indigo-700">
+                      <span className="text-gray-600 dark:text-muted-foreground">Deep functions:</span>
+                      <span className={cn("font-semibold", issueCardStyles.indigo.metric)}>
                         {nesting_issues}
                       </span>
                     </div>
                   </div>
-                  <p className="text-xs text-gray-500 mt-3">
+                  <p className="mt-3 text-xs text-gray-500 dark:text-muted-foreground">
                     Reduce nesting to improve readability
                   </p>
                 </div>
@@ -750,13 +823,13 @@ export function CodeAnalysisTab({
       {/* Call Graph Analysis Card */}
       {call_graph_edges > 0 && (
         <Card className="bg-white border border-gray-200">
-          <CardHeader className="border-b border-gray-200">
+          <CardHeader className="border-b border-gray-200 p-5 pb-4 sm:p-5 sm:pb-4">
             <CardTitle className="text-base font-bold text-gray-900 flex items-center gap-2">
               <GitBranch className="h-5 w-5" />
               Call Graph Analysis
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-6">
+          <CardContent className="p-5 sm:p-5">
             <div className="flex items-center gap-4">
               <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 flex-1">
                 <p className="text-sm text-gray-600 mb-1">Function Relationships</p>
@@ -773,12 +846,12 @@ export function CodeAnalysisTab({
       {/* Data Structure Usage Card */}
       {data_structures && Object.keys(data_structures).length > 0 && (
         <Card className="bg-white border border-gray-200">
-          <CardHeader className="border-b border-gray-200">
+          <CardHeader className="border-b border-gray-200 p-5 pb-4 sm:p-5 sm:pb-4">
             <CardTitle className="text-base font-bold text-gray-900">
               Data Structure Usage Tracking
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-6">
+          <CardContent className="p-5 sm:p-5">
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
               {Object.entries(data_structures)
                 .sort(([, a], [, b]) => b - a)
@@ -803,12 +876,12 @@ export function CodeAnalysisTab({
 
       {/* Additional Insights Card */}
       <Card className="bg-white border border-gray-200">
-        <CardHeader className="border-b border-gray-200">
+        <CardHeader className="border-b border-gray-200 p-5 pb-4 sm:p-5 sm:pb-4">
           <CardTitle className="text-base font-bold text-gray-900">
             Code Statistics
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-6">
+        <CardContent className="p-5 sm:p-5">
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <div className="flex justify-between text-sm">

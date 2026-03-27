@@ -528,7 +528,7 @@ export default function PortfolioPage() {
                     <div className="split-callout">
                       <div className="split-callout-card">
                         <p className="page-kicker mb-2">Curated Highlights</p>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="max-w-[68ch] text-sm leading-6 text-muted-foreground">
                           Portfolio items should read like concise proof points: clear role, measurable impact, and strong summary copy.
                         </p>
                       </div>
@@ -624,7 +624,7 @@ export default function PortfolioPage() {
                     <div className="split-callout">
                       <div className="split-callout-card">
                         <p className="page-kicker mb-2">Chronology</p>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="max-w-[68ch] text-sm leading-6 text-muted-foreground">
                           Timeline entries should feel sequential and scannable, with dates and evidence separated cleanly from the project title.
                         </p>
                       </div>

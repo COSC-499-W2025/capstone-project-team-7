@@ -209,25 +209,29 @@ export default function AiAnalysisPage() {
   const keyFiles = (analysisForSelected?.key_files ?? [])
     .filter((file) => Boolean(file?.file_path) && Boolean(file?.summary))
     .slice(0, 3);
+  const sectionHeaderClass = "border-b border-border/70 p-5 pb-4 sm:p-5 sm:pb-4";
+  const sectionBodyClass = "p-5 pt-4 sm:p-5 sm:pt-4";
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Page header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <Sparkles size={22} className="text-gray-700" />
-          AI Analysis
-        </h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Run AI-powered portfolio analysis on your scanned projects.
-        </p>
-      </div>
+    <div className="page-container">
+      <section className="page-card">
+        <div className="page-header">
+          <span className="page-kicker">AI Workspace</span>
+          <h1 className="flex items-center gap-2 text-foreground">
+            <Sparkles size={22} className="text-primary" />
+            AI Analysis
+          </h1>
+          <p className="page-summary mt-3">
+            Run AI-powered portfolio analysis on your scanned projects and review structured summaries, key files, and category insights in the current dashboard layout.
+          </p>
+        </div>
+      </section>
 
       {/* Eligibility status */}
-      <Card className="bg-white border border-gray-200">
-        <CardHeader className="border-b border-gray-200 pb-3">
+      <Card>
+        <CardHeader className={sectionHeaderClass}>
           <div className="flex items-center justify-between">
-            <CardTitle className="text-base font-semibold text-gray-900">
+            <CardTitle className="text-base font-semibold text-foreground">
               AI Requirements
             </CardTitle>
             <Button
@@ -235,7 +239,7 @@ export default function AiAnalysisPage() {
               size="sm"
               onClick={() => void checkEligibility()}
               disabled={eligibilityLoading}
-              className="text-xs border-gray-300 h-7"
+              className="h-8 border-border text-xs"
             >
               {eligibilityLoading ? (
                 <Loader2 size={12} className="animate-spin mr-1" />
@@ -246,16 +250,16 @@ export default function AiAnalysisPage() {
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="p-4 space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+        <CardContent className={`${sectionBodyClass} space-y-4`}>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="rounded-[16px] border border-border bg-muted/60 p-4">
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 External Data Consent
               </p>
               <EligibilityBadge ok={externalConsent} />
             </div>
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+            <div className="rounded-[16px] border border-border bg-muted/60 p-4">
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 OpenAI API Key
               </p>
               <EligibilityBadge ok={apiKeyValid} />
@@ -263,21 +267,21 @@ export default function AiAnalysisPage() {
           </div>
 
           {eligibilityChecked && !aiReady && eligibilityMessage && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 flex items-start gap-2">
+            <div className="tone-surface-amber flex items-start gap-2 rounded-[16px] border p-4">
               <AlertCircle
                 size={15}
-                className="text-amber-600 mt-0.5 flex-shrink-0"
+                className="tone-copy-amber mt-0.5 flex-shrink-0"
               />
-              <p className="text-sm text-amber-800">{eligibilityMessage}</p>
+              <p className="tone-copy-amber text-sm">{eligibilityMessage}</p>
             </div>
           )}
 
           {!eligibilityChecked && (
-            <p className="text-xs text-gray-400">Checking requirements…</p>
+            <p className="text-xs text-muted-foreground">Checking requirements…</p>
           )}
 
           {eligibilityChecked && !aiReady && (
-            <Link href="/settings" className="text-sm text-gray-700 underline">
+            <Link href="/settings" className="text-sm text-foreground underline underline-offset-4">
               Open Settings to configure requirements
             </Link>
           )}
@@ -288,26 +292,26 @@ export default function AiAnalysisPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
         {/* ── project list ─────────────────────────────── */}
         <div className="lg:col-span-1">
-          <Card className="bg-white border border-gray-200">
-            <CardHeader className="border-b border-gray-200 pb-3">
-              <CardTitle className="text-base font-semibold text-gray-900">
+          <Card>
+            <CardHeader className={sectionHeaderClass}>
+              <CardTitle className="text-base font-semibold text-foreground">
                 Your Projects
               </CardTitle>
-              <p className="text-xs text-gray-500 mt-0.5">
+              <p className="mt-0.5 text-xs text-muted-foreground">
                 Click a project to view or run AI analysis.
               </p>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-3 sm:p-3">
               {loadingProjects && (
                 <div className="flex items-center justify-center py-10">
-                  <Loader2 size={20} className="animate-spin text-gray-400" />
+                  <Loader2 size={20} className="animate-spin text-muted-foreground" />
                 </div>
               )}
               {projectsError && (
                 <div className="p-4 text-sm text-red-600">{projectsError}</div>
               )}
               {!loadingProjects && !projectsError && projects.length === 0 && (
-                <div className="p-4 text-sm text-gray-500">
+                <div className="p-4 text-sm text-muted-foreground">
                   No projects found. Upload and scan a project first.
                 </div>
               )}
@@ -323,23 +327,23 @@ export default function AiAnalysisPage() {
                     <button
                       key={project.id}
                       onClick={() => void handleSelectProject(project.id)}
-                      className={`w-full text-left px-4 py-3 border-b border-gray-100 last:border-b-0 flex items-center justify-between gap-2 transition-colors ${
+                      className={`flex w-full items-center gap-3 rounded-[18px] border px-4 py-3 text-left transition-colors ${
                         isSelected
-                          ? "bg-gray-900 text-white"
-                          : "hover:bg-gray-50 text-gray-800"
+                          ? "border-primary/30 bg-[linear-gradient(180deg,hsl(213_78%_95%),hsl(214_72%_92%))] text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] dark:border-blue-500/25 dark:bg-[linear-gradient(180deg,hsl(223_26%_22%),hsl(222_24%_18%))] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+                          : "border-transparent text-foreground hover:border-border/70 hover:bg-muted/60"
                       }`}
                     >
                       <div className="min-w-0 flex-1">
                         <p
                           className={`text-sm font-medium truncate ${
-                            isSelected ? "text-white" : "text-gray-900"
+                            isSelected ? "text-foreground" : "text-foreground"
                           }`}
                         >
                           {project.project_name}
                         </p>
                         <p
                           className={`text-xs mt-0.5 flex items-center gap-1 ${
-                            isSelected ? "text-gray-300" : "text-gray-500"
+                            isSelected ? "text-primary/80 dark:text-blue-200/85" : "text-muted-foreground"
                           }`}
                         >
                           <Calendar size={11} />
@@ -348,16 +352,14 @@ export default function AiAnalysisPage() {
                       </div>
                       <div className="flex items-center gap-1.5 flex-shrink-0">
                         {hasAnalysis && existing && (
-                          <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-medium">
+                          <span className="tone-pill tone-pill-emerald inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-medium">
                             <Sparkles size={10} />
                             AI
                           </span>
                         )}
                         <ChevronRight
                           size={14}
-                          className={
-                            isSelected ? "text-gray-300" : "text-gray-400"
-                          }
+                          className={isSelected ? "text-primary/75 dark:text-blue-200/80" : "text-muted-foreground"}
                         />
                       </div>
                     </button>
@@ -370,10 +372,15 @@ export default function AiAnalysisPage() {
         {/* ── analysis panel ────────────────────────────── */}
         <div className="lg:col-span-2 space-y-4">
           {!selectedProject && (
-            <Card className="bg-white border border-gray-200">
-              <CardContent className="p-8 text-center text-gray-400">
-                <Sparkles size={32} className="mx-auto mb-3 opacity-40" />
-                <p className="text-sm">
+            <Card>
+              <CardContent className="flex min-h-[15rem] flex-col items-start justify-center gap-4 p-5 sm:p-5">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-card/80 text-primary/80">
+                  <Sparkles size={30} />
+                </div>
+                <p className="text-lg font-semibold text-foreground">
+                  No project selected
+                </p>
+                <p className="max-w-[34ch] text-sm leading-6 text-muted-foreground">
                   Select a project from the list to view or run AI analysis.
                 </p>
               </CardContent>
@@ -383,12 +390,12 @@ export default function AiAnalysisPage() {
           {selectedProject && (
             <>
               {/* Controls card */}
-              <Card className="bg-white border border-gray-200">
-                <CardHeader className="border-b border-gray-200 pb-3">
-                  <CardTitle className="text-base font-semibold text-gray-900">
+              <Card>
+                <CardHeader className={sectionHeaderClass}>
+                  <CardTitle className="text-base font-semibold text-foreground">
                     {selectedProject.project_name}
                   </CardTitle>
-                  <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1 flex-wrap">
+                  <p className="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
                     <Calendar size={11} />
                     Scanned {formatDate(selectedProject.scan_timestamp)}
                     {selectedProject.languages &&
@@ -399,25 +406,25 @@ export default function AiAnalysisPage() {
                       )}
                   </p>
                 </CardHeader>
-                <CardContent className="p-4 space-y-3">
+                <CardContent className={`${sectionBodyClass} space-y-3`}>
                   {runError && (
-                    <div className="rounded-lg border border-red-200 bg-red-50 p-3 flex items-start gap-2">
+                    <div className="flex items-start gap-2 rounded-[16px] border border-red-500/25 bg-red-500/12 p-4">
                       <AlertCircle
                         size={15}
-                        className="text-red-500 mt-0.5 flex-shrink-0"
+                        className="mt-0.5 flex-shrink-0 text-red-300"
                       />
-                      <p className="text-sm text-red-700">{runError}</p>
+                      <p className="text-sm text-red-200">{runError}</p>
                     </div>
                   )}
 
                   {(isRunning || statusMessages.length > 0) && (
-                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
-                      <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2">
+                    <div className="tone-surface-blue rounded-[16px] border p-4">
+                      <p className="tone-copy-blue mb-2 text-xs font-semibold uppercase tracking-wide">
                         Batch Progress {isRunning && batchStatus ? `(${batchStatus})` : ""}
                       </p>
                       <ul className="space-y-1 max-h-40 overflow-auto pr-1">
                         {statusMessages.map((msg, idx) => (
-                          <li key={`${idx}-${msg}`} className="text-sm text-blue-900">
+                          <li key={`${idx}-${msg}`} className="tone-copy-blue text-sm">
                             {msg}
                           </li>
                         ))}
@@ -426,12 +433,12 @@ export default function AiAnalysisPage() {
                   )}
 
                   {!aiReady && eligibilityChecked && (
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-muted-foreground">
                       Enable External Data consent and verify your OpenAI API
                       key in{" "}
                       <Link
                         href="/settings"
-                        className="underline text-gray-700"
+                        className="text-foreground underline underline-offset-4"
                       >
                         Settings
                       </Link>{" "}
@@ -440,7 +447,7 @@ export default function AiAnalysisPage() {
                   )}
 
                   {loadingDetail && !analysisForSelected ? (
-                    <div className="flex items-center gap-2 text-sm text-gray-400">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Loader2 size={14} className="animate-spin" />
                       Loading project data…
                     </div>
@@ -452,7 +459,7 @@ export default function AiAnalysisPage() {
                             void handleRunAnalysis(selectedProject.id, false)
                           }
                           disabled={!aiReady || isRunning}
-                          className="bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-60 text-sm"
+                          className="text-sm disabled:opacity-60"
                         >
                           {isRunning ? (
                             <>
@@ -477,7 +484,7 @@ export default function AiAnalysisPage() {
                             void handleRunAnalysis(selectedProject.id, true)
                           }
                           disabled={!aiReady || isRunning}
-                          className="border-gray-300 text-sm disabled:opacity-60"
+                          className="border-border text-sm disabled:opacity-60"
                         >
                           {isRunning ? (
                             <>
@@ -502,8 +509,8 @@ export default function AiAnalysisPage() {
 
               {/* Loading state while LLM runs */}
               {isRunning && !analysisForSelected && (
-                <Card className="bg-white border border-gray-200">
-                  <CardContent className="p-8 flex flex-col items-center gap-3 text-gray-400">
+                <Card>
+                  <CardContent className="flex flex-col items-center gap-3 p-8 text-muted-foreground">
                     <Loader2 size={24} className="animate-spin" />
                     <p className="text-sm">
                       Running AI analysis, streaming backend batch status above…
@@ -514,22 +521,22 @@ export default function AiAnalysisPage() {
 
               {/* Results */}
               {analysisForSelected && !isRunning && (
-                <Card className="bg-white border border-gray-200">
-                  <CardHeader className="border-b border-gray-200 pb-3">
-                    <CardTitle className="text-base font-semibold text-gray-900 flex items-center gap-2">
-                      <Sparkles size={16} className="text-gray-700" />
+                <Card>
+                  <CardHeader className={sectionHeaderClass}>
+                    <CardTitle className="flex items-center gap-2 text-base font-semibold text-foreground">
+                      <Sparkles size={16} className="text-primary" />
                       AI Analysis Results
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="p-5 space-y-5">
+                  <CardContent className={`${sectionBodyClass} space-y-5`}>
                     {useMarkdownReport ? (
                       <div className="space-y-4">
-                        <div className="rounded-2xl border border-gray-200 bg-gradient-to-b from-white to-gray-50/60 p-5 shadow-sm">
+                        <div className="dashboard-card-subtle space-y-4 border border-border/70 p-5">
                           <div className="flex items-center justify-between mb-4">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                               Batch AI Report
                             </p>
-                            <span className="text-xs px-2 py-1 rounded-full border border-gray-200 text-gray-600 bg-white">
+                            <span className="rounded-full border border-border bg-card/85 px-2 py-1 text-xs text-muted-foreground">
                               Markdown View
                             </span>
                           </div>
@@ -537,9 +544,9 @@ export default function AiAnalysisPage() {
                         </div>
 
                         {keyFiles.length > 0 && (
-                          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                          <div className="dashboard-card-subtle border border-border/70 p-5">
                             <div className="mb-3">
-                              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                                 Key Files
                               </p>
                             </div>
@@ -547,17 +554,17 @@ export default function AiAnalysisPage() {
                               {keyFiles.map((file, idx) => (
                                 <details
                                   key={`${file.file_path}-${idx}`}
-                                  className="group rounded-lg border border-gray-200 bg-gray-50/60 open:bg-white open:border-gray-300"
+                                  className="group rounded-[16px] border border-border bg-muted/50 open:border-border open:bg-card/90"
                                 >
                                   <summary className="cursor-pointer select-none list-none px-4 py-3 flex items-center justify-between">
-                                    <span className="text-sm font-medium text-gray-900 break-all pr-3">
+                                    <span className="break-all pr-3 text-sm font-medium text-foreground">
                                       {file.file_path}
                                     </span>
-                                    <span className="text-xs text-gray-500 group-open:text-gray-700">
+                                    <span className="text-xs text-muted-foreground group-open:text-foreground">
                                       Expand
                                     </span>
                                   </summary>
-                                  <div className="px-4 pb-4 border-t border-gray-100 pt-3">
+                                  <div className="border-t border-border/70 px-4 pb-4 pt-3">
                                     <KeyFileSummary text={file.summary as string} keyPrefix={`kf-${idx}`} />
                                   </div>
                                 </details>
@@ -571,10 +578,10 @@ export default function AiAnalysisPage() {
                         {/* Overall summary */}
                         {analysisForSelected.overall_summary && (
                           <div>
-                            <p className="text-sm font-semibold text-gray-700 mb-1">
+                            <p className="mb-1 text-sm font-semibold text-foreground">
                               Project Overview
                             </p>
-                            <p className="text-sm text-gray-700 leading-relaxed">
+                            <p className="text-sm leading-relaxed text-muted-foreground">
                               {analysisForSelected.overall_summary}
                             </p>
                           </div>
@@ -596,8 +603,8 @@ export default function AiAnalysisPage() {
                       !analysisForSelected.categories?.length &&
                       analysisForSelected.portfolio_overview && (
                         <div>
-                          <p className="text-sm font-semibold text-gray-700 mb-1">Portfolio Overview</p>
-                          <p className="text-sm text-gray-700 leading-relaxed">
+                          <p className="mb-1 text-sm font-semibold text-foreground">Portfolio Overview</p>
+                          <p className="text-sm leading-relaxed text-muted-foreground">
                             {analysisForSelected.portfolio_overview}
                           </p>
                         </div>
@@ -606,7 +613,7 @@ export default function AiAnalysisPage() {
                     {!analysisForSelected.overall_summary &&
                       !analysisForSelected.categories?.length &&
                       !analysisForSelected.portfolio_overview && (
-                        <p className="text-sm text-gray-400">
+                        <p className="text-sm text-muted-foreground">
                           No analysis data returned. Try re-running.
                         </p>
                       )}

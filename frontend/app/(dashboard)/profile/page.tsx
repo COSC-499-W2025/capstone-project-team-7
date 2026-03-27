@@ -297,19 +297,12 @@ export default function ProfilePage() {
   return (
     <main className="page-container max-w-6xl mx-auto">
       <section className="page-card page-hero">
-        <div className="page-header flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-          <div>
+        <div className="page-header flex min-w-0 flex-col gap-6">
+          <div className="min-w-0">
             <p className="page-kicker">Account Identity</p>
             <h1 className="text-[30px] leading-[36px] font-bold tracking-tight">Profile</h1>
             <p className="page-summary">Manage your public identity, supporting links, and account security.</p>
           </div>
-          <Button
-            variant="outline"
-            className="rounded-md"
-            onClick={() => window.history.back()}
-          >
-            Back
-          </Button>
         </div>
       </section>
 
@@ -328,12 +321,12 @@ export default function ProfilePage() {
       )}
 
       {/* 2-column layout */}
-      <div className="grid gap-6 md:grid-cols-[280px_1fr]">
+      <div className="grid gap-6 2xl:grid-cols-[280px_minmax(0,1fr)]">
         {/* -------- LEFT COLUMN -------- */}
         <div className="space-y-4">
           {/* Avatar */}
           <Card>
-            <CardContent className="flex flex-col items-center gap-3 p-4">
+            <CardContent className="flex flex-col items-center gap-3 p-4 sm:p-4 sm:pt-4">
               <Avatar
                 src={avatarPreview ?? undefined}
                 alt="Avatar preview"
@@ -341,7 +334,7 @@ export default function ProfilePage() {
                 className="h-28 w-28 border-2 border-border text-3xl font-bold"
               />
 
-              <div className="flex gap-2">
+              <div className="flex flex-wrap justify-center gap-2">
                 <Button size="sm" className="rounded-md" onClick={pickAvatar}>
                   Change
                 </Button>
@@ -366,7 +359,7 @@ export default function ProfilePage() {
 
           {/* Identity summary */}
           <Card>
-            <CardContent className="space-y-1 p-4">
+            <CardContent className="space-y-1 p-4 sm:p-4 sm:pt-4">
               <p className="text-sm font-semibold">{draft.display_name || "No display name"}</p>
               <p className="text-xs text-muted-foreground">{draft.email || "No email"}</p>
               {draft.career_title && (
@@ -380,7 +373,7 @@ export default function ProfilePage() {
           {/* Logout */}
           <Button
             variant="outline"
-            className="w-full rounded-md border-2 border-red-300 text-red-600 hover:bg-red-50"
+            className="button-outline-danger w-full rounded-md border-2"
             onClick={handleLogout}
           >
             Log out
@@ -388,13 +381,13 @@ export default function ProfilePage() {
         </div>
 
         {/* -------- RIGHT COLUMN -------- */}
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
           {/* Basic info */}
           <Card>
-            <CardHeader className="p-4 pb-0">
+            <CardHeader className="p-4 pb-0 sm:p-4 sm:pb-0">
               <CardTitle className="text-sm">Basic Information</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3 p-4">
+            <CardContent className="space-y-3 p-4 sm:p-4 sm:pt-4">
               <div className="space-y-1">
                 <Label htmlFor="display_name">Display Name</Label>
                 <Input
@@ -440,10 +433,10 @@ export default function ProfilePage() {
 
           {/* Links */}
           <Card>
-            <CardHeader className="p-4 pb-0">
+            <CardHeader className="p-4 pb-0 sm:p-4 sm:pb-0">
               <CardTitle className="text-sm">Links &amp; Resources</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3 p-4">
+            <CardContent className="space-y-3 p-4 sm:p-4 sm:pt-4">
               <div className="space-y-1">
                 <Label htmlFor="schema_url">GitHub Profile URL</Label>
                 <Input
@@ -476,10 +469,10 @@ export default function ProfilePage() {
 
           {/* Password */}
           <Card>
-            <CardHeader className="p-4 pb-0">
+            <CardHeader className="p-4 pb-0 sm:p-4 sm:pb-0">
               <CardTitle className="text-sm">Change Password</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3 p-4">
+            <CardContent className="space-y-3 p-4 sm:p-4 sm:pt-4">
               <div className="space-y-1">
                 <Label htmlFor="current_password">Current Password</Label>
                 <Input
@@ -525,7 +518,7 @@ export default function ProfilePage() {
           </Card>
 
           {/* Action bar */}
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             <Button
               className="rounded-md"
               onClick={handleSave}

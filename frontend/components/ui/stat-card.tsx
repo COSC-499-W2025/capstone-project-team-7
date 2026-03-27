@@ -21,7 +21,7 @@ export function StatCard({ label, value, variant = "card", className }: StatCard
 
   return (
     <Card className={cn(className)}>
-      <CardContent className="p-4">
+      <CardContent className="p-4 sm:p-4">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
         <p className="text-xl font-bold text-foreground mt-1">{value}</p>
       </CardContent>

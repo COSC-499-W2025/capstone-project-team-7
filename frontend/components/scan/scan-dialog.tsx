@@ -184,7 +184,7 @@ export function ScanDialog({ open, onOpenChange, onScanComplete }: ScanDialogPro
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[500px] bg-[linear-gradient(180deg,hsl(var(--card)),hsl(var(--card)))] shadow-[0_28px_56px_rgba(15,23,42,0.16)] dark:bg-[linear-gradient(180deg,hsl(var(--card)),hsl(var(--background))/0.94)] dark:shadow-[0_30px_60px_rgba(15,23,42,0.2)]">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold">
             {isSuccess

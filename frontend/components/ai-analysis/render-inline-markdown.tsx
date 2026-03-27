@@ -22,7 +22,7 @@ export function renderInlineMarkdown(
     const isBold = part.startsWith("**") && part.endsWith("**") && part.length > 4;
     if (isBold) {
       return (
-        <strong key={`${keyPrefix}-b-${idx}`} className="font-semibold text-gray-900">
+        <strong key={`${keyPrefix}-b-${idx}`} className="font-semibold text-foreground">
           {part.slice(2, -2)}
         </strong>
       );

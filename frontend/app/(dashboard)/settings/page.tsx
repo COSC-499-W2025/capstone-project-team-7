@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -23,7 +22,6 @@ import type { ConfigResponse, ProfilesResponse, EncryptionStatus, SecretStatusIt
 import { AlertTriangle, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
 
 export default function SettingsPage() {
-  const router = useRouter();
   const { logout } = useAuth();
   
   // User session
@@ -583,20 +581,10 @@ export default function SettingsPage() {
               disabled={consentLoading}
               variant="outline"
               size="sm"
-              className="border-red-300 text-red-600 hover:bg-red-50"
+              className="button-outline-danger"
             >
               {consentLoading ? "Retrying..." : "Retry"}
             </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Loading Overlay */}
-      {consentLoading && (
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
-          <div className="text-center">
-            <Spinner size={48} className="mx-auto mb-4 text-primary" />
-            <p className="text-sm text-muted-foreground">Loading settings...</p>
           </div>
         </div>
       )}
@@ -605,10 +593,15 @@ export default function SettingsPage() {
         <div className="page-header">
           <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
             <div>
-              <Link href="/" className="text-sm text-muted-foreground hover:text-foreground mb-2 inline-block">
-                ← Back
-              </Link>
-              <p className="page-kicker">Operations Control</p>
+              <div className="flex items-center gap-2">
+                <span
+                  aria-hidden="true"
+                  className="h-px w-7 bg-gradient-to-r from-primary/75 to-primary/0"
+                />
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Operations Control
+                </p>
+              </div>
               <h1 className="text-foreground">Settings</h1>
               <p className="page-summary mt-3">Manage appearance, security, privacy, and scanning configuration.</p>
               <div className="mt-4 flex flex-wrap gap-2">
@@ -628,7 +621,7 @@ export default function SettingsPage() {
                     variant="outline"
                     size="sm"
                     onClick={handleLogout}
-                    className="mt-2 border-red-300 text-red-600 hover:bg-red-50"
+                    className="button-outline-danger mt-2"
                   >
                     Logout
                   </Button>
@@ -678,14 +671,14 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <Tabs defaultValue="general" className="space-y-0">
+        <Tabs defaultValue="general" className="space-y-6">
           <TabsList className="h-auto w-full justify-start gap-2 overflow-x-auto">
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="security">Security & Privacy</TabsTrigger>
             <TabsTrigger value="scanning">Scanning</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="general" className="mt-6 border-0 bg-transparent p-0">
+          <TabsContent value="general" className="mt-0 border-0 bg-transparent p-0">
             <div className="space-y-6">
               <Card className="bg-background">
                 <CardHeader className="pb-5">
@@ -780,9 +773,9 @@ export default function SettingsPage() {
                     <p className="text-xs text-muted-foreground mt-1">Comma-separated emails to include in contribution matching</p>
                   </div>
                 </CardContent>
-                <CardFooter className="bg-muted/60 p-6">
-                  <div className="flex items-center gap-3">
-                    <Button onClick={onSave} className="">
+                <CardFooter className="min-h-[92px] items-center border-t border-border/70 bg-transparent px-6 py-0 sm:min-h-[92px] sm:px-6 sm:py-0">
+                  <div className="flex min-h-full w-full flex-wrap items-center justify-start gap-3">
+                    <Button onClick={onSave}>
                       Save Changes
                     </Button>
                     {saveStatus && (
@@ -796,7 +789,7 @@ export default function SettingsPage() {
             </div>
           </TabsContent>
 
-          <TabsContent value="security" className="mt-6 border-0 bg-transparent p-0">
+          <TabsContent value="security" className="mt-0 border-0 bg-transparent p-0">
             <div className="space-y-6">
               <Card className="bg-background">
                 <CardHeader className="pb-5">
@@ -823,7 +816,7 @@ export default function SettingsPage() {
                           onClick={handleRetryEncryptionStatus}
                           variant="outline"
                           size="sm"
-                          className="border-red-300 text-red-600 hover:bg-red-50"
+                          className="button-outline-danger"
                         >
                           Retry
                         </Button>
@@ -855,9 +848,9 @@ export default function SettingsPage() {
                       </div>
 
                       {encryptionReady ? (
-                        <div className="bg-green-50 border-2 border-green-300 rounded-md p-4">
-                          <p className="text-sm text-green-700 font-medium">Encryption is active.</p>
-                          <p className="text-xs text-green-700 mt-1">Your stored data will be encrypted using the current backend configuration.</p>
+                        <div className="tone-surface-emerald rounded-md border-2 p-4">
+                          <p className="tone-copy-emerald text-sm font-medium">Encryption is active.</p>
+                          <p className="tone-copy-emerald mt-1 text-xs">Your stored data will be encrypted using the current backend configuration.</p>
                         </div>
                       ) : (
                         <div className="bg-amber-50 border-2 border-amber-300 rounded-md p-4 space-y-2">
@@ -952,7 +945,7 @@ export default function SettingsPage() {
                               size="sm"
                               onClick={() => setShowClearConfirm(true)}
                               disabled={!openaiSecret}
-                              className="border-red-300 text-red-600 hover:bg-red-50"
+                              className="button-outline-danger"
                             >
                               Clear Key
                             </Button>
@@ -971,8 +964,8 @@ export default function SettingsPage() {
                       </div>
                     )}
                   </CardContent>
-                  <CardFooter className="bg-muted/60 p-6">
-                    <p className="text-xs text-muted-foreground">
+                  <CardFooter className="min-h-[84px] items-center bg-muted/60 px-6 py-0 sm:min-h-[84px] sm:px-6 sm:py-0">
+                    <p className="w-full text-xs text-muted-foreground">
                       API keys are encrypted at rest and never returned after saving.
                     </p>
                   </CardFooter>
@@ -1016,7 +1009,7 @@ export default function SettingsPage() {
             </div>
           </TabsContent>
 
-          <TabsContent value="scanning" className="mt-6 border-0 bg-transparent p-0">
+          <TabsContent value="scanning" className="mt-0 border-0 bg-transparent p-0">
             <div className="space-y-6">
               {userSession ? (
                 <Card className="bg-background">
@@ -1127,8 +1120,8 @@ export default function SettingsPage() {
                       </div>
                     )}
                   </CardContent>
-                  <CardFooter className="bg-muted/60 p-6">
-                    <div className="flex flex-col gap-2">
+                  <CardFooter className="min-h-[104px] items-center bg-muted/60 px-6 py-0 sm:min-h-[104px] sm:px-6 sm:py-0">
+                    <div className="flex w-full flex-col justify-center gap-2">
                       <div className="flex items-center gap-3">
                         <Button
                           onClick={onSaveConfig}

@@ -10,7 +10,7 @@ export function MarkdownReport({ markdown }: { markdown: string }) {
   const flushParagraph = () => {
     if (!paragraphBuffer.length) return;
     items.push(
-      <p key={`p-${items.length}`} className="text-sm text-gray-700 leading-7">
+      <p key={`p-${items.length}`} className="text-sm leading-7 text-muted-foreground">
         {renderInlineMarkdown(paragraphBuffer.join(" "), `p-${items.length}`)}
       </p>
     );
@@ -20,9 +20,9 @@ export function MarkdownReport({ markdown }: { markdown: string }) {
   const flushList = () => {
     if (!currentList.length) return;
     items.push(
-      <ul key={`ul-${items.length}`} className="space-y-2 pl-5 list-disc marker:text-gray-400">
+      <ul key={`ul-${items.length}`} className="list-disc space-y-2 pl-5 marker:text-muted-foreground/70">
         {currentList.map((item, idx) => (
-          <li key={`li-${idx}`} className="text-sm text-gray-700 leading-6">
+          <li key={`li-${idx}`} className="text-sm leading-6 text-muted-foreground">
             {renderInlineMarkdown(item, `li-${idx}`)}
           </li>
         ))}
@@ -51,7 +51,7 @@ export function MarkdownReport({ markdown }: { markdown: string }) {
       flushParagraph();
       flushList();
       items.push(
-        <h3 key={`h3-${items.length}`} className="text-base font-semibold text-gray-900 pt-2">
+        <h3 key={`h3-${items.length}`} className="pt-2 text-base font-semibold text-foreground">
           {renderInlineMarkdown(heading3[1], `h3-${items.length}`)}
         </h3>
       );
@@ -63,7 +63,7 @@ export function MarkdownReport({ markdown }: { markdown: string }) {
       flushParagraph();
       flushList();
       items.push(
-        <h2 key={`h2-${items.length}`} className="text-lg font-semibold text-gray-900 pt-3">
+        <h2 key={`h2-${items.length}`} className="pt-3 text-lg font-semibold text-foreground">
           {renderInlineMarkdown(heading2[1], `h2-${items.length}`)}
         </h2>
       );
@@ -75,7 +75,7 @@ export function MarkdownReport({ markdown }: { markdown: string }) {
       flushParagraph();
       flushList();
       items.push(
-        <h1 key={`h1-${items.length}`} className="text-xl font-bold text-gray-900 pt-3">
+        <h1 key={`h1-${items.length}`} className="pt-3 text-xl font-bold text-foreground">
           {renderInlineMarkdown(heading1[1], `h1-${items.length}`)}
         </h1>
       );
@@ -87,7 +87,7 @@ export function MarkdownReport({ markdown }: { markdown: string }) {
       flushParagraph();
       flushList();
       items.push(
-        <h3 key={`sh-${items.length}`} className="text-sm font-semibold tracking-wide text-gray-500 uppercase pt-3">
+        <h3 key={`sh-${items.length}`} className="pt-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           {renderInlineMarkdown(sectionHeading[1], `sh-${items.length}`)}
         </h3>
       );

@@ -117,7 +117,6 @@ export default function LoginPage() {
     <div className="auth-shell">
       <div className="auth-panel">
         <section className="auth-showcase">
-          <p className="page-kicker text-white/70">Investor-ready workspace</p>
           <h1 className="text-4xl font-bold text-white">Lumen</h1>
           <p className="mt-4 max-w-md text-sm leading-7 text-white/78">
             Portfolio intelligence, structured project evidence, and polished presentation assets in one focused workspace.
@@ -221,7 +220,7 @@ export default function LoginPage() {
               <Button
                 type="submit"
                 data-testid="submit"
-                className="w-full"
+                className="w-full text-white hover:text-white"
                 disabled={isSubmitting || isLoading}
               >
                 {isSubmitting ? "Signing in..." : "Sign in"}

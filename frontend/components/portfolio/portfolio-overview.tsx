@@ -355,77 +355,83 @@ export function PortfolioOverview({
               )}
 
               <div className="rounded-[16px] border border-primary/25 bg-primary/5 p-3 shadow-[0_4px_12px_rgba(15,23,42,0.04)]">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground mb-0.5">
-                      Visibility
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {pubSettings?.is_public
-                        ? "Public • Share with anyone"
-                        : "Private • Link only"}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={handleTogglePublish}
-                      disabled={publishing}
-                      className={`inline-flex items-center gap-1.5 rounded-[12px] border px-3.5 py-2 text-xs font-semibold transition-all ${
-                        pubSettings?.is_public
-                          ? "border-primary bg-primary text-primary-foreground shadow-[0_6px_16px_hsl(var(--primary)/0.25)] hover:shadow-[0_8px_20px_hsl(var(--primary)/0.3)]"
-                          : "border-border bg-card text-foreground hover:bg-muted hover:border-primary/30 shadow-[0_2px_8px_rgba(15,23,42,0.04)]"
-                      } disabled:cursor-not-allowed disabled:opacity-50`}
-                    >
-                      {publishing ? (
-                        <>
-                          <Spinner size={14} />
-                          Updating...
-                        </>
-                      ) : pubSettings?.is_public ? (
-                        <>
-                          <Globe className="h-3.5 w-3.5" />
-                          Make Private
-                        </>
-                      ) : (
-                        <>
-                          <Globe className="h-3.5 w-3.5" />
-                          Make Public
-                        </>
-                      )}
-                    </button>
-
-                    {pubSettings?.is_public && pubSettings.share_token && (
+                <div className="flex flex-col gap-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground mb-0.5">
+                        Visibility
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {pubSettings?.is_public
+                          ? "Public • Share with anyone"
+                          : "Private • Link only"}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
-                        onClick={handleCopyLink}
-                        className="inline-flex items-center gap-1.5 rounded-[12px] border border-primary/30 bg-primary/10 px-3.5 py-2 text-xs font-semibold text-primary transition-all hover:bg-primary/15 hover:border-primary/50 shadow-[0_2px_8px_rgba(15,23,42,0.04)]"
+                        onClick={handleTogglePublish}
+                        disabled={publishing}
+                        className={`inline-flex items-center gap-1.5 rounded-[12px] border px-3.5 py-2 text-xs font-semibold transition-all ${
+                          pubSettings?.is_public
+                            ? "border-primary bg-primary text-primary-foreground shadow-[0_6px_16px_hsl(var(--primary)/0.25)] hover:shadow-[0_8px_20px_hsl(var(--primary)/0.3)]"
+                            : "border-border bg-card text-foreground hover:bg-muted hover:border-primary/30 shadow-[0_2px_8px_rgba(15,23,42,0.04)]"
+                        } disabled:cursor-not-allowed disabled:opacity-50`}
                       >
-                        {copied ? (
+                        {publishing ? (
                           <>
-                            <Check className="h-3.5 w-3.5" />
-                            Copied!
+                            <Spinner size={14} />
+                            Updating...
+                          </>
+                        ) : pubSettings?.is_public ? (
+                          <>
+                            <Globe className="h-3.5 w-3.5" />
+                            Make Private
                           </>
                         ) : (
                           <>
-                            <Copy className="h-3.5 w-3.5" />
-                            Copy Link
+                            <Globe className="h-3.5 w-3.5" />
+                            Make Public
                           </>
                         )}
                       </button>
-                    )}
+
+                      {pubSettings?.is_public && pubSettings.share_token && (
+                        <button
+                          type="button"
+                          onClick={handleCopyLink}
+                          className="inline-flex items-center gap-1.5 rounded-[12px] border border-primary/30 bg-primary/10 px-3.5 py-2 text-xs font-semibold text-primary transition-all hover:bg-primary/15 hover:border-primary/50 shadow-[0_2px_8px_rgba(15,23,42,0.04)]"
+                        >
+                          {copied ? (
+                            <>
+                              <Check className="h-3.5 w-3.5" />
+                              Copied!
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="h-3.5 w-3.5" />
+                              Copy Link
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
                   </div>
+                  {onShareLinkedIn && (
+                    <div className="flex">
+                      <button
+                        type="button"
+                        onClick={onShareLinkedIn}
+                        className="inline-flex items-center gap-2 rounded-[14px] border border-border bg-background px-4 py-2.5 text-xs font-semibold text-foreground shadow-[0_2px_8px_rgba(15,23,42,0.04)] transition-[transform,border-color,background-color,color] hover:-translate-y-px hover:border-primary/20 hover:bg-card"
+                      >
+                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-primary/15 bg-primary/10 text-[hsl(var(--accent-foreground))]">
+                          <Linkedin className="h-3.5 w-3.5" />
+                        </span>
+                        Share on LinkedIn
+                      </button>
+                    </div>
+                  )}
                 </div>
-                {onShareLinkedIn && (
-                  <button
-                    type="button"
-                    onClick={onShareLinkedIn}
-                    className="inline-flex items-center gap-1.5 rounded-[12px] border border-[#0A66C2]/30 bg-white px-3.5 py-2 text-xs font-semibold text-[#0A66C2] transition-colors hover:bg-[#0A66C2]/5"
-                  >
-                    <Linkedin className="h-3.5 w-3.5" />
-                    Share on LinkedIn
-                  </button>
-                )}
               </div>
 
               <div className="flex flex-wrap gap-2">
@@ -757,13 +763,13 @@ export function PortfolioOverview({
                 {evolutionData.length > 0 && (
                   <div className="mt-5">
                     <div className="mb-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                         Evolution
                       </p>
-                      <h3 className="mt-1 text-base font-semibold tracking-tight text-slate-950">
+                      <h3 className="mt-1 text-lg font-semibold tracking-tight text-foreground">
                         Project Growth Over Time
                       </h3>
-                      <p className="mt-1 text-sm text-slate-500">
+                      <p className="mt-1 text-sm text-muted-foreground">
                         Monthly commit activity showing how each project evolved.
                       </p>
                     </div>

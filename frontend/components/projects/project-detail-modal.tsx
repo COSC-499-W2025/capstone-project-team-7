@@ -112,6 +112,7 @@ export function ProjectDetailModal({
           </DialogHeader>
 
           <div className="flex-1 overflow-y-auto px-6 pb-6 pt-5 sm:px-7 sm:pb-7">
+            {/* TODO: Keep this modal overview-focused for now. Full Files/Languages/Git/Skills/Documents/Media analysis remains on the dedicated project page until the simplified modal scope is revisited intentionally. */}
             <div className="grid gap-5 xl:grid-cols-[minmax(0,1.18fr)_minmax(300px,0.82fr)]">
               <div className="space-y-5">
                 <Section>

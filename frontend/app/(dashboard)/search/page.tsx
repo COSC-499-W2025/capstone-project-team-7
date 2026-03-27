@@ -130,14 +130,13 @@ export default function SearchPage() {
       </section>
 
         <section className="page-card page-body">
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(300px,0.8fr)]">
-            <div className="space-y-4">
+          <div className="space-y-4">
               <div className="rounded-[22px] border border-border bg-muted/35 p-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                   Query Builder
                 </p>
-                <div className="mt-3 flex flex-col gap-4 sm:flex-row">
-                  <div className="flex-1">
+                <div className="mt-3 grid gap-4 lg:grid-cols-[minmax(0,1fr)_140px_180px_132px] lg:items-center">
+                  <div className="min-w-0">
                     <SearchInput
                       value={query}
                       onChange={setQuery}
@@ -158,7 +157,7 @@ export default function SearchPage() {
                       setScope(value as "all" | "files" | "skills")
                     }
                   >
-                    <SelectTrigger className="w-full sm:w-[160px]">
+                    <SelectTrigger className="w-full">
                       <SelectValue placeholder="Scope" />
                     </SelectTrigger>
                     <SelectContent>
@@ -169,7 +168,7 @@ export default function SearchPage() {
                   </Select>
 
                   <Select value={selectedSkill} onValueChange={setSelectedSkill}>
-                    <SelectTrigger className="w-full sm:w-[220px]">
+                    <SelectTrigger className="w-full">
                       <SelectValue placeholder="Filter by skill" />
                     </SelectTrigger>
                     <SelectContent>
@@ -192,7 +191,7 @@ export default function SearchPage() {
                     onClick={handleSearch}
                     onKeyDown={handleKeyDown}
                     disabled={loading || !query.trim()}
-                    className="sm:min-w-[132px]"
+                    className="w-full lg:min-w-[132px]"
                   >
                     {loading ? (
                       <Spinner size="md" />
@@ -315,25 +314,6 @@ export default function SearchPage() {
                   </p>
                 </div>
               )}
-            </div>
-
-            <div className="grid gap-3">
-              <div className="info-tile">
-                <p className="info-tile-kicker">Search Tips</p>
-                <p className="mt-3 text-base font-semibold text-foreground">Use short, precise terms</p>
-                <p className="mt-2 text-sm text-muted-foreground">Search by filename fragments, technology names, or notable capabilities.</p>
-              </div>
-              <div className="info-tile">
-                <p className="info-tile-kicker">Filters</p>
-                <p className="mt-3 text-base font-semibold text-foreground">Scope narrows noise</p>
-                <p className="mt-2 text-sm text-muted-foreground">Switch between files and skills when you want either raw evidence or extracted expertise.</p>
-              </div>
-              <div className="info-tile">
-                <p className="info-tile-kicker">Navigation</p>
-                <p className="mt-3 text-base font-semibold text-foreground">Jump directly into a project</p>
-                <p className="mt-2 text-sm text-muted-foreground">Each result opens the corresponding project detail view without changing the underlying search data.</p>
-              </div>
-            </div>
           </div>
       </section>
     </div>

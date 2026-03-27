@@ -3,7 +3,6 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import type {
-  ProjectContributionMetrics,
   ProjectDetail,
   ProjectScanData,
   ProjectScanLanguageEntry,
@@ -31,10 +30,11 @@ interface RecentScanCardProps {
   project: ProjectDetail;
 }
 
-type ContributionMetrics = Pick<
-  ProjectContributionMetrics,
-  "total_commits" | "total_contributors" | "user_commit_share"
->;
+interface ContributionMetrics {
+  total_commits?: number;
+  total_contributors?: number;
+  user_commit_share?: number;
+}
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
@@ -183,7 +183,7 @@ function getContributionMetrics(
     return null;
   }
 
-  const metrics = rawMetrics as ProjectContributionMetrics;
+  const metrics = rawMetrics as Record<string, unknown>;
 
   return {
     total_commits: toFiniteNumber(metrics.total_commits),
@@ -264,21 +264,21 @@ function getLanguageTone(language: string): string {
   switch (language.toLowerCase()) {
     case "typescript":
     case "javascript":
-      return "bg-amber-50 text-amber-900 border-amber-200";
+      return "tone-pill tone-pill-amber";
     case "python":
-      return "bg-blue-50 text-blue-900 border-blue-200";
+      return "tone-pill tone-pill-blue";
     case "markdown":
     case "md":
-      return "bg-emerald-50 text-emerald-900 border-emerald-200";
+      return "tone-pill tone-pill-emerald";
     case "json":
     case "yaml":
     case "yml":
-      return "bg-violet-50 text-violet-900 border-violet-200";
+      return "tone-pill tone-pill-violet";
     case "text":
     case "txt":
-      return "bg-slate-100 text-slate-800 border-slate-200";
+      return "tone-pill tone-pill-slate";
     default:
-      return "bg-slate-50 text-slate-800 border-slate-200";
+      return "tone-pill tone-pill-slate";
   }
 }
 
@@ -400,11 +400,11 @@ export function RecentScanCard({ project }: RecentScanCardProps) {
   };
 
   return (
-    <article className="dashboard-panel">
+    <article className="dashboard-panel dashboard-panel-interactive">
       <div className="flex flex-col gap-6 p-6 lg:p-7">
         <div className="flex flex-col gap-5 border-b border-border/70 pb-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-center gap-4">
-            <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl border border-[hsl(221_40%_83%)] bg-[linear-gradient(180deg,hsl(221_100%_98%),hsl(0_0%_100%))] text-[hsl(221_83%_53%)]">
+            <div className="scan-project-mark flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl border">
               <FileCode className="h-6 w-6" />
             </div>
             <div className="min-w-0">
@@ -412,7 +412,7 @@ export function RecentScanCard({ project }: RecentScanCardProps) {
                 <h3 className="truncate text-[1.8rem] font-semibold tracking-[-0.03em] text-foreground">
                   {project.project_name}
                 </h3>
-                <span className="dashboard-chip bg-[hsl(221_100%_98%)] text-[hsl(221_70%_42%)] border-[hsl(221_52%_83%)]">
+                <span className="dashboard-chip tone-pill tone-pill-blue">
                   Latest scan
                 </span>
               </div>

@@ -118,24 +118,24 @@ export function PdfAnalysisTab({
     <div className="space-y-5">
       {/* Statistics Overview */}
       <Card>
-        <CardHeader className="border-b border-border/70 p-5 pb-4">
+        <CardHeader className="border-b border-border/70 p-5 pb-4 sm:p-5 sm:pb-4">
           <CardTitle className="text-lg font-semibold text-foreground">PDF Statistics</CardTitle>
         </CardHeader>
-        <CardContent className="p-5 pt-4">
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <div className="stat-block p-4 text-center">
+        <CardContent className="p-5 pt-4 sm:p-5 sm:pt-4">
+          <div className="grid grid-cols-2 items-start gap-3 md:grid-cols-4">
+            <div className="stat-block self-start p-4 text-center">
               <p className="text-2xl font-bold text-foreground">{stats.total_pdfs}</p>
               <p className="mt-1 text-xs text-muted-foreground">Total PDFs</p>
             </div>
-            <div className="stat-block p-4 text-center">
+            <div className="stat-block self-start p-4 text-center">
               <p className="text-2xl font-bold text-foreground">{stats.total_pages}</p>
               <p className="mt-1 text-xs text-muted-foreground">Total Pages</p>
             </div>
-            <div className="stat-block p-4 text-center">
+            <div className="stat-block self-start p-4 text-center">
               <p className="text-2xl font-bold text-foreground">{stats.avg_pages}</p>
               <p className="mt-1 text-xs text-muted-foreground">Avg Pages/PDF</p>
             </div>
-            <div className="stat-block p-4 text-center">
+            <div className="stat-block self-start p-4 text-center">
               <p className="text-2xl font-bold text-foreground">{Math.round(stats.total_reading_time)}</p>
               <p className="mt-1 text-xs text-muted-foreground">Total Minutes</p>
             </div>
@@ -145,12 +145,12 @@ export function PdfAnalysisTab({
 
       {/* PDF Documents List */}
       <Card>
-        <CardHeader className="border-b border-border/70 p-5 pb-4">
+        <CardHeader className="border-b border-border/70 p-5 pb-4 sm:p-5 sm:pb-4">
           <CardTitle className="text-lg font-semibold text-foreground">
             PDF Documents ({documents.length})
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-5 pt-4">
+        <CardContent className="p-5 pt-4 sm:p-5 sm:pt-4">
           {resolvedIsLoading && (
             <div className="text-center py-8 text-gray-500">
               Loading PDF analysis…
