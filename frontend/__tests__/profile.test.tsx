@@ -79,6 +79,13 @@ URL.revokeObjectURL = vi.fn();
 beforeEach(() => {
   vi.clearAllMocks();
   mockLogout.mockReset();
+  mockLogout.mockImplementation(() => {
+    localStorageMock.removeItem("access_token");
+    localStorageMock.removeItem("auth_access_token");
+    localStorageMock.removeItem("refresh_token");
+    localStorageMock.removeItem("user");
+    window.dispatchEvent(new CustomEvent("auth:signout", { detail: { expired: false } }));
+  });
   localStorageMock.clear();
   localStorageMock.setItem("access_token", "test-token");
   locationMock.href = "";
@@ -294,12 +301,22 @@ describe("ProfilePage", () => {
     });
   });
 
-  it("logout calls auth logout handler", async () => {
+  it("logout clears localStorage and dispatches signout event", async () => {
+    const signoutHandler = vi.fn();
+    window.addEventListener("auth:signout", signoutHandler);
+
     await renderAndWait();
     const logoutBtn = screen.getByRole("button", { name: "Log out" });
     await userEvent.click(logoutBtn);
 
     expect(mockLogout).toHaveBeenCalledTimes(1);
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith("access_token");
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith("auth_access_token");
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith("refresh_token");
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith("user");
+    expect(signoutHandler).toHaveBeenCalled();
+
+    window.removeEventListener("auth:signout", signoutHandler);
   });
 
   it("shows error message on API failure", async () => {
