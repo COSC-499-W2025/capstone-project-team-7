@@ -827,37 +827,49 @@ class ProjectsService:
         The payload is a mapping of relative_path -> metadata dict so callers can
         decide whether a file needs to be reprocessed.
         """
-        try:
-            response = (
-                self.client.table("scan_files")
-                .select(
-                    "relative_path, size_bytes, mime_type, sha256, metadata,"
-                    " last_seen_modified_at, last_scanned_at"
-                )
-                .eq("owner", user_id)
-                .eq("project_id", project_id)
-                .execute()
-            )
-        except Exception as exc:
-            if self._is_missing_scan_files_error(exc):
-                logging.warning("scan_files table unavailable; returning empty cached metadata: %s", exc)
-                return {}
-            raise ProjectsServiceError(f"Failed to load cached files: {exc}") from exc
-
+        # Paginate to fetch ALL files (Supabase caps rows per request)
         cached: Dict[str, Dict[str, Any]] = {}
-        for row in response.data or []:
-            path = row.get("relative_path")
-            if not path:
-                continue
-            normalized = str(path).replace("\\", "/")
-            cached[normalized] = {
-                "size_bytes": row.get("size_bytes"),
-                "mime_type": row.get("mime_type"),
-                "sha256": row.get("sha256"),
-                "metadata": self._decrypt_cached_metadata(row.get("metadata")),
-                "last_seen_modified_at": row.get("last_seen_modified_at"),
-                "last_scanned_at": row.get("last_scanned_at"),
-            }
+        page_size = 500
+        offset = 0
+
+        while True:
+            try:
+                response = (
+                    self.client.table("scan_files")
+                    .select(
+                        "relative_path, size_bytes, mime_type, sha256, metadata,"
+                        " last_seen_modified_at, last_scanned_at"
+                    )
+                    .eq("owner", user_id)
+                    .eq("project_id", project_id)
+                    .range(offset, offset + page_size - 1)
+                    .execute()
+                )
+            except Exception as exc:
+                if self._is_missing_scan_files_error(exc):
+                    logging.warning("scan_files table unavailable; returning empty cached metadata: %s", exc)
+                    return {}
+                raise ProjectsServiceError(f"Failed to load cached files: {exc}") from exc
+
+            rows = response.data or []
+            for row in rows:
+                path = row.get("relative_path")
+                if not path:
+                    continue
+                normalized = str(path).replace("\\", "/")
+                cached[normalized] = {
+                    "size_bytes": row.get("size_bytes"),
+                    "mime_type": row.get("mime_type"),
+                    "sha256": row.get("sha256"),
+                    "metadata": self._decrypt_cached_metadata(row.get("metadata")),
+                    "last_seen_modified_at": row.get("last_seen_modified_at"),
+                    "last_scanned_at": row.get("last_scanned_at"),
+                }
+
+            if len(rows) < page_size:
+                break
+            offset += page_size
+
         return cached
 
     def upsert_cached_files(
@@ -991,6 +1003,7 @@ class ProjectsService:
                 .eq("owner", user_id)
                 .eq("project_id", project_id)
                 .is_("sha256", "null")
+                .limit(10000)
                 .execute()
             )
         except Exception as exc:

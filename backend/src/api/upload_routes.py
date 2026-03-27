@@ -242,6 +242,128 @@ def compute_file_hash(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
 
+class UploadFromPathRequest(BaseModel):
+    source_path: str = Field(..., description="Local filesystem path to a folder or ZIP archive")
+
+
+@router.post("/from-path", response_model=UploadResponse, status_code=status.HTTP_201_CREATED)
+def upload_from_path(
+    body: UploadFromPathRequest,
+    user_id: str = Depends(verify_auth_token),
+):
+    """
+    Create an upload from a local filesystem path.
+
+    Accepts a directory (which gets zipped) or an existing ZIP file.
+    Used by the Electron desktop app for the 'Add to Existing' flow.
+    """
+    import shutil
+    import zipfile as _zipfile
+    from scanner.parser import _EXCLUDED_DIRS
+
+    # Extra dirs to skip that aren't source code (data blobs, caches, runtime artifacts)
+    _UPLOAD_EXCLUDED = _EXCLUDED_DIRS | {
+        "data", ".next", ".cache", ".turbo", "coverage",
+        ".claude", ".pytest_cache", ".mypy_cache", ".ruff_cache",
+        ".DS_Store", "env", ".env", ".idea", ".vscode",
+    }
+    # Cap at 500 MB to prevent filling the disk
+    MAX_ZIP_SIZE = 500 * 1024 * 1024
+
+    cleanup_expired_uploads()
+
+    source = Path(body.source_path)
+    if not source.exists():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Source path does not exist: {body.source_path}",
+        )
+
+    # Check available disk space before starting (need at least 500 MB free)
+    disk_usage = shutil.disk_usage(str(UPLOAD_DIR))
+    if disk_usage.free < MAX_ZIP_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_507_INSUFFICIENT_STORAGE,
+            detail="Not enough disk space to package files for upload. "
+                   f"Available: {disk_usage.free // (1024 * 1024)} MB, "
+                   f"required: at least {MAX_ZIP_SIZE // (1024 * 1024)} MB.",
+        )
+
+    upload_id = f"upl_{uuid.uuid4().hex[:12]}"
+    upload_path = UPLOAD_DIR / f"{upload_id}.zip"
+
+    try:
+        if source.is_file() and source.suffix.lower() == ".zip":
+            file_size = source.stat().st_size
+            if file_size > MAX_ZIP_SIZE:
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail=f"ZIP file is too large ({file_size // (1024 * 1024)} MB). "
+                           f"Maximum allowed: {MAX_ZIP_SIZE // (1024 * 1024)} MB.",
+                )
+            shutil.copy2(str(source), str(upload_path))
+        elif source.is_dir():
+            # Create a ZIP from the directory, skipping excluded dirs
+            with _zipfile.ZipFile(upload_path, "w", _zipfile.ZIP_DEFLATED) as zf:
+                for file_path in sorted(source.rglob("*")):
+                    if not file_path.is_file():
+                        continue
+                    rel = file_path.relative_to(source)
+                    if any(part in _UPLOAD_EXCLUDED for part in rel.parts):
+                        continue
+                    zf.write(file_path, str(rel))
+                    # Check size during creation to abort early
+                    if upload_path.stat().st_size > MAX_ZIP_SIZE:
+                        raise HTTPException(
+                            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                            detail=f"Packaged files exceed {MAX_ZIP_SIZE // (1024 * 1024)} MB. "
+                                   "Try selecting a smaller folder.",
+                        )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Source path must be a directory or a .zip file",
+            )
+
+        file_size = upload_path.stat().st_size
+        file_hash = compute_file_hash(upload_path.read_bytes())
+        filename = source.name + (".zip" if source.is_dir() else "")
+
+        created_at = datetime.utcnow()
+        upload_metadata = {
+            "upload_id": upload_id,
+            "user_id": user_id,
+            "status": "stored",
+            "filename": filename,
+            "size_bytes": file_size,
+            "file_hash": file_hash,
+            "storage_path": str(upload_path),
+            "created_at": created_at.isoformat() + "Z",
+            "created_at_epoch": created_at.timestamp(),
+            "metadata": {"original_path": body.source_path},
+        }
+
+        with uploads_store_lock:
+            uploads_store[upload_id] = upload_metadata
+
+        return UploadResponse(
+            upload_id=upload_id,
+            status="stored",
+            filename=filename,
+            size_bytes=file_size,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Clean up partial file on failure
+        if upload_path.exists():
+            upload_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create upload from path: {str(e)}",
+        )
+
+
 @router.post("", response_model=UploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload_file(
     file: UploadFile = File(..., description="ZIP archive to upload"),
