@@ -22,6 +22,18 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/auth", () => ({
   getStoredToken: vi.fn(),
+  getStoredRefreshToken: vi.fn(),
+  setStoredToken: vi.fn(),
+  setStoredRefreshToken: vi.fn(),
+  clearStoredToken: vi.fn(),
+  clearStoredRefreshToken: vi.fn(),
+  setRememberMePreference: vi.fn(),
+  logout: vi.fn(),
+  auth: {
+    getSession: vi.fn().mockResolvedValue({ ok: false }),
+    login: vi.fn(),
+    signup: vi.fn(),
+  },
 }));
 
 vi.mock("@/lib/api/projects", () => ({
@@ -127,10 +139,10 @@ describe("Project page data accuracy", () => {
     render(<ProjectPage />);
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Project: Accurate Portfolio" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Accurate Portfolio" })).toBeInTheDocument();
     });
 
-    expect(screen.getByText("5.8 seconds")).toBeInTheDocument();
+    expect(screen.getAllByText("5.8 seconds").length).toBeGreaterThan(0);
     expect(screen.queryByText("3.2 seconds")).not.toBeInTheDocument();
   });
 
@@ -138,7 +150,7 @@ describe("Project page data accuracy", () => {
     render(<ProjectPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Accurate Portfolio")).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Accurate Portfolio" })).toBeInTheDocument();
     });
 
     expect(screen.queryByText("My Capstone App")).not.toBeInTheDocument();
@@ -183,7 +195,7 @@ describe("Project page data accuracy", () => {
     render(<ProjectPage />);
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Project: Accurate Portfolio" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Accurate Portfolio" })).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "AI Analysis" }));
@@ -210,7 +222,7 @@ describe("Project page data accuracy", () => {
     render(<ProjectPage />);
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Project: Accurate Portfolio" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Accurate Portfolio" })).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "AI Analysis" }));
@@ -238,7 +250,7 @@ describe("Project page data accuracy", () => {
     render(<ProjectPage />);
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Project: Accurate Portfolio" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Accurate Portfolio" })).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "AI Analysis" }));

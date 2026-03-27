@@ -1103,6 +1103,11 @@ class ThumbnailUpdateResponse(BaseModel):
     message: str = "Thumbnail URL updated successfully"
 
 
+class ThumbnailDeleteResponse(BaseModel):
+    ok: bool = True
+    message: str = "Thumbnail removed successfully"
+
+
 class RoleUpdateRequest(BaseModel):
     """Request model for updating user role in a project."""
     role: str = Field(..., description="User's role in the project (author, contributor, lead, maintainer, reviewer)")
@@ -1583,6 +1588,11 @@ async def create_project_from_upload(
         )
 
 
+def _is_jwt_expired_error(exc: Exception) -> bool:
+    error_str = str(exc).lower()
+    return ("jwt expired" in error_str) or ("jwt" in error_str and "expired" in error_str)
+
+
 @router.get(
     "",
     response_model=ProjectListResponse,
@@ -1621,12 +1631,22 @@ async def list_projects(
         )
     
     except ProjectsServiceError as exc:
+        if _is_jwt_expired_error(exc):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session expired",
+            )
         logger.error(f"Projects service error: {exc}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve projects: {str(exc)}",
         )
     except Exception as exc:
+        if _is_jwt_expired_error(exc):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session expired",
+            )
         logger.exception("Unexpected error listing projects")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -3863,6 +3883,53 @@ async def update_project_thumbnail_url(
         raise
     except Exception as exc:
         logger.exception("Unexpected error updating thumbnail URL")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An unexpected error occurred: {str(exc)}",
+        )
+
+
+@router.delete(
+    "/{project_id}/thumbnail",
+    response_model=ThumbnailDeleteResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Project not found"},
+        500: {"model": ErrorResponse, "description": "Server error"},
+    },
+)
+async def delete_project_thumbnail(
+    project_id: str,
+    user_id: str = Depends(verify_auth_token),
+) -> ThumbnailDeleteResponse:
+    try:
+        service = get_projects_service()
+        project = service.get_project_scan(user_id, project_id)
+
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Project {project_id} not found",
+            )
+
+        success, error_msg = service.delete_project_thumbnail(project_id)
+        if not success:
+            if error_msg and "not found" in error_msg.lower():
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=error_msg,
+                )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to delete thumbnail: {error_msg}",
+            )
+
+        return ThumbnailDeleteResponse()
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Unexpected error deleting thumbnail")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An unexpected error occurred: {str(exc)}",

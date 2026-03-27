@@ -1,13 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
+  ChevronDown,
   ExternalLink,
   FileText,
   GraduationCap,
   Lightbulb,
-  Loader2,
   PlayCircle,
 } from "lucide-react";
 import { getStoredToken } from "@/lib/auth";
@@ -20,7 +20,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
+import { LoadingState } from "@/components/ui/loading-state";
+
+/* ------------------------------------------------------------------ */
+/*  Constants                                                          */
+/* ------------------------------------------------------------------ */
 
 const ROLES = [
   { value: "backend_developer", label: "Backend Developer" },
@@ -32,45 +36,181 @@ const ROLES = [
   { value: "security_engineer", label: "Security Engineer" },
 ] as const;
 
-const TYPE_ICON: Record<string, React.ReactNode> = {
-  article: <FileText size={13} />,
-  video: <PlayCircle size={13} />,
-  course: <GraduationCap size={13} />,
-  docs: <BookOpen size={13} />,
+const TYPE_META: Record<string, { icon: React.ReactNode; label: string }> = {
+  article: { icon: <FileText size={14} />, label: "Article" },
+  video: { icon: <PlayCircle size={14} />, label: "Video" },
+  course: { icon: <GraduationCap size={14} />, label: "Course" },
+  docs: { icon: <BookOpen size={14} />, label: "Docs" },
 };
 
-const TIER_COLORS: Record<string, string> = {
-  beginner: "border-border bg-background text-muted-foreground",
-  intermediate: "border-primary/15 bg-primary/10 text-[hsl(var(--accent-foreground))]",
-  advanced: "border-emerald-500/20 bg-emerald-500/12 text-emerald-700 dark:text-emerald-300",
+const LEVEL_CLASSES: Record<string, string> = {
+  beginner:
+    "border border-border/80 bg-secondary/70 text-secondary-foreground",
+  intermediate:
+    "border border-primary/20 bg-[hsl(var(--primary)/0.1)] text-[hsl(var(--accent-foreground))]",
+  advanced:
+    "border border-emerald-200/60 bg-emerald-500/10 text-emerald-700 dark:border-emerald-500/20 dark:text-emerald-400",
 };
 
-function TierBadge({ tier }: { tier: string }) {
+const IMPORTANCE_META: Record<
+  string,
+  { classes: string; dotColor: string; label: string }
+> = {
+  critical: {
+    classes:
+      "border border-red-200/60 bg-red-500/10 text-red-700 dark:border-red-500/20 dark:text-red-400",
+    dotColor: "bg-red-500",
+    label: "Critical",
+  },
+  recommended: {
+    classes:
+      "border border-amber-200/60 bg-amber-500/10 text-amber-700 dark:border-amber-500/20 dark:text-amber-400",
+    dotColor: "bg-amber-500",
+    label: "Recommended",
+  },
+  nice_to_have: {
+    classes:
+      "border border-border/80 bg-secondary/70 text-muted-foreground",
+    dotColor: "bg-muted-foreground/50",
+    label: "Nice to Have",
+  },
+};
+
+type FlatResource = ResourceEntry & {
+  skill_name: string;
+  importance: string | null;
+  reason: string;
+  current_tier: string;
+  target_tier: string;
+};
+
+/* ------------------------------------------------------------------ */
+/*  Sub-components                                                     */
+/* ------------------------------------------------------------------ */
+
+function ResourceCard({ item }: { item: FlatResource }) {
+  const meta = TYPE_META[item.type];
+  const levelCls =
+    LEVEL_CLASSES[item.level] || "border border-border/80 bg-secondary/70 text-secondary-foreground";
+  const impMeta = item.importance ? IMPORTANCE_META[item.importance] : null;
+
   return (
-    <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${
-        TIER_COLORS[tier] || "bg-gray-100 text-gray-600"
-      }`}
-    >
-      {tier}
-    </span>
+    <div className="group rounded-[22px] border border-border bg-card/90 p-5 shadow-[0_18px_38px_rgba(15,23,42,0.06)] transition-[transform,border-color,background-color] duration-200 ease-out hover:-translate-y-0.5 hover:border-primary/20 hover:bg-background">
+      {/* Top row — type + level */}
+      <div className="mb-3 flex items-center gap-2">
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          {meta?.icon ?? <ExternalLink size={14} />}
+          {meta?.label ?? "Link"}
+        </span>
+        <span className="text-border">|</span>
+        <span
+          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${levelCls}`}
+        >
+          {item.level}
+        </span>
+      </div>
+
+      {/* Title */}
+      <p className="text-sm font-semibold leading-snug text-foreground">
+        {item.title}
+      </p>
+
+      {/* Reason / description */}
+      <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
+        {item.reason}
+      </p>
+
+      {/* Footer — skill + importance + link */}
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1 rounded-[10px] border border-border bg-muted/55 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+            <Lightbulb size={12} className="text-amber-500" />
+            {item.skill_name}
+          </span>
+          {impMeta && (
+            <span
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] ${impMeta.classes}`}
+            >
+              <span
+                className={`inline-block h-1.5 w-1.5 rounded-full ${impMeta.dotColor}`}
+              />
+              {impMeta.label}
+            </span>
+          )}
+        </div>
+
+        <a
+          href={item.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 rounded-[12px] border border-border bg-muted/55 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-[transform,border-color,background-color,color] duration-150 hover:-translate-y-px hover:border-primary/25 hover:bg-card hover:text-foreground"
+        >
+          Open Link
+          <ExternalLink size={12} />
+        </a>
+      </div>
+    </div>
   );
 }
 
-function ResourcePill({ resource }: { resource: ResourceEntry }) {
+function ImportanceGroup({
+  label,
+  dotColor,
+  items,
+  defaultOpen,
+}: {
+  label: string;
+  dotColor: string;
+  items: FlatResource[];
+  defaultOpen: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  if (items.length === 0) return null;
+
   return (
-    <a
-      href={resource.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="inline-flex items-center gap-2 rounded-[16px] border border-border bg-background px-3.5 py-2 text-xs font-medium text-foreground transition-[transform,border-color,background-color] hover:-translate-y-px hover:border-primary/20 hover:bg-card"
-    >
-      {TYPE_ICON[resource.type] || <ExternalLink size={13} />}
-      <span className="truncate max-w-[200px]">{resource.title}</span>
-      <TierBadge tier={resource.level} />
-    </a>
+    <div className="space-y-3">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-2.5 rounded-[14px] px-1 py-1.5 text-left transition-colors duration-150 hover:bg-muted/40"
+      >
+        <span
+          className={`inline-block h-2.5 w-2.5 rounded-full ${dotColor} ring-2 ring-background`}
+        />
+        <span className="text-sm font-semibold text-foreground">{label}</span>
+        <span className="rounded-full border border-border bg-secondary/80 px-2 py-px text-[10px] font-semibold tabular-nums text-muted-foreground">
+          {items.length}
+        </span>
+        <ChevronDown
+          size={15}
+          className={`ml-auto text-muted-foreground transition-transform duration-200 ${open ? "rotate-0" : "-rotate-90"}`}
+        />
+      </button>
+
+      <div
+        className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
+          open
+            ? "grid-rows-[1fr] opacity-100"
+            : "grid-rows-[0fr] opacity-0 pointer-events-none"
+        }`}
+      >
+        <div className="overflow-hidden">
+          <div className="grid gap-4 md:grid-cols-2">
+            {items.map((item, i) => (
+              <ResourceCard key={`${item.url}-${i}`} item={item} />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
+
+/* ------------------------------------------------------------------ */
+/*  Main component                                                     */
+/* ------------------------------------------------------------------ */
 
 export function ResourceSuggestions() {
   const [suggestions, setSuggestions] = useState<ResourceSuggestion[]>([]);
@@ -114,24 +254,56 @@ export function ResourceSuggestions() {
     fetchSuggestions(role);
   };
 
+  /* Flatten suggestions into one-card-per-resource */
+  const flat = useMemo<FlatResource[]>(
+    () =>
+      suggestions.flatMap((s) =>
+        s.resources.map((r) => ({
+          ...r,
+          skill_name: s.skill_name,
+          importance: s.importance ?? null,
+          reason: s.reason,
+          current_tier: s.current_tier,
+          target_tier: s.target_tier,
+        })),
+      ),
+    [suggestions],
+  );
+
+  const hasImportance = flat.some((r) => r.importance !== null);
+
+  const grouped = useMemo(() => {
+    if (!hasImportance) return null;
+    return {
+      critical: flat.filter((r) => r.importance === "critical"),
+      recommended: flat.filter((r) => r.importance === "recommended"),
+      nice_to_have: flat.filter((r) => r.importance === "nice_to_have"),
+      other: flat.filter(
+        (r) =>
+          r.importance === null ||
+          !["critical", "recommended", "nice_to_have"].includes(r.importance ?? ""),
+      ),
+    };
+  }, [flat, hasImportance]);
+
   return (
-    <div className="space-y-6">
-      {/* Header with role selector */}
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div className="space-y-2">
-          <div className="flex items-center gap-3">
-            <Lightbulb size={20} className="text-amber-500" />
-            <h3 className="text-[2rem] font-semibold tracking-[-0.04em] text-foreground">
-              Learning Resources
-            </h3>
-          </div>
-          <p className="text-sm leading-6 text-muted-foreground">
-            Personalised recommendations based on your scanned project skills.
+    <div className="space-y-4">
+      {/* Header — split-callout */}
+      <div className="split-callout">
+        <div className="split-callout-card px-5 py-4">
+          <p className="page-kicker mb-2">Learning Path</p>
+          <p className="text-sm text-muted-foreground">
+            Personalised resource recommendations based on your scanned project
+            skills. Select a target role to see what matters most.
           </p>
         </div>
-        <div className="w-full sm:w-64">
+      </div>
+
+      {/* Role filter */}
+      <div className="flex items-center justify-end">
+        <div className="w-56">
           <Select value={selectedRole || "all"} onValueChange={handleRoleChange}>
-            <SelectTrigger className="h-12 rounded-[18px] border-border bg-card/90 text-sm">
+            <SelectTrigger className="h-9 text-xs">
               <SelectValue placeholder="Filter by target role" />
             </SelectTrigger>
             <SelectContent>
@@ -146,74 +318,65 @@ export function ResourceSuggestions() {
         </div>
       </div>
 
-      {loading && (
-        <div className="rounded-[24px] border border-dashed border-border bg-background/80 px-6 py-16 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]">
-          <Loader2 size={20} className="mx-auto animate-spin text-muted-foreground" />
-          <p className="mt-4 text-sm text-muted-foreground">Loading tailored learning resources...</p>
-        </div>
-      )}
+      {/* Loading */}
+      {loading && <LoadingState message="Loading resource suggestions…" />}
 
+      {/* Error */}
       {error && !loading && (
-        <div className="rounded-[20px] border border-red-500/20 bg-red-500/8 p-4 text-sm text-red-700 dark:text-red-300">
-          {error}
-        </div>
+        <div className="alert alert-error text-sm">{error}</div>
       )}
 
-      {!loading && !error && hasFetched.current && suggestions.length === 0 && (
-        <div className="rounded-[24px] border border-dashed border-border bg-background/80 px-6 py-16 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]">
-          <GraduationCap size={32} className="mx-auto mb-4 text-muted-foreground" />
-          <p className="mx-auto max-w-xl text-sm leading-6 text-muted-foreground">
-            No resource suggestions available yet. Scan more projects to generate tailored recommendations, or your strongest skills may already be mapped at an advanced level.
+      {/* Empty state */}
+      {!loading && !error && hasFetched.current && flat.length === 0 && (
+        <div className="rounded-[24px] border border-dashed border-border bg-background/75 py-16 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]">
+          <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-card shadow-[0_14px_30px_rgba(15,23,42,0.08)]">
+            <GraduationCap className="h-6 w-6 text-muted-foreground" />
+          </div>
+          <p className="mb-2 text-base font-medium text-foreground">
+            No resource suggestions available
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Scan some projects to get personalised recommendations, or all your
+            skills are already at an advanced level!
           </p>
         </div>
       )}
 
-      {!loading && suggestions.length > 0 && (
-        <div className="grid gap-5 md:grid-cols-2">
-          {suggestions.map((s) => (
-            <article
-              key={s.skill_name}
-              className="rounded-[24px] border border-border bg-card p-6 shadow-[0_18px_40px_rgba(15,23,42,0.06)] transition-[transform,border-color,background-color] hover:-translate-y-0.5 hover:border-primary/20 hover:bg-background"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <h4 className="text-xl font-semibold tracking-tight text-foreground">
-                      {s.skill_name}
-                    </h4>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <TierBadge tier={s.current_tier} />
-                      <span className="text-muted-foreground">→</span>
-                      <TierBadge tier={s.target_tier} />
-                    </div>
-                  </div>
-                </div>
-                {s.importance && (
-                  <span
-                    className={cn(
-                      "flex-shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em]",
-                      s.importance === "critical"
-                        ? "border-red-500/20 bg-red-500/10 text-red-700 dark:text-red-300"
-                        : s.importance === "recommended"
-                          ? "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                          : "border-border bg-background text-muted-foreground",
-                    )}
-                  >
-                    {s.importance.replace("_", " ")}
-                  </span>
-                )}
-              </div>
+      {/* Grouped view — when a role is selected */}
+      {!loading && flat.length > 0 && grouped && (
+        <div className="space-y-6">
+          <ImportanceGroup
+            label="Critical"
+            dotColor="bg-red-500"
+            items={grouped.critical}
+            defaultOpen
+          />
+          <ImportanceGroup
+            label="Recommended"
+            dotColor="bg-amber-500"
+            items={grouped.recommended}
+            defaultOpen
+          />
+          <ImportanceGroup
+            label="Nice to Have"
+            dotColor="bg-muted-foreground/50"
+            items={grouped.nice_to_have}
+            defaultOpen={false}
+          />
+          <ImportanceGroup
+            label="Other"
+            dotColor="bg-primary/50"
+            items={grouped.other}
+            defaultOpen={false}
+          />
+        </div>
+      )}
 
-              <p className="mt-4 text-sm leading-8 text-muted-foreground">
-                {s.reason}
-              </p>
-
-              <div className="mt-5 flex flex-col gap-3">
-                {s.resources.map((r, i) => (
-                  <ResourcePill key={`${r.url}-${i}`} resource={r} />
-                ))}
-              </div>
-            </article>
+      {/* Flat grid — when no role is selected */}
+      {!loading && flat.length > 0 && !grouped && (
+        <div className="grid gap-4 md:grid-cols-2">
+          {flat.map((item, i) => (
+            <ResourceCard key={`${item.url}-${i}`} item={item} />
           ))}
         </div>
       )}

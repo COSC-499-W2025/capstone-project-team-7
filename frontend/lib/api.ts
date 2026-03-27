@@ -104,10 +104,13 @@ export async function request<T>(
       result = second;
     }
 
+    // Only refresh tokens for requests to our own API to avoid leaking
+    // JWT refresh tokens when a third-party endpoint returns 401.
     const canRetryWithRefresh =
       !result.ok &&
       result.status === 401 &&
       !hasExplicitAuthorization &&
+      path.startsWith("/api/") &&
       path !== "/api/auth/refresh";
 
     if (canRetryWithRefresh) {
