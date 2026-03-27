@@ -22,6 +22,18 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/auth", () => ({
   getStoredToken: vi.fn(),
+  getStoredRefreshToken: vi.fn(),
+  setStoredToken: vi.fn(),
+  setStoredRefreshToken: vi.fn(),
+  clearStoredToken: vi.fn(),
+  clearStoredRefreshToken: vi.fn(),
+  setRememberMePreference: vi.fn(),
+  logout: vi.fn(),
+  auth: {
+    getSession: vi.fn().mockResolvedValue({ ok: false }),
+    login: vi.fn(),
+    signup: vi.fn(),
+  },
 }));
 
 vi.mock("@/lib/api/projects", () => ({
