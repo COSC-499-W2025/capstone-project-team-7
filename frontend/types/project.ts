@@ -344,6 +344,16 @@ export interface SkillAdoptionEntry {
   total_usage?: number;
 }
 
+export interface SkillProgressionPoint {
+  period: string;
+  proficiency: number;
+  evidence_count: number;
+  file?: string;
+  description?: string;
+}
+
+export type SkillProgressionMap = Record<string, SkillProgressionPoint[]>;
+
 export interface RoleProfile {
   key: string;
   label: string;
