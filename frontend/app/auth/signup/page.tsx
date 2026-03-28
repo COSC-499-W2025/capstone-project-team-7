@@ -104,9 +104,12 @@ export default function SignupPage() {
     <div className="auth-shell">
       <div className="auth-panel">
         <section className="auth-showcase">
-          <p className="page-kicker text-white/70">Secure onboarding</p>
-          <h1 className="text-4xl font-bold text-white">Create your Lumen workspace</h1>
-          <p className="mt-4 max-w-md text-sm leading-7 text-white/78">
+          <p className="page-kicker text-white/70 mb-4">Secure onboarding</p>
+          <div className="flex items-center gap-4">
+            <div className="sidebar-brand-mark">D</div>
+            <h1 className="text-4xl font-bold tracking-tight text-white">Create your DevFolio workspace</h1>
+          </div>
+          <p className="mt-6 max-w-md text-sm leading-7 text-white/78">
             Build a polished portfolio analysis workspace with explicit consent controls and presentation-ready outputs.
           </p>
           <div className="mt-8 grid gap-3">
