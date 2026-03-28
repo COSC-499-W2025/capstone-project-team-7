@@ -5,7 +5,7 @@
 from fastapi import APIRouter, HTTPException, status, Header, Depends, File, UploadFile, Query, Response, Request
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any, cast
-from datetime import datetime
+from datetime import datetime, timezone
 import asyncio
 import json
 import logging
@@ -1860,6 +1860,8 @@ async def get_project_timeline(
                 if len(ts_str) == 10:
                     ts_str = ts_str + "T00:00:00+00:00"
                 dt = datetime.fromisoformat(ts_str)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
             except Exception as e:
                 # Warn about date parsing failures
                 warnings.append({

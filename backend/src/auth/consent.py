@@ -24,7 +24,7 @@ try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
-    pass
+    logger.debug("python-dotenv unavailable; proceeding without .env auto-load")
 
 # Initialize Supabase client for consent persistence
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -242,9 +242,8 @@ def save_consent(user_id: str, service_name: str, consent_given: bool, access_to
                     "version": "v1.0",
                     "metadata": {service_name: {"consent_given": consent_given, "timestamp": timestamp}}
                 }).execute()
-        except Exception as e:
-            # Silently fall back to memory store on database error
-            pass
+        except Exception as exc:
+            logger.warning("Failed to persist consent for user %s service %s: %s", user_id, service_name, exc)
     
     return {"status": "success", "data": data}
 
@@ -282,9 +281,8 @@ def get_consent(user_id: str, service_name: str, access_token: Optional[str] = N
                         "privacy_notice_version": record.get("version", "v1.0"),
                         "privacy_notice": PRIVACY_NOTICE.strip()
                     }
-        except Exception as e:
-            # Silently fall back to memory store on database error
-            pass
+        except Exception as exc:
+            logger.warning("Failed to fetch consent for user %s service %s: %s", user_id, service_name, exc)
     
     # Fallback to memory store
     return _consent_store.get((user_id, service_name))
@@ -344,9 +342,8 @@ def withdraw_consent(user_id: str, service_name: str, access_token: Optional[str
                     "accepted": False,  # Mark as not accepted when withdrawing
                     "accepted_at": None
                 }).eq("user_id", user_id).execute()
-        except Exception as e:
-            # Silently fall back to memory store on database error
-            pass
+        except Exception as exc:
+            logger.warning("Failed to withdraw consent for user %s service %s: %s", user_id, service_name, exc)
 
 
 def get_all_consents(user_id: str, access_token: Optional[str] = None) -> Dict[str, Any]:
@@ -374,9 +371,8 @@ def get_all_consents(user_id: str, access_token: Optional[str] = None) -> Dict[s
                     "version": record.get("version", "v1.0"),
                     "metadata": record.get("metadata", {})
                 }
-        except Exception as e:
-            # Silently fall back to memory store on database error
-            pass
+        except Exception as exc:
+            logger.warning("Failed to fetch all consents for user %s: %s", user_id, exc)
     
     # Fallback: gather from memory store
     user_consents = {}

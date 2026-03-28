@@ -13,7 +13,7 @@ try:
 except Exception:  # pragma: no cover - optional dependency
     load_dotenv = None  # type: ignore
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -66,7 +66,14 @@ app.add_middleware(
     allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Accept", "Origin"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "Accept",
+        "Origin",
+        "X-Requested-With",
+        "Cache-Control",
+    ],
 )
 
 @app.get("/")
@@ -76,7 +83,12 @@ def root():
 
 @app.get("/health")
 def health_check():
-        return {"status":"ok"}
+    return {"status": "ok"}
+
+
+@app.head("/health", include_in_schema=False)
+def health_check_head() -> Response:
+    return Response(status_code=200)
 
 
 # Register API routes

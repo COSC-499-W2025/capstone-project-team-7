@@ -661,8 +661,6 @@ class SkillsExtractor:
                 if current_timestamp and line and line not in self.file_timestamps:
                     self.file_timestamps[line] = current_timestamp
                     
-        except subprocess.CalledProcessError as e:
-            self.logger.warning(f"Failed to extract git timestamps: {e}")
         except FileNotFoundError:
             self.logger.warning("Git not found in PATH")
         except (NotADirectoryError, OSError) as e:
