@@ -58,7 +58,7 @@ class ProjectsService:
 
         self.supabase_url = str(self.supabase_url)
         self.supabase_key = str(self.supabase_key)
-        self._use_local_store = os.getenv("CAPSTONE_LOCAL_STORE") == "1" or bool(os.getenv("PYTEST_CURRENT_TEST"))
+        self._use_local_store = os.getenv("CAPSTONE_LOCAL_STORE") == "1"
 
         self._encryption = encryption_service
         if self._encryption is None:
@@ -76,6 +76,9 @@ class ProjectsService:
 
         self.client: Any = None
         self._requires_user_token_client = False
+
+        if self._use_local_store:
+            return
         
         try:
             self.client = create_client(self.supabase_url, self.supabase_key)
@@ -202,6 +205,10 @@ class ProjectsService:
             existing_override = local_store.get_project_override(user_id, project_id)
             if existing_override is not None and existing_override.get("role"):
                 saved_project["role"] = existing_override.get("role")
+            else:
+                inferred_role = self.infer_role_from_contribution(scan_data)
+                local_store.upsert_project_override(user_id, project_id, {"role": inferred_role})
+                saved_project["role"] = inferred_role
         return saved_project
     
     @staticmethod

@@ -199,16 +199,6 @@ export function CodeAnalysisTab({
   const resolvedIsLoading = isLoading ?? (useStoreFallback ? storeLoading : false);
   const resolvedErrorMessage = errorMessage ?? (useStoreFallback ? storeError : null);
 
-  // Debug logging
-  console.log('CodeAnalysisTab received:', {
-    codeAnalysis: resolvedCodeAnalysis,
-    hasData: !!resolvedCodeAnalysis,
-    dataKeys: resolvedCodeAnalysis ? Object.keys(resolvedCodeAnalysis) : [],
-    keyCount: resolvedCodeAnalysis ? Object.keys(resolvedCodeAnalysis).length : 0,
-    isLoading: resolvedIsLoading,
-    errorMessage: resolvedErrorMessage
-  });
-
   // State for expanded sections
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   
@@ -266,13 +256,6 @@ export function CodeAnalysisTab({
   // No data state - check for meaningful data
   if (!resolvedCodeAnalysis || 
       (typeof resolvedCodeAnalysis === 'object' && Object.keys(resolvedCodeAnalysis).length === 0)) {
-    console.log('CodeAnalysisTab: No data condition triggered', {
-      codeAnalysisFalsy: !resolvedCodeAnalysis,
-      codeAnalysisValue: resolvedCodeAnalysis,
-      hasKeys: resolvedCodeAnalysis ? Object.keys(resolvedCodeAnalysis).length > 0 : false,
-      keyCount: resolvedCodeAnalysis ? Object.keys(resolvedCodeAnalysis).length : 0
-    });
-    
     return (
       <Card className="bg-white border border-gray-200">
         <CardHeader className="border-b border-gray-200">
