@@ -62,9 +62,9 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
-allowed_hosts = [host.strip() for host in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1,testserver").split(",") if host.strip()]
+allowed_hosts = [host.strip() for host in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if host.strip()]
 if not allowed_hosts:
-    allowed_hosts = ["localhost", "127.0.0.1", "testserver"]
+    allowed_hosts = ["localhost", "127.0.0.1"]
 
 app.add_middleware(
     TrustedHostMiddleware,
@@ -79,7 +79,7 @@ async def add_security_headers(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
-    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["X-XSS-Protection"] = "0"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     if request.url.scheme == "https":
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
