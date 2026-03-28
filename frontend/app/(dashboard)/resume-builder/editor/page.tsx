@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, Suspense } from "react";
+import { useState, useEffect, useCallback, useRef, memo, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
@@ -84,7 +84,7 @@ function displayUrl(url: string): string {
 }
 
 // Comma-separated input that preserves typing and only converts to array on blur
-function CommaSeparatedInput({
+const CommaSeparatedInput = memo(function CommaSeparatedInput({
   value,
   onChange,
   placeholder,
@@ -93,12 +93,13 @@ function CommaSeparatedInput({
   onChange: (items: string[]) => void;
   placeholder?: string;
 }) {
-  const [localValue, setLocalValue] = useState(value.join(", "));
+  const valueStr = value.join(", ");
+  const [localValue, setLocalValue] = useState(valueStr);
 
   // Sync from parent when value changes externally
   useEffect(() => {
-    setLocalValue(value.join(", "));
-  }, [value]);
+    setLocalValue(valueStr);
+  }, [valueStr]);
 
   const handleBlur = () => {
     const items = localValue
@@ -116,7 +117,7 @@ function CommaSeparatedInput({
       placeholder={placeholder}
     />
   );
-}
+});
 
 function ResumeEditorPageInner() {
   const router = useRouter();
@@ -143,6 +144,9 @@ function ResumeEditorPageInner() {
   const debouncedStructured = useDebounce(structuredData, 1500);
   const debouncedResumeName = useDebounce(resumeName, 1500);
   const debouncedTemplate = useDebounce(template, 1500);
+
+  // Track last-saved payload to deduplicate autosave calls
+  const lastSavedPayloadRef = useRef<string>("");
 
   // Fetch resume on mount
   useEffect(() => {
@@ -178,9 +182,24 @@ function ResumeEditorPageInner() {
     fetchResume();
   }, [resumeId]);
 
-  // Auto-save when debounced values change
+  // Auto-save when debounced values change (deduplicated)
   useEffect(() => {
     if (!resume || !isDirty) return;
+
+    const payload = {
+      name: debouncedResumeName,
+      template: debouncedTemplate,
+      latex_content: isLatexMode ? debouncedLatex : null,
+      // Always persist structured_data so form-mode data is preserved
+      // even when the user is editing in LaTeX mode.
+      structured_data: debouncedStructured,
+      is_latex_mode: isLatexMode,
+    };
+    const payloadKey = JSON.stringify(payload);
+    if (payloadKey === lastSavedPayloadRef.current) {
+      setIsDirty(false);
+      return;
+    }
 
     const autoSave = async () => {
       const token = getStoredToken();
@@ -188,15 +207,8 @@ function ResumeEditorPageInner() {
 
       setSaving(true);
       try {
-        await updateUserResume(token, resumeId, {
-          name: debouncedResumeName,
-          template: debouncedTemplate,
-          latex_content: isLatexMode ? debouncedLatex : null,
-          // Always persist structured_data so form-mode data is preserved
-          // even when the user is editing in LaTeX mode.
-          structured_data: debouncedStructured,
-          is_latex_mode: isLatexMode,
-        });
+        await updateUserResume(token, resumeId, payload);
+        lastSavedPayloadRef.current = payloadKey;
         setLastSaved(new Date());
         setIsDirty(false);
       } catch (err) {
@@ -232,20 +244,20 @@ function ResumeEditorPageInner() {
     }
   };
 
-  // Handle LaTeX content change
-  const handleLatexChange = (value: string) => {
+  // Handle LaTeX content change (stable ref for LatexEditor memo)
+  const handleLatexChange = useCallback((value: string) => {
     setLatexContent(value);
     setIsDirty(true);
-  };
+  }, []);
 
-  // Handle structured data update
-  const updateStructuredData = (updates: Partial<ResumeStructuredData>) => {
+  // Handle structured data update (stable ref for FormEditor memo)
+  const updateStructuredData = useCallback((updates: Partial<ResumeStructuredData>) => {
     setStructuredData((prev) => ({ ...prev, ...updates }));
     setIsDirty(true);
-  };
+  }, []);
 
   // Switch between modes
-  const handleModeSwitch = (latex: boolean) => {
+  const handleModeSwitch = useCallback((latex: boolean) => {
     if (!latex && isLatexMode) {
       // Switching from LaTeX to form - keep the structured data as-is
       // User will edit via forms
@@ -255,7 +267,7 @@ function ResumeEditorPageInner() {
     }
     setIsLatexMode(latex);
     setIsDirty(true);
-  };
+  }, [isLatexMode, structuredData]);
 
   const handleDownloadTex = () => {
     const content = isLatexMode ? latexContent : generateLatexFromStructuredData(structuredData);
@@ -466,7 +478,7 @@ interface LatexEditorProps {
   onChange: (value: string) => void;
 }
 
-function LatexEditor({ content, onChange }: LatexEditorProps) {
+const LatexEditor = memo(function LatexEditor({ content, onChange }: LatexEditorProps) {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
       {/* Editor pane */}
@@ -498,7 +510,7 @@ function LatexEditor({ content, onChange }: LatexEditorProps) {
       </div>
     </div>
   );
-}
+});
 
 // ============================================================================
 // Form Editor Component
@@ -511,7 +523,7 @@ interface FormEditorProps {
   onDetectSkills: () => Promise<void>;
 }
 
-function FormEditor({ data, onChange, onAddResumeItems, onDetectSkills }: FormEditorProps) {
+const FormEditor = memo(function FormEditor({ data, onChange, onAddResumeItems, onDetectSkills }: FormEditorProps) {
   const [activeTab, setActiveTab] = useState("contact");
   const [itemsDialogOpen, setItemsDialogOpen] = useState(false);
   const [resumeItems, setResumeItems] = useState<ResumeItemSummary[]>([]);
@@ -1263,13 +1275,13 @@ function FormEditor({ data, onChange, onAddResumeItems, onDetectSkills }: FormEd
       </div>
     </div>
   );
-}
+});
 
 // ============================================================================
 // Preview Components
 // ============================================================================
 
-function PreviewPlaceholder({ latex }: { latex: string }) {
+const PreviewPlaceholder = memo(function PreviewPlaceholder({ latex }: { latex: string }) {
   // Parse basic structure from LaTeX for a simple preview
   // This is a simplified preview - real LaTeX rendering would require a server
   
@@ -1288,9 +1300,9 @@ function PreviewPlaceholder({ latex }: { latex: string }) {
       </div>
     </div>
   );
-}
+});
 
-function FormPreview({ data }: { data: ResumeStructuredData }) {
+const FormPreview = memo(function FormPreview({ data }: { data: ResumeStructuredData }) {
   return (
     <div className="space-y-6 text-gray-900">
       {/* Header */}
@@ -1504,7 +1516,7 @@ function FormPreview({ data }: { data: ResumeStructuredData }) {
         )}
     </div>
   );
-}
+});
 
 // Suspense boundary required because useSearchParams() needs it for static export
 export default function ResumeEditorPage() {
