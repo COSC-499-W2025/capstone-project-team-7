@@ -14,14 +14,17 @@ import {
   GitCommit,
   Globe,
   Linkedin,
+  Loader2,
   Lock,
+  Rocket,
+  Trash2,
   Sparkles,
   Trophy,
   User,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { getStoredToken } from "@/lib/auth";
-import { publishPortfolio, getProjectEvolution } from "@/lib/api/portfolio";
+import { publishPortfolio, getProjectEvolution, deployPortfolio, undeployPortfolio } from "@/lib/api/portfolio";
 import type { PortfolioChronology, PortfolioSettings, ProjectEvolutionItem } from "@/types/portfolio";
 import type { ProjectMetadata } from "@/types/project";
 import type { UserProfile } from "@/lib/api.types";
@@ -221,6 +224,9 @@ export function PortfolioOverview({
   const [publishing, setPublishing] = useState(false);
   const [copied, setCopied] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
+  const [deploying, setDeploying] = useState(false);
+  const [undeploying, setUndeploying] = useState(false);
+  const [deployError, setDeployError] = useState<string | null>(null);
 
   // Project evolution data
   const [evolutionData, setEvolutionData] = useState<ProjectEvolutionItem[]>([]);
@@ -430,6 +436,77 @@ export function PortfolioOverview({
                         Share on LinkedIn
                       </button>
                     </div>
+                  )}
+                  {pubSettings?.is_public && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={deploying}
+                        onClick={async () => {
+                          const t = getStoredToken();
+                          if (!t) return;
+                          setDeploying(true);
+                          setDeployError(null);
+                          try {
+                            const res = await deployPortfolio(t);
+                            if (res.url) {
+                              setPubSettings((prev) => prev ? { ...prev, deployed_url: res.url } : prev);
+                            } else {
+                              setDeployError(res.error ?? "Deployment failed");
+                            }
+                          } catch (err) {
+                            setDeployError(err instanceof Error ? err.message : "Deployment failed");
+                          } finally {
+                            setDeploying(false);
+                          }
+                        }}
+                        className="inline-flex items-center gap-2 rounded-[14px] border border-border bg-background px-4 py-2.5 text-xs font-semibold text-foreground shadow-[0_2px_8px_rgba(15,23,42,0.04)] transition-[transform,border-color,background-color,color] hover:-translate-y-px hover:border-primary/20 hover:bg-card"
+                      >
+                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-emerald-200/60 bg-emerald-500/10 text-emerald-600">
+                          {deploying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Rocket className="h-3.5 w-3.5" />}
+                        </span>
+                        {deploying ? "Deploying..." : pubSettings.deployed_url ? "Redeploy" : "Deploy Portfolio"}
+                      </button>
+                      {pubSettings.deployed_url && (
+                        <button
+                          type="button"
+                          disabled={undeploying}
+                          onClick={async () => {
+                            const t = getStoredToken();
+                            if (!t) return;
+                            setUndeploying(true);
+                            setDeployError(null);
+                            try {
+                              await undeployPortfolio(t);
+                              setPubSettings((prev) => prev ? { ...prev, deployed_url: null } : prev);
+                            } catch (err) {
+                              setDeployError(err instanceof Error ? err.message : "Failed to remove");
+                            } finally {
+                              setUndeploying(false);
+                            }
+                          }}
+                          className="inline-flex items-center gap-2 rounded-[14px] border border-red-200/60 bg-background px-4 py-2.5 text-xs font-semibold text-red-600 shadow-[0_2px_8px_rgba(15,23,42,0.04)] transition-[transform,border-color,background-color,color] hover:-translate-y-px hover:border-red-300 hover:bg-red-50"
+                        >
+                          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-red-200/60 bg-red-500/10 text-red-500">
+                            {undeploying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                          </span>
+                          {undeploying ? "Removing..." : "Remove"}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {pubSettings?.deployed_url && (
+                    <a
+                      href={pubSettings.deployed_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] text-primary hover:underline truncate max-w-[280px]"
+                    >
+                      {pubSettings.deployed_url}
+                    </a>
+                  )}
+                  {deployError && (
+                    <p className="text-[10px] text-red-500">{deployError}</p>
                   )}
                 </div>
               </div>
