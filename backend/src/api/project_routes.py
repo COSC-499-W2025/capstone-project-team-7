@@ -11,6 +11,7 @@ import json
 import logging
 import sys
 import os
+import re
 import time
 from pathlib import Path
 from dataclasses import asdict, is_dataclass
@@ -116,6 +117,27 @@ AI_BATCH_LOGIC_EXCLUDED_PATH_MARKERS = (
     "/docs/", "/doc/", "/assets/", "/styles/", "/css/", "/migrations/",
     "/scripts/", "/config/", "/settings/", "/.github/",
 )
+AI_BATCH_TEST_PATH_RE = re.compile(
+    r"(?:^|[\\/])(?:test|tests|__tests__|spec)(?:[\\/]|$)|(?:^|[._-])(test|spec)(?:[._-]|$)",
+    re.IGNORECASE,
+)
+AI_BATCH_GENERATED_OR_PACKAGE_PATH_MARKERS = {
+    ".next",
+    ".electron",
+    ".cache",
+    ".pnpm",
+    ".yarn",
+    ".turbo",
+    ".parcel-cache",
+    ".svelte-kit",
+    ".nuxt",
+    ".output",
+    ".vercel",
+    "node_modules",
+    "site-packages",
+    "dist-packages",
+    "vendor",
+}
 
 # Create router for project endpoints
 router = APIRouter(prefix="/api/projects", tags=["Projects"])
@@ -2202,8 +2224,15 @@ class AiAnalysisResult(BaseModel):
     overall_summary: Optional[str] = None
     categories: Optional[List[Dict[str, Any]]] = None
     render_mode: Optional[str] = None
-    markdown_report: Optional[str] = None
     key_files: Optional[List[Dict[str, Any]]] = None
+    # Structured output fields (new)
+    overview: Optional[Dict[str, Any]] = None
+    architecture: Optional[Dict[str, Any]] = None
+    technical_highlights: Optional[Dict[str, Any]] = None
+    key_modules: Optional[List[Dict[str, Any]]] = None
+    insights: Optional[Dict[str, Any]] = None
+    security_and_vulnerability: Optional[Dict[str, Any]] = None
+    project_scores: Optional[Dict[str, Any]] = None
     # Legacy fields kept for backward compat with already-cached results
     portfolio_overview: Optional[str] = None
     project_insights: Optional[List[str]] = None
@@ -2472,6 +2501,82 @@ def _build_relevant_files_for_batch(
     return relevant
 
 
+def _is_test_like_path(path_value: str) -> bool:
+    return bool(AI_BATCH_TEST_PATH_RE.search(path_value or ""))
+
+
+def _is_generated_or_package_path(path_value: str) -> bool:
+    normalized = str(path_value or "").replace("\\", "/").strip().lower().strip("/")
+    if not normalized:
+        return False
+
+    parts = [segment for segment in normalized.split("/") if segment]
+    if not parts:
+        return False
+
+    if any(segment in AI_BATCH_GENERATED_OR_PACKAGE_PATH_MARKERS for segment in parts):
+        return True
+
+    for segment in parts[:-1]:
+        if segment.startswith(".") and len(segment) > 1:
+            return True
+
+    return False
+
+
+def _is_non_implementation_path(path_value: str) -> bool:
+    normalized = "/" + str(path_value or "").replace("\\", "/").lower().lstrip("/")
+    basename = Path(normalized).name
+    ext = Path(basename).suffix.lower()
+
+    if basename in AI_BATCH_LOGIC_EXCLUDED_BASENAMES:
+        return True
+    if ext in AI_BATCH_LOGIC_EXCLUDED_EXTS:
+        return True
+    if any(marker in normalized for marker in AI_BATCH_LOGIC_EXCLUDED_PATH_MARKERS):
+        return True
+    if basename.endswith(".config.ts") or basename.endswith(".config.js"):
+        return True
+    if basename.endswith(".config.mjs") or basename.endswith(".config.cjs"):
+        return True
+    return False
+
+
+def _filter_non_test_paths(paths: List[Any]) -> List[str]:
+    output: List[str] = []
+    for path_value in paths:
+        if not path_value:
+            continue
+        text = str(path_value)
+        if _is_test_like_path(text):
+            continue
+        if _is_generated_or_package_path(text):
+            continue
+        if _is_non_implementation_path(text):
+            continue
+        output.append(text)
+    return output
+
+
+def _normalize_key_modules(key_modules: Any) -> Optional[List[Dict[str, Any]]]:
+    if not isinstance(key_modules, list):
+        return None
+    output: List[Dict[str, Any]] = []
+    for module in key_modules:
+        if not isinstance(module, dict):
+            continue
+        raw_files = module.get("key_files") if isinstance(module.get("key_files"), list) else []
+        output.append(
+            {
+                "title": module.get("title"),
+                "summary": module.get("summary"),
+                "key_files": _filter_non_test_paths(raw_files),
+                "issues": module.get("issues") if isinstance(module.get("issues"), list) else [],
+            }
+        )
+    return output or None
+
+
 def _adapt_batch_to_ai_result(
     batch_result: Dict[str, Any],
     active_categories: List[tuple[str, str]],
@@ -2531,21 +2636,19 @@ def _adapt_batch_to_ai_result(
     )
 
     def _is_logic_heavy_candidate(path_str: str) -> bool:
-        normalized = "/" + path_str.replace("\\", "/").lower().lstrip("/")
         basename = Path(path_str).name.lower()
         ext = Path(path_str).suffix.lower()
+
+        if _is_test_like_path(path_str):
+            return False
+        if _is_generated_or_package_path(path_str):
+            return False
+        if _is_non_implementation_path(path_str):
+            return False
 
         if basename.startswith("__init__") or basename == "init" or basename.startswith("init."):
             return False
 
-        if basename in AI_BATCH_LOGIC_EXCLUDED_BASENAMES:
-            return False
-        if ext in AI_BATCH_LOGIC_EXCLUDED_EXTS:
-            return False
-        if any(marker in normalized for marker in AI_BATCH_LOGIC_EXCLUDED_PATH_MARKERS):
-            return False
-        if basename.endswith(".config.ts") or basename.endswith(".config.js"):
-            return False
         return ext in AI_BATCH_LOGIC_PREFERRED_EXTS
 
     candidate_entries: List[Dict[str, Any]] = []
@@ -2559,6 +2662,13 @@ def _adapt_batch_to_ai_result(
             continue
 
         path_text = str(path_val)
+        if _is_test_like_path(path_text):
+            continue
+        if _is_generated_or_package_path(path_text):
+            continue
+        if _is_non_implementation_path(path_text):
+            continue
+
         item = {
             "file_path": path_text,
             "summary": str(analysis_val),
@@ -2575,12 +2685,49 @@ def _adapt_batch_to_ai_result(
                 break
             key_files.append(item)
 
+    # ── Extract structured fields from new-format project_analysis ─────────
+    overview = project_analysis.get("overview") if isinstance(project_analysis, dict) else None
+    architecture = project_analysis.get("architecture") if isinstance(project_analysis, dict) else None
+    technical_highlights = project_analysis.get("technical_highlights") if isinstance(project_analysis, dict) else None
+    key_modules_data = project_analysis.get("key_modules") if isinstance(project_analysis, dict) else None
+    insights_data = project_analysis.get("insights") if isinstance(project_analysis, dict) else None
+    security_and_vulnerability = project_analysis.get("security_and_vulnerability") if isinstance(project_analysis, dict) else None
+    project_scores = project_analysis.get("project_scores") if isinstance(project_analysis, dict) else None
+    normalized_key_modules = _normalize_key_modules(key_modules_data)
+
+    # Determine if we have structured output or legacy text
+    has_structured = overview is not None or project_scores is not None
+
+    if has_structured:
+        # New structured format
+        overall_summary = (
+            overview.get("summary") if isinstance(overview, dict) else None
+        ) or (
+            str(project_analysis_text) if project_analysis_text else
+            f"Batch analysis completed across {len(file_summaries)} files."
+        )
+        render_mode = "structured"
+    else:
+        overall_summary = (
+            str(project_analysis_text)
+            if project_analysis_text
+            else f"Batch analysis completed across {len(file_summaries)} files."
+        )
+        render_mode = "cards"
+
     return {
         "overall_summary": overall_summary,
         "categories": categories_out if categories_out else None,
-        "render_mode": "markdown_report" if project_analysis_text else "cards",
-        "markdown_report": str(project_analysis_text) if project_analysis_text else None,
+        "render_mode": render_mode,
         "key_files": key_files or None,
+        # Structured fields
+        "overview": overview if isinstance(overview, dict) else None,
+        "architecture": architecture if isinstance(architecture, dict) else None,
+        "technical_highlights": technical_highlights if isinstance(technical_highlights, dict) else None,
+        "key_modules": normalized_key_modules,
+        "insights": insights_data if isinstance(insights_data, dict) else None,
+        "security_and_vulnerability": security_and_vulnerability if isinstance(security_and_vulnerability, dict) else None,
+        "project_scores": project_scores if isinstance(project_scores, dict) else None,
     }
 
 
@@ -2635,11 +2782,49 @@ async def _run_or_get_batch_analysis(
 
     summary = scan_data.get("summary") or {}
     languages = scan_data.get("languages") or summary.get("languages") or []
+    code_analysis = scan_data.get("code_analysis") if isinstance(scan_data.get("code_analysis"), dict) else {}
+    dead_code = code_analysis.get("dead_code") if isinstance(code_analysis.get("dead_code"), dict) else {}
+
+    extension_counts: Dict[str, int] = {}
+    test_file_count = 0
+    doc_file_count = 0
+    for file_meta in relevant_files:
+        path_text = str(file_meta.get("path") or "")
+        if not path_text:
+            continue
+        ext = Path(path_text).suffix.lower() or "[no_ext]"
+        extension_counts[ext] = extension_counts.get(ext, 0) + 1
+        if _is_test_like_path(path_text):
+            test_file_count += 1
+        if ext in {".md", ".markdown", ".rst", ".txt"}:
+            doc_file_count += 1
+
+    top_extensions = [
+        {"ext": ext, "count": count}
+        for ext, count in sorted(extension_counts.items(), key=lambda item: item[1], reverse=True)[:8]
+    ]
+    source_file_count = len(relevant_files)
     scan_summary = {
         "total_files": summary.get("total_files") or len(relevant_files),
         "total_size_bytes": summary.get("total_size_bytes") or summary.get("bytes_processed") or 0,
         "language_breakdown": languages if isinstance(languages, list) else [],
         "scan_path": str(source_path),
+        "code_metrics": {
+            "total_lines": code_analysis.get("total_lines") or summary.get("total_lines") or 0,
+            "comment_lines": code_analysis.get("comment_lines") or 0,
+            "functions": code_analysis.get("functions") or 0,
+            "classes": code_analysis.get("classes") or 0,
+            "avg_complexity": code_analysis.get("avg_complexity") or 0,
+            "dead_code_total": dead_code.get("total") or code_analysis.get("dead_code_total") or 0,
+        },
+        "file_profile": {
+            "source_file_count": source_file_count,
+            "test_file_count": test_file_count,
+            "doc_file_count": doc_file_count,
+            "test_file_ratio": round(test_file_count / source_file_count, 4) if source_file_count else 0.0,
+            "doc_file_ratio": round(doc_file_count / source_file_count, 4) if source_file_count else 0.0,
+            "top_extensions": top_extensions,
+        },
     }
 
     status_messages: List[str] = []
@@ -2864,8 +3049,15 @@ async def run_project_ai_analysis(
                     overall_summary=existing.get("overall_summary"),
                     categories=existing.get("categories"),
                     render_mode=existing.get("render_mode"),
-                    markdown_report=existing.get("markdown_report"),
                     key_files=existing.get("key_files"),
+                    # structured fields
+                    overview=existing.get("overview"),
+                    architecture=existing.get("architecture"),
+                    technical_highlights=existing.get("technical_highlights"),
+                    key_modules=existing.get("key_modules"),
+                    insights=existing.get("insights"),
+                    security_and_vulnerability=existing.get("security_and_vulnerability"),
+                    project_scores=existing.get("project_scores"),
                     # legacy compat
                     portfolio_overview=existing.get("portfolio_overview"),
                     project_insights=existing.get("project_insights"),
@@ -2933,8 +3125,14 @@ async def run_project_ai_analysis(
                     overall_summary=ai_result.get("overall_summary"),
                     categories=ai_result.get("categories"),
                     render_mode=ai_result.get("render_mode"),
-                    markdown_report=ai_result.get("markdown_report"),
                     key_files=ai_result.get("key_files"),
+                    overview=ai_result.get("overview"),
+                    architecture=ai_result.get("architecture"),
+                    technical_highlights=ai_result.get("technical_highlights"),
+                    key_modules=ai_result.get("key_modules"),
+                    insights=ai_result.get("insights"),
+                    security_and_vulnerability=ai_result.get("security_and_vulnerability"),
+                    project_scores=ai_result.get("project_scores"),
                 ),
                 llm_status=batch_status,
                 cached=False,
@@ -3023,7 +3221,6 @@ async def run_project_ai_analysis(
             "overall_summary": parsed.get("overall_summary"),
             "categories": categories_out if categories_out else None,
             "render_mode": "cards",
-            "markdown_report": None,
             "key_files": None,
             "status_messages": batch_status_messages,
         }
@@ -3037,7 +3234,6 @@ async def run_project_ai_analysis(
                 overall_summary=ai_result.get("overall_summary"),
                 categories=ai_result.get("categories"),
                 render_mode=ai_result.get("render_mode"),
-                markdown_report=ai_result.get("markdown_report"),
                 key_files=ai_result.get("key_files"),
             ),
             llm_status=f"{batch_status}|{llm_status_value}" if batch_status.startswith("fallback:") else llm_status_value,
