@@ -1,13 +1,12 @@
 """Authentication API routes backed by Supabase auth."""
 
-from __future__ import annotations
-
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from api.dependencies import AuthContext, get_auth_context
+from api.security import limiter
 from auth.session import AuthError, Session, SupabaseAuth
 
 
@@ -73,7 +72,8 @@ def _raise_auth_error(error: AuthError) -> HTTPException:
 
 
 @router.post("/signup", response_model=AuthSessionResponse, status_code=status.HTTP_200_OK)
-def signup(payload: AuthCredentials) -> AuthSessionResponse:
+@limiter.limit("5/minute")
+def signup(request: Request, payload: AuthCredentials) -> AuthSessionResponse:
     try:
         session = SupabaseAuth().signup(payload.email, payload.password)
         return _to_session_response(session)
@@ -82,7 +82,8 @@ def signup(payload: AuthCredentials) -> AuthSessionResponse:
 
 
 @router.post("/login", response_model=AuthSessionResponse, status_code=status.HTTP_200_OK)
-def login(payload: AuthCredentials) -> AuthSessionResponse:
+@limiter.limit("10/minute")
+def login(request: Request, payload: AuthCredentials) -> AuthSessionResponse:
     try:
         session = SupabaseAuth().login(payload.email, payload.password)
         return _to_session_response(session)
@@ -100,7 +101,8 @@ def refresh_session(payload: RefreshRequest) -> AuthSessionResponse:
 
 
 @router.post("/request-reset", status_code=status.HTTP_200_OK)
-def request_password_reset(payload: PasswordResetRequest) -> dict:
+@limiter.limit("3/minute")
+def request_password_reset(request: Request, payload: PasswordResetRequest) -> dict:
     try:
         SupabaseAuth().request_password_reset(payload.email, payload.redirect_to)
         return {"ok": True, "message": "Password reset email sent."}
@@ -109,7 +111,8 @@ def request_password_reset(payload: PasswordResetRequest) -> dict:
 
 
 @router.post("/reset-password", status_code=status.HTTP_200_OK)
-def reset_password(payload: PasswordResetConfirm) -> dict:
+@limiter.limit("5/minute")
+def reset_password(request: Request, payload: PasswordResetConfirm) -> dict:
     try:
         SupabaseAuth().reset_password(payload.token, payload.new_password)
         return {"ok": True, "message": "Password has been reset."}
