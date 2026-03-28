@@ -52,8 +52,12 @@ export function ProjectsTable({ projects, onDelete, onView, rankingMode }: Proje
     const summary = scanData.summary || {};
     
     // Extract from root first (populated by backend normalization), fallback to scan_data
-    const totalFiles = project.total_files ?? summary.total_files ?? 0;
-    const totalLines = project.total_lines ?? summary.total_lines ?? 0;
+    const totalFiles = project.total_files && project.total_files > 0
+      ? project.total_files
+      : (summary.total_files ?? 0);
+    const totalLines = project.total_lines && project.total_lines > 0
+      ? project.total_lines
+      : (summary.total_lines ?? 0);
     
     // Extract languages from various sources
     let languages: string[] = [];
