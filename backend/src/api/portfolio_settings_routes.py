@@ -75,6 +75,7 @@ class SettingsResponse(BaseModel):
     show_top_projects: bool = True
     show_all_skills: bool = True
     showcase_count: int = 3
+    deployed_url: Optional[str] = None
 
 
 class PublishResponse(BaseModel):
@@ -260,3 +261,75 @@ async def get_public_portfolio(share_token: str) -> JSONResponse:
         "heatmap_data": heatmap_data if visible_settings["show_heatmap"] else [],
         "all_skills": all_skills if visible_settings["show_all_skills"] else [],
     })
+
+
+# ── Portfolio Deployment ─────────────────────────────────────────────
+
+
+class DeployResponse(BaseModel):
+    url: Optional[str] = None
+    status: str
+    error: Optional[str] = None
+
+
+@router.post("/api/portfolio/deploy", response_model=DeployResponse)
+async def deploy_portfolio(
+    auth: AuthContext = Depends(get_auth_context),
+    service: PortfolioSettingsService = Depends(get_auth_settings_service),
+):
+    """Generate a static HTML portfolio and deploy it to Vercel."""
+    settings = service.get_settings(auth.user_id)
+    if not settings or not settings.get("is_public") or not settings.get("share_token"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Portfolio must be published before deploying.",
+        )
+
+    # Reuse the public portfolio data aggregation
+    share_token = settings["share_token"]
+    public_resp = await get_public_portfolio(share_token)
+    portfolio_data = public_resp.body.decode("utf-8")
+    import json
+    data = json.loads(portfolio_data)
+
+    from services.services.portfolio_deploy_service import (
+        generate_portfolio_html,
+        deploy_to_vercel,
+    )
+
+    html = generate_portfolio_html(
+        profile=data.get("profile", {}),
+        settings=data.get("settings", {}),
+        skills_timeline=data.get("skills_timeline", []),
+        top_projects=data.get("top_projects", []),
+        heatmap_data=data.get("heatmap_data", []),
+        all_skills=data.get("all_skills", []),
+    )
+
+    result = await deploy_to_vercel(html, share_token)
+    if result.get("url"):
+        service.upsert_settings(auth.user_id, deployed_url=result["url"])
+
+    return DeployResponse(
+        url=result.get("url"),
+        status=result.get("status", "error"),
+        error=result.get("error"),
+    )
+
+
+@router.delete("/api/portfolio/deploy")
+async def undeploy_portfolio(
+    auth: AuthContext = Depends(get_auth_context),
+    service: PortfolioSettingsService = Depends(get_auth_settings_service),
+):
+    """Remove a Vercel deployment and clear the deployed URL."""
+    settings = service.get_settings(auth.user_id)
+    if not settings or not settings.get("deployed_url"):
+        return {"ok": True}
+
+    from services.services.portfolio_deploy_service import delete_vercel_deployment
+
+    share_token = settings.get("share_token", "")
+    await delete_vercel_deployment(share_token)
+    service.upsert_settings(auth.user_id, deployed_url="")
+    return {"ok": True}
