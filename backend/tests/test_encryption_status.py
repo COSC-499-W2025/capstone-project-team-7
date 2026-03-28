@@ -1,6 +1,7 @@
 import base64
 import json
 
+import pytest
 from fastapi.testclient import TestClient
 
 from backend.src.main import app
@@ -11,6 +12,15 @@ def _make_token(user_id: str = "user-1") -> str:
     header = base64.urlsafe_b64encode(json.dumps({"alg": "none", "typ": "JWT"}).encode()).rstrip(b"=")
     payload = base64.urlsafe_b64encode(json.dumps({"sub": user_id}).encode()).rstrip(b"=")
     return f"{header.decode()}.{payload.decode()}."
+
+
+@pytest.fixture(autouse=True)
+def _override_auth_dependency():
+    app.dependency_overrides[encryption_routes.verify_auth_token] = lambda: "user-1"
+    try:
+        yield
+    finally:
+        app.dependency_overrides.pop(encryption_routes.verify_auth_token, None)
 
 
 def test_encryption_status_ready(monkeypatch):

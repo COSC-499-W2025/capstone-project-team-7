@@ -63,9 +63,13 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
-allowed_hosts = [host.strip() for host in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if host.strip()]
+allowed_hosts = [
+    host.strip()
+    for host in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1,testserver").split(",")
+    if host.strip()
+]
 if not allowed_hosts:
-    allowed_hosts = ["localhost", "127.0.0.1"]
+    allowed_hosts = ["localhost", "127.0.0.1", "testserver"]
 
 app.add_middleware(
     TrustedHostMiddleware,
