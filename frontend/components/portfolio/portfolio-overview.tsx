@@ -253,17 +253,34 @@ export function PortfolioOverview({
     setPublishing(true);
     try {
       const newPublic = !pubSettings?.is_public;
+      // Auto-undeploy from Vercel when going private
+      if (!newPublic && pubSettings?.deployed_url) {
+        try {
+          await undeployPortfolio(token);
+        } catch {
+          // Best-effort: continue with unpublish even if undeploy fails
+        }
+      }
       const result = await publishPortfolio(token, newPublic);
       setPubSettings((prev) => prev
-        ? { ...prev, is_public: result.is_public, share_token: result.share_token }
+        ? {
+            ...prev,
+            is_public: result.is_public,
+            share_token: result.share_token,
+            ...(result.is_public ? {} : { deployed_url: null }),
+          }
         : null,
       );
+      // Clear deploy state when unpublishing
+      if (!result.is_public) {
+        setDeployError(null);
+      }
     } catch (err) {
       setPublishError(err instanceof Error ? err.message : "Failed to publish portfolio");
     } finally {
       setPublishing(false);
     }
-  }, [pubSettings?.is_public]);
+  }, [pubSettings?.is_public, pubSettings?.deployed_url]);
 
   const handleCopyLink = useCallback(() => {
     if (!pubSettings?.share_token) return;
@@ -449,7 +466,7 @@ export function PortfolioOverview({
                           setDeployError(null);
                           try {
                             const res = await deployPortfolio(t);
-                            if (res.url) {
+                            if (res.status === "success" && res.url) {
                               setPubSettings((prev) => prev ? { ...prev, deployed_url: res.url } : prev);
                             } else {
                               setDeployError(res.error ?? "Deployment failed");
@@ -472,6 +489,7 @@ export function PortfolioOverview({
                           type="button"
                           disabled={undeploying}
                           onClick={async () => {
+                            if (!confirm("Remove your deployed portfolio? This will take it offline.")) return;
                             const t = getStoredToken();
                             if (!t) return;
                             setUndeploying(true);
