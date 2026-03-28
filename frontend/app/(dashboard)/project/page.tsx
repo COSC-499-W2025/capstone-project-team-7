@@ -609,7 +609,7 @@ export default function ProjectPage() {
 
   // Skill progression map (per-skill proficiency over time)
   const skillProgression: SkillProgressionMap =
-    (skillsAnalysis as Record<string, unknown>).skill_progression as SkillProgressionMap ?? {};
+    skillsAnalysis.skill_progression ?? {};
 
   // Filter skills by search query and category filter
   const filteredSkillsByCategory = useMemo(() => {

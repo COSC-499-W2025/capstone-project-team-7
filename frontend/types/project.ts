@@ -99,6 +99,7 @@ export interface ProjectSkillsAnalysis extends Record<string, unknown> {
     evidence?: SkillEvidenceItem[];
   }>;
   skill_adoption_timeline?: SkillAdoptionEntry[];
+  skill_progression?: SkillProgressionMap;
 }
 
 export interface ProjectScanFile extends Record<string, unknown> {

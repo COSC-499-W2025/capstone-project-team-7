@@ -11,8 +11,10 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
+import { RotateCcw } from "lucide-react";
 import { formatPeriodLabel } from "@/lib/format-utils";
 import type { SkillProgressionMap } from "@/types/project";
+import { Button } from "@/components/ui/button";
 
 const SKILL_COLORS = [
   "hsl(214, 86%, 56%)",  // blue (primary)
@@ -101,7 +103,18 @@ export function SkillProgressionChart({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        {activeSkills.size > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setActiveSkills(new Set())}
+            className="h-7 text-xs gap-1 text-muted-foreground hover:text-foreground"
+          >
+            <RotateCcw size={12} />
+            Deselect all
+          </Button>
+        )}
         {allSkillNames.map((name, i) => {
           const isActive = activeSkills.has(name);
           const color = SKILL_COLORS[i % SKILL_COLORS.length];
