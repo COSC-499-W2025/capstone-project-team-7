@@ -8,6 +8,7 @@ portfolio looks identical to the in-app view.
 from __future__ import annotations
 
 import base64
+import hashlib
 import html as html_mod
 import logging
 import os
@@ -428,10 +429,14 @@ def generate_portfolio_html(
     peak_label, peak_commits = _get_peak_activity(skills_timeline)
     lead_project = top_projects[0] if top_projects else None
 
-    # --- Avatar ---
+    # --- Avatar (only allow http/https URLs) ---
+    safe_avatar = None
+    if avatar_url and isinstance(avatar_url, str):
+        if avatar_url.startswith("https://") or avatar_url.startswith("http://"):
+            safe_avatar = avatar_url
     avatar_html = (
-        f'<img src="{_esc(avatar_url)}" alt="avatar" class="h-full w-full object-cover">'
-        if avatar_url
+        f'<img src="{_esc(safe_avatar)}" alt="avatar" class="h-full w-full object-cover">'
+        if safe_avatar
         else '<svg class="h-7 w-7 text-muted-foreground" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>'
     )
 
@@ -574,7 +579,7 @@ def generate_portfolio_html(
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{display_name} &mdash; Portfolio</title>
-<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.tailwindcss.com/3.4.1"></script>
 <style>{_CUSTOM_CSS}</style>
 </head>
 <body>
@@ -610,14 +615,21 @@ def generate_portfolio_html(
 # ---------------------------------------------------------------------------
 
 
+def _safe_project_name(share_token: str) -> str:
+    """Derive a Vercel project name from a share token, with validation."""
+    safe = "".join(c if c.isalnum() else "-" for c in share_token[:12]).lower().strip("-")
+    if len(safe) < 4:
+        safe = hashlib.sha256(share_token.encode()).hexdigest()[:12]
+    return f"portfolio-{safe}"
+
+
 async def deploy_to_vercel(html_content: str, share_token: str) -> Dict[str, Any]:
     """Deploy a static HTML file to Vercel. Returns {{url, status}}."""
     token = os.getenv("VERCEL_API_TOKEN")
     if not token:
         return {"url": None, "status": "error", "error": "VERCEL_API_TOKEN not configured"}
 
-    safe_token = "".join(c if c.isalnum() else "-" for c in share_token[:12]).lower().strip("-")
-    project_name = f"portfolio-{safe_token}"
+    project_name = _safe_project_name(share_token)
     encoded = base64.b64encode(html_content.encode("utf-8")).decode("ascii")
 
     payload = {
@@ -638,21 +650,24 @@ async def deploy_to_vercel(html_content: str, share_token: str) -> Dict[str, Any
         logger.error("Vercel deploy failed: %s %s", resp.status_code, resp.text)
         return {"url": None, "status": "error", "error": f"Vercel API error ({resp.status_code})"}
 
-    data = resp.json()
+    try:
+        data = resp.json()
+    except Exception:
+        return {"url": None, "status": "error", "error": "Invalid response from Vercel"}
+
     url = data.get("url")
     if url and not url.startswith("http"):
         url = f"https://{url}"
     return {"url": url, "status": "success"}
 
 
-async def delete_vercel_deployment(share_token: str) -> None:
-    """Delete a Vercel project (and all its deployments) by name."""
+async def delete_vercel_deployment(share_token: str) -> str | None:
+    """Delete a Vercel project by name. Returns an error string or None on success."""
     token = os.getenv("VERCEL_API_TOKEN")
     if not token:
-        return
+        return None
 
-    safe_token = "".join(c if c.isalnum() else "-" for c in share_token[:12]).lower().strip("-")
-    project_name = f"portfolio-{safe_token}"
+    project_name = _safe_project_name(share_token)
 
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.delete(
@@ -661,3 +676,5 @@ async def delete_vercel_deployment(share_token: str) -> None:
         )
     if resp.status_code >= 400 and resp.status_code != 404:
         logger.error("Vercel project delete failed: %s %s", resp.status_code, resp.text)
+        return f"Vercel API error ({resp.status_code})"
+    return None
