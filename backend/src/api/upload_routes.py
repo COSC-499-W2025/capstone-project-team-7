@@ -242,6 +242,18 @@ def compute_file_hash(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
 
+def compute_file_hash_streaming(path: Path, chunk_size: int = 65536) -> str:
+    """Compute SHA-256 hash of a file using streaming reads to avoid loading it all into RAM."""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while True:
+            chunk = f.read(chunk_size)
+            if not chunk:
+                break
+            h.update(chunk)
+    return h.hexdigest()
+
+
 class UploadFromPathRequest(BaseModel):
     source_path: str = Field(..., description="Local filesystem path to a folder or ZIP archive")
 
@@ -285,8 +297,11 @@ def upload_from_path(
 
     if not source.exists():
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Source path does not exist: {body.source_path}",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "error": "path_not_found",
+                "message": "The specified source path does not exist",
+            },
         )
 
     # Check available disk space before starting (need at least 500 MB free)
@@ -318,6 +333,11 @@ def upload_from_path(
                 for file_path in sorted(source.rglob("*")):
                     if not file_path.is_file():
                         continue
+                    # Guard against symlinks that escape the home directory
+                    resolved = file_path.resolve()
+                    if not resolved.is_relative_to(home_dir):
+                        logger.warning("Skipping symlink that escapes home dir: %s -> %s", file_path, resolved)
+                        continue
                     rel = file_path.relative_to(source)
                     if any(part in _UPLOAD_EXCLUDED for part in rel.parts):
                         continue
@@ -336,7 +356,7 @@ def upload_from_path(
             )
 
         file_size = upload_path.stat().st_size
-        file_hash = compute_file_hash(upload_path.read_bytes())
+        file_hash = compute_file_hash_streaming(upload_path)
         filename = source.name + (".zip" if source.is_dir() else "")
 
         created_at = datetime.utcnow()
@@ -350,7 +370,11 @@ def upload_from_path(
             "storage_path": str(upload_path),
             "created_at": created_at.isoformat() + "Z",
             "created_at_epoch": created_at.timestamp(),
-            "metadata": {"original_path": body.source_path},
+            "metadata": {
+                "original_path": body.source_path,
+                "source_kind": "zip" if source.is_file() else "directory",
+                "source_path": str(source),
+            },
         }
 
         with uploads_store_lock:
@@ -368,9 +392,10 @@ def upload_from_path(
         # Clean up partial file on failure
         if upload_path.exists():
             upload_path.unlink(missing_ok=True)
+        logger.exception("Failed to create upload from path: %s", e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create upload from path: {str(e)}",
+            detail="Failed to create upload from path",
         )
 
 
@@ -463,7 +488,7 @@ async def upload_file(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
                 "error": "upload_failed",
-                "message": f"Failed to process upload: {str(e)}"
+                "message": "Failed to process upload"
             }
         )
 
@@ -663,6 +688,6 @@ async def parse_upload(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
                 "error": "parse_failed",
-                "message": f"Failed to parse upload: {str(e)}"
+                "message": "Failed to parse upload"
             }
         )

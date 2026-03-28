@@ -4447,7 +4447,7 @@ async def append_upload_to_project(
         logger.exception(f"Failed to parse upload {upload_id}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to parse upload: {str(exc)}",
+            detail="Failed to parse the uploaded archive",
         )
 
     # Process each file and determine status
@@ -4516,15 +4516,12 @@ async def append_upload_to_project(
     # upsert is kept as a best-effort secondary write but is not relied upon
     # because Supabase RLS may silently block inserts.
     if files_to_upsert:
-        # 1) Best-effort write to scan_files (may be blocked by RLS)
+        # 1) Append new file entries to scan_data.files (authoritative source)
+        #    Re-read the project to avoid overwriting concurrent appends.
         try:
-            service.upsert_cached_files(user_id, project_id, files_to_upsert)
-        except ProjectsServiceError as exc:
-            logger.warning(f"scan_files upsert failed (non-fatal): {exc}")
-
-        # 2) Append new file entries to scan_data.files (authoritative source)
-        try:
-            existing_scan_files = list(scan_data_files)  # copy
+            fresh_project = service.get_project_scan(user_id, project_id)
+            fresh_scan_data = (fresh_project or {}).get("scan_data") or {}
+            existing_scan_files = list(fresh_scan_data.get("files") or [])
             existing_paths = {
                 (e.get("path") or "").replace("\\", "/") for e in existing_scan_files
             }
@@ -4537,10 +4534,24 @@ async def append_upload_to_project(
                         "mime_type": entry.get("mime_type"),
                         "file_hash": entry.get("sha256"),
                     })
-            scan_data["files"] = existing_scan_files
-            service.update_project_scan_data(user_id, project_id, scan_data)
+            fresh_scan_data["files"] = existing_scan_files
+            service.update_project_scan_data(user_id, project_id, fresh_scan_data)
         except Exception as exc:
-            logger.warning(f"Failed to update scan_data with appended files: {exc}")
+            logger.error(f"Failed to update scan_data with appended files: {exc}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to persist appended file data",
+            )
+
+        # 2) Write to scan_files cache table
+        try:
+            service.upsert_cached_files(user_id, project_id, files_to_upsert)
+        except ProjectsServiceError as exc:
+            logger.error(f"scan_files upsert failed for project {project_id}: {exc}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to persist appended file metadata",
+            )
 
     # Clean up the temporary upload ZIP to free disk space
     try:
