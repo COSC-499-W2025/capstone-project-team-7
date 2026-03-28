@@ -46,6 +46,7 @@ app = FastAPI(
 
 environment = os.getenv("ENVIRONMENT", "development").strip().lower()
 allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "").strip()
+allowed_headers_env = os.getenv("ALLOWED_HEADERS", "").strip()
 
 if allowed_origins_env:
     allowed_origins = [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()]
@@ -61,19 +62,24 @@ if "*" in allowed_origins:
     if not allowed_origins:
         allowed_origins = ["http://localhost:3000", "http://localhost:8000"]
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=[
+if allowed_headers_env:
+    allowed_headers = [header.strip() for header in allowed_headers_env.split(",") if header.strip()]
+else:
+    allowed_headers = [
         "Authorization",
         "Content-Type",
         "Accept",
         "Origin",
         "X-Requested-With",
         "Cache-Control",
-    ],
+    ]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=allowed_headers,
 )
 
 @app.get("/")
