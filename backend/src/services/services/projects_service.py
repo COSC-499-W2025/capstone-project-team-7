@@ -1041,6 +1041,28 @@ class ProjectsService:
 
         return updated_count
 
+    def update_project_scan_data(
+        self,
+        user_id: str,
+        project_id: str,
+        scan_data: Dict[str, Any],
+    ) -> None:
+        """
+        Encrypt and persist updated scan_data for a project.
+
+        Used by the append-upload flow after merging new files into the
+        existing scan payload.
+        """
+        try:
+            encrypted = self._encrypt_scan_data(scan_data)
+            self.client.table("projects").update(
+                {"scan_data": encrypted}
+            ).eq("id", project_id).eq("user_id", user_id).execute()
+        except Exception as exc:
+            raise ProjectsServiceError(
+                f"Failed to update scan_data for project {project_id}: {exc}"
+            ) from exc
+
     # --- Encryption helpers -------------------------------------------------
 
     def _encrypt_scan_data(self, scan_data: Dict[str, Any]) -> Any:

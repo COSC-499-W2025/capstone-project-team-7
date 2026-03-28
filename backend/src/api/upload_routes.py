@@ -272,7 +272,17 @@ def upload_from_path(
 
     cleanup_expired_uploads()
 
-    source = Path(body.source_path)
+    source = Path(body.source_path).resolve()
+
+    # Guard: reject paths outside the user's home directory to prevent
+    # arbitrary file exfiltration if the FastAPI server is network-accessible.
+    home_dir = Path.home().resolve()
+    if not source.is_relative_to(home_dir):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Source path must be within the user's home directory",
+        )
+
     if not source.exists():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

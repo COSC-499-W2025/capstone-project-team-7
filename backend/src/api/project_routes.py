@@ -4538,10 +4538,7 @@ async def append_upload_to_project(
                         "file_hash": entry.get("sha256"),
                     })
             scan_data["files"] = existing_scan_files
-            encrypted = service._encrypt_scan_data(scan_data)
-            service.client.table("projects").update(
-                {"scan_data": encrypted}
-            ).eq("id", project_id).eq("user_id", user_id).execute()
+            service.update_project_scan_data(user_id, project_id, scan_data)
         except Exception as exc:
             logger.warning(f"Failed to update scan_data with appended files: {exc}")
 
