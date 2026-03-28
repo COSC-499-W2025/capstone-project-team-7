@@ -22,6 +22,8 @@ if load_dotenv:
     project_root = backend_root.parent
     load_dotenv(backend_root / ".env", override=False)
     load_dotenv(project_root / ".env", override=False)
+from api.security import limiter, rate_limit_exceeded_handler, SecurityHeadersMiddleware
+from slowapi.errors import RateLimitExceeded
 from api.auth_routes import router as auth_router
 from api.analysis_routes import router as analysis_router
 from api.consent_routes import router as consent_router
@@ -43,6 +45,11 @@ app = FastAPI(
     description="Backend service",
     version="1.0.0"
 )
+
+# --- Security hardening ---
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+app.add_middleware(SecurityHeadersMiddleware)
 
 allowed_origins = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "*").split(",")]
 
