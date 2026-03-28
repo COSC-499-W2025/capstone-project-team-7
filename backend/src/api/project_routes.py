@@ -75,6 +75,11 @@ try:
 except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
     from backend.src.api.request_context import get_request_access_token, set_request_access_token
 
+try:
+    from api.dependencies import AuthContext, get_auth_context
+except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
+    from backend.src.api.dependencies import AuthContext, get_auth_context
+
 logger = logging.getLogger(__name__)
 
 # Human-friendly labels for skill categories
@@ -912,54 +917,8 @@ def _run_code_analysis_for_path(
         return None
 
 
-async def verify_auth_token(authorization: Optional[str] = Header(None)) -> str:
-    """
-    Verify JWT token from Authorization header.
-    
-    Args:
-        authorization: Bearer token from header
-    
-    Returns:
-        User ID extracted from token
-    
-    Raises:
-        HTTPException: If token is missing or invalid
-    """
-    if not authorization:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing authorization token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    parts = authorization.split()
-    if len(parts) != 2 or parts[0].lower() != "bearer":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authorization header format. Use 'Bearer <token>'",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    token = parts[1]
-    set_request_access_token(token)
-
-    try:
-        import jwt
-
-        payload = jwt.decode(token, options={"verify_signature": False})
-        user_id = payload.get("sub")
-        if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token: missing user ID",
-            )
-        return user_id
-    except Exception as exc:
-        logger.error(f"Token verification failed: {exc}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-        )
+async def verify_auth_token(auth: AuthContext = Depends(get_auth_context)) -> str:
+    return auth.user_id
 
 
 # ============================================================================

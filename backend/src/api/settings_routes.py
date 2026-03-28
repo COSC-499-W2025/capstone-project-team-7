@@ -8,13 +8,14 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 
 from api.dependencies import AuthContext, get_auth_context
 from api.llm_routes import get_user_client, set_user_client, remove_user_client
 from analyzer.llm.client import LLMClient, InvalidAPIKeyError, LLMError
 from auth.consent_validator import ConsentValidator
+from security.rate_limit import limiter
 from services.services.encryption import EncryptionService, EncryptionError
 
 logger = logging.getLogger(__name__)
@@ -127,7 +128,9 @@ async def get_secrets_status(auth: AuthContext = Depends(get_auth_context)):
 
 
 @router.put("/secrets", response_model=SaveSecretResponse)
+@limiter.limit("20/hour")
 async def save_secret(
+    request: Request,
     body: SaveSecretRequest,
     auth: AuthContext = Depends(get_auth_context),
 ):
@@ -192,7 +195,9 @@ async def save_secret(
 
 
 @router.delete("/secrets")
+@limiter.limit("20/hour")
 async def delete_secret(
+    request: Request,
     body: DeleteSecretRequest,
     auth: AuthContext = Depends(get_auth_context),
 ):
@@ -214,7 +219,8 @@ async def delete_secret(
 
 
 @router.post("/secrets/verify", response_model=VerifyStoredKeyResponse)
-async def verify_stored_key(auth: AuthContext = Depends(get_auth_context)):
+@limiter.limit("10/hour")
+async def verify_stored_key(request: Request, auth: AuthContext = Depends(get_auth_context)):
     """Decrypt the stored OpenAI key, verify it with OpenAI, and cache the client."""
     # Check consent
     try:
