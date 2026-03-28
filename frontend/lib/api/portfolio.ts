@@ -25,7 +25,18 @@ function authHeaders(token: string): Record<string, string> {
 
 async function call<T>(path: string, init: RequestInit, fallback: string): Promise<T> {
   const result = await request<T>(path, init);
-  if (!result.ok) throw new Error(result.error ?? fallback);
+  if (!result.ok) {
+    let message = fallback;
+    if (result.error) {
+      try {
+        const parsed = JSON.parse(result.error);
+        message = parsed.detail ?? result.error;
+      } catch {
+        message = result.error;
+      }
+    }
+    throw new Error(message);
+  }
   return result.data;
 }
 
