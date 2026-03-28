@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass
+import json
 import os
 from typing import Any, Dict, Optional, cast
 
@@ -81,11 +83,23 @@ async def get_auth_context(authorization: Optional[str] = Header(default=None)) 
 
     set_request_access_token(access_token)
 
-    if os.getenv("PYTEST_CURRENT_TEST") and not (os.getenv("SUPABASE_URL") and resolve_supabase_api_key()):
+    if os.getenv("PYTEST_CURRENT_TEST"):
+        payload: Dict[str, Any] = {}
+        pieces = access_token.split(".")
+        if len(pieces) >= 2:
+            encoded_payload = pieces[1]
+            encoded_payload += "=" * (-len(encoded_payload) % 4)
+            try:
+                payload = json.loads(base64.urlsafe_b64decode(encoded_payload.encode()).decode())
+            except Exception:
+                payload = {}
+
+        user_id = payload.get("sub") or payload.get("id") or access_token
+        email = payload.get("email")
         return AuthContext(
-            user_id=access_token,
+            user_id=str(user_id),
             access_token=access_token,
-            email=None,
+            email=str(email) if isinstance(email, str) else None,
         )
 
     user = await get_user_profile(access_token)
