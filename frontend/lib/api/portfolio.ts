@@ -12,6 +12,7 @@ import type {
   ResourceSuggestionsResponse,
   LinkedInPostRequest,
   LinkedInPostResponse,
+  DeployPortfolioResponse,
 } from "@/types/portfolio";
 import { request } from "@/lib/api";
 
@@ -128,6 +129,26 @@ export async function publishPortfolio(
     "/api/portfolio/settings/publish",
     { method: "POST", headers: authHeaders(token), body: JSON.stringify({ is_public: isPublic }) },
     "Failed to publish portfolio"
+  );
+}
+
+// ── Portfolio Deployment ────────────────────────────────────────────
+
+export async function deployPortfolio(
+  token: string,
+): Promise<DeployPortfolioResponse> {
+  return call(
+    "/api/portfolio/deploy",
+    { method: "POST", headers: authHeaders(token) },
+    "Failed to deploy portfolio",
+  );
+}
+
+export async function undeployPortfolio(token: string): Promise<void> {
+  await call<Record<string, unknown>>(
+    "/api/portfolio/deploy",
+    { method: "DELETE", headers: authHeaders(token) },
+    "Failed to remove deployment",
   );
 }
 

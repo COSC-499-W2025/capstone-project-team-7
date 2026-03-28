@@ -120,6 +120,13 @@ export interface PortfolioSettings {
   show_top_projects: boolean;
   show_all_skills: boolean;
   showcase_count: number;
+  deployed_url?: string | null;
+}
+
+export interface DeployPortfolioResponse {
+  url: string | null;
+  status: string;
+  error?: string | null;
 }
 
 export interface PublicPortfolioResponse {
