@@ -13,8 +13,10 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, status, Body, Header, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Request, status, Body, Header, Depends
 from pydantic import BaseModel, Field
+
+from api.security import limiter, validate_storage_path
 
 from scanner.parser import parse_zip
 from scanner.models import ParseResult, ScanPreferences, FileMetadata as ScanFileMetadata, ParseIssue as ScanParseIssue
@@ -243,7 +245,9 @@ def compute_file_hash(content: bytes) -> str:
 
 
 @router.post("", response_model=UploadResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("10/minute")
 async def upload_file(
+    request: Request,
     file: UploadFile = File(..., description="ZIP archive to upload"),
     user_id: str = Depends(verify_auth_token)
 ):
@@ -292,8 +296,9 @@ async def upload_file(
         # Compute file hash for deduplication
         file_hash = compute_file_hash(content)
         
-        # Save file to disk
-        upload_path = UPLOAD_DIR / f"{upload_id}.zip"
+        # Save file to disk (validated against traversal)
+        safe_name = f"{upload_id}.zip"
+        upload_path = validate_storage_path(safe_name, UPLOAD_DIR)
         upload_path.write_bytes(content)
         
         # Store metadata
