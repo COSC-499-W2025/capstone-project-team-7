@@ -57,6 +57,7 @@ import type {
   SkillProgressSummary,
   RoleProfile,
   SkillGapAnalysis,
+  SkillProgressionMap,
 } from "@/types/project";
 import { getCategoryLabel, buildEvidenceMap } from "@/lib/skills-utils";
 import {
@@ -662,6 +663,10 @@ export default function ProjectPage() {
 
   // Adoption timeline
   const skillAdoptionTimeline: SkillAdoptionEntry[] = skillsAnalysis.skill_adoption_timeline ?? [];
+
+  // Skill progression map (per-skill proficiency over time)
+  const skillProgression: SkillProgressionMap =
+    skillsAnalysis.skill_progression ?? {};
 
   // Filter skills by search query and category filter
   const filteredSkillsByCategory = useMemo(() => {
@@ -1302,6 +1307,7 @@ export default function ProjectPage() {
                   skillsSummary={skillsSummary}
                   summaryLoading={summaryLoading}
                   handleGenerateSummary={handleGenerateSummary}
+                  skillProgression={skillProgression}
                 />
               </TabsContent>
 

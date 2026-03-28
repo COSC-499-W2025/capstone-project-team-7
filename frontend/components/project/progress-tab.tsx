@@ -12,9 +12,11 @@ import {
   SectionTitle,
 } from "@/components/ui/section";
 import { formatPeriodLabel } from "@/lib/format-utils";
+import { SkillProgressionChart } from "@/components/project/skill-progression-chart";
 import type {
   SkillProgressPeriod,
   SkillProgressSummary,
+  SkillProgressionMap,
 } from "@/types/project";
 
 interface ProgressTabProps {
@@ -25,6 +27,7 @@ interface ProgressTabProps {
   skillsSummary: SkillProgressSummary | null;
   summaryLoading: boolean;
   handleGenerateSummary: () => void;
+  skillProgression: SkillProgressionMap;
 }
 
 export function ProgressTab({
@@ -35,9 +38,26 @@ export function ProgressTab({
   skillsSummary,
   summaryLoading,
   handleGenerateSummary,
+  skillProgression,
 }: ProgressTabProps) {
   return (
     <div className="space-y-6">
+      {Object.keys(skillProgression).length > 0 && (
+        <Section>
+          <SectionHeader>
+            <SectionHeading>
+              <SectionTitle>Skill Progression</SectionTitle>
+              <SectionDescription>
+                Track how skill activity changed over time. Click skills to toggle them on or off.
+              </SectionDescription>
+            </SectionHeading>
+          </SectionHeader>
+          <SectionBody className="pt-0">
+            <SkillProgressionChart skillProgression={skillProgression} />
+          </SectionBody>
+        </Section>
+      )}
+
       <Section>
         <SectionHeader>
           <SectionHeading>

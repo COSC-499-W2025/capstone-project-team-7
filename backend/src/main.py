@@ -42,6 +42,7 @@ from api.encryption_routes import router as encryption_router
 from api.settings_routes import router as settings_router
 from api.portfolio_settings_routes import router as portfolio_settings_router
 from security.rate_limit import limiter
+from api.linkedin_routes import router as linkedin_router
 
 app = FastAPI(
     title="Capstone Backend API",
@@ -111,6 +112,7 @@ app.include_router(profile_router)
 app.include_router(encryption_router)
 app.include_router(settings_router)
 app.include_router(portfolio_settings_router)
+app.include_router(linkedin_router)
 
 if __name__ == "__main__":
     import uvicorn
