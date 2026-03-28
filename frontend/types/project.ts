@@ -179,12 +179,94 @@ export interface ProjectAiKeyFile {
   summary?: string | null;
 }
 
+// ── Structured AI analysis types ────────────────────────────────────────────
+
+export interface AiOverview {
+  summary?: string | null;
+  tech_stack?: string[] | null;
+  project_type?: string | null;
+}
+
+export interface AiDiagramNode {
+  id: string;
+  label: string;
+  type?: "ui" | "service" | "database" | "library" | "external" | string;
+}
+
+export interface AiDiagramEdge {
+  from: string;
+  to: string;
+  label?: string;
+}
+
+export interface AiArchitectureDiagram {
+  nodes?: AiDiagramNode[] | null;
+  edges?: AiDiagramEdge[] | null;
+}
+
+export interface AiArchitecture {
+  summary?: string | null;
+  patterns?: string[] | null;
+  diagram?: AiArchitectureDiagram | null;
+}
+
+export interface AiTechnicalHighlightTechnology {
+  name?: string | null;
+  usage?: string | null;
+}
+
+export interface AiTechnicalHighlights {
+  overview?: string | null;
+  technologies?: AiTechnicalHighlightTechnology[] | null;
+  patterns?: string[] | null;
+  highlights?: string[] | null;
+}
+
+export interface AiKeyModule {
+  title?: string | null;
+  summary?: string | null;
+  key_files?: string[] | null;
+  issues?: string[] | null;
+}
+
+export interface AiConfidenceItem {
+  text?: string | null;
+  confidence?: number | null;
+}
+
+export interface AiInsights {
+  weaknesses?: AiConfidenceItem[] | null;
+  improvements?: AiConfidenceItem[] | null;
+  surprising_observation?: AiConfidenceItem | null;
+}
+
+export interface AiSecurityAndVulnerability {
+  findings?: AiConfidenceItem[] | null;
+}
+
+export interface AiProjectScores {
+  overall?: number | null;
+  code_quality?: number | null;
+  modularity?: number | null;
+  readability?: number | null;
+  test_coverage?: number | null;
+  documentation?: number | null;
+  security?: number | null;
+}
+
 export interface ProjectAiAnalysis {
   overall_summary?: string | null;
   categories?: ProjectAiAnalysisCategory[] | null;
-  render_mode?: "cards" | "markdown_report" | null;
-  markdown_report?: string | null;
+  render_mode?: "cards" | "structured" | null;
   key_files?: ProjectAiKeyFile[] | null;
+  // Structured output fields
+  overview?: AiOverview | null;
+  architecture?: AiArchitecture | null;
+  technical_highlights?: AiTechnicalHighlights | null;
+  key_modules?: AiKeyModule[] | null;
+  insights?: AiInsights | null;
+  security_and_vulnerability?: AiSecurityAndVulnerability | null;
+  project_scores?: AiProjectScores | null;
   // Legacy fields kept for backward compat with already-cached results
   portfolio_overview?: string | null;
   project_insights?: string[] | null;
