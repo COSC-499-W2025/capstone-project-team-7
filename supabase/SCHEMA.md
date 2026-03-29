@@ -40,6 +40,24 @@ This project uses Supabase for persisted user data and synced scan artifacts. Be
   - Key fields: `user_id` (PK, refs auth.users), `accepted`, `accepted_at`, `version`, `metadata` JSONB (e.g., per-service consent_given/timestamp).
   - Code: `backend/src/auth/consent.py`, `backend/src/auth/consent_validator.py`, documented in `backend/src/auth/README.md`.
 
+- **public.jobs**
+  - Purpose: Shared cache of job postings scraped from LinkedIn and Indeed via Apify.
+  - Key fields: `id`, `external_id` + `source` (unique), `title`, `company`, `location`, `is_remote`, `job_type`, `experience_level`, `salary_min`, `salary_max`, `salary_currency`, `description`, `url`, `company_logo_url`, `skills` (text[]), `posted_at`, `scraped_at`, `raw_data` (JSONB).
+  - Code: `backend/src/api/job_routes.py`, `backend/src/services/services/apify_service.py`.
+  - Notes: RLS enabled — all authenticated users can SELECT (shared cache). GIN index on `skills`.
+
+- **public.user_jobs**
+  - Purpose: Per-user job bookmarks, application status tracking, and match scores.
+  - Key fields: `user_id`, `job_id` (unique per user+job), `status` (saved/applied/interviewing/offer/rejected), `keyword_match_score`, `ai_match_score`, `ai_match_summary`, `matched_skills` (text[]), `missing_skills` (text[]), `notes`, `applied_at`.
+  - Code: `backend/src/api/job_routes.py`, `backend/src/services/services/job_matching_service.py`.
+  - Notes: RLS enabled with owner-only policies.
+
+- **public.job_scrape_runs**
+  - Purpose: Audit trail of Apify scrape operations per user.
+  - Key fields: `user_id`, `source`, `actor_id`, `run_id`, `status`, `search_query`, `location`, `jobs_found`, `jobs_new`, `error_message`, `started_at`, `completed_at`.
+  - Code: `backend/src/api/job_routes.py`.
+  - Notes: RLS enabled with owner-only policies.
+
 ## Cleaned Up / Legacy
 
 - **public.consents** (legacy, empty) — dropped by migration `20251124000000_drop_unused_tables.sql`.
@@ -69,6 +87,7 @@ Do not modify; managed by Supabase:
 - `20260309000000_add_scan_files.sql`: Adds `scan_files` table and owner-scoped RLS policies for incremental scan metadata.
 - `20260130000000_extend_profiles.sql`: Adds `education`, `career_title`, `avatar_url`, `schema_url`, `drive_url`, `updated_at` columns to `profiles`.
 - `20260131000000_create_avatars_bucket.sql`: Creates the `avatars` storage bucket (public) with RLS policies restricting uploads to the user's own folder.
+- `20260328000000_create_job_board_tables.sql`: Adds `jobs`, `user_jobs`, `job_scrape_runs` tables with RLS policies, triggers, and indexes for the Job Board feature.
 
 ## Environment Keys (per .env)
 
@@ -89,5 +108,6 @@ Using the service key means RLS is bypassed. If you enable RLS on `projects`, en
 - Consents: `consents_v1` (not `consents`).
 - Profiles: `profiles` (display name, education, career, avatar, links).
 - Avatar storage: `storage.avatars` bucket (public, RLS per user folder).
+- Job board: `jobs` (shared scraped listings), `user_jobs` (bookmarks + application tracking), `job_scrape_runs` (Apify scrape audit trail).
 
 If you add/remove tables, do it via a migration in `supabase/migrations` so all environments stay in sync.

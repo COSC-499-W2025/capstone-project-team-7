@@ -12,6 +12,7 @@ import {
   Search,
   Sparkles,
   LogOut,
+  Radar,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/hooks/use-auth';
@@ -155,6 +156,11 @@ export const Sidebar: React.FC = () => {
               href="/ai-analysis"
               icon={<Sparkles size={18} />}
               label="AI Analysis"
+            />
+            <NavItem
+              href="/jobs"
+              icon={<Radar size={18} />}
+              label="Job Board"
             />
             <NavItem
               href="/resume-builder"

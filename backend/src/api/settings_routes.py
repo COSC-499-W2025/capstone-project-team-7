@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 _SECRETS_TABLE = "user_secrets"
-_ALLOWED_SECRET_KEYS = {"openai_api_key"}
+_ALLOWED_SECRET_KEYS = {"openai_api_key", "apify_api_token"}
 
 # ---------------------------------------------------------------------------
 # Pydantic models
@@ -269,7 +269,7 @@ async def verify_stored_key(auth: AuthContext = Depends(get_auth_context)):
 
 
 def _provider_for_key(secret_key: str) -> str:
-    mapping = {"openai_api_key": "openai"}
+    mapping = {"openai_api_key": "openai", "apify_api_token": "apify"}
     return mapping.get(secret_key, "unknown")
 
 

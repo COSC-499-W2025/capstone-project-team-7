@@ -25,6 +25,7 @@ Priority key: P0 = launch-critical parity; P1 = nice-to-have once P0 is stable; 
 | Media analysis | P1 | Media metadata + offline CV/audio labels | `backend/src/local_analysis/media_analyzer.py`, `backend/src/scanner/media.py` | Torch/torchaudio optional; local media | Scan detail → Media |
 | Resume generation | P1 | Build resume item from scan artifacts | `backend/src/cli/services/resume_generation_service.py` | Local; optional AI; writes markdown | Scan detail → Create resume |
 | Resume storage & browsing | P1 | View/delete saved resumes | `backend/src/cli/services/resume_storage_service.py` | Supabase table `resume_items`; encrypted content | Resumes list/detail |
+| Job Board | P1 | Scrape jobs from LinkedIn/Indeed via Apify, match against user skills, bookmark & track applications | `backend/src/api/job_routes.py`, `backend/src/services/services/apify_service.py`, `backend/src/services/services/job_matching_service.py` | Apify API; Supabase tables `jobs`, `user_jobs`, `job_scrape_runs`; optional OpenAI for AI matching | Sidebar → Job Board (`/jobs`) |
 
 ## Project Page (Wireframe)
 | Aspect | Detail |
