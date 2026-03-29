@@ -458,3 +458,160 @@ def test_build_relevant_files_for_batch_strips_prefixed_paths(tmp_path: Path):
     files = project_routes._build_relevant_files_for_batch(scan_data, source_path=source_dir)
     assert files
     assert files[0]["path"] == "backend/src/main.py"
+
+
+def test_adapt_batch_to_ai_result_filters_tests_and_drops_issues():
+    batch_result = {
+        "project_analysis": {
+            "analysis": "Structured summary",
+            "overview": {"summary": "Overview text"},
+            "technical_highlights": {
+                "overview": "Highlights overview",
+                "technologies": [{"name": "Python", "usage": "Main application logic"}],
+                "patterns": ["Dependency injection"],
+                "highlights": ["Clear separation of concerns"],
+            },
+            "key_modules": [
+                {
+                    "title": "Core",
+                    "summary": "Main logic",
+                    "key_files": [
+                        "src/core.py",
+                        "tests/test_core.py",
+                        "src/core.spec.ts",
+                        "frontend/package.json",
+                        "frontend/package-lock.json",
+                        "frontend/next.config.mjs",
+                        "backend/setup.cfg",
+                        "frontend/.next/server/app/page.js",
+                        "electron/.electron/runtime/main.js",
+                    ],
+                }
+            ],
+            "issues_and_risks": [{"title": "Old issue field"}],
+            "insights": {
+                "surprising_observation": {
+                    "text": "The codebase already has strong, extensive test automation.",
+                    "confidence": 0.8,
+                }
+            },
+            "security_and_vulnerability": {
+                "findings": [
+                    {
+                        "text": "Authentication paths in src/core.py should be validated for consistent authorization checks.",
+                        "confidence": 0.72,
+                    },
+                    {
+                        "text": "Dependency manifests should be scanned for known CVEs during CI.",
+                        "confidence": 0.68,
+                    },
+                ]
+            },
+            "project_scores": {"test_coverage": 82},
+        },
+        "file_summaries": [
+            {"file_path": "src/core.py", "analysis": "Main logic"},
+            {"file_path": "tests/test_core.py", "analysis": "Tests"},
+            {"file_path": "frontend/package.json", "analysis": "Dependency manifest"},
+            {"file_path": "frontend/package-lock.json", "analysis": "NPM lockfile"},
+            {"file_path": "frontend/next.config.mjs", "analysis": "Next.js config"},
+            {"file_path": "backend/setup.cfg", "analysis": "Tooling config"},
+            {"file_path": "frontend/.next/server/app/page.js", "analysis": "Generated bundle output"},
+            {"file_path": "electron/.electron/runtime/main.js", "analysis": "Packaged runtime output"},
+            {"file_path": "src/helpers.ts", "analysis": "Helper logic"},
+        ],
+    }
+
+    adapted = project_routes._adapt_batch_to_ai_result(batch_result, active_categories=[])
+
+    assert "issues_and_risks" not in adapted
+    assert isinstance(adapted.get("technical_highlights"), dict)
+    assert adapted.get("key_files") is not None
+    assert all("test" not in str(item.get("file_path", "")).lower() for item in adapted["key_files"])
+    assert all("/.next/" not in str(item.get("file_path", "")).replace("\\", "/").lower() for item in adapted["key_files"])
+    assert all("/.electron/" not in str(item.get("file_path", "")).replace("\\", "/").lower() for item in adapted["key_files"])
+    assert all("package.json" not in str(item.get("file_path", "")).lower() for item in adapted["key_files"])
+    assert all("package-lock.json" not in str(item.get("file_path", "")).lower() for item in adapted["key_files"])
+    assert all("config" not in str(item.get("file_path", "")).lower() for item in adapted["key_files"])
+    assert all("setup.cfg" not in str(item.get("file_path", "")).lower() for item in adapted["key_files"])
+
+    key_modules = adapted.get("key_modules") or []
+    assert key_modules
+    first_mod_files = key_modules[0].get("key_files") or []
+    assert "src/core.py" in first_mod_files
+    assert all("test" not in f.lower() and "spec" not in f.lower() for f in first_mod_files)
+    assert all("/.next/" not in f.replace("\\", "/").lower() for f in first_mod_files)
+    assert all("/.electron/" not in f.replace("\\", "/").lower() for f in first_mod_files)
+    assert all("package.json" not in f.lower() for f in first_mod_files)
+    assert all("package-lock.json" not in f.lower() for f in first_mod_files)
+    assert all("next.config" not in f.lower() and "setup.cfg" not in f.lower() for f in first_mod_files)
+    security_block = adapted.get("security_and_vulnerability") or {}
+    findings = security_block.get("findings") or []
+    assert len(findings) == 2
+    assert "suggestions" not in adapted
+
+
+def test_run_ai_batch_passes_enriched_scan_summary(monkeypatch, tmp_path: Path):
+    project_id = "55555555-5555-5555-5555-555555555555"
+    source_dir = tmp_path / "repo"
+    (source_dir / "src").mkdir(parents=True, exist_ok=True)
+    (source_dir / "tests").mkdir(parents=True, exist_ok=True)
+    (source_dir / "docs").mkdir(parents=True, exist_ok=True)
+    (source_dir / "src" / "main.py").write_text("print('ok')\n", encoding="utf-8")
+    (source_dir / "tests" / "test_main.py").write_text("def test_ok():\n    assert True\n", encoding="utf-8")
+    (source_dir / "docs" / "README.md").write_text("# docs\n", encoding="utf-8")
+
+    project = {
+        "id": project_id,
+        "project_name": "Enriched Summary Project",
+        "scan_data": {
+            "project_source_path": str(source_dir),
+            "summary": {"total_files": 3, "total_size_bytes": 120, "total_lines": 50},
+            "languages": ["Python"],
+            "code_analysis": {
+                "total_files": 3,
+                "total_lines": 50,
+                "comment_lines": 7,
+                "functions": 5,
+                "classes": 1,
+                "avg_complexity": 2.0,
+                "dead_code": {"total": 1},
+            },
+            "files": [
+                {"path": "src/main.py", "size_bytes": 20, "mime_type": "text/x-python"},
+                {"path": "tests/test_main.py", "size_bytes": 30, "mime_type": "text/x-python"},
+                {"path": "docs/README.md", "size_bytes": 15, "mime_type": "text/markdown"},
+            ],
+        },
+    }
+    fake_service = FakeProjectsService(project)
+    monkeypatch.setattr(project_routes, "_projects_service", fake_service)
+    monkeypatch.setattr(project_routes, "ConsentValidator", FakeConsentValidator)
+
+    captured_scan_summary: Dict[str, Any] = {}
+
+    class CapturingClient(FakeClient):
+        def summarize_scan_with_ai(self, **kwargs):
+            nonlocal captured_scan_summary
+            captured_scan_summary = kwargs.get("scan_summary", {})
+            return {
+                "project_analysis": {"analysis": "ok"},
+                "file_summaries": [{"file_path": "src/main.py", "analysis": "logic"}],
+            }
+
+    async def fake_hydrate(_user_id: str, _access_token: str):
+        return CapturingClient()
+
+    monkeypatch.setattr(project_routes, "get_or_hydrate_llm_client", fake_hydrate)
+
+    token = _make_token("user-enriched")
+    resp = client.post(
+        f"/api/projects/{project_id}/ai-batch",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert resp.status_code == 200
+    assert isinstance(captured_scan_summary.get("code_metrics"), dict)
+    assert isinstance(captured_scan_summary.get("file_profile"), dict)
+    assert "test_file_count" in captured_scan_summary["file_profile"]
+    assert "top_extensions" in captured_scan_summary["file_profile"]

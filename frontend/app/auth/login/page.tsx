@@ -117,8 +117,11 @@ export default function LoginPage() {
     <div className="auth-shell">
       <div className="auth-panel">
         <section className="auth-showcase">
-          <h1 className="text-4xl font-bold text-white">Lumen</h1>
-          <p className="mt-4 max-w-md text-sm leading-7 text-white/78">
+          <div className="flex items-center gap-4">
+            <div className="sidebar-brand-mark">D</div>
+            <h1 className="text-4xl font-bold tracking-tight text-white">DevFolio</h1>
+          </div>
+          <p className="mt-6 max-w-md text-sm leading-7 text-white/78">
             Portfolio intelligence, structured project evidence, and polished presentation assets in one focused workspace.
           </p>
           <div className="mt-8 grid gap-3">

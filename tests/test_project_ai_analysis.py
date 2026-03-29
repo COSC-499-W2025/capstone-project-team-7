@@ -163,6 +163,11 @@ class TestRunProjectAiAnalysisCachedReturn:
             "overall_summary": "Stored portfolio summary.",
             "categories": [{"category": "code_analysis", "label": "Code Analysis",
                             "summary": "Good code.", "insights": ["Fast"]}],
+            "technical_highlights": {
+                "overview": "Technical review",
+                "technologies": [{"name": "FastAPI", "usage": "API endpoints"}],
+            },
+            "issues_and_risks": [{"title": "Legacy issue"}],
         }
         mock_service = MagicMock()
         mock_service.get_project_scan.return_value = self._make_project_with_ai_analysis(ai_analysis)
@@ -178,6 +183,8 @@ class TestRunProjectAiAnalysisCachedReturn:
         assert body["llm_status"] == "used:cached"
         assert body["cached"] is True
         assert body["result"]["overall_summary"] == "Stored portfolio summary."
+        assert body["result"]["technical_highlights"]["overview"] == "Technical review"
+        assert "issues_and_risks" not in body["result"]
 
     @patch("api.project_routes.get_projects_service")
     def test_cached_result_does_not_call_llm(self, mock_get_service):

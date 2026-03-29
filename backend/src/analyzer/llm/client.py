@@ -23,8 +23,25 @@ try:
 except ImportError:  # pragma: no cover - fallback when scanner isn't on sys.path
     from ...scanner.media import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 
+try:
+    from analyzer.file_filters import (
+        is_test_path as _is_test_path_filter,
+        is_generated_or_package_path as _is_generated_or_package_path_filter,
+        is_non_implementation_path as _is_non_implementation_path_filter,
+    )
+except ImportError:
+    from backend.src.analyzer.file_filters import (
+        is_test_path as _is_test_path_filter,
+        is_generated_or_package_path as _is_generated_or_package_path_filter,
+        is_non_implementation_path as _is_non_implementation_path_filter,
+    )
+
 
 logger = logging.getLogger(__name__)
+
+# ── Rolling context limits ────────────────────────────────────────────────────
+_ROLLING_CONTEXT_MAX_CHARS = 1200  # hard cap on rolling context length
+
 
 
 class LLMError(Exception):
@@ -49,9 +66,9 @@ class LLMClient:
     DEFAULT_TEMPERATURE = 0.7
     DEFAULT_MAX_TOKENS = 4000
     DEFAULT_REQUEST_TIMEOUT_SEC = 90
-    DEFAULT_SINGLE_PROJECT_BATCH_SIZE = 4
+    DEFAULT_SINGLE_PROJECT_BATCH_SIZE = 10
     DEFAULT_BATCH_HEARTBEAT_SEC = 15
-    DEFAULT_FILE_SUMMARY_TIMEOUT_SEC = 120
+    DEFAULT_FILE_SUMMARY_TIMEOUT_SEC = 300
     DEFAULT_MAX_FILE_SUMMARY_TOKENS = 12000
     
     def __init__(
@@ -850,7 +867,41 @@ class LLMClient:
             self.logger.error(f"Chunk and summarize failed: {e}")
             raise LLMError(f"Failed to chunk and summarize: {str(e)}")
     
-    def summarize_tagged_file(self, file_path: str, content: str, file_type: str) -> Dict[str, str]:
+    @staticmethod
+    def _compute_file_metadata(content: str, file_path: str, file_type: str) -> Dict[str, Any]:
+        """Compute lightweight metadata for a file to enrich LLM context."""
+        lines = content.split('\n')
+        line_count = len(lines)
+
+        import_pattern = re.compile(
+            r'^\s*(?:import\s|from\s+\S+\s+import|require\(|#include|using\s)',
+        )
+        import_count = sum(1 for line in lines if import_pattern.match(line))
+
+        complexity_pattern = re.compile(
+            r'\b(?:if|else|elif|for|while|try|except|catch|switch|case|class|def|function|async)\b',
+        )
+        complexity_signals = sum(1 for line in lines if complexity_pattern.search(line))
+
+        basename = Path(file_path).name.lower()
+        has_tests = any(marker in basename for marker in ('test', 'spec', '_test.', '.test.', '_spec.', '.spec.'))
+
+        return {
+            "line_count": line_count,
+            "import_count": import_count,
+            "complexity_signals": complexity_signals,
+            "has_tests": has_tests,
+            "extension": file_type,
+        }
+
+    def summarize_tagged_file(
+        self,
+        file_path: str,
+        content: str,
+        file_type: str,
+        file_metadata: Optional[Dict[str, Any]] = None,
+        project_context: Optional[str] = None,
+    ) -> Dict[str, str]:
         """
         Create a detailed summary of a user-tagged important file.
         Automatically handles large files through chunking.
@@ -859,6 +910,8 @@ class LLMClient:
             file_path: Path to the file
             content: Full file content
             file_type: File extension/type
+            file_metadata: Optional lightweight file stats (line_count, imports, etc.)
+            project_context: Optional rolling project context from prior batches
             
         Returns:
             Formatted text output containing:
@@ -906,11 +959,25 @@ class LLMClient:
                     "[Note: file content was truncated for latency budget before summarization.]\n"
                     + content_to_analyze
                 )
-            
-            prompt = f"""Analyze this {file_type} file and provide a brief structured summary.
 
-File: {file_path}
+            # ── Build metadata header ────────────────────────────────────
+            meta_header = ""
+            if file_metadata:
+                meta_lines = [
+                    f"Lines: {file_metadata.get('line_count', '?')}",
+                    f"Imports/includes: {file_metadata.get('import_count', '?')}",
+                    f"Complexity signals (if/for/class/def etc.): {file_metadata.get('complexity_signals', '?')}",
+                    f"Is test file: {'yes' if file_metadata.get('has_tests') else 'no'}",
+                ]
+                meta_header = "\nFile metadata:\n" + "\n".join(f"  {l}" for l in meta_lines) + "\n"
 
+            # ── Build project context prefix ─────────────────────────────
+            context_prefix = ""
+            if project_context:
+                context_prefix = f"\nPROJECT CONTEXT SO FAR:\n{project_context}\n"
+
+            prompt = f"""Analyze this {file_type} file and provide a brief structured summary.{context_prefix}
+File: {file_path}{meta_header}
 Content:
 {content_to_analyze}
 
@@ -934,27 +1001,1015 @@ NOTABLE PATTERNS: [1-2 notable techniques or patterns used]"""
         except Exception as e:
             self.logger.error(f"Failed to summarize tagged file: {e}")
             raise LLMError(f"File summarization failed: {str(e)}")
+
+    @staticmethod
+    def _is_test_path(path: str) -> bool:
+        return _is_test_path_filter(path)
+
+    @staticmethod
+    def _is_generated_or_package_path(path: str) -> bool:
+        return _is_generated_or_package_path_filter(path)
+
+    @staticmethod
+    def _is_non_implementation_path(path: str) -> bool:
+        return _is_non_implementation_path_filter(path)
+
+    @staticmethod
+    def _is_logic_heavy_candidate(path: str) -> bool:
+        """Heuristic to determine if a file contains core logic rather than being boilerplate."""
+        path_str = str(path or "").replace("\\", "/").lower()
+        if LLMClient._is_test_path(path_str):
+            return False
+        if LLMClient._is_generated_or_package_path(path_str):
+            return False
+        if LLMClient._is_non_implementation_path(path_str):
+            return False
+
+        basename = path_str.split("/")[-1]
+        preferred_exts = {".py", ".ts", ".js", ".jsx", ".tsx", ".java", ".cpp", ".c", ".h", ".cs", ".go", ".rs", ".rb", ".php", ".swift", ".kt", ".m"}
+        ext = Path(basename).suffix.lower()
+        return ext in preferred_exts
+
+    @staticmethod
+    def _safe_int(value: Any, default: int = 0) -> int:
+        try:
+            return int(float(value))
+        except Exception:
+            return default
+
+    @staticmethod
+    def _safe_float(value: Any, default: float = 0.0) -> float:
+        try:
+            return float(value)
+        except Exception:
+            return default
+
+    @staticmethod
+    def _clamp_score(value: float) -> int:
+        return max(0, min(100, int(round(value))))
+
+    def _derive_architecture_diagram(self, tagged_files_summaries: List[Dict[str, str]]) -> Dict[str, Any]:
+        paths = [
+            str(item.get("file_path", ""))
+            for item in tagged_files_summaries
+            if isinstance(item, dict) and item.get("file_path")
+        ]
+        lower_paths = [p.replace("\\", "/").lower() for p in paths]
+
+        def _has_any(markers: List[str]) -> bool:
+            return any(any(marker in p for marker in markers) for p in lower_paths)
+
+        has_ui = _has_any(["/frontend/", "/ui/", "/components/", "/pages/", "/views/", "/app/"])
+        has_backend = _has_any(["/backend/", "/api/", "/server/", "/services/"])
+        has_data = _has_any(["/db/", "/database/", "/migrations/", "schema", "repository", "model"])
+        has_worker = _has_any(["/queue/", "/worker/", "/jobs/"])
+        has_external = _has_any(["supabase", "openai", "stripe", "aws", "azure", "gcp", "firebase"])
+        has_tests = any(self._is_test_path(p) for p in paths)
+
+        nodes: List[Dict[str, str]] = []
+        edges: List[Dict[str, str]] = []
+
+        nodes.append({"id": "core", "label": "Core Application", "type": "service"})
+        if has_ui:
+            nodes.append({"id": "ui", "label": "UI Layer", "type": "ui"})
+            edges.append({"from": "ui", "to": "core", "label": "calls"})
+        if has_data:
+            nodes.append({"id": "data", "label": "Data Layer", "type": "database"})
+            edges.append({"from": "core", "to": "data", "label": "reads/writes"})
+        if has_worker:
+            nodes.append({"id": "worker", "label": "Background Jobs", "type": "service"})
+            edges.append({"from": "core", "to": "worker", "label": "dispatches"})
+        if has_external:
+            nodes.append({"id": "external", "label": "External Services", "type": "external"})
+            edges.append({"from": "core", "to": "external", "label": "integrates"})
+        if has_tests:
+            nodes.append({"id": "tests", "label": "Test Suite", "type": "library"})
+            edges.append({"from": "tests", "to": "core", "label": "validates"})
+
+        # Guarantee at least two nodes so the UI can render a meaningful diagram.
+        if len(nodes) < 2:
+            nodes.append({"id": "source", "label": "Source Modules", "type": "library"})
+            edges.append({"from": "source", "to": "core", "label": "contains logic"})
+
+        return {
+            "nodes": nodes[:6],
+            "edges": edges[:8],
+        }
+
+    def _compute_project_scores(
+        self,
+        local_analysis: Dict[str, Any],
+        tagged_files_summaries: List[Dict[str, str]],
+    ) -> Dict[str, int]:
+        code_metrics = local_analysis.get("code_metrics") if isinstance(local_analysis.get("code_metrics"), dict) else {}
+        file_profile = local_analysis.get("file_profile") if isinstance(local_analysis.get("file_profile"), dict) else {}
+
+        total_files = self._safe_int(local_analysis.get("total_files"), default=len(tagged_files_summaries))
+        total_lines = self._safe_int(code_metrics.get("total_lines"), default=self._safe_int(local_analysis.get("total_lines"), 0))
+        comment_lines = self._safe_int(code_metrics.get("comment_lines"), default=self._safe_int(local_analysis.get("comment_lines"), 0))
+        avg_complexity = self._safe_float(code_metrics.get("avg_complexity"), 0.0)
+        dead_code_total = self._safe_int(code_metrics.get("dead_code_total"), 0)
+
+        paths = [
+            str(item.get("file_path", ""))
+            for item in tagged_files_summaries
+            if isinstance(item, dict) and item.get("file_path")
+        ]
+        test_file_count = self._safe_int(file_profile.get("test_file_count"), default=sum(1 for p in paths if self._is_test_path(p)))
+        doc_file_count = self._safe_int(file_profile.get("doc_file_count"), default=sum(1 for p in paths if Path(p).suffix.lower() in {".md", ".markdown", ".rst", ".txt"}))
+
+        comment_ratio = (comment_lines / total_lines) if total_lines > 0 else 0.0
+        test_ratio = (test_file_count / total_files) if total_files > 0 else 0.0
+        doc_ratio = (doc_file_count / total_files) if total_files > 0 else 0.0
+
+        unique_dirs = len(
+            {
+                "/".join(Path(p).parts[:2]).lower()
+                for p in paths
+                if p
+            }
+        )
+
+        text_blob = " ".join(str(item.get("analysis", "")).lower() for item in tagged_files_summaries if isinstance(item, dict))
+        security_hits = sum(
+            1
+            for marker in ["auth", "token", "permission", "sanitize", "validation", "encryption", "csrf", "xss"]
+            if marker in text_blob
+        )
+
+        code_quality = self._clamp_score(58 - (avg_complexity * 4.2) - (dead_code_total * 1.1) + (comment_ratio * 22) + min(total_files / 20, 9))
+        modularity = self._clamp_score(52 + min(unique_dirs * 5.0, 24) + min(total_files / 25, 8) - (avg_complexity * 2.4))
+        readability = self._clamp_score(56 + (comment_ratio * 32) - (avg_complexity * 3.0) - min(dead_code_total, 10) * 0.7)
+        test_coverage = self._clamp_score(20 + (test_ratio * 95) + (8 if "integration test" in text_blob or "unit test" in text_blob else 0))
+        documentation = self._clamp_score(36 + (doc_ratio * 82) + (comment_ratio * 20))
+        security = self._clamp_score(48 + min(security_hits * 4.5, 24) + (4 if test_ratio > 0.15 else 0) - min(dead_code_total, 8) * 0.6)
+
+        overall = self._clamp_score(
+            (code_quality * 0.24)
+            + (modularity * 0.16)
+            + (readability * 0.16)
+            + (test_coverage * 0.16)
+            + (documentation * 0.12)
+            + (security * 0.16)
+        )
+
+        return {
+            "overall": overall,
+            "code_quality": code_quality,
+            "modularity": modularity,
+            "readability": readability,
+            "test_coverage": test_coverage,
+            "documentation": documentation,
+            "security": security,
+        }
+
+    def _normalize_llm_project_scores(self, payload_scores: Any) -> Dict[str, int]:
+        score_keys = [
+            "overall",
+            "code_quality",
+            "modularity",
+            "readability",
+            "test_coverage",
+            "documentation",
+            "security",
+        ]
+
+        normalized: Dict[str, int] = {}
+        provided_overall: Optional[int] = None
+        if isinstance(payload_scores, dict):
+            for key in score_keys:
+                if payload_scores.get(key) is None:
+                    continue
+                coerced = self._clamp_score(self._safe_float(payload_scores.get(key), 60.0))
+                normalized[key] = coerced
+                if key == "overall":
+                    provided_overall = coerced
+
+        dim_keys = [k for k in score_keys if k != "overall"]
+        provided_dims = [normalized[k] for k in dim_keys if k in normalized]
+        provided_dim_count = len(provided_dims)
+        fill_value = int(round(sum(provided_dims) / provided_dim_count)) if provided_dim_count else (provided_overall if provided_overall is not None else 60)
+
+        for key in dim_keys:
+            if key not in normalized:
+                normalized[key] = fill_value
+
+        # Make overall follow the category breakdown whenever we have enough
+        # category evidence, so one repeated LLM overall value cannot dominate.
+        if provided_dim_count >= 2:
+            normalized["overall"] = self._clamp_score(sum(normalized[k] for k in dim_keys) / len(dim_keys))
+        elif provided_overall is not None:
+            normalized["overall"] = provided_overall
+        else:
+            normalized["overall"] = self._clamp_score(sum(normalized[k] for k in dim_keys) / len(dim_keys))
+
+        return {key: normalized[key] for key in score_keys}
+
+    def _normalize_llm_architecture(
+        self,
+        architecture_payload: Any,
+        tagged_files_summaries: List[Dict[str, str]],
+    ) -> Dict[str, Any]:
+        architecture = architecture_payload if isinstance(architecture_payload, dict) else {}
+        summary = str(architecture.get("summary") or "").strip()
+        if not summary:
+            summary = "Architecture inferred from the aggregated project evidence."
+
+        patterns_raw = architecture.get("patterns") if isinstance(architecture.get("patterns"), list) else []
+        patterns: List[str] = []
+        for item in patterns_raw:
+            text = str(item).strip()
+            if not text:
+                continue
+            if text.lower() in {p.lower() for p in patterns}:
+                continue
+            patterns.append(text)
+
+        diagram_payload = architecture.get("diagram") if isinstance(architecture.get("diagram"), dict) else {}
+        raw_nodes = diagram_payload.get("nodes") if isinstance(diagram_payload.get("nodes"), list) else []
+        raw_edges = diagram_payload.get("edges") if isinstance(diagram_payload.get("edges"), list) else []
+
+        normalized_nodes: List[Dict[str, str]] = []
+        node_ids: set[str] = set()
+        for idx, node in enumerate(raw_nodes):
+            if not isinstance(node, dict):
+                continue
+            node_id = str(node.get("id") or "").strip() or f"component_{idx + 1}"
+            node_id = re.sub(r"[^a-zA-Z0-9_-]", "_", node_id)
+            if node_id in node_ids:
+                node_id = f"{node_id}_{idx + 1}"
+
+            label = str(node.get("label") or "").strip() or node_id.replace("_", " ").title()
+            node_type = str(node.get("type") or "service").strip().lower()
+            if node_type not in {"ui", "service", "database", "library", "external"}:
+                node_type = "service"
+
+            normalized_nodes.append({"id": node_id, "label": label, "type": node_type})
+            node_ids.add(node_id)
+
+        normalized_edges: List[Dict[str, str]] = []
+        for edge in raw_edges:
+            if not isinstance(edge, dict):
+                continue
+            source = str(edge.get("from") or "").strip()
+            target = str(edge.get("to") or "").strip()
+            if source not in node_ids or target not in node_ids or source == target:
+                continue
+            edge_label = str(edge.get("label") or "").strip()
+            normalized_edges.append({"from": source, "to": target, "label": edge_label})
+
+        if len(normalized_nodes) < 2:
+            fallback_diagram = self._derive_architecture_diagram(tagged_files_summaries)
+            fallback_nodes = fallback_diagram.get("nodes") if isinstance(fallback_diagram.get("nodes"), list) else []
+            fallback_edges = fallback_diagram.get("edges") if isinstance(fallback_diagram.get("edges"), list) else []
+            normalized_nodes = [
+                {
+                    "id": str(node.get("id") or f"component_{idx + 1}"),
+                    "label": str(node.get("label") or f"Component {idx + 1}"),
+                    "type": str(node.get("type") or "service"),
+                }
+                for idx, node in enumerate(fallback_nodes)
+                if isinstance(node, dict)
+            ][:8]
+            node_ids = {str(node.get("id")) for node in normalized_nodes}
+            normalized_edges = [
+                {
+                    "from": str(edge.get("from") or ""),
+                    "to": str(edge.get("to") or ""),
+                    "label": str(edge.get("label") or ""),
+                }
+                for edge in fallback_edges
+                if isinstance(edge, dict)
+                and str(edge.get("from") or "") in node_ids
+                and str(edge.get("to") or "") in node_ids
+            ][:12]
+
+        if not patterns and normalized_nodes:
+            patterns.append("Layered architecture")
+
+        return {
+            "summary": summary,
+            "patterns": patterns[:6],
+            "diagram": {
+                "nodes": normalized_nodes[:8],
+                "edges": normalized_edges[:12],
+            },
+        }
+
+    @staticmethod
+    def _extract_language_names(local_analysis: Dict[str, Any]) -> List[str]:
+        language_breakdown = local_analysis.get("language_breakdown")
+        if not isinstance(language_breakdown, list):
+            return []
+
+        names: List[str] = []
+        for entry in language_breakdown:
+            if isinstance(entry, dict):
+                name = entry.get("name") or entry.get("language")
+                if name:
+                    names.append(str(name))
+            elif isinstance(entry, str):
+                names.append(entry)
+
+        deduped: List[str] = []
+        seen = set()
+        for name in names:
+            key = name.strip().lower()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            deduped.append(name.strip())
+        return deduped
+
+    @staticmethod
+    def _tokenize_text(text: str) -> List[str]:
+        raw = re.findall(r"[a-zA-Z][a-zA-Z0-9_+-]{1,}", (text or "").lower())
+        stop_words = {
+            "the", "and", "for", "with", "that", "this", "from", "into", "across", "project", "code",
+            "used", "using", "are", "was", "were", "been", "have", "has", "had", "more", "less",
+            "very", "much", "many", "main", "core", "high", "low", "over", "under", "about",
+        }
+        return [token for token in raw if token not in stop_words]
+
+    def _text_overlap_ratio(self, a: str, b: str) -> float:
+        a_tokens = set(self._tokenize_text(a))
+        b_tokens = set(self._tokenize_text(b))
+        if not a_tokens or not b_tokens:
+            return 0.0
+        intersection = len(a_tokens.intersection(b_tokens))
+        union = len(a_tokens.union(b_tokens))
+        return intersection / max(1, union)
+
+    def _normalize_project_type(
+        self,
+        project_type_raw: str,
+        local_analysis: Dict[str, Any],
+        architecture: Dict[str, Any],
+    ) -> str:
+        normalized_raw = str(project_type_raw or "").strip()
+
+        file_profile = local_analysis.get("file_profile") if isinstance(local_analysis.get("file_profile"), dict) else {}
+        top_extensions = file_profile.get("top_extensions") if isinstance(file_profile.get("top_extensions"), list) else []
+        ext_names = {
+            str(entry.get("ext", "")).lower()
+            for entry in top_extensions
+            if isinstance(entry, dict)
+        }
+
+        diagram = architecture.get("diagram") if isinstance(architecture.get("diagram"), dict) else {}
+        nodes = diagram.get("nodes") if isinstance(diagram.get("nodes"), list) else []
+        node_types = {
+            str(node.get("type", "")).lower()
+            for node in nodes
+            if isinstance(node, dict)
+        }
+
+        has_ui = "ui" in node_types or bool(ext_names.intersection({".tsx", ".jsx", ".html", ".css", ".scss"}))
+        has_data = "database" in node_types
+        has_external = "external" in node_types
+        has_service = "service" in node_types or bool(ext_names.intersection({".py", ".go", ".java", ".cs", ".rb", ".php"}))
+        has_notebook = ".ipynb" in ext_names
+        has_cli_markers = bool(ext_names.intersection({".sh", ".bat", ".ps1"}))
+
+        inferred = "Software project"
+        if has_ui and has_service and (has_data or has_external):
+            inferred = "Full-stack application"
+        elif has_service and (has_data or has_external):
+            inferred = "Backend service"
+        elif has_ui and not has_service:
+            inferred = "Frontend application"
+        elif has_notebook:
+            inferred = "Data/ML project"
+        elif has_cli_markers and not has_ui:
+            inferred = "CLI/automation project"
+
+        generic_labels = {
+            "full stack web app",
+            "full-stack web app",
+            "web app",
+            "web application",
+            "application",
+            "software project",
+            "project",
+        }
+        normalized_key = normalized_raw.lower()
+        if not normalized_raw:
+            return inferred
+        if "full-stack" in normalized_key and not (has_ui and has_service):
+            return inferred
+        if normalized_key in generic_labels:
+            return inferred
+        return normalized_raw
+
+    def _normalize_insights(
+        self,
+        insights: Dict[str, Any],
+        scores: Dict[str, int],
+        key_modules: Optional[List[Dict[str, Any]]] = None,
+        tagged_files_summaries: Optional[List[Dict[str, str]]] = None,
+    ) -> Dict[str, Any]:
+        if not isinstance(insights, dict):
+            insights = {}
+        key_modules = key_modules if isinstance(key_modules, list) else []
+        tagged_files_summaries = tagged_files_summaries if isinstance(tagged_files_summaries, list) else []
+
+        def _compact_text(text: str, max_len: int = 140) -> str:
+            compact = re.sub(r"\s+", " ", str(text or "")).strip()
+            if len(compact) <= max_len:
+                return compact
+            return compact[: max_len - 1].rstrip() + "..."
+
+        evidence_entries: List[Dict[str, str]] = []
+        for module in key_modules[:10]:
+            if not isinstance(module, dict):
+                continue
+            module_title = str(module.get("title") or "module").strip() or "module"
+            module_summary = str(module.get("summary") or "").strip()
+            if module_summary:
+                evidence_entries.append(
+                    {
+                        "source": f"module {module_title}",
+                        "path": "",
+                        "text": module_summary,
+                    }
+                )
+
+        for item in tagged_files_summaries[:24]:
+            if not isinstance(item, dict):
+                continue
+            path = str(item.get("file_path") or "").strip()
+            analysis = str(item.get("analysis") or "").strip()
+            if not path or not analysis:
+                continue
+            if self._is_test_path(path) or self._is_generated_or_package_path(path) or self._is_non_implementation_path(path):
+                continue
+            evidence_entries.append(
+                {
+                    "source": path,
+                    "path": path,
+                    "text": analysis,
+                }
+            )
+
+        category_keywords = {
+            "code_quality": ["complex", "nested", "dense", "duplicate", "dead code", "long function", "refactor", "branch"],
+            "modularity": ["coupling", "cross-module", "shared", "boundary", "layer", "service", "module", "separation"],
+            "readability": ["readability", "naming", "clarity", "unclear", "verbose", "mixed concern", "implicit"],
+            "test_coverage": ["test", "coverage", "assert", "integration", "unit", "mock", "regression"],
+            "documentation": ["readme", "doc", "documentation", "comment", "guide", "usage", "onboarding"],
+            "security": ["auth", "token", "permission", "sanitize", "validation", "secret", "encryption", "csrf", "xss", "sql"],
+        }
+
+        def _matches_category(entry: Dict[str, str], category: str) -> bool:
+            haystack = f"{entry.get('source', '')} {entry.get('path', '')} {entry.get('text', '')}".lower()
+            if category == "test_coverage":
+                path = str(entry.get("path") or "").lower()
+                if self._is_test_path(path):
+                    return True
+            if category == "documentation":
+                path = str(entry.get("path") or "").lower()
+                if any(marker in path for marker in ["readme", "/docs/", ".md", ".rst", ".txt"]):
+                    return True
+            return any(keyword in haystack for keyword in category_keywords.get(category, []))
+
+        def _build_evidence_weakness(category: str, entry: Dict[str, str]) -> str:
+            source = entry.get("source") or "a key area"
+            snippet = _compact_text(entry.get("text") or "")
+            templates = {
+                "code_quality": f"{source} shows dense implementation details ({snippet}), which may increase maintenance overhead.",
+                "modularity": f"{source} indicates responsibilities that appear tightly grouped ({snippet}), reducing modular flexibility.",
+                "readability": f"{source} contains logic that may be harder to parse quickly ({snippet}), which can slow future iteration.",
+                "test_coverage": f"Signals around {source} suggest verification depth may be uneven ({snippet}).",
+                "documentation": f"Developer-facing documentation signals in {source} appear limited or uneven ({snippet}).",
+                "security": f"{source} includes boundary-sensitive behavior ({snippet}) where stronger security hardening may be needed.",
+            }
+            return templates.get(category, f"{source} reveals a potential engineering gap ({snippet}).")
+
+        def _build_evidence_improvement(category: str, entry: Dict[str, str]) -> str:
+            source = entry.get("source") or "key modules"
+            templates = {
+                "code_quality": f"Refactor the heaviest paths in {source} into smaller units and add targeted quality checks around complex branches.",
+                "modularity": f"Split cross-cutting concerns observed in {source} into clearer module boundaries to reduce coupling.",
+                "readability": f"Improve naming and flow clarity in {source} so key behavior is easier to understand at a glance.",
+                "test_coverage": f"Add focused behavioral tests around the most integration-critical paths surfaced in {source}.",
+                "documentation": f"Add concise module-level documentation for {source}, especially setup, contracts, and expected behavior.",
+                "security": f"Strengthen validation and authorization checks at the boundaries highlighted by {source}.",
+            }
+            return templates.get(category, f"Apply a focused improvement pass in {source} based on the observed implementation signals.")
+
+        def _infer_theme_from_text(text: str) -> str:
+            haystack = str(text or "").lower()
+            if not haystack:
+                return ""
+
+            best_category = ""
+            best_score = 0
+            for category, keywords in category_keywords.items():
+                score = sum(1 for keyword in keywords if keyword in haystack)
+                if score > best_score:
+                    best_score = score
+                    best_category = category
+            return best_category
+
+        raw_weaknesses = insights.get("weaknesses") if isinstance(insights.get("weaknesses"), list) else []
+        raw_improvements = insights.get("improvements") if isinstance(insights.get("improvements"), list) else []
+
+        weaknesses: List[Dict[str, Any]] = []
+        weakness_themes: set[str] = set()
+        for item in raw_weaknesses:
+            if not isinstance(item, dict):
+                continue
+            text = str(item.get("text") or "").strip()
+            if not text:
+                continue
+            if any(self._text_overlap_ratio(text, existing.get("text", "")) >= 0.68 for existing in weaknesses):
+                continue
+            weaknesses.append({"text": text, "confidence": self._safe_float(item.get("confidence"), 0.68)})
+            theme = _infer_theme_from_text(text)
+            if theme:
+                weakness_themes.add(theme)
+
+        improvements: List[Dict[str, Any]] = []
+        improvement_themes: set[str] = set()
+        for item in raw_improvements:
+            if not isinstance(item, dict):
+                continue
+            text = str(item.get("text") or "").strip()
+            if not text:
+                continue
+            theme = _infer_theme_from_text(text)
+            # Keep improvements action-oriented and distinct from weaknesses.
+            if any(self._text_overlap_ratio(text, weakness.get("text", "")) >= 0.45 for weakness in weaknesses):
+                continue
+            if any(self._text_overlap_ratio(text, existing.get("text", "")) >= 0.68 for existing in improvements):
+                continue
+            if theme and theme in improvement_themes:
+                continue
+            # Keep at least one improvement on a different topic than identified weaknesses.
+            if theme and theme in weakness_themes and len(improvements) >= 1:
+                continue
+            improvements.append({"text": text, "confidence": self._safe_float(item.get("confidence"), 0.7)})
+            if theme:
+                improvement_themes.add(theme)
+
+        score_priority = sorted(
+            [
+                ("code_quality", "Refactor high-complexity paths into smaller composable units and tighten static quality checks."),
+                ("modularity", "Separate cross-cutting concerns into dedicated modules to reduce coupling between features."),
+                ("readability", "Standardize naming and function boundaries so intent is immediately clear in core flows."),
+                ("test_coverage", "Target behavioral tests for integration-critical flows rather than broad generic coverage."),
+                ("documentation", "Add concise developer-oriented docs for setup, module contracts, and key workflows."),
+                ("security", "Introduce stricter input validation and explicit authorization checks at high-risk boundaries."),
+            ],
+            key=lambda entry: scores.get(entry[0], 50),
+        )
+
+        # Prefer project-specific evidence-derived fallbacks before generic templates.
+        for category, _ in score_priority:
+            if len(weaknesses) >= 2 and len(improvements) >= 2:
+                break
+            evidence = next((entry for entry in evidence_entries if _matches_category(entry, category)), None)
+            if evidence is None:
+                continue
+
+            if len(weaknesses) < 2:
+                weakness_text = _build_evidence_weakness(category, evidence)
+                if not any(self._text_overlap_ratio(weakness_text, existing.get("text", "")) >= 0.65 for existing in weaknesses):
+                    weaknesses.append({"text": weakness_text, "confidence": 0.71})
+
+            if len(improvements) < 2:
+                improvement_text = _build_evidence_improvement(category, evidence)
+                if any(self._text_overlap_ratio(improvement_text, weakness.get("text", "")) >= 0.45 for weakness in weaknesses):
+                    continue
+                if any(self._text_overlap_ratio(improvement_text, existing.get("text", "")) >= 0.6 for existing in improvements):
+                    continue
+                if category in improvement_themes:
+                    continue
+                if category in weakness_themes and len(improvements) >= 1:
+                    continue
+                improvements.append({"text": improvement_text, "confidence": 0.73})
+                improvement_themes.add(category)
+
+        # Use generic score-based templates only if evidence-derived fallbacks are still insufficient.
+        for key, improvement_text in score_priority:
+            if len(improvements) >= 2:
+                break
+            if any(self._text_overlap_ratio(improvement_text, weakness.get("text", "")) >= 0.4 for weakness in weaknesses):
+                continue
+            if any(self._text_overlap_ratio(improvement_text, existing.get("text", "")) >= 0.6 for existing in improvements):
+                continue
+            if key in improvement_themes:
+                continue
+            if key in weakness_themes and len(improvements) >= 1:
+                continue
+            improvements.append({"text": improvement_text, "confidence": 0.72})
+            improvement_themes.add(key)
+
+        weakness_templates = [
+            ("code_quality", "Some core implementation paths are still too dense, which increases maintenance risk over time."),
+            ("modularity", "A few responsibilities remain tightly coupled, limiting flexibility when features evolve."),
+            ("readability", "Important behavior is occasionally hidden in large blocks, reducing day-to-day readability."),
+            ("test_coverage", "Critical integration paths do not appear to be uniformly validated with focused tests."),
+            ("documentation", "Developer-facing documentation appears uneven across setup and module-level expectations."),
+            ("security", "Security hardening signals exist, but protection depth is not uniform across all boundaries."),
+        ]
+        weakness_templates = sorted(weakness_templates, key=lambda entry: scores.get(entry[0], 50))
+        for _, weakness_text in weakness_templates:
+            if len(weaknesses) >= 2:
+                break
+            if any(self._text_overlap_ratio(weakness_text, existing.get("text", "")) >= 0.65 for existing in weaknesses):
+                continue
+            weaknesses.append({"text": weakness_text, "confidence": 0.68})
+
+        surprise = insights.get("surprising_observation") if isinstance(insights.get("surprising_observation"), dict) else None
+        if not isinstance(surprise, dict) or not str(surprise.get("text") or "").strip():
+            surprise = {
+                "text": "Despite uneven maturity across areas, the project shows clear engineering intent and a coherent implementation direction.",
+                "confidence": 0.66,
+            }
+
+        return {
+            "weaknesses": weaknesses[:2],
+            "improvements": improvements[:2],
+            "surprising_observation": {
+                "text": str(surprise.get("text") or ""),
+                "confidence": self._safe_float(surprise.get("confidence"), 0.66),
+            },
+        }
+
+    def _normalize_security_and_vulnerability(
+        self,
+        payload_security: Any,
+        key_modules: Optional[List[Dict[str, Any]]] = None,
+        tagged_files_summaries: Optional[List[Dict[str, str]]] = None,
+        insights: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        key_modules = key_modules if isinstance(key_modules, list) else []
+        tagged_files_summaries = tagged_files_summaries if isinstance(tagged_files_summaries, list) else []
+        insights = insights if isinstance(insights, dict) else {}
+
+        def _compact_text(text: str, max_len: int = 140) -> str:
+            compact = re.sub(r"\s+", " ", str(text or "")).strip()
+            if len(compact) <= max_len:
+                return compact
+            return compact[: max_len - 1].rstrip() + "..."
+
+        security_keywords = [
+            "auth", "token", "permission", "sanitize", "validation", "secret", "encryption",
+            "csrf", "xss", "sql", "credential", "oauth", "jwt", "session", "injection",
+            "cve", "vulnerability", "security",
+        ]
+
+        findings_raw: List[Any] = []
+        if isinstance(payload_security, dict):
+            if isinstance(payload_security.get("findings"), list):
+                findings_raw = payload_security.get("findings") or []
+            elif isinstance(payload_security.get("items"), list):
+                findings_raw = payload_security.get("items") or []
+        elif isinstance(payload_security, list):
+            findings_raw = payload_security
+
+        findings: List[Dict[str, Any]] = []
+        for item in findings_raw:
+            text = ""
+            confidence = 0.68
+            if isinstance(item, dict):
+                text = str(item.get("text") or "").strip()
+                confidence = self._safe_float(item.get("confidence"), 0.68)
+            elif isinstance(item, str):
+                text = item.strip()
+            if not text:
+                continue
+            if any(self._text_overlap_ratio(text, existing.get("text", "")) >= 0.68 for existing in findings):
+                continue
+            findings.append({"text": text, "confidence": confidence})
+            if len(findings) >= 2:
+                break
+
+        evidence_entries: List[Dict[str, str]] = []
+        for module in key_modules[:8]:
+            if not isinstance(module, dict):
+                continue
+            module_title = str(module.get("title") or "module").strip() or "module"
+            module_summary = str(module.get("summary") or "").strip()
+            if module_summary:
+                evidence_entries.append({
+                    "source": f"module {module_title}",
+                    "text": module_summary,
+                })
+
+        for item in tagged_files_summaries[:24]:
+            if not isinstance(item, dict):
+                continue
+            path = str(item.get("file_path") or "").strip()
+            analysis = str(item.get("analysis") or "").strip()
+            if not path or not analysis:
+                continue
+            if self._is_test_path(path) or self._is_generated_or_package_path(path) or self._is_non_implementation_path(path):
+                continue
+            evidence_entries.append({
+                "source": path,
+                "text": analysis,
+            })
+
+        security_evidence = [
+            entry for entry in evidence_entries
+            if any(keyword in f"{entry.get('source', '')} {entry.get('text', '')}".lower() for keyword in security_keywords)
+        ]
+
+        for entry in security_evidence:
+            if len(findings) >= 2:
+                break
+            source = entry.get("source") or "key modules"
+            snippet = _compact_text(entry.get("text") or "")
+            text = (
+                f"{source} includes security-sensitive behavior ({snippet}); verify input validation, "
+                "authorization checks, and boundary hardening are consistently enforced."
+            )
+            if any(self._text_overlap_ratio(text, existing.get("text", "")) >= 0.62 for existing in findings):
+                continue
+            findings.append({"text": text, "confidence": 0.72})
+
+        insight_texts: List[str] = []
+        for group_name in ("weaknesses", "improvements"):
+            group_items = insights.get(group_name) if isinstance(insights.get(group_name), list) else []
+            for item in group_items:
+                if isinstance(item, dict):
+                    text = str(item.get("text") or "").strip()
+                    if text and any(keyword in text.lower() for keyword in security_keywords):
+                        insight_texts.append(text)
+
+        for text in insight_texts:
+            if len(findings) >= 2:
+                break
+            candidate = f"Security implication from broader analysis: {_compact_text(text)}"
+            if any(self._text_overlap_ratio(candidate, existing.get("text", "")) >= 0.62 for existing in findings):
+                continue
+            findings.append({"text": candidate, "confidence": 0.67})
+
+        fallback_templates = [
+            "No explicit critical vulnerability was confirmed from sampled files, but externally reachable handlers should be reviewed for consistent input validation and authorization enforcement.",
+            "Dependency and secret-management risk remains possible in large codebases; run SCA/secret scans and patch vulnerable packages as part of routine security hardening.",
+        ]
+        for fallback_text in fallback_templates:
+            if len(findings) >= 2:
+                break
+            if any(self._text_overlap_ratio(fallback_text, existing.get("text", "")) >= 0.62 for existing in findings):
+                continue
+            findings.append({"text": fallback_text, "confidence": 0.64})
+
+        return {
+            "findings": findings[:2],
+        }
+
+    def _build_technical_highlights(
+        self,
+        local_analysis: Dict[str, Any],
+        architecture: Dict[str, Any],
+        key_modules: List[Dict[str, Any]],
+        tagged_files_summaries: List[Dict[str, str]],
+        overview: Optional[Dict[str, Any]] = None,
+        insights: Optional[Dict[str, Any]] = None,
+        payload_tech: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        overview_context = overview if isinstance(overview, dict) else {}
+        insights = insights if isinstance(insights, dict) else {}
+        payload_tech = payload_tech if isinstance(payload_tech, dict) else {}
+        technologies = payload_tech.get("technologies") if isinstance(payload_tech.get("technologies"), list) else []
+        patterns = payload_tech.get("patterns") if isinstance(payload_tech.get("patterns"), list) else []
+        highlights = payload_tech.get("highlights") if isinstance(payload_tech.get("highlights"), list) else []
+
+        language_names = self._extract_language_names(local_analysis)
+        if not technologies:
+            technologies = [
+                {
+                    "name": name,
+                    "usage": "Used in core implementation paths and module-level business logic.",
+                }
+                for name in language_names[:5]
+            ]
+
+        if not patterns:
+            text_blob = " ".join(
+                str(item.get("analysis", "")).lower()
+                for item in tagged_files_summaries
+                if isinstance(item, dict)
+            )
+            pattern_signals = [
+                (("async", "await", "queue", "worker", "background"), "Asynchronous processing"),
+                (("middleware", "pipeline", "interceptor"), "Middleware pipeline"),
+                (("dependency injection", "inject", "provider"), "Dependency injection"),
+                (("repository", "data access", "dao"), "Repository abstraction"),
+                (("event", "pubsub", "message"), "Event-driven integration"),
+                (("state", "store", "reducer"), "State management"),
+                (("validation", "schema", "contract"), "Contract-based validation"),
+            ]
+            detected_patterns: List[str] = []
+            for keywords, label in pattern_signals:
+                if any(keyword in text_blob for keyword in keywords):
+                    detected_patterns.append(label)
+            if len(key_modules) >= 3 and "Modular decomposition" not in detected_patterns:
+                detected_patterns.append("Modular decomposition")
+            arch_patterns = architecture.get("patterns") if isinstance(architecture.get("patterns"), list) else []
+            for item in arch_patterns:
+                pattern_name = str(item).strip()
+                if pattern_name and pattern_name not in detected_patterns:
+                    detected_patterns.append(pattern_name)
+            patterns = detected_patterns[:6]
+
+        if not highlights:
+            text_blob = " ".join(
+                str(item.get("analysis", "")).lower()
+                for item in tagged_files_summaries
+                if isinstance(item, dict)
+            )
+
+            generated: List[str] = []
+            if technologies:
+                primary = technologies[0]
+                generated.append(
+                    f"The implementation is anchored in {primary.get('name', 'the primary stack')} for core project workflows."
+                )
+            if "api" in text_blob or "endpoint" in text_blob:
+                generated.append("API-oriented flows are implemented with clear separation between request handling and business logic.")
+            if "async" in text_blob or "queue" in text_blob or "worker" in text_blob:
+                generated.append("Asynchronous execution patterns are used to keep long-running tasks isolated from interactive flows.")
+            if patterns:
+                generated.append("Recurring coding patterns include " + ", ".join(patterns[:3]) + ".")
+            generated.append("Technical choices generally prioritize maintainability by combining framework conventions with explicit module boundaries.")
+            highlights = generated[:5]
+
+        overview_text = payload_tech.get("overview")
+        if not overview_text:
+            overview_text = (
+                "Technical highlights focus on how the stack is applied in code, "
+                "which implementation patterns recur, and where the strongest engineering decisions appear."
+            )
+
+        normalized_technologies = []
+        for item in technologies:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or "").strip()
+            usage = str(item.get("usage") or "").strip()
+            if name and usage:
+                normalized_technologies.append({"name": name, "usage": usage})
+
+        normalized_patterns = [str(item).strip() for item in patterns if str(item).strip()][:6]
+
+        reference_texts: List[str] = []
+        for candidate in [overview_context.get("summary"), architecture.get("summary")]:
+            text = str(candidate or "").strip()
+            if text:
+                reference_texts.append(text)
+        for module in key_modules:
+            if not isinstance(module, dict):
+                continue
+            summary_text = str(module.get("summary") or "").strip()
+            title_text = str(module.get("title") or "").strip()
+            if summary_text:
+                reference_texts.append(summary_text)
+            if title_text:
+                reference_texts.append(title_text)
+        for group_name in ("weaknesses", "improvements"):
+            group_items = insights.get(group_name) if isinstance(insights.get(group_name), list) else []
+            for item in group_items:
+                if isinstance(item, dict):
+                    text = str(item.get("text") or "").strip()
+                    if text:
+                        reference_texts.append(text)
+
+        normalized_highlights: List[str] = []
+        for item in highlights:
+            text = str(item).strip()
+            if not text:
+                continue
+            if any(self._text_overlap_ratio(text, existing) >= 0.68 for existing in normalized_highlights):
+                continue
+            if any(self._text_overlap_ratio(text, reference) >= 0.46 for reference in reference_texts):
+                continue
+            normalized_highlights.append(text)
+            if len(normalized_highlights) >= 5:
+                break
+
+        if len(normalized_highlights) < 3:
+            fallback_highlights: List[str] = []
+            if normalized_technologies:
+                for tech in normalized_technologies[:3]:
+                    fallback_highlights.append(
+                        f"{tech['name']} is applied in a targeted way: {tech['usage']}"
+                    )
+            if normalized_patterns:
+                fallback_highlights.append("Observed implementation patterns include " + ", ".join(normalized_patterns[:3]) + ".")
+            for item in fallback_highlights:
+                if any(self._text_overlap_ratio(item, existing) >= 0.68 for existing in normalized_highlights):
+                    continue
+                normalized_highlights.append(item)
+                if len(normalized_highlights) >= 5:
+                    break
+
+        return {
+            "overview": str(overview_text).strip(),
+            "technologies": normalized_technologies,
+            "patterns": normalized_patterns,
+            "highlights": normalized_highlights,
+        }
+
+    def _normalize_structured_report(
+        self,
+        payload: Dict[str, Any],
+        local_analysis: Dict[str, Any],
+        tagged_files_summaries: List[Dict[str, str]],
+    ) -> Dict[str, Any]:
+        if not isinstance(payload, dict):
+            payload = {}
+
+        payload.pop("issues_and_risks", None)
+
+        overview = payload.get("overview") if isinstance(payload.get("overview"), dict) else {}
+        architecture_payload = payload.get("architecture") if isinstance(payload.get("architecture"), dict) else {}
+        technical_highlights_payload = payload.get("technical_highlights") if isinstance(payload.get("technical_highlights"), dict) else {}
+        insights = payload.get("insights") if isinstance(payload.get("insights"), dict) else {}
+        security_payload = payload.get("security_and_vulnerability")
+
+        key_modules_raw = payload.get("key_modules") if isinstance(payload.get("key_modules"), list) else []
+        key_modules: List[Dict[str, Any]] = []
+        for module in key_modules_raw:
+            if not isinstance(module, dict):
+                continue
+            key_files = module.get("key_files") if isinstance(module.get("key_files"), list) else []
+            filtered_files = [
+                str(path)
+                for path in key_files
+                if path
+                and not self._is_test_path(str(path))
+                and not self._is_generated_or_package_path(str(path))
+                and not self._is_non_implementation_path(str(path))
+            ]
+            key_modules.append(
+                {
+                    "title": module.get("title"),
+                    "summary": module.get("summary"),
+                    "key_files": filtered_files,
+                    "issues": module.get("issues") if isinstance(module.get("issues"), list) else [],
+                }
+            )
+
+        architecture = self._normalize_llm_architecture(architecture_payload, tagged_files_summaries)
+        project_scores = self._normalize_llm_project_scores(payload.get("project_scores"))
+        overview["project_type"] = self._normalize_project_type(
+            project_type_raw=str(overview.get("project_type") or ""),
+            local_analysis=local_analysis,
+            architecture=architecture,
+        )
+        insights = self._normalize_insights(
+            insights,
+            project_scores,
+            key_modules=key_modules,
+            tagged_files_summaries=tagged_files_summaries,
+        )
+        security_and_vulnerability = self._normalize_security_and_vulnerability(
+            payload_security=security_payload,
+            key_modules=key_modules,
+            tagged_files_summaries=tagged_files_summaries,
+            insights=insights,
+        )
+        technical_highlights = self._build_technical_highlights(
+            local_analysis=local_analysis,
+            architecture=architecture,
+            key_modules=key_modules,
+            tagged_files_summaries=tagged_files_summaries,
+            overview=overview,
+            insights=insights,
+            payload_tech=technical_highlights_payload,
+        )
+
+        if not overview.get("summary"):
+            overview["summary"] = "This project contains meaningful implementation depth across core modules and demonstrates practical software engineering patterns."
+
+        return {
+            "overview": overview,
+            "technical_highlights": technical_highlights,
+            "architecture": architecture,
+            "key_modules": key_modules,
+            "insights": insights,
+            "security_and_vulnerability": security_and_vulnerability,
+            "project_scores": project_scores,
+            "analysis": payload.get("analysis") or overview.get("summary") or "Structured AI analysis generated.",
+        }
     
     def analyze_project(
         self,
         local_analysis: Dict[str, Any],
         tagged_files_summaries: List[Dict[str, str]],
         media_briefings: Optional[List[str]] = None,
-    ) -> Dict[str, str]:
+        project_context: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
-        Generate a comprehensive, resume-friendly project report.
+        Generate a comprehensive structured JSON project report.
         
-        Args:
-            local_analysis: Dict with stats, metrics, file_counts
-            tagged_files_summaries: List of summaries from summarize_tagged_file()
-            media_briefings: Optional list of media asset summaries (images/audio/video)
-            
-        Returns:
-            Dict containing:
-                - analysis result: Formatted output text
-                
-        Raises:
-            LLMError: If analysis fails
+        Returns a dict with structured sections: overview, technical_highlights, architecture,
+        key_modules, insights, and project_scores.
         """
         if not self.is_configured():
             raise LLMError("LLM client is not configured")
@@ -966,49 +2021,129 @@ NOTABLE PATTERNS: [1-2 notable techniques or patterns used]"""
             ])
 
             media_context = ""
-            media_section_prompt = ""
             if media_briefings:
                 media_lines = "\n".join(f"- {entry}" for entry in media_briefings)
-                media_context = f"""
+                media_context = f"\nMEDIA ASSETS (images/audio/video):\n{media_lines}\n"
 
-MEDIA ASSETS (images/audio/video):
-{media_lines}
-"""
-                media_section_prompt = """
+            context_section = ""
+            if project_context:
+                context_section = f"\nACCUMULATED PROJECT CONTEXT:\n{project_context}\n"
 
-MEDIA INSIGHTS:
-[1-3 concise bullet points describing the listed media assets: what appears or is heard, notable timestamps/durations, any genre/label hints, and key transcript snippets.]"""
-            
-            prompt = f"""You are analyzing a software project to create a professional, resume-worthy report.
+            prompt = f"""You are analyzing a software project to produce a structured, data-driven report.
 
-            LOCAL ANALYSIS RESULTS:
-            {local_analysis}
+LOCAL ANALYSIS RESULTS:
+{local_analysis}
 
-            IMPORTANT FILES ANALYSIS:
-            {files_info if files_info else 'No tagged files provided'}{media_context}
+IMPORTANT FILES ANALYSIS:
+{files_info if files_info else 'No tagged files provided'}{media_context}{context_section}
 
-            Create a comprehensive analysis in the following format:
+Return a single JSON object with EXACTLY these keys. Return ONLY valid JSON, no markdown fences.
 
-            EXECUTIVE SUMMARY:
-            [2-3 sentences capturing the project's essence and main value proposition]
+{{
+  "overview": {{
+    "summary": "3-5 sentence portfolio-ready overview of the project",
+    "tech_stack": ["language/framework names detected"],
+        "project_type": "specific type inferred from evidence (e.g. Backend service, Frontend application, CLI/automation project, Library)"
+  }},
+  "architecture": {{
+    "summary": "2-3 sentence description of how the codebase is organized",
+    "patterns": ["architectural patterns detected, e.g. MVC, microservices"],
+    "diagram": {{
+      "nodes": [
+        {{"id": "unique_id", "label": "Human-readable name", "type": "ui|service|database|library|external"}}
+      ],
+      "edges": [
+        {{"from": "source_id", "to": "target_id", "label": "relationship description"}}
+      ]
+    }}
+  }},
+    "technical_highlights": {{
+        "overview": "2-3 sentence technical analysis focused on implementation",
+        "technologies": [
+            {{"name": "Technology name", "usage": "How it is used in the project"}}
+        ],
+        "patterns": ["coding patterns used in implementation"],
+        "highlights": ["3-5 concise technical observations"]
+    }},
+  "key_modules": [
+    {{
+      "title": "Module name",
+      "summary": "What this module does",
+      "key_files": ["path/to/file.py"],
+      "issues": ["any issues found in this module"]
+    }}
+  ],
+  "insights": {{
+    "weaknesses": [
+      {{"text": "Weakness description", "confidence": 0.88}},
+      {{"text": "Weakness description", "confidence": 0.82}}
+    ],
+    "improvements": [
+      {{"text": "Improvement suggestion", "confidence": 0.92}},
+      {{"text": "Improvement suggestion", "confidence": 0.85}}
+    ],
+    "surprising_observation": {{
+      "text": "Something unexpected or noteworthy about this codebase",
+      "confidence": 0.78
+    }}
+  }},
+    "security_and_vulnerability": {{
+        "findings": [
+            {{"text": "Security concern or potential vulnerability", "confidence": 0.73}},
+            {{"text": "Security concern or potential vulnerability", "confidence": 0.68}}
+        ]
+    }},
+  "project_scores": {{
+        "overall": 0,
+        "code_quality": 0,
+        "modularity": 0,
+        "readability": 0,
+        "test_coverage": 0,
+        "documentation": 0,
+        "security": 0
+    }}
+}}
 
-            TECHNICAL HIGHLIGHTS:
-            [Key features, capabilities, and technical achievements in bullet points]
-
-            TECHNOLOGIES USED:
-            [Summary of the tech stack and how technologies are used]
-
-            PROJECT QUALITY:
-            [Assessment of completeness, production-readiness, code quality, and overall maturity]{media_section_prompt}
-
-            Only include the MEDIA INSIGHTS section when media assets are provided above; omit it when none are available."""
+Rules:
+- All scores are integers 0-100.
+- confidence values are floats 0.0-1.0.
+- Provide exactly 2 weaknesses, 2 improvements, and 1 surprising observation.
+- Provide exactly 2 security_and_vulnerability.findings.
+- Include 2-5 key_modules.
+- Keep technical_highlights focused on technology usage and coding patterns.
+- Do not repeat architecture summaries or insights text in technical_highlights.
+- In insights, weaknesses must describe current gaps; improvements must be distinct action-oriented recommendations, not paraphrases of weaknesses.
+- Ensure weaknesses and improvements are topic-distinct: improvements should focus on actionable next steps on at least one theme not used by weaknesses when evidence allows.
+- security_and_vulnerability findings must be security-focused, concrete, and distinct (no duplicates/rephrases).
+- Architecture diagram must be your inferred architecture from all evidence, with 2-8 meaningful components and explicit relationship labels.
+- Only list implementation files in key_modules.key_files; do not include test/spec files, generated/build output folders (e.g. .next, .electron, .cache), or package dependency directories (e.g. node_modules, vendor, site-packages).
+- project_scores must be your qualitative judgment from pooled evidence (not static defaults), represented as integers 0-100.
+- Do not default project_type to "Full-stack" unless there is direct evidence of both UI and backend/service layers.
+- If there is not enough information for a section, provide a conservative inference with lower confidence.
+- Return ONLY valid JSON."""
 
             messages = [{"role": "user", "content": prompt}]
-            response = self._make_llm_call(messages, max_tokens=800, temperature=0.7)
-            
-            return {
-                "analysis": response
-            }
+            response = self._make_llm_call(
+                messages,
+                max_tokens=3000,
+                temperature=0.6,
+                response_format={"type": "json_object"},
+            )
+
+            try:
+                result = json.loads(response)
+            except json.JSONDecodeError:
+                self.logger.warning("Failed to parse structured JSON from analyze_project; falling back to text")
+                result = {"analysis": response}
+
+            normalized_result = self._normalize_structured_report(
+                payload=result,
+                local_analysis=local_analysis,
+                tagged_files_summaries=tagged_files_summaries,
+            )
+            if "analysis" not in normalized_result:
+                normalized_result["analysis"] = response
+            return normalized_result
             
         except Exception as e:
             self.logger.error(f"Project analysis failed: {e}")
@@ -1132,12 +2267,14 @@ MEDIA INSIGHTS:
         base_path,
         per_file_timeout_sec: int = 120,
         skipped_files: Optional[List[Dict[str, Any]]] = None,
+        project_context: Optional[str] = None,
     ) -> List[Dict[str, str]]:
         """Process a batch of files in parallel.
         
         Args:
             files_batch: List of (file_path, full_path, file_type, file_size) tuples
             base_path: Base path for file reading
+            project_context: Optional rolling project context from prior batches
             
         Returns:
             List of file summary results
@@ -1147,15 +2284,22 @@ MEDIA INSIGHTS:
             file_path, full_path, file_type, file_size = file_info
             try:
                 content = full_path.read_text(encoding='utf-8', errors='ignore')
+
+                # Compute lightweight metadata
+                file_metadata = self._compute_file_metadata(content, file_path, file_type)
+
                 # Run the synchronous summarize in thread pool
                 loop = asyncio.get_event_loop()
                 summary_result = await asyncio.wait_for(
                     loop.run_in_executor(
                         None,
-                        self.summarize_tagged_file,
-                        file_path,
-                        content,
-                        file_type
+                        lambda: self.summarize_tagged_file(
+                            file_path,
+                            content,
+                            file_type,
+                            file_metadata=file_metadata,
+                            project_context=project_context,
+                        ),
                     ),
                     timeout=per_file_timeout_sec,
                 )
@@ -1250,6 +2394,7 @@ MEDIA INSIGHTS:
             max_file_size_bytes = max_file_size_mb * 1024 * 1024
             file_summaries = []
             skipped_files = []
+            project_context_so_far = ""  # Rolling context across batches
             
             total_files = len(relevant_files)
             
@@ -1302,8 +2447,22 @@ MEDIA INSIGHTS:
                 maximum=900,
             )
 
-            # Balance heavier files across batches to avoid long stalls in early batches.
-            files_to_analyze.sort(key=lambda item: int(item[3]), reverse=True)
+            # Balance heavier files across batches and apply smart ranking.
+            files_to_analyze.sort(key=lambda item: (
+                1 if LLMClient._is_logic_heavy_candidate(item[0]) else 0,
+                int(item[3])
+            ), reverse=True)
+            
+            # Smart ranking: cap the logic to the top 80 most critical files
+            if len(files_to_analyze) > 80:
+                self.logger.info(f"Capping single-project file summarization to 80 files (was {len(files_to_analyze)})")
+                for f in files_to_analyze[80:]:
+                    skipped_files.append({
+                        'path': f[0],
+                        'size_mb': f[3] / (1024 * 1024),
+                        'reason': 'Skipped by 80 file smart ranking cap'
+                    })
+                files_to_analyze = files_to_analyze[:80]
             total_batches = (len(files_to_analyze) + batch_size - 1) // batch_size
             balanced_batches: List[List[tuple]] = [[] for _ in range(total_batches)]
             batch_weight = [0] * total_batches
@@ -1334,6 +2493,7 @@ MEDIA INSIGHTS:
                             scan_base_path,
                             per_file_timeout_sec=per_file_timeout_sec,
                             skipped_files=skipped_files,
+                            project_context=project_context_so_far or None,
                         ),
                         heartbeat_interval_sec=heartbeat_sec,
                         heartbeat_callback=(
@@ -1352,6 +2512,9 @@ MEDIA INSIGHTS:
                         progress_callback(
                             f"Single-project: Completed {processed_count}/{len(files_to_analyze)} files (batch {batch_num} in {duration}s)…"
                         )
+
+                    # ── Removed rolling project context update per optimization plan ─────
+
                 except Exception as e:
                     self.logger.error(f"Error processing batch: {e}")
                     continue
@@ -1363,12 +2526,14 @@ MEDIA INSIGHTS:
                 local_analysis=scan_summary,
                 tagged_files_summaries=file_summaries,
                 media_briefings=media_briefings if media_briefings else None,
+                project_context=project_context_so_far or None,
             )
             
             result = {
                 "project_analysis": project_analysis,
                 "file_summaries": file_summaries,
-                "files_analyzed_count": len(file_summaries)
+                "files_analyzed_count": len(file_summaries),
+                "local_analysis": scan_summary,
             }
 
             if media_briefings:
@@ -1551,8 +2716,24 @@ MEDIA INSIGHTS:
                 file_type = full_path.suffix or 'unknown'
                 files_to_analyze.append((file_path, full_path, file_type))
             
-            # Process files in batches of 5 for parallel execution
-            BATCH_SIZE = 5
+            # Apply smart ranking and cap before processing
+            files_to_analyze.sort(key=lambda item: (
+                1 if LLMClient._is_logic_heavy_candidate(item[0]) else 0,
+                0
+            ), reverse=True)
+            
+            if len(files_to_analyze) > 80:
+                self.logger.info(f"Capping multi-project file summarization to 80 files (was {len(files_to_analyze)})")
+                for f in files_to_analyze[80:]:
+                    skipped_files.append({
+                        'path': f[0],
+                        'size_mb': 0.0,
+                        'reason': 'Skipped by 80 file smart ranking cap'
+                    })
+                files_to_analyze = files_to_analyze[:80]
+                
+            # Process files in batches for parallel execution
+            BATCH_SIZE = 10
             processed_count = 0
             
             for i in range(0, len(files_to_analyze), BATCH_SIZE):

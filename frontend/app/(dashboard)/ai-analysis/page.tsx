@@ -15,6 +15,7 @@ import type {
   ProjectMetadata,
   ProjectAiAnalysis,
   AiAnalysisApiResponse,
+  AiKeyModule,
 } from "@/types/project";
 import {
   Sparkles,
@@ -23,13 +24,21 @@ import {
   ChevronRight,
   Calendar,
   AlertCircle,
+  Puzzle,
 } from "lucide-react";
 import { EligibilityBadge } from "@/components/ai-analysis/eligibility-badge";
-import { CategoryCard } from "@/components/ai-analysis/category-card";
-import { MarkdownReport } from "@/components/ai-analysis/markdown-report";
+import { CategoryCard, ExpandableCard } from "@/components/ai-analysis/category-card";
 import { KeyFileSummary } from "@/components/ai-analysis/key-file-summary";
 import { formatDate } from "@/components/ai-analysis/render-inline-markdown";
 import { useAiEligibility } from "@/hooks/use-ai-eligibility";
+import { OverviewCard } from "@/components/ai-analysis/overview-card";
+import { ProjectScoreCard } from "@/components/ai-analysis/project-score-card";
+import { ArchitectureSection } from "@/components/ai-analysis/architecture-section";
+import { InsightsSection } from "@/components/ai-analysis/insights-section";
+import { TechnicalHighlightsSection } from "@/components/ai-analysis/technical-highlights-section";
+import { SecurityVulnerabilitySection } from "@/components/ai-analysis/security-vulnerability-section";
+import { isTestPath, isGeneratedOrPackagePath, isNonImplementationPath } from "@/lib/file-filters";
+import { MarkdownReport } from "@/components/ai-analysis/markdown-report";
 
 // ─── main page ───────────────────────────────────────────────────────────────
 
@@ -202,12 +211,23 @@ export default function AiAnalysisPage() {
   const analysisForSelected =
     selectedId !== null ? (analyses[selectedId] ?? null) : null;
   const isRunning = runningFor === selectedId;
+  const useStructuredView =
+    analysisForSelected?.render_mode === "structured" &&
+    (analysisForSelected?.overview != null || analysisForSelected?.project_scores != null);
   const useMarkdownReport =
     analysisForSelected?.render_mode === "markdown_report" &&
     typeof analysisForSelected?.markdown_report === "string" &&
     analysisForSelected.markdown_report.trim().length > 0;
+
   const keyFiles = (analysisForSelected?.key_files ?? [])
-    .filter((file) => Boolean(file?.file_path) && Boolean(file?.summary))
+    .filter(
+      (file) =>
+        Boolean(file?.file_path) &&
+        Boolean(file?.summary) &&
+        !isTestPath(file?.file_path) &&
+        !isGeneratedOrPackagePath(file?.file_path) &&
+        !isNonImplementationPath(file?.file_path),
+    )
     .slice(0, 3);
   const sectionHeaderClass = "border-b border-border/70 p-5 pb-4 sm:p-5 sm:pb-4";
   const sectionBodyClass = "p-5 pt-4 sm:p-5 sm:pt-4";
@@ -529,20 +549,75 @@ export default function AiAnalysisPage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className={`${sectionBodyClass} space-y-5`}>
-                    {useMarkdownReport ? (
-                      <div className="space-y-4">
-                        <div className="dashboard-card-subtle space-y-4 border border-border/70 p-5">
-                          <div className="flex items-center justify-between mb-4">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                              Batch AI Report
-                            </p>
-                            <span className="rounded-full border border-border bg-card/85 px-2 py-1 text-xs text-muted-foreground">
-                              Markdown View
-                            </span>
-                          </div>
-                          <MarkdownReport markdown={analysisForSelected.markdown_report as string} />
-                        </div>
+                    {useStructuredView ? (
+                      <div className="space-y-5">
+                        {/* Overview */}
+                        {analysisForSelected.overview && (
+                          <OverviewCard overview={analysisForSelected.overview} />
+                        )}
 
+                        {/* Project score */}
+                        {analysisForSelected.project_scores && (
+                          <ProjectScoreCard scores={analysisForSelected.project_scores} />
+                        )}
+
+                        {/* Architecture */}
+                        {analysisForSelected.architecture && (
+                          <ArchitectureSection architecture={analysisForSelected.architecture} />
+                        )}
+
+                        {/* Technical Highlights */}
+                        {analysisForSelected.technical_highlights && (
+                          <TechnicalHighlightsSection technicalHighlights={analysisForSelected.technical_highlights} />
+                        )}
+
+                        {/* Key Modules */}
+                        {analysisForSelected.key_modules && analysisForSelected.key_modules.length > 0 && (
+                          <div className="dashboard-card-subtle space-y-3 border border-border/70 p-5">
+                            <div className="flex items-center gap-2 mb-1">
+                              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-500/12 text-emerald-500">
+                                <Puzzle size={16} />
+                              </div>
+                              <h3 className="text-base font-semibold text-foreground">Key Modules</h3>
+                            </div>
+                            <div className="space-y-2">
+                              {(analysisForSelected.key_modules as AiKeyModule[]).map((mod, idx) => (
+                                <ExpandableCard
+                                  key={`mod-${idx}`}
+                                  title={mod.title ?? `Module ${idx + 1}`}
+                                  summary={mod.summary}
+                                  icon="module"
+                                  files={(mod.key_files ?? []).filter(
+                                    (path) => !isTestPath(path) && !isGeneratedOrPackagePath(path) && !isNonImplementationPath(path),
+                                  )}
+                                  defaultOpen={idx === 0}
+                                >
+                                  {mod.issues && mod.issues.length > 0 && (
+                                    <ul className="list-disc pl-5 space-y-1 marker:text-muted-foreground/60">
+                                      {mod.issues.map((issue, ii) => (
+                                        <li key={`mod-issue-${ii}`} className="text-sm text-muted-foreground">
+                                          {issue}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                </ExpandableCard>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Insights */}
+                        {analysisForSelected.insights && (
+                          <InsightsSection insights={analysisForSelected.insights} />
+                        )}
+
+                        {/* Security and Vulnerability */}
+                        {analysisForSelected.security_and_vulnerability && (
+                          <SecurityVulnerabilitySection security={analysisForSelected.security_and_vulnerability} />
+                        )}
+
+                        {/* Key Files (reuse existing) */}
                         {keyFiles.length > 0 && (
                           <div className="dashboard-card-subtle border border-border/70 p-5">
                             <div className="mb-3">
@@ -572,7 +647,10 @@ export default function AiAnalysisPage() {
                             </div>
                           </div>
                         )}
+
                       </div>
+                    ) : useMarkdownReport ? (
+                      <MarkdownReport markdown={analysisForSelected.markdown_report as string} />
                     ) : (
                       <>
                         {/* Overall summary */}
