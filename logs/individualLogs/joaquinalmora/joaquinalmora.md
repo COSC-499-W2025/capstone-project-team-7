@@ -1,6 +1,7 @@
 # Joaquin Almora / @joaquinalmora
 
 ### Weekly Navigation
+- [Week 25(#week-26-march-16th--29th)
 - [Week 24](#week-24-march-9th---15th)
 - [Week 23](#week-23-march-2nd---8th)
 - [Week 22](#week-22-february-23rd---march-1st)
@@ -23,6 +24,9 @@
 - [Week 5](#week-5-september-29th---october-5th)
 - [Week 4](#week-4-september-22nd---28th)
 - [Week 3](#week-3-september-15th---21st)
+
+## Week 26 (March 16th - 29th)
+
 
 ## Week 24 (March 9th - 15th)
 This week focused on completing backend code quality improvements, hardening logout session handling, and refining desktop onboarding configuration for contribution identity. The work was delivered through two pull requests: [PR #396](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/396) for Issue #319 and [PR #399](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/399) for Issue #383. In addition to the core implementation work, the week included final validation passes, test coverage additions, and repository workflow improvements to ensure both PRs were cleanly scoped and verifiable.
