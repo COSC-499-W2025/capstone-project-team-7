@@ -13,7 +13,7 @@ try:
 except Exception:  # pragma: no cover - optional dependency
     load_dotenv = None  # type: ignore
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from slowapi import _rate_limit_exceeded_handler
@@ -53,14 +53,42 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-allowed_origins = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "*").split(",")]
+environment = os.getenv("ENVIRONMENT", "development").strip().lower()
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "").strip()
+allowed_headers_env = os.getenv("ALLOWED_HEADERS", "").strip()
+
+if allowed_origins_env:
+    allowed_origins = [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()]
+else:
+    if environment in {"production", "prod"}:
+        raise RuntimeError("ALLOWED_ORIGINS must be configured in production")
+    allowed_origins = ["http://localhost:3000", "http://localhost:8000"]
+
+if "*" in allowed_origins:
+    if environment in {"production", "prod"}:
+        raise RuntimeError("Wildcard CORS origin is not allowed in production")
+    allowed_origins = [origin for origin in allowed_origins if origin != "*"]
+    if not allowed_origins:
+        allowed_origins = ["http://localhost:3000", "http://localhost:8000"]
+
+if allowed_headers_env:
+    allowed_headers = [header.strip() for header in allowed_headers_env.split(",") if header.strip()]
+else:
+    allowed_headers = [
+        "Authorization",
+        "Content-Type",
+        "Accept",
+        "Origin",
+        "X-Requested-With",
+        "Cache-Control",
+    ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"]
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=allowed_headers,
 )
 
 allowed_hosts = [
@@ -97,7 +125,12 @@ def root():
 
 @app.get("/health")
 def health_check():
-        return {"status":"ok"}
+    return {"status": "ok"}
+
+
+@app.head("/health", include_in_schema=False)
+def health_check_head() -> Response:
+    return Response(status_code=200)
 
 
 # Register API routes

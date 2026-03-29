@@ -834,36 +834,36 @@ def _run_code_analysis_for_path(
         try:
             all_magic = result.get_all_magic_values()
             magic_value_examples = all_magic[:MAX_EXAMPLES] if all_magic else []
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Unable to collect magic value examples: %s", exc)
         
         dead_code_examples = []
         try:
             all_dead = result.get_all_dead_code()
             dead_code_examples = all_dead[:MAX_EXAMPLES] if all_dead else []
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Unable to collect dead code examples: %s", exc)
         
         duplicate_examples = []
         try:
             all_dupes = result.get_all_duplicates()
             duplicate_examples = all_dupes[:MAX_EXAMPLES] if all_dupes else []
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Unable to collect duplicate examples: %s", exc)
         
         naming_issue_examples = []
         try:
             all_naming = result.get_naming_issues()
             naming_issue_examples = all_naming[:MAX_EXAMPLES] if all_naming else []
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Unable to collect naming issue examples: %s", exc)
         
         error_handling_examples = []
         try:
             all_errors = result.get_error_handling_issues()
             error_handling_examples = all_errors[:MAX_EXAMPLES] if all_errors else []
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Unable to collect error handling examples: %s", exc)
         
         return {
             # Basic metrics
