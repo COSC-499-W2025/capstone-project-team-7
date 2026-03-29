@@ -14,6 +14,9 @@ import uuid
 from main import app
 
 
+pytestmark = pytest.mark.usefixtures("project_test_auth_override")
+
+
 client = TestClient(app)
 
 # Test JWT token (sub claim contains valid user_id)

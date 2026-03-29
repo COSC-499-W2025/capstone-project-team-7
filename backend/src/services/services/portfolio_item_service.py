@@ -36,10 +36,14 @@ class PortfolioItemService:
         if not self.supabase_url or not self.supabase_key:
             raise PortfolioItemServiceError("Supabase credentials not configured.")
 
-        self._use_local_store = os.getenv("CAPSTONE_LOCAL_STORE") == "1" or bool(os.getenv("PYTEST_CURRENT_TEST"))
+        self._use_local_store = os.getenv("CAPSTONE_LOCAL_STORE") == "1"
 
         self.client: Any = None
         self._requires_user_token_client = False
+
+        if self._use_local_store:
+            return
+
         try:
             self.client = create_client(cast(str, self.supabase_url), cast(str, self.supabase_key))
         except Exception as exc:

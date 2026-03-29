@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, Suspense } from "react";
+import { memo, useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
@@ -84,7 +84,7 @@ function displayUrl(url: string): string {
 }
 
 // Comma-separated input that preserves typing and only converts to array on blur
-function CommaSeparatedInput({
+const CommaSeparatedInput = memo(function CommaSeparatedInput({
   value,
   onChange,
   placeholder,
@@ -93,11 +93,13 @@ function CommaSeparatedInput({
   onChange: (items: string[]) => void;
   placeholder?: string;
 }) {
-  const [localValue, setLocalValue] = useState(value.join(", "));
+  const valueStr = value.join(", ");
+  const [localValue, setLocalValue] = useState(valueStr);
 
   // Sync from parent when value changes externally
   useEffect(() => {
-    setLocalValue(value.join(", "));
+    const next = value.join(", ");
+    setLocalValue((prev) => (prev === next ? prev : next));
   }, [value]);
 
   const handleBlur = () => {
@@ -116,7 +118,7 @@ function CommaSeparatedInput({
       placeholder={placeholder}
     />
   );
-}
+});
 
 function ResumeEditorPageInner() {
   const router = useRouter();
@@ -139,10 +141,15 @@ function ResumeEditorPageInner() {
 
   // Dirty state for auto-save
   const [isDirty, setIsDirty] = useState(false);
-  const debouncedLatex = useDebounce(latexContent, 1500);
-  const debouncedStructured = useDebounce(structuredData, 1500);
-  const debouncedResumeName = useDebounce(resumeName, 1500);
-  const debouncedTemplate = useDebounce(template, 1500);
+  const editVersionRef = useRef(0);
+  const autosaveDraft = useMemo(
+    () => ({ latexContent, structuredData, resumeName, template }),
+    [latexContent, structuredData, resumeName, template]
+  );
+  const debouncedDraft = useDebounce(autosaveDraft, 1000);
+
+  // Track last-saved payload to deduplicate autosave calls
+  const lastSavedPayloadRef = useRef<string>("");
 
   // Fetch resume on mount
   useEffect(() => {
@@ -178,27 +185,45 @@ function ResumeEditorPageInner() {
     fetchResume();
   }, [resumeId]);
 
-  // Auto-save when debounced values change
+  // Auto-save when debounced values change (deduplicated)
   useEffect(() => {
-    if (!resume || !isDirty) return;
+    if (!resumeId || !isDirty) return;
+
+    const payload = {
+      name: debouncedResumeName,
+      template: debouncedTemplate,
+      latex_content: isLatexMode ? debouncedLatex : null,
+      // Always persist structured_data so form-mode data is preserved
+      // even when the user is editing in LaTeX mode.
+      structured_data: debouncedStructured,
+      is_latex_mode: isLatexMode,
+    };
+    const payloadKey = JSON.stringify(payload);
+    if (payloadKey === lastSavedPayloadRef.current) {
+      setIsDirty(false);
+      return;
+    }
 
     const autoSave = async () => {
       const token = getStoredToken();
       if (!token) return;
+      const saveVersion = editVersionRef.current;
 
       setSaving(true);
       try {
         await updateUserResume(token, resumeId, {
-          name: debouncedResumeName,
-          template: debouncedTemplate,
-          latex_content: isLatexMode ? debouncedLatex : null,
+          name: debouncedDraft.resumeName,
+          template: debouncedDraft.template,
+          latex_content: isLatexMode ? debouncedDraft.latexContent : null,
           // Always persist structured_data so form-mode data is preserved
           // even when the user is editing in LaTeX mode.
-          structured_data: debouncedStructured,
+          structured_data: debouncedDraft.structuredData,
           is_latex_mode: isLatexMode,
         });
         setLastSaved(new Date());
-        setIsDirty(false);
+        if (editVersionRef.current === saveVersion) {
+          setIsDirty(false);
+        }
       } catch (err) {
         console.error("Auto-save failed:", err);
       } finally {
@@ -207,12 +232,18 @@ function ResumeEditorPageInner() {
     };
 
     autoSave();
-  }, [debouncedLatex, debouncedStructured, debouncedResumeName, debouncedTemplate, resume, resumeId, isLatexMode, isDirty]);
+  }, [debouncedDraft, resumeId, isLatexMode, isDirty]);
+
+  const markDirty = useCallback(() => {
+    editVersionRef.current += 1;
+    setIsDirty(true);
+  }, []);
 
   // Manual save
   const handleSave = async () => {
     const token = getStoredToken();
     if (!token) return;
+    const saveVersion = editVersionRef.current;
 
     setSaving(true);
     try {
@@ -224,7 +255,9 @@ function ResumeEditorPageInner() {
         is_latex_mode: isLatexMode,
       });
       setLastSaved(new Date());
-      setIsDirty(false);
+      if (editVersionRef.current === saveVersion) {
+        setIsDirty(false);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");
     } finally {
@@ -233,19 +266,19 @@ function ResumeEditorPageInner() {
   };
 
   // Handle LaTeX content change
-  const handleLatexChange = (value: string) => {
+  const handleLatexChange = useCallback((value: string) => {
     setLatexContent(value);
-    setIsDirty(true);
-  };
+    markDirty();
+  }, [markDirty]);
 
   // Handle structured data update
-  const updateStructuredData = (updates: Partial<ResumeStructuredData>) => {
+  const updateStructuredData = useCallback((updates: Partial<ResumeStructuredData>) => {
     setStructuredData((prev) => ({ ...prev, ...updates }));
-    setIsDirty(true);
-  };
+    markDirty();
+  }, [markDirty]);
 
   // Switch between modes
-  const handleModeSwitch = (latex: boolean) => {
+  const handleModeSwitch = useCallback((latex: boolean) => {
     if (!latex && isLatexMode) {
       // Switching from LaTeX to form - keep the structured data as-is
       // User will edit via forms
@@ -254,8 +287,8 @@ function ResumeEditorPageInner() {
       setLatexContent(generateLatexFromStructuredData(structuredData));
     }
     setIsLatexMode(latex);
-    setIsDirty(true);
-  };
+    markDirty();
+  }, [isLatexMode, structuredData, markDirty]);
 
   const handleDownloadTex = () => {
     const content = isLatexMode ? latexContent : generateLatexFromStructuredData(structuredData);
@@ -293,7 +326,7 @@ function ResumeEditorPageInner() {
     }
   };
 
-  const handleAddResumeItems = async (itemIds: string[]) => {
+  const handleAddResumeItems = useCallback(async (itemIds: string[]) => {
     const token = getStoredToken();
     if (!token || itemIds.length === 0) return;
 
@@ -310,9 +343,9 @@ function ResumeEditorPageInner() {
     } finally {
       setSaving(false);
     }
-  };
+  }, [resumeId]);
 
-  const handleDetectSkills = async () => {
+  const handleDetectSkills = useCallback(async () => {
     const token = getStoredToken();
     if (!token) return;
 
@@ -329,7 +362,7 @@ function ResumeEditorPageInner() {
     } finally {
       setSaving(false);
     }
-  };
+  }, [resumeId]);
 
   if (loading) {
     return (
@@ -370,7 +403,7 @@ function ResumeEditorPageInner() {
               value={resumeName}
               onChange={(e) => {
                 setResumeName(e.target.value);
-                setIsDirty(true);
+                markDirty();
               }}
               className="h-8 w-full max-w-full text-sm font-medium border-transparent hover:border-border focus:border-border sm:w-64"
             />
@@ -466,7 +499,7 @@ interface LatexEditorProps {
   onChange: (value: string) => void;
 }
 
-function LatexEditor({ content, onChange }: LatexEditorProps) {
+const LatexEditor = memo(function LatexEditor({ content, onChange }: LatexEditorProps) {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
       {/* Editor pane */}
@@ -498,7 +531,7 @@ function LatexEditor({ content, onChange }: LatexEditorProps) {
       </div>
     </div>
   );
-}
+});
 
 // ============================================================================
 // Form Editor Component
@@ -511,7 +544,7 @@ interface FormEditorProps {
   onDetectSkills: () => Promise<void>;
 }
 
-function FormEditor({ data, onChange, onAddResumeItems, onDetectSkills }: FormEditorProps) {
+const FormEditor = memo(function FormEditor({ data, onChange, onAddResumeItems, onDetectSkills }: FormEditorProps) {
   const [activeTab, setActiveTab] = useState("contact");
   const [itemsDialogOpen, setItemsDialogOpen] = useState(false);
   const [resumeItems, setResumeItems] = useState<ResumeItemSummary[]>([]);
@@ -614,6 +647,18 @@ function FormEditor({ data, onChange, onAddResumeItems, onDetectSkills }: FormEd
     updated.splice(index, 1);
     onChange({ awards: updated });
   };
+
+  const updateSkillsField = useCallback(
+    (field: "languages" | "frameworks" | "developer_tools" | "libraries", values: string[]) => {
+      onChange({
+        skills: {
+          ...(data.skills ?? {}),
+          [field]: values,
+        },
+      });
+    },
+    [data.skills, onChange]
+  );
 
   const openAddItemsDialog = async () => {
     const token = getStoredToken();
@@ -1035,14 +1080,7 @@ function FormEditor({ data, onChange, onAddResumeItems, onDetectSkills }: FormEd
                 <Label>Programming Languages (comma-separated)</Label>
                 <CommaSeparatedInput
                   value={data.skills?.languages || []}
-                  onChange={(languages) =>
-                    onChange({
-                      skills: {
-                        ...data.skills,
-                        languages,
-                      },
-                    })
-                  }
+                  onChange={(languages) => updateSkillsField("languages", languages)}
                   placeholder="Python, JavaScript, TypeScript, Java"
                 />
               </div>
@@ -1050,14 +1088,7 @@ function FormEditor({ data, onChange, onAddResumeItems, onDetectSkills }: FormEd
                 <Label>Frameworks (comma-separated)</Label>
                 <CommaSeparatedInput
                   value={data.skills?.frameworks || []}
-                  onChange={(frameworks) =>
-                    onChange({
-                      skills: {
-                        ...data.skills,
-                        frameworks,
-                      },
-                    })
-                  }
+                  onChange={(frameworks) => updateSkillsField("frameworks", frameworks)}
                   placeholder="React, Node.js, FastAPI, Next.js"
                 />
               </div>
@@ -1065,14 +1096,7 @@ function FormEditor({ data, onChange, onAddResumeItems, onDetectSkills }: FormEd
                 <Label>Developer Tools (comma-separated)</Label>
                 <CommaSeparatedInput
                   value={data.skills?.developer_tools || []}
-                  onChange={(developer_tools) =>
-                    onChange({
-                      skills: {
-                        ...data.skills,
-                        developer_tools,
-                      },
-                    })
-                  }
+                  onChange={(developer_tools) => updateSkillsField("developer_tools", developer_tools)}
                   placeholder="Git, Docker, VS Code, AWS"
                 />
               </div>
@@ -1080,14 +1104,7 @@ function FormEditor({ data, onChange, onAddResumeItems, onDetectSkills }: FormEd
                 <Label>Libraries (comma-separated)</Label>
                 <CommaSeparatedInput
                   value={data.skills?.libraries || []}
-                  onChange={(libraries) =>
-                    onChange({
-                      skills: {
-                        ...data.skills,
-                        libraries,
-                      },
-                    })
-                  }
+                  onChange={(libraries) => updateSkillsField("libraries", libraries)}
                   placeholder="pandas, NumPy, TensorFlow"
                 />
               </div>
@@ -1263,13 +1280,13 @@ function FormEditor({ data, onChange, onAddResumeItems, onDetectSkills }: FormEd
       </div>
     </div>
   );
-}
+});
 
 // ============================================================================
 // Preview Components
 // ============================================================================
 
-function PreviewPlaceholder({ latex }: { latex: string }) {
+const PreviewPlaceholder = memo(function PreviewPlaceholder({ latex }: { latex: string }) {
   // Parse basic structure from LaTeX for a simple preview
   // This is a simplified preview - real LaTeX rendering would require a server
   
@@ -1288,9 +1305,9 @@ function PreviewPlaceholder({ latex }: { latex: string }) {
       </div>
     </div>
   );
-}
+});
 
-function FormPreview({ data }: { data: ResumeStructuredData }) {
+const FormPreview = memo(function FormPreview({ data }: { data: ResumeStructuredData }) {
   return (
     <div className="space-y-6 text-gray-900">
       {/* Header */}
@@ -1504,7 +1521,7 @@ function FormPreview({ data }: { data: ResumeStructuredData }) {
         )}
     </div>
   );
-}
+});
 
 // Suspense boundary required because useSearchParams() needs it for static export
 export default function ResumeEditorPage() {

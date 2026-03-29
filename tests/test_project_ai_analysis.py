@@ -133,7 +133,11 @@ async def _mock_verify_auth():
     return TEST_USER_ID
 
 
-app.dependency_overrides[verify_auth_token] = _mock_verify_auth
+@pytest.fixture(autouse=True)
+def _override_auth_for_module():
+    app.dependency_overrides[verify_auth_token] = _mock_verify_auth
+    yield
+    app.dependency_overrides.clear()
 
 client = TestClient(app)
 

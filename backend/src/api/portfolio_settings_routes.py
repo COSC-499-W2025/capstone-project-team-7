@@ -4,6 +4,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import sys
+import time
+from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -20,12 +22,21 @@ from services.services.portfolio_settings_service import (
 )
 from services.services.portfolio_timeline_service import PortfolioTimelineService
 from services.services.projects_service import ProjectsService
+from services.services.portfolio_deploy_service import (
+    generate_portfolio_html,
+    deploy_to_vercel,
+    delete_vercel_deployment,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Portfolio Settings"])
 
 _settings_service: Optional[PortfolioSettingsService] = None
+
+# Simple per-user rate limiter for deploy endpoint: 1 deploy per 60 seconds
+_deploy_timestamps: Dict[str, float] = defaultdict(float)
+_DEPLOY_COOLDOWN_SECONDS = 60
 
 
 def get_settings_service() -> PortfolioSettingsService:
@@ -75,6 +86,7 @@ class SettingsResponse(BaseModel):
     show_top_projects: bool = True
     show_all_skills: bool = True
     showcase_count: int = 3
+    deployed_url: Optional[str] = None
 
 
 class PublishResponse(BaseModel):
@@ -165,13 +177,11 @@ def _get_projects_service_for_user(user_id: str, access_token: Optional[str] = N
     return service
 
 
-@router.get("/api/public/portfolio/{share_token}")
-async def get_public_portfolio(share_token: str) -> JSONResponse:
-    """
-    Fetch a published portfolio by share token. No authentication required.
+async def _fetch_portfolio_data(share_token: str) -> Dict[str, Any]:
+    """Fetch and aggregate all portfolio data for a share token.
 
-    Returns profile info, skills timeline, project timeline, top projects,
-    and heatmap data for the portfolio owner.
+    Shared by the public endpoint and the deploy endpoint to avoid
+    coupling through JSONResponse serialization.
     """
     service = get_settings_service()
 
@@ -251,7 +261,7 @@ async def get_public_portfolio(share_token: str) -> JSONResponse:
         "showcase_count": settings.get("showcase_count", 3),
     }
 
-    return JSONResponse({
+    return {
         "profile": profile_data,
         "settings": visible_settings,
         "skills_timeline": skills_timeline if visible_settings["show_skills_timeline"] else [],
@@ -259,4 +269,94 @@ async def get_public_portfolio(share_token: str) -> JSONResponse:
         "top_projects": top_projects if visible_settings["show_top_projects"] else [],
         "heatmap_data": heatmap_data if visible_settings["show_heatmap"] else [],
         "all_skills": all_skills if visible_settings["show_all_skills"] else [],
-    })
+    }
+
+
+@router.get("/api/public/portfolio/{share_token}")
+async def get_public_portfolio(share_token: str) -> JSONResponse:
+    """
+    Fetch a published portfolio by share token. No authentication required.
+
+    Returns profile info, skills timeline, project timeline, top projects,
+    and heatmap data for the portfolio owner.
+    """
+    data = await _fetch_portfolio_data(share_token)
+    return JSONResponse(data)
+
+
+# ── Portfolio Deployment ─────────────────────────────────────────────
+
+
+class DeployResponse(BaseModel):
+    url: Optional[str] = None
+    status: str
+    error: Optional[str] = None
+
+
+@router.post("/api/portfolio/deploy", response_model=DeployResponse)
+async def deploy_portfolio(
+    auth: AuthContext = Depends(get_auth_context),
+    service: PortfolioSettingsService = Depends(get_auth_settings_service),
+):
+    """Generate a static HTML portfolio and deploy it to Vercel."""
+    settings = service.get_settings(auth.user_id)
+    if not settings or not settings.get("is_public") or not settings.get("share_token"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Portfolio must be published before deploying.",
+        )
+
+    # Rate limit: 1 deploy per user per 60 seconds
+    now = time.monotonic()
+    last = _deploy_timestamps.get(auth.user_id, 0)
+    if now - last < _DEPLOY_COOLDOWN_SECONDS:
+        remaining = int(_DEPLOY_COOLDOWN_SECONDS - (now - last))
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Please wait {remaining}s before deploying again.",
+        )
+    _deploy_timestamps[auth.user_id] = now
+
+    share_token = settings["share_token"]
+    data = await _fetch_portfolio_data(share_token)
+
+    html = generate_portfolio_html(
+        profile=data.get("profile", {}),
+        settings=data.get("settings", {}),
+        skills_timeline=data.get("skills_timeline", []),
+        top_projects=data.get("top_projects", []),
+        heatmap_data=data.get("heatmap_data", []),
+        all_skills=data.get("all_skills", []),
+    )
+
+    result = await deploy_to_vercel(html, share_token)
+    if result.get("status") == "success" and result.get("url"):
+        service.upsert_settings(auth.user_id, deployed_url=result["url"])
+
+    return DeployResponse(
+        url=result.get("url"),
+        status=result.get("status", "error"),
+        error=result.get("error"),
+    )
+
+
+@router.delete("/api/portfolio/deploy")
+async def undeploy_portfolio(
+    auth: AuthContext = Depends(get_auth_context),
+    service: PortfolioSettingsService = Depends(get_auth_settings_service),
+):
+    """Remove a Vercel deployment and clear the deployed URL."""
+    settings = service.get_settings(auth.user_id)
+    if not settings or not settings.get("deployed_url"):
+        return {"ok": True}
+
+    share_token = settings.get("share_token", "")
+    error = await delete_vercel_deployment(share_token)
+    if error:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to remove Vercel deployment: {error}",
+        )
+
+    service.upsert_settings(auth.user_id, deployed_url=None)
+    return {"ok": True}

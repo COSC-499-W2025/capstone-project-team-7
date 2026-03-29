@@ -120,6 +120,13 @@ export interface PortfolioSettings {
   show_top_projects: boolean;
   show_all_skills: boolean;
   showcase_count: number;
+  deployed_url?: string | null;
+}
+
+export interface DeployPortfolioResponse {
+  url: string | null;
+  status: string;
+  error?: string | null;
 }
 
 export interface PublicPortfolioResponse {
@@ -185,4 +192,26 @@ export interface LinkedInPostRequest {
 export interface LinkedInPostResponse {
   post_text: string;
   share_url?: string | null;
+}
+
+// ── LinkedIn Direct Posting ─────────────────────────────────────────
+
+export interface LinkedInAuthUrlResponse {
+  auth_url: string;
+}
+
+export interface LinkedInConnectionStatus {
+  connected: boolean;
+  linkedin_name?: string | null;
+  expires_at?: string | null;
+}
+
+export interface LinkedInDirectPostRequest {
+  post_text: string;
+}
+
+export interface LinkedInDirectPostResponse {
+  success: boolean;
+  post_id?: string | null;
+  error?: string | null;
 }

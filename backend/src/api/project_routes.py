@@ -5,7 +5,7 @@
 from fastapi import APIRouter, HTTPException, status, Header, Depends, File, UploadFile, Query, Response, Request
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any, cast
-from datetime import datetime
+from datetime import datetime, timezone
 import asyncio
 import json
 import logging
@@ -90,6 +90,9 @@ except (ModuleNotFoundError, ImportError):
         is_non_implementation_path as _is_non_implementation_path,
         AI_BATCH_LOGIC_PREFERRED_EXTS,
     )
+    from api.dependencies import AuthContext, get_auth_context
+except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
+    from backend.src.api.dependencies import AuthContext, get_auth_context
 
 logger = logging.getLogger(__name__)
 
@@ -827,36 +830,36 @@ def _run_code_analysis_for_path(
         try:
             all_magic = result.get_all_magic_values()
             magic_value_examples = all_magic[:MAX_EXAMPLES] if all_magic else []
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Unable to collect magic value examples: %s", exc)
         
         dead_code_examples = []
         try:
             all_dead = result.get_all_dead_code()
             dead_code_examples = all_dead[:MAX_EXAMPLES] if all_dead else []
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Unable to collect dead code examples: %s", exc)
         
         duplicate_examples = []
         try:
             all_dupes = result.get_all_duplicates()
             duplicate_examples = all_dupes[:MAX_EXAMPLES] if all_dupes else []
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Unable to collect duplicate examples: %s", exc)
         
         naming_issue_examples = []
         try:
             all_naming = result.get_naming_issues()
             naming_issue_examples = all_naming[:MAX_EXAMPLES] if all_naming else []
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Unable to collect naming issue examples: %s", exc)
         
         error_handling_examples = []
         try:
             all_errors = result.get_error_handling_issues()
             error_handling_examples = all_errors[:MAX_EXAMPLES] if all_errors else []
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Unable to collect error handling examples: %s", exc)
         
         return {
             # Basic metrics
@@ -910,54 +913,8 @@ def _run_code_analysis_for_path(
         return None
 
 
-async def verify_auth_token(authorization: Optional[str] = Header(None)) -> str:
-    """
-    Verify JWT token from Authorization header.
-    
-    Args:
-        authorization: Bearer token from header
-    
-    Returns:
-        User ID extracted from token
-    
-    Raises:
-        HTTPException: If token is missing or invalid
-    """
-    if not authorization:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing authorization token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    parts = authorization.split()
-    if len(parts) != 2 or parts[0].lower() != "bearer":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authorization header format. Use 'Bearer <token>'",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    token = parts[1]
-    set_request_access_token(token)
-
-    try:
-        import jwt
-
-        payload = jwt.decode(token, options={"verify_signature": False})
-        user_id = payload.get("sub")
-        if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token: missing user ID",
-            )
-        return user_id
-    except Exception as exc:
-        logger.error(f"Token verification failed: {exc}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-        )
+async def verify_auth_token(auth: AuthContext = Depends(get_auth_context)) -> str:
+    return auth.user_id
 
 
 # ============================================================================
@@ -1899,6 +1856,8 @@ async def get_project_timeline(
                 if len(ts_str) == 10:
                     ts_str = ts_str + "T00:00:00+00:00"
                 dt = datetime.fromisoformat(ts_str)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
             except Exception as e:
                 # Warn about date parsing failures
                 warnings.append({

@@ -4,7 +4,11 @@ Pytest configuration and fixtures
 from pathlib import Path
 import sys
 import importlib
+import os
+import json
+import base64
 import pytest
+from fastapi import Header, HTTPException, status
 
 
 # Define paths
@@ -34,6 +38,73 @@ if str(BACKEND_ROOT) not in sys.path:
 
 if str(LOCAL_ANALYSIS_DIR) not in sys.path:
     sys.path.insert(0, str(LOCAL_ANALYSIS_DIR))
+
+os.environ.setdefault("ALLOWED_HOSTS", "localhost,127.0.0.1,testserver")
+os.environ.setdefault("CAPSTONE_LOCAL_STORE", "1")
+os.environ.setdefault("SUPABASE_URL", "https://test.supabase.co")
+os.environ.setdefault("SUPABASE_KEY", "test-service-role-key")
+
+from main import app
+from api.dependencies import AuthContext, get_auth_context
+
+
+async def _test_auth_context(authorization: str | None = Header(default=None)) -> AuthContext:
+    if not authorization:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "unauthorized", "message": "Authorization header missing"},
+        )
+
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "unauthorized", "message": "Authorization header must be Bearer token"},
+        )
+
+    access_token = parts[1].strip()
+    if not access_token or access_token.count(".") < 2:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "unauthorized", "message": "Invalid or expired access token"},
+        )
+
+    payload: dict[str, object] = {}
+    token_parts = access_token.split(".")
+    encoded_payload = token_parts[1]
+    encoded_payload += "=" * (-len(encoded_payload) % 4)
+    try:
+        payload = json.loads(base64.urlsafe_b64decode(encoded_payload.encode()).decode())
+    except Exception:
+        payload = {}
+
+    user_id = payload.get("sub") or payload.get("id")
+    if not isinstance(user_id, str) or not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "unauthorized", "message": "Access token missing user id"},
+        )
+
+    email = payload.get("email")
+    return AuthContext(
+        user_id=user_id,
+        access_token=access_token,
+        email=email if isinstance(email, str) else None,
+    )
+
+
+_SENTINEL = object()
+
+
+@pytest.fixture()
+def project_test_auth_override():
+    previous = app.dependency_overrides.get(get_auth_context, _SENTINEL)
+    app.dependency_overrides[get_auth_context] = _test_auth_context
+    yield
+    if previous is _SENTINEL:
+        app.dependency_overrides.pop(get_auth_context, None)
+    else:
+        app.dependency_overrides[get_auth_context] = previous
 
 
 # IMPORTANT: Define this function BEFORE using it!

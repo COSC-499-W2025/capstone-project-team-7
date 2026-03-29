@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import type { Route } from 'next';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
@@ -12,6 +13,7 @@ import {
   Search,
   Sparkles,
   LogOut,
+  Target,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/hooks/use-auth';
@@ -23,7 +25,7 @@ type SidebarProfile = {
 };
 
 interface NavItemProps {
-  href: string;
+  href: Route;
   icon: React.ReactNode;
   label: string;
 }
@@ -34,7 +36,7 @@ const NavItem: React.FC<NavItemProps> = ({ href, icon, label }) => {
 
   return (
     <Link
-      href={href as any}
+      href={href}
       className={`sidebar-link text-sm font-medium ${isActive ? 'sidebar-link-active' : ''}`}
     >
       <span className="w-5 h-5 flex-shrink-0">{icon}</span>
@@ -160,6 +162,11 @@ export const Sidebar: React.FC = () => {
               href="/resume-builder"
               icon={<FileEdit size={18} />}
               label="Resume Builder"
+            />
+            <NavItem
+              href="/job-match"
+              icon={<Target size={18} />}
+              label="Job Match"
             />
           </div>
           <SectionLabel>Utilities</SectionLabel>
