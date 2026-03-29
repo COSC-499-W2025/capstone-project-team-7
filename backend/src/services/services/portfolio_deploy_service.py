@@ -1,8 +1,15 @@
 """Portfolio deployment service — generates static HTML and deploys to Vercel.
 
-The generated HTML uses Tailwind CSS (CDN) and the same custom CSS classes /
-design tokens as the app's PortfolioOverview component so the deployed
-portfolio looks identical to the in-app view.
+The generated HTML uses a pre-built static CSS bundle (inlined) containing
+only the Tailwind utility classes actually used by the template, plus the
+same custom CSS classes / design tokens as the app's PortfolioOverview
+component so the deployed portfolio looks identical to the in-app view.
+
+Note: We intentionally avoid the Tailwind Play CDN (cdn.tailwindcss.com)
+because it ships ~300 KB of JS that generates CSS client-side, is marked
+"not for production" by the Tailwind team, and causes a flash of unstyled
+content on every page load.  Inlining only the rules we need keeps the
+deployed page fast and free of external CDN dependencies.
 """
 
 from __future__ import annotations
@@ -286,6 +293,7 @@ def _skills_section(all_skills: List[str]) -> str:
 # ---------------------------------------------------------------------------
 
 _CUSTOM_CSS = r"""
+/* ── Design tokens (from globals.css) ─────────────────────────────── */
 :root {
   --background: 220 30% 97%;
   --foreground: 224 28% 14%;
@@ -306,20 +314,25 @@ _CUSTOM_CSS = r"""
   --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.8);
   --opacity-hover: 0.28;
 }
-*, *::before, *::after { box-sizing: border-box; }
+
+/* ── Reset / base ─────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body {
   margin: 0;
   background: hsl(var(--background));
   color: hsl(var(--foreground));
   font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
   -webkit-font-smoothing: antialiased;
+  line-height: 1.5;
 }
 h1,h2,h3,h4 {
   font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
   letter-spacing: -0.03em;
 }
+img, svg { display: block; }
+article, section, footer { display: block; }
 
-/* -- Component classes from globals.css -- */
+/* ── Component classes from globals.css ───────────────────────────── */
 .portfolio-panel {
   border-radius: 24px;
   background: linear-gradient(180deg, hsl(var(--card)), hsl(var(--background) / 0.72));
@@ -358,7 +371,7 @@ h1,h2,h3,h4 {
   color: hsl(var(--foreground));
 }
 
-/* -- Tailwind CSS variable bridges -- */
+/* ── CSS-variable-based colour bridges ────────────────────────────── */
 .bg-card { background: hsl(var(--card)); }
 .bg-muted { background: hsl(var(--muted)); }
 .bg-background { background: hsl(var(--background)); }
@@ -375,6 +388,206 @@ h1,h2,h3,h4 {
 .border-border { border-color: hsl(var(--border)); }
 .border-primary\/15 { border-color: hsl(var(--primary) / 0.15); }
 .border-primary\/25 { border-color: hsl(var(--primary) / 0.25); }
+.border-white\/70 { border-color: rgba(255,255,255,0.7); }
+
+/* ── Tailwind utility classes (static, only those used in template) ── */
+
+/* Display */
+.block { display: block; }
+.inline-flex { display: inline-flex; }
+.flex { display: flex; }
+.grid { display: grid; }
+.hidden { display: none; }
+
+/* Flex */
+.flex-col { flex-direction: column; }
+.flex-wrap { flex-wrap: wrap; }
+.flex-shrink-0 { flex-shrink: 0; }
+.flex-1 { flex: 1 1 0%; }
+.items-center { align-items: center; }
+.items-start { align-items: start; }
+.justify-center { justify-content: center; }
+.justify-between { justify-content: space-between; }
+
+/* Grid */
+.grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+.grid-cols-12 { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+.grid-cols-\[42px_minmax\(240px\,1fr\)\] { grid-template-columns: 42px minmax(240px,1fr); }
+
+/* Gap */
+.gap-1\.5 { gap: 0.375rem; }
+.gap-2 { gap: 0.5rem; }
+.gap-2\.5 { gap: 0.625rem; }
+.gap-3 { gap: 0.75rem; }
+.gap-4 { gap: 1rem; }
+.gap-5 { gap: 1.25rem; }
+.gap-6 { gap: 1.5rem; }
+
+/* Spacing */
+.space-y-1 > * + * { margin-top: 0.25rem; }
+.space-y-2\.5 > * + * { margin-top: 0.625rem; }
+.space-y-3 > * + * { margin-top: 0.75rem; }
+.space-y-4 > * + * { margin-top: 1rem; }
+
+/* Padding */
+.p-2 { padding: 0.5rem; }
+.p-2\.5 { padding: 0.625rem; }
+.p-3\.5 { padding: 0.875rem; }
+.p-4 { padding: 1rem; }
+.p-5 { padding: 1.25rem; }
+.px-2\.5 { padding-left: 0.625rem; padding-right: 0.625rem; }
+.px-3 { padding-left: 0.75rem; padding-right: 0.75rem; }
+.px-6 { padding-left: 1.5rem; padding-right: 1.5rem; }
+.py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+.py-1\.5 { padding-top: 0.375rem; padding-bottom: 0.375rem; }
+.py-2\.5 { padding-top: 0.625rem; padding-bottom: 0.625rem; }
+.py-4 { padding-top: 1rem; padding-bottom: 1rem; }
+.py-7 { padding-top: 1.75rem; padding-bottom: 1.75rem; }
+.pt-3 { padding-top: 0.75rem; }
+.pr-1 { padding-right: 0.25rem; }
+
+/* Margin */
+.mt-0\.5 { margin-top: 0.125rem; }
+.mt-1 { margin-top: 0.25rem; }
+.mt-3 { margin-top: 0.75rem; }
+.mt-4 { margin-top: 1rem; }
+.mt-5 { margin-top: 1.25rem; }
+
+/* Sizing */
+.h-2 { height: 0.5rem; }
+.h-3\.5 { height: 0.875rem; }
+.h-4 { height: 1rem; }
+.h-6 { height: 1.5rem; }
+.h-7 { height: 1.75rem; }
+.h-9 { height: 2.25rem; }
+.h-16 { height: 4rem; }
+.h-full { height: 100%; }
+.w-3\.5 { width: 0.875rem; }
+.w-4 { width: 1rem; }
+.w-7 { width: 1.75rem; }
+.w-9 { width: 2.25rem; }
+.w-16 { width: 4rem; }
+.w-full { width: 100%; }
+.min-w-0 { min-width: 0px; }
+.min-w-\[18rem\] { min-width: 18rem; }
+.max-w-2xl { max-width: 42rem; }
+.max-h-\[24rem\] { max-height: 24rem; }
+.max-h-\[30rem\] { max-height: 30rem; }
+
+/* Overflow */
+.overflow-hidden { overflow: hidden; }
+.overflow-x-auto { overflow-x: auto; }
+.overflow-y-auto { overflow-y: auto; }
+
+/* Typography */
+.text-center { text-align: center; }
+.text-right { text-align: right; }
+.text-\[9px\] { font-size: 9px; }
+.text-\[10px\] { font-size: 10px; }
+.text-\[11px\] { font-size: 11px; }
+.text-xs { font-size: 0.75rem; line-height: 1rem; }
+.text-sm { font-size: 0.875rem; line-height: 1.25rem; }
+.text-base { font-size: 1rem; line-height: 1.5rem; }
+.text-lg { font-size: 1.125rem; line-height: 1.75rem; }
+.text-xl { font-size: 1.25rem; line-height: 1.75rem; }
+.text-2xl { font-size: 1.5rem; line-height: 2rem; }
+.text-\[2\.2rem\] { font-size: 2.2rem; }
+.font-medium { font-weight: 500; }
+.font-semibold { font-weight: 600; }
+.uppercase { text-transform: uppercase; }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.break-all { word-break: break-all; }
+.leading-5 { line-height: 1.25rem; }
+.leading-6 { line-height: 1.5rem; }
+.tracking-\[-0\.04em\] { letter-spacing: -0.04em; }
+.tracking-tight { letter-spacing: -0.025em; }
+.tracking-\[0\.12em\] { letter-spacing: 0.12em; }
+.tracking-\[0\.14em\] { letter-spacing: 0.14em; }
+.tracking-\[0\.18em\] { letter-spacing: 0.18em; }
+.tracking-\[0\.22em\] { letter-spacing: 0.22em; }
+.tracking-\[0\.24em\] { letter-spacing: 0.24em; }
+
+/* Borders */
+.border { border-width: 1px; border-style: solid; }
+.border-2 { border-width: 2px; border-style: solid; }
+.border-t { border-top-width: 1px; border-top-style: solid; }
+.rounded-md { border-radius: 0.375rem; }
+.rounded-lg { border-radius: 0.5rem; }
+.rounded-xl { border-radius: 0.75rem; }
+.rounded-2xl { border-radius: 1rem; }
+.rounded-full { border-radius: 9999px; }
+.border-slate-200 { border-color: #e2e8f0; }
+
+/* Background colours (standard palette) */
+.bg-white { background-color: #fff; }
+.bg-slate-100 { background-color: #f1f5f9; }
+.bg-sky-100 { background-color: #e0f2fe; }
+.bg-sky-300 { background-color: #7dd3fc; }
+.bg-sky-600 { background-color: #0284c7; }
+.bg-sky-700 { background-color: #0369a1; }
+
+/* Text colours (standard palette) */
+.text-white { color: #fff; }
+.text-slate-300 { color: #cbd5e1; }
+.text-slate-400 { color: #94a3b8; }
+.text-slate-500 { color: #64748b; }
+.text-slate-700 { color: #334155; }
+.text-sky-50 { color: #f0f9ff; }
+.text-sky-700 { color: #0369a1; }
+.text-sky-950 { color: #082f49; }
+
+/* Shadows */
+.shadow-\[0_10px_20px_rgba\(15\,23\,42\,0\.07\)\] { box-shadow: 0 10px 20px rgba(15,23,42,0.07); }
+
+/* Transitions */
+.transition-colors { transition-property: color, background-color, border-color; transition-duration: 150ms; transition-timing-function: cubic-bezier(0.4,0,0.2,1); }
+
+/* Object fit */
+.object-cover { object-fit: cover; }
+
+/* ── Responsive: sm (>=640px) ─────────────────────────────────────── */
+@media (min-width: 640px) {
+  .sm\:px-8 { padding-left: 2rem; padding-right: 2rem; }
+  .sm\:p-6 { padding: 1.5rem; }
+  .sm\:h-7 { height: 1.75rem; }
+  .sm\:rounded-xl { border-radius: 0.75rem; }
+  .sm\:text-\[10px\] { font-size: 10px; }
+  .sm\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sm\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .sm\:grid-cols-\[112px_minmax\(0\,1fr\)\] { grid-template-columns: 112px minmax(0,1fr); }
+  .sm\:items-center { align-items: center; }
+  .sm\:flex-row { flex-direction: row; }
+  .sm\:justify-between { justify-content: space-between; }
+  .sm\:min-w-\[24rem\] { min-width: 24rem; }
+}
+
+/* ── Responsive: md (>=768px) ─────────────────────────────────────── */
+@media (min-width: 768px) {
+  .md\:block { display: block; }
+  .md\:h-8 { height: 2rem; }
+  .md\:text-sm { font-size: 0.875rem; line-height: 1.25rem; }
+  .md\:grid-cols-\[56px_minmax\(360px\,1fr\)_72px\] { grid-template-columns: 56px minmax(360px,1fr) 72px; }
+  .md\:gap-3 { gap: 0.75rem; }
+  .md\:min-w-\[38rem\] { min-width: 38rem; }
+}
+
+/* ── Responsive: xl (>=1280px) ────────────────────────────────────── */
+@media (min-width: 1280px) {
+  .xl\:grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+  .xl\:grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .xl\:grid-cols-\[minmax\(0\,1\.2fr\)_minmax\(320px\,0\.82fr\)\] { grid-template-columns: minmax(0,1.2fr) minmax(320px,0.82fr); }
+  .xl\:grid-cols-\[minmax\(0\,1\.18fr\)_minmax\(320px\,0\.92fr\)\] { grid-template-columns: minmax(0,1.18fr) minmax(320px,0.92fr); }
+  .xl\:grid-cols-\[minmax\(0\,1\.15fr\)_minmax\(320px\,0\.95fr\)\] { grid-template-columns: minmax(0,1.15fr) minmax(320px,0.95fr); }
+}
+
+/* ── Responsive: 2xl (>=1536px) ───────────────────────────────────── */
+@media (min-width: 1536px) {
+  .\32xl\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* ── Hover states ─────────────────────────────────────────────────── */
+.hover\:border-border:hover { border-color: hsl(var(--border)); }
+.hover\:bg-white:hover { background-color: #fff; }
 """
 
 
@@ -579,7 +792,6 @@ def generate_portfolio_html(
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{display_name} &mdash; Portfolio</title>
-<script src="https://cdn.tailwindcss.com/3.4.1"></script>
 <style>{_CUSTOM_CSS}</style>
 </head>
 <body>

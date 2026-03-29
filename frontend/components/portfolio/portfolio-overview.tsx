@@ -251,14 +251,25 @@ export function PortfolioOverview({
     const token = getStoredToken();
     if (!token) return;
     setPublishing(true);
+    setPublishError(null);
+    setDeployError(null);
     try {
       const newPublic = !pubSettings?.is_public;
       // Auto-undeploy from Vercel when going private
       if (!newPublic && pubSettings?.deployed_url) {
         try {
           await undeployPortfolio(token);
-        } catch {
-          // Best-effort: continue with unpublish even if undeploy fails
+        } catch (undeployErr) {
+          // Block the unpublish — the deployed site is still live, so we
+          // must keep showing the URL and surface an error instead of
+          // silently clearing state while the page remains publicly hosted.
+          setDeployError(
+            undeployErr instanceof Error
+              ? `Could not remove deployment: ${undeployErr.message}. Please remove the deployment first, then try again.`
+              : "Could not remove deployment. Please remove the deployment first, then try again.",
+          );
+          setPublishing(false);
+          return;
         }
       }
       const result = await publishPortfolio(token, newPublic);
@@ -271,10 +282,6 @@ export function PortfolioOverview({
           }
         : null,
       );
-      // Clear deploy state when unpublishing
-      if (!result.is_public) {
-        setDeployError(null);
-      }
     } catch (err) {
       setPublishError(err instanceof Error ? err.message : "Failed to publish portfolio");
     } finally {
