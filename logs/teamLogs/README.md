@@ -21,6 +21,50 @@
 - [Week 4 (September 22 - 28)](#week-4-september-22---28)
 - [Week 3 (September 15 - 21)](#week-3-september-15---21)
 
+## Week 25-26 (March 16th - 29th)
+
+**Joaquin**: 
+These weeks I reviewed a set of PRs across skills analysis, portfolio, job match, hardening, and resume features, focusing on correctness, API consistency, UI behavior, and edge-case handling.
+
+I reviewed Om’s **PR [#432 – “Tiered Proficiency Scoring”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/432)**, **PR [#437 – “Weighted Gap Analysis”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/437)**, **PR [#436 – “Skill Depth Tier Indicators”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/436)**, and **PR [#438 – “Skill Analysis Final Enhancements”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/438)**. These were all strong improvements to the skills pipeline. The tiered scoring and weighting make the analysis more meaningful, moving away from flat counts toward actual depth. The framework detection and tier modeling are well structured, and the caching optimization to reduce recalculation overhead is a nice performance win. The frontend updates also reflect the richer data clearly. I didn’t see any blocking issues across these.
+
+I also reviewed Om’s **PR [#473 – “Bug Fixes and Enhancements”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/473)**. This was a clean set of fixes with good UX improvements, especially around auth handling. The dual-storage migration strategy and cleanup logic on logout were solid, and the added window guards help avoid SSR issues.
+
+I reviewed Vlad’s **PR [#487 – “Fix contribution metrics and others”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/487)**. This fixes a key correctness issue where contribution metrics now properly reflect the user’s commit share by matching emails against git contributors. The contributor sorting fix and backend improvements to merging and branch analysis were also solid.
+
+I reviewed Jacob’s **PR [#486 – “Search and settings polish”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/486)** and **PR [#495 – “UI v2”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/495)**. The navigation bug fix and script improvements in #486 were clean, and the accessibility and UI consistency updates were good. In #495, the UI cleanup was solid overall, but I flagged an issue where the loading gate logic can keep the page stuck in a loading state and block rendering, which also showed up in tests.
+
+I reviewed Om’s **PR [#496 – “Learning resources redesign”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/496)**. The redesign is clean, but there’s a correctness issue where items with `importance = null` get dropped when grouped mode is enabled, even though null is valid in the API contract. This leads to visible data loss in mixed datasets.
+
+I reviewed Jacob’s **PR [#508 – “P0 hardening”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/508)** and **PR [#509 – “P1 hardening”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/509)**. Follow-up fixes here resolved CI issues by removing external dependency on Supabase DNS in tests and restoring expected frontend fallback behavior when totals are zero. Both were targeted and necessary fixes to stabilize CI.
+
+I reviewed Aaron’s **PR [#511 – “Resume editor improvements”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/511)**. This is a solid performance-focused update, using `React.memo`, `useCallback`, and autosave deduplication to reduce unnecessary renders and API calls.
+
+I reviewed Om’s **PR [#510 – “Public Portfolio Deployment”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/510)**. The implementation is strong, but I flagged a risk in the “Make Private” flow—if undeploy fails, the UI still clears the deployed state, which can mislead users while the site remains live. This should be gated or surfaced more clearly.
+
+I reviewed Aaron’s **PR [#514 – “Job Match backend API”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/514)**. This needs changes before merging. The routes bypass the external-services consent gate, which breaks consistency with the rest of the system and allows external calls without user consent. There’s also an issue where HTTP errors fall back to mock data, masking real failures, and a smaller bug where null job IDs collapse to `"None"` instead of generating unique values.
+
+I reviewed Aaron’s **PR [#515 – “Job Match frontend”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/515)**. This also needs fixes. Failed requests don’t clear previous results, so stale jobs can remain visible alongside errors. The job card state can also persist outdated AI explanations across searches due to key reuse, and failed explanations are stored as valid results, removing retry ability.
+
+I reviewed Saamarth’s **PR [#513 – “AI Analysis Upgrade”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/513)**. The main issue is a backward compatibility break—cached analyses no longer include `markdown_report`, but the frontend still expects it, so older results fall back to a generic UI instead of rendering properly.
+
+Finally, I reviewed Aaron’s **PR [#518 – “CORS fix”](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/518)**. This is a clean fix that prevents tokens from being attached to auth endpoints and avoids retry loops or token leakage.
+
+Overall, most PRs were in good shape. The main issues were around missing guardrails (consent enforcement), state consistency on the frontend, and a few contract mismatches between backend and UI.
+
+### What went well
+- Completing our app's features prior to our final demo
+
+### Challenges
+- Time constraints
+
+### Next steps
+- Project voting
+
+<p align="center">
+  <img src="./charts/w26burnup.png" alt="Week 24 Burnup Chart width="400"/>
+</p>
+
 ## Week 24 (March 9th - 15th)
 
 **Aaron**:
