@@ -1,6 +1,6 @@
 "use client";
 
-import { ProjectMetadata } from "@/types/project";
+import { ProjectDetail, ProjectMetadata, ProjectScanData, type ProjectScanLanguageEntry } from "@/types/project";
 import { formatDistanceToNow } from "date-fns";
 import { Trash2, Eye, FolderOpen } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -14,6 +14,18 @@ interface ProjectsTableProps {
 
 export function ProjectsTable({ projects, onDelete, onView, rankingMode }: ProjectsTableProps) {
   const router = useRouter();
+
+  type ProjectWithOptionalScan = ProjectMetadata & Pick<ProjectDetail, "scan_data">;
+
+  const hasScanData = (project: ProjectMetadata): project is ProjectWithOptionalScan => {
+    return "scan_data" in project;
+  };
+
+  const languageFromEntry = (entry: ProjectScanLanguageEntry): string | null => {
+    if (typeof entry.language === "string") return entry.language;
+    if (typeof entry.name === "string") return entry.name;
+    return null;
+  };
 
   const formatDate = (dateString?: string) => {
     if (!dateString) return "N/A";
@@ -36,12 +48,16 @@ export function ProjectsTable({ projects, onDelete, onView, rankingMode }: Proje
 
   // Helper to extract data from project, checking both root and scan_data.summary
   const getProjectData = (project: ProjectMetadata) => {
-    const scanData = (project as any).scan_data || {};
+    const scanData: ProjectScanData = hasScanData(project) && project.scan_data ? project.scan_data : {};
     const summary = scanData.summary || {};
     
     // Extract from root first (populated by backend normalization), fallback to scan_data
-    const totalFiles = project.total_files || summary.total_files || 0;
-    const totalLines = project.total_lines || summary.total_lines || 0;
+    const totalFiles = project.total_files && project.total_files > 0
+      ? project.total_files
+      : (summary.total_files ?? 0);
+    const totalLines = project.total_lines && project.total_lines > 0
+      ? project.total_lines
+      : (summary.total_lines ?? 0);
     
     // Extract languages from various sources
     let languages: string[] = [];
@@ -50,10 +66,12 @@ export function ProjectsTable({ projects, onDelete, onView, rankingMode }: Proje
     } else if (scanData.languages) {
       const scanLanguages = scanData.languages;
       if (Array.isArray(scanLanguages)) {
-        if (scanLanguages.length > 0 && typeof scanLanguages[0] === 'object') {
-          languages = scanLanguages.map((lang: any) => lang.language || lang.name).filter(Boolean);
-        } else {
+        if (scanLanguages.every((lang) => typeof lang === "string")) {
           languages = scanLanguages;
+        } else {
+          languages = scanLanguages
+            .map((lang) => languageFromEntry(lang as ProjectScanLanguageEntry))
+            .filter((lang): lang is string => Boolean(lang));
         }
       } else if (typeof scanLanguages === 'object') {
         languages = Object.keys(scanLanguages);

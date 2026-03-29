@@ -54,11 +54,14 @@ class PortfolioSettingsService:
 
         self._use_local_store = (
             os.getenv("CAPSTONE_LOCAL_STORE") == "1"
-            or bool(os.getenv("PYTEST_CURRENT_TEST"))
         )
 
         self.client: Any = None
         self._requires_user_token_client = False
+
+        if self._use_local_store:
+            return
+
         try:
             self.client = create_client(self.supabase_url, self.supabase_key)
         except Exception as exc:

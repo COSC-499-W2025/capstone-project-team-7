@@ -9,10 +9,11 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request, status
 from pydantic import BaseModel, Field
 
 from api.dependencies import AuthContext, get_auth_context
+from security.rate_limit import limiter
 
 router = APIRouter(prefix="/api/profile", tags=["profile"])
 
@@ -127,7 +128,9 @@ async def get_profile(auth: AuthContext = Depends(get_auth_context)):
 
 
 @router.patch("", response_model=UserProfile)
+@limiter.limit("30/minute")
 async def update_profile(
+    request: Request,
     body: UpdateProfileRequest,
     auth: AuthContext = Depends(get_auth_context),
 ):
@@ -215,7 +218,9 @@ async def update_profile(
 
 
 @router.post("/avatar", response_model=AvatarUploadResponse)
+@limiter.limit("10/minute")
 async def upload_avatar(
+    request: Request,
     file: UploadFile = File(...),
     auth: AuthContext = Depends(get_auth_context),
 ):
@@ -275,6 +280,7 @@ async def upload_avatar(
 
     # Persist the URL in the profiles table
     await update_profile(
+        request,
         UpdateProfileRequest(avatar_url=public_url),
         auth,
     )
@@ -283,7 +289,8 @@ async def upload_avatar(
 
 
 @router.delete("/avatar")
-async def delete_avatar(auth: AuthContext = Depends(get_auth_context)):
+@limiter.limit("10/minute")
+async def delete_avatar(request: Request, auth: AuthContext = Depends(get_auth_context)):
     """Delete the avatar file from Supabase Storage and clear the profile URL."""
     storage_path = f"{auth.user_id}/avatar"
 
@@ -304,13 +311,15 @@ async def delete_avatar(auth: AuthContext = Depends(get_auth_context)):
         await client.delete(delete_url, headers=headers)
 
     # Clear the URL in the profiles table regardless of storage result
-    await update_profile(UpdateProfileRequest(avatar_url=""), auth)
+    await update_profile(request, UpdateProfileRequest(avatar_url=""), auth)
 
     return {"ok": True, "message": "Avatar removed"}
 
 
 @router.post("/password")
+@limiter.limit("5/hour")
 async def change_password(
+    request: Request,
     body: ChangePasswordRequest,
     auth: AuthContext = Depends(get_auth_context),
 ):
