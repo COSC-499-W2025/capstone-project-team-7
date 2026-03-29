@@ -186,6 +186,10 @@ async def search_jobs(params: JobSearchParams) -> List[JobListing]:
     if params.location:
         query += f" in {params.location}"
 
+    if not query.strip():
+        logger.info("Empty search query — returning empty results")
+        return []
+
     query_params: dict = {
         "query": query,
         "page": str(params.page),
@@ -213,5 +217,5 @@ async def search_jobs(params: JobSearchParams) -> List[JobListing]:
             results = data.get("data", [])
             return [_parse_jsearch_result(r) for r in results[:params.results_per_page]]
     except httpx.HTTPError as exc:
-        logger.warning("JSearch request failed (%s) — falling back to mock jobs", exc)
-        return _filter_mock_jobs(params)
+        logger.error("JSearch request failed: %s", exc)
+        raise RuntimeError(f"Job search request failed: {exc}") from exc

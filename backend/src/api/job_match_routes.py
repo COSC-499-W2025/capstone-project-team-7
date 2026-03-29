@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from api.dependencies import AuthContext, get_auth_context
+from auth.consent_validator import ConsentValidator
 from services.job_search_client import JobSearchParams, search_jobs, JobListing
 from services.services import local_store
 
@@ -245,6 +246,27 @@ def _get_user_resume(user_id: str, resume_id: str, access_token: str) -> Optiona
         return None
 
 
+# ── Consent helper ───────────────────────────────────────────────────
+
+
+def _require_external_consent(user_id: str) -> None:
+    """Raise 403 if the user has not granted external-services consent."""
+    try:
+        consent_validator = ConsentValidator()
+        has_consent = consent_validator.validate_external_services_consent(user_id)
+    except Exception as exc:
+        logger.warning("Consent check failed for user %s: %s", user_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Consent check failed. Please try again.",
+        )
+    if not has_consent:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User has not consented to external services. Please grant consent first.",
+        )
+
+
 # ── Endpoints ────────────────────────────────────────────────────────
 
 
@@ -254,6 +276,7 @@ async def search_job_listings(
     auth: AuthContext = Depends(get_auth_context),
 ):
     """Plain job search — no scoring or AI."""
+    _require_external_consent(auth.user_id)
     params = JobSearchParams(
         keywords=body.keywords,
         location=body.location,
@@ -273,6 +296,7 @@ async def match_jobs(
     auth: AuthContext = Depends(get_auth_context),
 ):
     """Search + score + optional AI explanation."""
+    _require_external_consent(auth.user_id)
     params = JobSearchParams(
         keywords=body.search.keywords or " ".join(body.profile.job_titles),
         location=body.search.location,
@@ -323,6 +347,7 @@ async def explain_job_match(
     auth: AuthContext = Depends(get_auth_context),
 ):
     """Get AI explanation for a single job vs profile."""
+    _require_external_consent(auth.user_id)
     explanation = await _explain_match(body.job, body.profile, auth.user_id)
     if not explanation:
         raise HTTPException(

@@ -6,6 +6,7 @@ Tests for:
 - POST /api/jobs/match   — search + scoring
 - POST /api/jobs/explain — AI explanation
 - _keyword_score helper logic
+- Consent enforcement on external-calling endpoints
 """
 
 import sys
@@ -29,6 +30,16 @@ TEST_TOKEN = (
 )
 AUTH_HEADER = {"Authorization": f"Bearer {TEST_TOKEN}"}
 
+# All endpoint tests that hit external services need consent mocked to True.
+_CONSENT_PATCH = "api.job_match_routes.ConsentValidator"
+
+
+def _mock_consent(allowed: bool = True):
+    """Return a patcher that stubs ConsentValidator."""
+    mock_cls = MagicMock()
+    mock_cls.return_value.validate_external_services_consent.return_value = allowed
+    return patch(_CONSENT_PATCH, mock_cls)
+
 
 # =============================================================================
 # Search endpoint
@@ -38,19 +49,21 @@ class TestJobSearch:
     """Tests for POST /api/jobs/search."""
 
     def test_search_returns_200(self, project_test_auth_override):
-        response = client.post(
-            "/api/jobs/search",
-            json={"keywords": "python", "location": "", "results_per_page": 5, "country": "ca"},
-            headers=AUTH_HEADER,
-        )
+        with _mock_consent(True):
+            response = client.post(
+                "/api/jobs/search",
+                json={"keywords": "python", "location": "", "results_per_page": 5, "country": "ca"},
+                headers=AUTH_HEADER,
+            )
         assert response.status_code == 200
 
     def test_search_returns_list(self, project_test_auth_override):
-        response = client.post(
-            "/api/jobs/search",
-            json={"keywords": "developer", "results_per_page": 10, "country": "ca"},
-            headers=AUTH_HEADER,
-        )
+        with _mock_consent(True):
+            response = client.post(
+                "/api/jobs/search",
+                json={"keywords": "developer", "results_per_page": 10, "country": "ca"},
+                headers=AUTH_HEADER,
+            )
         assert response.status_code == 200
         data = response.json()
         assert isinstance(data, list)
@@ -66,14 +79,24 @@ class TestJobSearch:
         )
         assert response.status_code == 401
 
-    def test_search_empty_keywords_returns_results(self, project_test_auth_override):
-        response = client.post(
-            "/api/jobs/search",
-            json={"keywords": "", "results_per_page": 5, "country": "ca"},
-            headers=AUTH_HEADER,
-        )
+    def test_search_without_consent_returns_403(self, project_test_auth_override):
+        with _mock_consent(False):
+            response = client.post(
+                "/api/jobs/search",
+                json={"keywords": "python", "results_per_page": 5, "country": "ca"},
+                headers=AUTH_HEADER,
+            )
+        assert response.status_code == 403
+
+    def test_search_empty_keywords_returns_empty(self, project_test_auth_override):
+        with _mock_consent(True):
+            response = client.post(
+                "/api/jobs/search",
+                json={"keywords": "", "results_per_page": 5, "country": "ca"},
+                headers=AUTH_HEADER,
+            )
         assert response.status_code == 200
-        assert isinstance(response.json(), list)
+        assert response.json() == []
 
 
 # =============================================================================
@@ -84,33 +107,35 @@ class TestJobMatch:
     """Tests for POST /api/jobs/match."""
 
     def test_match_returns_200(self, project_test_auth_override):
-        response = client.post(
-            "/api/jobs/match",
-            json={
-                "search": {"keywords": "python", "results_per_page": 5, "country": "ca"},
-                "profile": {
-                    "skills": ["Python", "FastAPI"],
-                    "job_titles": ["Backend Engineer"],
-                    "experience_summary": "",
-                    "education": "",
+        with _mock_consent(True):
+            response = client.post(
+                "/api/jobs/match",
+                json={
+                    "search": {"keywords": "python", "results_per_page": 5, "country": "ca"},
+                    "profile": {
+                        "skills": ["Python", "FastAPI"],
+                        "job_titles": ["Backend Engineer"],
+                        "experience_summary": "",
+                        "education": "",
+                    },
                 },
-            },
-            headers=AUTH_HEADER,
-        )
+                headers=AUTH_HEADER,
+            )
         assert response.status_code == 200
 
     def test_match_response_shape(self, project_test_auth_override):
-        response = client.post(
-            "/api/jobs/match",
-            json={
-                "search": {"keywords": "react", "results_per_page": 5, "country": "ca"},
-                "profile": {
-                    "skills": ["React", "TypeScript"],
-                    "job_titles": ["Front-End Developer"],
+        with _mock_consent(True):
+            response = client.post(
+                "/api/jobs/match",
+                json={
+                    "search": {"keywords": "react", "results_per_page": 5, "country": "ca"},
+                    "profile": {
+                        "skills": ["React", "TypeScript"],
+                        "job_titles": ["Front-End Developer"],
+                    },
                 },
-            },
-            headers=AUTH_HEADER,
-        )
+                headers=AUTH_HEADER,
+            )
         data = response.json()
         assert "jobs" in data
         assert "total" in data
@@ -122,20 +147,33 @@ class TestJobMatch:
             assert "match_reasons" in job_entry
 
     def test_match_jobs_sorted_descending(self, project_test_auth_override):
-        response = client.post(
-            "/api/jobs/match",
-            json={
-                "search": {"keywords": "", "results_per_page": 10, "country": "ca"},
-                "profile": {
-                    "skills": ["Python", "React", "SQL"],
-                    "job_titles": ["Full-Stack Developer"],
+        with _mock_consent(True):
+            response = client.post(
+                "/api/jobs/match",
+                json={
+                    "search": {"keywords": "", "results_per_page": 10, "country": "ca"},
+                    "profile": {
+                        "skills": ["Python", "React", "SQL"],
+                        "job_titles": ["Full-Stack Developer"],
+                    },
                 },
-            },
-            headers=AUTH_HEADER,
-        )
+                headers=AUTH_HEADER,
+            )
         data = response.json()
         scores = [j["score"] for j in data["jobs"]]
         assert scores == sorted(scores, reverse=True)
+
+    def test_match_without_consent_returns_403(self, project_test_auth_override):
+        with _mock_consent(False):
+            response = client.post(
+                "/api/jobs/match",
+                json={
+                    "search": {"keywords": "python", "results_per_page": 5, "country": "ca"},
+                    "profile": {"skills": ["Python"]},
+                },
+                headers=AUTH_HEADER,
+            )
+        assert response.status_code == 403
 
     def test_match_requires_auth(self):
         response = client.post(
@@ -157,22 +195,35 @@ class TestJobExplain:
 
     def test_explain_without_llm_returns_503(self, project_test_auth_override):
         """Without a configured LLM client, explain should fail gracefully."""
-        response = client.post(
-            "/api/jobs/explain",
-            json={
-                "job": {
-                    "id": "mock-1",
-                    "title": "Developer",
-                    "company": "Acme",
-                    "location": "Remote",
-                    "description": "Build stuff",
+        with _mock_consent(True):
+            response = client.post(
+                "/api/jobs/explain",
+                json={
+                    "job": {
+                        "id": "mock-1",
+                        "title": "Developer",
+                        "company": "Acme",
+                        "location": "Remote",
+                        "description": "Build stuff",
+                    },
+                    "profile": {"skills": ["Python"]},
                 },
-                "profile": {"skills": ["Python"]},
-            },
-            headers=AUTH_HEADER,
-        )
+                headers=AUTH_HEADER,
+            )
         # 503 because no LLM key is configured in test environment
         assert response.status_code == 503
+
+    def test_explain_without_consent_returns_403(self, project_test_auth_override):
+        with _mock_consent(False):
+            response = client.post(
+                "/api/jobs/explain",
+                json={
+                    "job": {"id": "1", "title": "Dev", "company": "X", "location": "R", "description": "D"},
+                    "profile": {"skills": []},
+                },
+                headers=AUTH_HEADER,
+            )
+        assert response.status_code == 403
 
     def test_explain_requires_auth(self):
         response = client.post(

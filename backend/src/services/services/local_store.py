@@ -170,7 +170,8 @@ _saved_jobs: Dict[str, Dict[str, Dict[str, Any]]] = {}
 def save_job(user_id: str, job_data: Dict[str, Any]) -> Dict[str, Any]:
     """Save a job posting for a user. Uses job's `id` field as key."""
     with _lock:
-        job_id = str(job_data.get("id", uuid.uuid4()))
+        raw_id = job_data.get("id")
+        job_id = str(raw_id) if raw_id is not None else str(uuid.uuid4())
         now = now_iso()
         record = {
             **job_data,
