@@ -160,3 +160,41 @@ def upsert_project_override(user_id: str, project_id: str, payload: Dict[str, An
 def delete_project_override(user_id: str, project_id: str) -> bool:
     with _lock:
         return _project_overrides.pop((user_id, project_id), None) is not None
+
+
+# ── Saved jobs (job-match feature) ───────────────────────────────────
+
+_saved_jobs: Dict[str, Dict[str, Dict[str, Any]]] = {}
+
+
+def save_job(user_id: str, job_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Save a job posting for a user. Uses job's `id` field as key."""
+    with _lock:
+        raw_id = job_data.get("id")
+        job_id = str(raw_id) if raw_id is not None else str(uuid.uuid4())
+        now = now_iso()
+        record = {
+            **job_data,
+            "id": job_id,
+            "user_id": user_id,
+            "saved_at": now,
+        }
+        _saved_jobs.setdefault(user_id, {})[job_id] = record
+        return dict(record)
+
+
+def list_saved_jobs(user_id: str) -> List[Dict[str, Any]]:
+    with _lock:
+        items = list(_saved_jobs.get(user_id, {}).values())
+    items.sort(key=lambda x: x.get("saved_at", ""), reverse=True)
+    return [dict(i) for i in items]
+
+
+def delete_saved_job(user_id: str, job_id: str) -> bool:
+    with _lock:
+        return _saved_jobs.get(user_id, {}).pop(job_id, None) is not None
+
+
+def is_job_saved(user_id: str, job_id: str) -> bool:
+    with _lock:
+        return job_id in _saved_jobs.get(user_id, {})
