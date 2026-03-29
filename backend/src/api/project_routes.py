@@ -4409,6 +4409,18 @@ async def get_project_role(
 # ============================================================================
 
 
+def _to_utc_iso(dt: datetime) -> str:
+    """Convert a datetime to a UTC ISO-8601 string safe for PostgreSQL timestamptz."""
+    iso = dt.isoformat()
+    # If already tz-aware (has +00:00 or similar), don't append Z
+    if dt.tzinfo is not None:
+        return iso
+    return iso + "Z"
+
+# Backward-compatible alias for the old name used by tests
+_to_pg_timestamptz = _to_utc_iso
+
+
 class AppendUploadRequest(BaseModel):
     """Request body for appending an upload to a project."""
     skip_duplicates: bool = Field(True, description="Skip files with matching SHA-256 hash")
@@ -4498,29 +4510,31 @@ async def append_upload_to_project(
             detail=f"Project {project_id} not found",
         )
 
-    # Get existing cached files for the project
+    # Get existing cached files from scan_files table
     try:
         existing_files = service.get_cached_files(user_id, project_id)
     except ProjectsServiceError as exc:
         logger.warning(f"Failed to get cached files for project {project_id}: {exc}")
         existing_files = {}
 
-    # Check if any cached files are missing sha256 (e.g., from TUI scans)
-    # and trigger backfill from scan_data if needed
-    files_missing_hash = any(
-        not meta.get("sha256") for meta in existing_files.values()
-    )
-    if files_missing_hash:
-        try:
-            backfill_count = service.backfill_cached_file_hashes(user_id, project_id)
-            if backfill_count > 0:
-                logger.info(
-                    f"Backfilled {backfill_count} sha256 hashes for project {project_id}"
-                )
-                # Reload cached files after backfill
-                existing_files = service.get_cached_files(user_id, project_id)
-        except ProjectsServiceError as exc:
-            logger.warning(f"Failed to backfill hashes for project {project_id}: {exc}")
+    # Also build hash+path lookups from the project's scan_data (the
+    # authoritative source from the original scan).  scan_files may be
+    # incomplete due to Supabase RLS or row limits, but scan_data has
+    # all files from the original scan embedded in the project record.
+    scan_data = project.get("scan_data") or {}
+    scan_data_files = scan_data.get("files") or []
+    for entry in scan_data_files:
+        path = entry.get("path")
+        if not path:
+            continue
+        normalized = str(path).replace("\\", "/")
+        file_hash = entry.get("file_hash")
+        if normalized not in existing_files:
+            existing_files[normalized] = {
+                "sha256": file_hash,
+                "size_bytes": entry.get("size_bytes"),
+                "mime_type": entry.get("mime_type"),
+            }
 
     # Build a lookup of existing hashes for deduplication
     existing_hashes: Dict[str, str] = {}  # sha256 -> path
@@ -4528,6 +4542,11 @@ async def append_upload_to_project(
         sha = meta.get("sha256")
         if sha:
             existing_hashes[sha] = path
+
+    logger.debug(
+        "Append dedup: %d existing files, %d unique hashes",
+        len(existing_files), len(existing_hashes),
+    )
 
     # Parse the upload ZIP to get file metadata
     storage_path = Path(upload_data.get("storage_path", ""))
@@ -4543,7 +4562,7 @@ async def append_upload_to_project(
         logger.exception(f"Failed to parse upload {upload_id}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to parse upload: {str(exc)}",
+            detail="Failed to parse the uploaded archive",
         )
 
     # Process each file and determine status
@@ -4582,21 +4601,23 @@ async def append_upload_to_project(
                     "mime_type": mime_type,
                     "sha256": sha256,
                     "metadata": {},
-                    "last_seen_modified_at": file_meta.modified_at.isoformat() + "Z",
-                    "last_scanned_at": datetime.now().isoformat() + "Z",
+                    "last_seen_modified_at": _to_utc_iso(file_meta.modified_at),
+                    "last_scanned_at": datetime.utcnow().isoformat() + "Z",
                 })
         else:
             # New file
             file_status = "added"
             files_added += 1
+            if files_added <= 3:
+                logger.debug("Append: new file %s (hash=%s)", rel_path, sha256)
             files_to_upsert.append({
                 "relative_path": rel_path,
                 "size_bytes": size_bytes,
                 "mime_type": mime_type,
                 "sha256": sha256,
                 "metadata": {},
-                "last_seen_modified_at": file_meta.modified_at.isoformat() + "Z",
-                "last_scanned_at": datetime.now().isoformat() + "Z",
+                "last_seen_modified_at": _to_utc_iso(file_meta.modified_at),
+                "last_scanned_at": datetime.utcnow().isoformat() + "Z",
             })
 
         file_statuses.append(AppendFileStatus(
@@ -4605,16 +4626,57 @@ async def append_upload_to_project(
             sha256=sha256,
         ))
 
-    # Persist the new/updated files
+    # Persist new/updated files into the project's scan_data so they are
+    # recognised as duplicates on subsequent appends.  The scan_files table
+    # upsert is kept as a best-effort secondary write but is not relied upon
+    # because Supabase RLS may silently block inserts.
     if files_to_upsert:
+        # 1) Append new file entries to scan_data.files (authoritative source)
+        #    Re-read the project to avoid overwriting concurrent appends.
+        try:
+            fresh_project = service.get_project_scan(user_id, project_id)
+            fresh_scan_data = (fresh_project or {}).get("scan_data") or {}
+            existing_scan_files = list(fresh_scan_data.get("files") or [])
+            existing_paths = {
+                (e.get("path") or "").replace("\\", "/") for e in existing_scan_files
+            }
+            for entry in files_to_upsert:
+                rel = entry["relative_path"]
+                if rel not in existing_paths:
+                    existing_scan_files.append({
+                        "path": rel,
+                        "size_bytes": entry.get("size_bytes"),
+                        "mime_type": entry.get("mime_type"),
+                        "file_hash": entry.get("sha256"),
+                    })
+            fresh_scan_data["files"] = existing_scan_files
+            service.update_project_scan_data(user_id, project_id, fresh_scan_data)
+        except Exception as exc:
+            logger.error(f"Failed to update scan_data with appended files: {exc}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to persist appended file data",
+            )
+
+        # 2) Write to scan_files cache table
         try:
             service.upsert_cached_files(user_id, project_id, files_to_upsert)
         except ProjectsServiceError as exc:
-            logger.error(f"Failed to upsert cached files: {exc}")
+            logger.error(f"scan_files upsert failed for project {project_id}: {exc}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to save file metadata: {str(exc)}",
+                detail="Failed to persist appended file metadata",
             )
+
+    # Clean up the temporary upload ZIP to free disk space
+    try:
+        if storage_path.exists():
+            storage_path.unlink()
+            logger.info(f"Cleaned up upload file: {storage_path}")
+        with uploads_store_lock:
+            uploads_store.pop(upload_id, None)
+    except OSError as exc:
+        logger.warning(f"Failed to clean up upload file {storage_path}: {exc}")
 
     return AppendUploadResponse(
         project_id=project_id,
