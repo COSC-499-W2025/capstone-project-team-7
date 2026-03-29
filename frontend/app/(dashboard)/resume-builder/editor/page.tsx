@@ -84,7 +84,7 @@ function displayUrl(url: string): string {
 }
 
 // Comma-separated input that preserves typing and only converts to array on blur
-function CommaSeparatedInput({
+const CommaSeparatedInput = memo(function CommaSeparatedInput({
   value,
   onChange,
   placeholder,
@@ -93,7 +93,8 @@ function CommaSeparatedInput({
   onChange: (items: string[]) => void;
   placeholder?: string;
 }) {
-  const [localValue, setLocalValue] = useState(value.join(", "));
+  const valueStr = value.join(", ");
+  const [localValue, setLocalValue] = useState(valueStr);
 
   // Sync from parent when value changes externally
   useEffect(() => {
@@ -117,7 +118,7 @@ function CommaSeparatedInput({
       placeholder={placeholder}
     />
   );
-}
+});
 
 function ResumeEditorPageInner() {
   const router = useRouter();
@@ -146,6 +147,9 @@ function ResumeEditorPageInner() {
     [latexContent, structuredData, resumeName, template]
   );
   const debouncedDraft = useDebounce(autosaveDraft, 1000);
+
+  // Track last-saved payload to deduplicate autosave calls
+  const lastSavedPayloadRef = useRef<string>("");
 
   // Fetch resume on mount
   useEffect(() => {
@@ -181,9 +185,24 @@ function ResumeEditorPageInner() {
     fetchResume();
   }, [resumeId]);
 
-  // Auto-save when debounced values change
+  // Auto-save when debounced values change (deduplicated)
   useEffect(() => {
     if (!resumeId || !isDirty) return;
+
+    const payload = {
+      name: debouncedResumeName,
+      template: debouncedTemplate,
+      latex_content: isLatexMode ? debouncedLatex : null,
+      // Always persist structured_data so form-mode data is preserved
+      // even when the user is editing in LaTeX mode.
+      structured_data: debouncedStructured,
+      is_latex_mode: isLatexMode,
+    };
+    const payloadKey = JSON.stringify(payload);
+    if (payloadKey === lastSavedPayloadRef.current) {
+      setIsDirty(false);
+      return;
+    }
 
     const autoSave = async () => {
       const token = getStoredToken();
@@ -480,7 +499,7 @@ interface LatexEditorProps {
   onChange: (value: string) => void;
 }
 
-function LatexEditor({ content, onChange }: LatexEditorProps) {
+const LatexEditor = memo(function LatexEditor({ content, onChange }: LatexEditorProps) {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
       {/* Editor pane */}
@@ -512,7 +531,7 @@ function LatexEditor({ content, onChange }: LatexEditorProps) {
       </div>
     </div>
   );
-}
+});
 
 // ============================================================================
 // Form Editor Component
@@ -1267,7 +1286,7 @@ const FormEditor = memo(function FormEditor({ data, onChange, onAddResumeItems, 
 // Preview Components
 // ============================================================================
 
-function PreviewPlaceholder({ latex }: { latex: string }) {
+const PreviewPlaceholder = memo(function PreviewPlaceholder({ latex }: { latex: string }) {
   // Parse basic structure from LaTeX for a simple preview
   // This is a simplified preview - real LaTeX rendering would require a server
   
@@ -1286,9 +1305,9 @@ function PreviewPlaceholder({ latex }: { latex: string }) {
       </div>
     </div>
   );
-}
+});
 
-function FormPreview({ data }: { data: ResumeStructuredData }) {
+const FormPreview = memo(function FormPreview({ data }: { data: ResumeStructuredData }) {
   return (
     <div className="space-y-6 text-gray-900">
       {/* Header */}
@@ -1502,7 +1521,7 @@ function FormPreview({ data }: { data: ResumeStructuredData }) {
         )}
     </div>
   );
-}
+});
 
 // Suspense boundary required because useSearchParams() needs it for static export
 export default function ResumeEditorPage() {
