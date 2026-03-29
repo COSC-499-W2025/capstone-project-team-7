@@ -5,9 +5,11 @@ Implements /api/uploads endpoints per api-plan.md
 
 import logging
 import os
+import shutil
 import threading
 import uuid
 import hashlib
+import zipfile as _zipfile
 import magic
 from pathlib import Path
 from typing import Optional, List, Dict, Any
@@ -16,7 +18,7 @@ from datetime import datetime
 from fastapi import APIRouter, UploadFile, File, HTTPException, status, Body, Header, Depends
 from pydantic import BaseModel, Field
 
-from scanner.parser import parse_zip
+from scanner.parser import parse_zip, _EXCLUDED_DIRS
 from scanner.models import ParseResult, ScanPreferences, FileMetadata as ScanFileMetadata, ParseIssue as ScanParseIssue
 from api.request_context import set_request_access_token
 
@@ -137,6 +139,14 @@ ALLOWED_MIME_TYPES = [
     "application/zip",
     "application/x-zip-compressed",
 ]
+
+# Extra dirs to skip that aren't source code (data blobs, caches, runtime artifacts)
+_UPLOAD_EXCLUDED = _EXCLUDED_DIRS | {
+    "data", ".next", ".cache", ".turbo", "coverage",
+    ".claude", ".pytest_cache", ".mypy_cache", ".ruff_cache",
+    ".DS_Store", "env", ".env", ".idea", ".vscode",
+    ".ssh", ".gnupg", ".aws", ".config",
+}
 
 
 # In-memory storage for upload metadata (will be replaced with DB)
@@ -269,16 +279,6 @@ def upload_from_path(
     Accepts a directory (which gets zipped) or an existing ZIP file.
     Used by the Electron desktop app for the 'Add to Existing' flow.
     """
-    import shutil
-    import zipfile as _zipfile
-    from scanner.parser import _EXCLUDED_DIRS
-
-    # Extra dirs to skip that aren't source code (data blobs, caches, runtime artifacts)
-    _UPLOAD_EXCLUDED = _EXCLUDED_DIRS | {
-        "data", ".next", ".cache", ".turbo", "coverage",
-        ".claude", ".pytest_cache", ".mypy_cache", ".ruff_cache",
-        ".DS_Store", "env", ".env", ".idea", ".vscode",
-    }
     # Cap at 500 MB to prevent filling the disk
     MAX_ZIP_SIZE = 500 * 1024 * 1024
 
@@ -387,6 +387,7 @@ def upload_from_path(
             size_bytes=file_size,
         )
     except HTTPException:
+        upload_path.unlink(missing_ok=True)
         raise
     except Exception as e:
         # Clean up partial file on failure

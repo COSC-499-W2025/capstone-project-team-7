@@ -4305,6 +4305,9 @@ def _to_utc_iso(dt: datetime) -> str:
         return iso
     return iso + "Z"
 
+# Backward-compatible alias for the old name used by tests
+_to_pg_timestamptz = _to_utc_iso
+
 
 class AppendUploadRequest(BaseModel):
     """Request body for appending an upload to a project."""
