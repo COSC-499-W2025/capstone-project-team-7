@@ -9,6 +9,7 @@ Endpoints:
     DELETE /api/jobs/saved/{job_id} — unsave a job posting
 """
 
+import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -316,25 +317,39 @@ async def match_jobs(
             structured = resume_record.get("structured_data") or {}
             resume_text = _extract_resume_text(structured)
 
-    scored: list[ScoredJob] = []
+    # 1) Keyword-score all jobs first (cheap, no I/O)
+    pre_scored: list[tuple[JobListing, float, list[str]]] = []
     for job in raw_jobs:
         score, reasons = _keyword_score(job, body.profile)
-        jd = job.to_dict()
+        pre_scored.append((job, score, reasons))
 
+    # Sort by keyword score so AI calls target the best candidates
+    pre_scored.sort(key=lambda t: t[1], reverse=True)
+
+    # 2) AI-score only the top N results in parallel to avoid latency blowup
+    AI_SCORE_LIMIT = 5
+
+    async def _enrich(entry: tuple[JobListing, float, list[str]], use_ai: bool) -> ScoredJob:
+        job, score, reasons = entry
+        jd = job.to_dict()
         ai_score: Optional[float] = None
 
-        # AI resume scoring when resume is selected
-        if resume_text:
+        if use_ai and resume_text:
             ai_score, ai_reason = await _ai_resume_score(jd, resume_text, auth.user_id)
             if ai_reason:
-                reasons.insert(0, f"AI: {ai_reason}")
-        elif score >= 40:
-            # Fallback to profile-based explanation when no resume selected
+                reasons = [f"AI: {ai_reason}"] + reasons
+        elif use_ai and score >= 40:
             explanation = await _explain_match(jd, body.profile, auth.user_id)
             if explanation:
-                reasons.insert(0, explanation)
+                reasons = [explanation] + reasons
 
-        scored.append(ScoredJob(job=jd, score=score, ai_score=ai_score, match_reasons=reasons))
+        return ScoredJob(job=jd, score=score, ai_score=ai_score, match_reasons=reasons)
+
+    tasks = [
+        _enrich(entry, use_ai=(idx < AI_SCORE_LIMIT))
+        for idx, entry in enumerate(pre_scored)
+    ]
+    scored = list(await asyncio.gather(*tasks))
 
     # Sort by ai_score if available, otherwise by keyword score
     scored.sort(key=lambda s: s.ai_score if s.ai_score is not None else s.score, reverse=True)
