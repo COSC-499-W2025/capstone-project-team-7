@@ -13,12 +13,13 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, status, Body, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Request, status, Body, Depends
 from pydantic import BaseModel, Field
 
 from scanner.parser import parse_zip
 from scanner.models import ParseResult, ScanPreferences, FileMetadata as ScanFileMetadata, ParseIssue as ScanParseIssue
 from api.dependencies import AuthContext, get_auth_context
+from security.rate_limit import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -206,7 +207,9 @@ def compute_file_hash(content: bytes) -> str:
 
 
 @router.post("", response_model=UploadResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("20/hour")
 async def upload_file(
+    request: Request,
     file: UploadFile = File(..., description="ZIP archive to upload"),
     user_id: str = Depends(verify_auth_token)
 ):
@@ -343,7 +346,9 @@ async def get_upload_status(
 
 
 @router.post("/{upload_id}/parse", response_model=ParseResponse)
+@limiter.limit("10/hour")
 async def parse_upload(
+    request: Request,
     upload_id: str,
     parse_request: Optional[ParseRequest] = Body(default=None),
     user_id: str = Depends(verify_auth_token)
@@ -382,6 +387,16 @@ async def parse_upload(
             }
         )
     storage_path = Path(upload_data["storage_path"])
+    upload_root = UPLOAD_DIR.resolve()
+    candidate_path = storage_path.resolve()
+    if upload_root not in candidate_path.parents and candidate_path != upload_root:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "invalid_storage_path",
+                "message": "Upload path is outside of the allowed upload directory",
+            }
+        )
     
     if not storage_path.exists():
         raise HTTPException(

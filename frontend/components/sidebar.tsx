@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import type { Route } from 'next';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
@@ -23,7 +24,7 @@ type SidebarProfile = {
 };
 
 interface NavItemProps {
-  href: string;
+  href: Route;
   icon: React.ReactNode;
   label: string;
 }
@@ -34,7 +35,7 @@ const NavItem: React.FC<NavItemProps> = ({ href, icon, label }) => {
 
   return (
     <Link
-      href={href as any}
+      href={href}
       className={`sidebar-link text-sm font-medium ${isActive ? 'sidebar-link-active' : ''}`}
     >
       <span className="w-5 h-5 flex-shrink-0">{icon}</span>

@@ -28,7 +28,7 @@ export type EncryptionStatus = {
 };
 
 export type ConfigResponse = {
-  scan_profiles?: Record<string, Record<string, any>>;
+  scan_profiles?: Record<string, ScanProfile>;
   current_profile?: string | null;
   max_file_size_mb?: number | null;
   follow_symlinks?: boolean | null;
@@ -36,8 +36,14 @@ export type ConfigResponse = {
 
 export type ProfilesResponse = {
   current_profile: string;
-  profiles: Record<string, Record<string, any>>;
+  profiles: Record<string, ScanProfile>;
 };
+
+export type ScanProfile = {
+  description?: string;
+  extensions?: string[];
+  exclude_dirs?: string[];
+} & Record<string, unknown>;
 
 export type ProfileUpsertRequest = {
   name: string;

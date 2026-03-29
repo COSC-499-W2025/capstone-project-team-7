@@ -13,8 +13,12 @@ try:
 except Exception:  # pragma: no cover - optional dependency
     load_dotenv = None  # type: ignore
 
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 sys.path.insert(0, str(Path(__file__).parent))
 if load_dotenv:
@@ -37,6 +41,7 @@ from api.profile_routes import router as profile_router
 from api.encryption_routes import router as encryption_router
 from api.settings_routes import router as settings_router
 from api.portfolio_settings_routes import router as portfolio_settings_router
+from security.rate_limit import limiter
 from api.linkedin_routes import router as linkedin_router
 
 app = FastAPI(
@@ -44,6 +49,9 @@ app = FastAPI(
     description="Backend service",
     version="1.0.0"
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 environment = os.getenv("ENVIRONMENT", "development").strip().lower()
 allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "").strip()
@@ -82,6 +90,33 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=allowed_headers,
 )
+
+allowed_hosts = [
+    host.strip()
+    for host in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1,testserver").split(",")
+    if host.strip()
+]
+if not allowed_hosts:
+    allowed_hosts = ["localhost", "127.0.0.1", "testserver"]
+
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=allowed_hosts,
+)
+
+app.add_middleware(SlowAPIMiddleware)
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "0"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    if request.url.scheme == "https":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
 
 @app.get("/")
 

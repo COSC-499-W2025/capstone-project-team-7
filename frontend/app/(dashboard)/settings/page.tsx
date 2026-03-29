@@ -18,7 +18,7 @@ import { auth as authApi, getStoredToken, getStoredRefreshToken } from "@/lib/au
 import { useAuth } from "@/hooks/use-auth";
 import { formatOperationError } from "@/lib/error-utils";
 import type { AuthSessionInfo } from "@/lib/auth";
-import type { ConfigResponse, ProfilesResponse, EncryptionStatus, SecretStatusItem } from "@/lib/api.types";
+import type { ConfigResponse, ProfilesResponse, EncryptionStatus, SecretStatusItem, ScanProfile } from "@/lib/api.types";
 import { AlertTriangle, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
 
 export default function SettingsPage() {
@@ -42,7 +42,7 @@ export default function SettingsPage() {
 
   // Scan configuration
   const [serverConfig, setServerConfig] = useState<ConfigResponse | null>(null);
-  const [profiles, setProfiles] = useState<Record<string, any>>({});
+  const [profiles, setProfiles] = useState<ProfilesResponse["profiles"]>({});
   const [configLoading, setConfigLoading] = useState(false);
   const [configStatus, setConfigStatus] = useState<string | null>(null);
 
@@ -103,7 +103,7 @@ export default function SettingsPage() {
 
       // Load local settings
       try {
-        const res = await (window.desktop?.loadSettings?.() as Promise<any> | undefined);
+        const res = await window.desktop?.loadSettings?.();
         if (!cancelled && res && res.ok && res.settings) {
           setSettings(res.settings);
         } else {
@@ -226,9 +226,7 @@ export default function SettingsPage() {
     setTimeout(() => setSaveStatus(null), 2500);
 
     try {
-      if ((window as any).desktop?.saveSettings) {
-        (window as any).desktop.saveSettings(settings);
-      }
+      window.desktop?.saveSettings?.(settings);
     } catch {}
   };
 
@@ -498,6 +496,7 @@ export default function SettingsPage() {
     : "Set ENCRYPTION_MASTER_KEY in the backend environment and restart the backend.";
 
   const openaiSecret = secretsStatus.find((s) => s.secret_key === "openai_api_key");
+  const activeProfile = serverConfig?.current_profile ? profiles[serverConfig.current_profile] : undefined;
 
   const handleSaveApiKey = async () => {
     if (!apiKeyInput.trim()) return;
@@ -1043,7 +1042,7 @@ export default function SettingsPage() {
                                   <SelectValue placeholder="Select profile" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {Object.entries(profiles).map(([name, profile]: [string, any]) => (
+                                  {Object.entries(profiles).map(([name, profile]: [string, ScanProfile]) => (
                                     <SelectItem key={name} value={name}>
                                       {name} {profile.description ? `- ${profile.description}` : ""}
                                     </SelectItem>
@@ -1053,7 +1052,7 @@ export default function SettingsPage() {
                               <p className="text-xs text-muted-foreground mt-1">
                                 {configLoading ? "Switching profile..." : "Changes are saved automatically when you switch profiles"}
                               </p>
-                              {serverConfig.current_profile && profiles[serverConfig.current_profile] && (
+                              {serverConfig.current_profile && activeProfile && (
                                 <div className="bg-muted border border-border rounded-md p-3 space-y-2">
                                   <div className="flex items-center justify-between">
                                     <p className="text-xs font-medium text-muted-foreground">Profile Details</p>
@@ -1066,16 +1065,16 @@ export default function SettingsPage() {
                                       Edit
                                     </Button>
                                   </div>
-                                  {profiles[serverConfig.current_profile].extensions && profiles[serverConfig.current_profile].extensions.length > 0 && (
+                                  {activeProfile.extensions && activeProfile.extensions.length > 0 && (
                                     <div>
                                       <p className="text-xs text-muted-foreground">Extensions:</p>
-                                      <p className="text-xs text-foreground font-mono">{profiles[serverConfig.current_profile].extensions.join(", ")}</p>
+                                      <p className="text-xs text-foreground font-mono">{activeProfile.extensions.join(", ")}</p>
                                     </div>
                                   )}
-                                  {profiles[serverConfig.current_profile].exclude_dirs && profiles[serverConfig.current_profile].exclude_dirs.length > 0 && (
+                                  {activeProfile.exclude_dirs && activeProfile.exclude_dirs.length > 0 && (
                                     <div>
                                       <p className="text-xs text-muted-foreground">Excluded Directories:</p>
-                                      <p className="text-xs text-foreground font-mono">{profiles[serverConfig.current_profile].exclude_dirs.join(", ")}</p>
+                                      <p className="text-xs text-foreground font-mono">{activeProfile.exclude_dirs.join(", ")}</p>
                                     </div>
                                   )}
                                 </div>
