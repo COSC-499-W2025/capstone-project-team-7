@@ -87,18 +87,13 @@ export default function ProjectsPage() {
       setError(null);
       const token = getAuthToken();
       
-      // Debug logging
-      console.log("Projects page - Token check:", token ? "Token found" : "No token");
-      console.log("Projects page - Token length:", token?.length);
-      
       if (!token) {
         setError("Not authenticated. Please log in through Settings.");
         setLoading(false);
         setRefreshing(false);
         return;
       }
-      
-      console.log("Fetching projects with token...");
+
       const [response, selection] = await Promise.all([
         getProjects(token),
         getSelection(token).catch(() => null),
@@ -106,8 +101,6 @@ export default function ProjectsPage() {
       const nextMode: ProjectsSortMode = selection?.sort_mode ?? "recency";
       const orderedProjects = sortProjects(response.projects, nextMode);
       setRankingMode(nextMode);
-      console.log("Projects fetched successfully:", response);
-      console.log("First project data:", orderedProjects[0]);
       setProjects(orderedProjects);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "";

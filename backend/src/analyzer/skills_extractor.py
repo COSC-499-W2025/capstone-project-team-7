@@ -636,51 +636,31 @@ class SkillsExtractor:
     def _extract_git_timestamps(self, repo_path: str):
         """Extract last modification timestamps for files in git repository."""
         try:
-            # Use a single batched git command to get all file timestamps
-            # Format: <timestamp>\t<filepath> for each file
             result = subprocess.run(
-                ['git', 'ls-files', '-z', '|', 'xargs', '-0', '-n1', '-I{}', 'git', 'log', '-1', '--format=%cI\t{}', '--', '{}'],
+                ['git', 'log', '--all', '--name-only', '--date=iso-strict', '--format=%cI'],
                 cwd=repo_path,
                 capture_output=True,
                 text=True,
-                shell=True
+                check=False,
             )
-            
+
             if result.returncode != 0:
-                # Fallback to batch processing using git log with --name-only
-                result = subprocess.run(
-                    ['git', 'log', '--all', '--name-only', '--date=iso-strict', '--format=%cI'],
-                    cwd=repo_path,
-                    capture_output=True,
-                    text=True,
-                    check=True
-                )
-                
-                lines = result.stdout.strip().split('\n')
-                current_timestamp = None
-                
-                for line in lines:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    # Lines starting with date are timestamps
-                    if line and line[0].isdigit() and 'T' in line:
-                        current_timestamp = line
-                    elif current_timestamp and line:
-                        # This is a file path - store with repo-relative path only
-                        if line not in self.file_timestamps:
-                            self.file_timestamps[line] = current_timestamp
-            else:
-                # Process batched output
-                for line in result.stdout.strip().split('\n'):
-                    if '\t' in line:
-                        timestamp, file_path = line.split('\t', 1)
-                        if timestamp and file_path:
-                            # Store only repo-relative path
-                            self.file_timestamps[file_path] = timestamp
+                self.logger.warning("Failed to extract git timestamps with return code %s", result.returncode)
+                return
+
+            lines = result.stdout.strip().split('\n')
+            current_timestamp = None
+
+            for raw_line in lines:
+                line = raw_line.strip()
+                if not line:
+                    continue
+                if line[0].isdigit() and 'T' in line:
+                    current_timestamp = line
+                    continue
+                if current_timestamp and line and line not in self.file_timestamps:
+                    self.file_timestamps[line] = current_timestamp
                     
-        except subprocess.CalledProcessError as e:
-            self.logger.warning(f"Failed to extract git timestamps: {e}")
         except FileNotFoundError:
             self.logger.warning("Git not found in PATH")
         except (NotADirectoryError, OSError) as e:
