@@ -37,6 +37,8 @@ import { ArchitectureSection } from "@/components/ai-analysis/architecture-secti
 import { InsightsSection } from "@/components/ai-analysis/insights-section";
 import { TechnicalHighlightsSection } from "@/components/ai-analysis/technical-highlights-section";
 import { SecurityVulnerabilitySection } from "@/components/ai-analysis/security-vulnerability-section";
+import { isTestPath, isGeneratedOrPackagePath, isNonImplementationPath } from "@/lib/file-filters";
+import { MarkdownReport } from "@/components/ai-analysis/markdown-report";
 
 // ─── main page ───────────────────────────────────────────────────────────────
 
@@ -212,92 +214,11 @@ export default function AiAnalysisPage() {
   const useStructuredView =
     analysisForSelected?.render_mode === "structured" &&
     (analysisForSelected?.overview != null || analysisForSelected?.project_scores != null);
-  const isTestPath = (pathValue?: string | null): boolean => {
-    if (!pathValue) return false;
-    return /(^|[\\/])(test|tests|__tests__|spec)([\\/]|$)|(^|[._-])(test|spec)([._-]|$)/i.test(pathValue);
-  };
-  const isGeneratedOrPackagePath = (pathValue?: string | null): boolean => {
-    if (!pathValue) return false;
-    const normalized = pathValue.replace(/\\/g, "/").toLowerCase().replace(/^\/+|\/+$/g, "");
-    if (!normalized) return false;
+  const useMarkdownReport =
+    analysisForSelected?.render_mode === "markdown_report" &&
+    typeof analysisForSelected?.markdown_report === "string" &&
+    analysisForSelected.markdown_report.trim().length > 0;
 
-    const parts = normalized.split("/").filter(Boolean);
-    const blocked = new Set([
-      ".next",
-      ".electron",
-      ".cache",
-      ".pnpm",
-      ".yarn",
-      ".turbo",
-      ".parcel-cache",
-      ".svelte-kit",
-      ".nuxt",
-      ".output",
-      ".vercel",
-      "node_modules",
-      "vendor",
-      "site-packages",
-      "dist-packages",
-    ]);
-
-    if (parts.some((segment) => blocked.has(segment))) {
-      return true;
-    }
-
-    return parts.slice(0, -1).some((segment) => segment.startsWith(".") && segment.length > 1);
-  };
-  const isNonImplementationPath = (pathValue?: string | null): boolean => {
-    if (!pathValue) return false;
-    const normalized = pathValue.replace(/\\/g, "/").toLowerCase().replace(/^\/+|\/+$/g, "");
-    if (!normalized) return false;
-
-    const parts = normalized.split("/").filter(Boolean);
-    const basename = parts[parts.length - 1] ?? "";
-    const blockedBasenames = new Set([
-      "package.json",
-      "package-lock.json",
-      "pnpm-lock.yaml",
-      "yarn.lock",
-      "tsconfig.json",
-      "jsconfig.json",
-      "next.config.mjs",
-      "next.config.js",
-      "vite.config.ts",
-      "vite.config.js",
-      "docker-compose.yml",
-      "docker-compose.yaml",
-      "dockerfile",
-      "readme.md",
-    ]);
-    const blockedExts = new Set([
-      ".md", ".markdown", ".txt", ".rst", ".log",
-      ".json", ".yml", ".yaml", ".toml", ".ini", ".cfg", ".conf",
-      ".css", ".scss", ".sass", ".less", ".xml", ".svg", ".lock",
-    ]);
-    const normalizedForMarker = `/${normalized}`;
-    const pathMarkers = [
-      "/docs/",
-      "/doc/",
-      "/assets/",
-      "/styles/",
-      "/css/",
-      "/migrations/",
-      "/scripts/",
-      "/config/",
-      "/settings/",
-      "/.github/",
-    ];
-
-    if (blockedBasenames.has(basename)) return true;
-    if (basename.endsWith(".config.ts") || basename.endsWith(".config.js") || basename.endsWith(".config.mjs") || basename.endsWith(".config.cjs")) {
-      return true;
-    }
-    if (pathMarkers.some((marker) => normalizedForMarker.includes(marker))) return true;
-
-    const dotIdx = basename.lastIndexOf(".");
-    const ext = dotIdx >= 0 ? basename.slice(dotIdx) : "";
-    return blockedExts.has(ext);
-  };
   const keyFiles = (analysisForSelected?.key_files ?? [])
     .filter(
       (file) =>
@@ -728,6 +649,8 @@ export default function AiAnalysisPage() {
                         )}
 
                       </div>
+                    ) : useMarkdownReport ? (
+                      <MarkdownReport markdown={analysisForSelected.markdown_report as string} />
                     ) : (
                       <>
                         {/* Overall summary */}

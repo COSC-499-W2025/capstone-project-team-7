@@ -76,6 +76,21 @@ try:
 except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
     from backend.src.api.request_context import get_request_access_token, set_request_access_token
 
+try:
+    from analyzer.file_filters import (
+        is_test_path as _is_test_like_path,
+        is_generated_or_package_path as _is_generated_or_package_path,
+        is_non_implementation_path as _is_non_implementation_path,
+        AI_BATCH_LOGIC_PREFERRED_EXTS,
+    )
+except (ModuleNotFoundError, ImportError):
+    from backend.src.analyzer.file_filters import (
+        is_test_path as _is_test_like_path,
+        is_generated_or_package_path as _is_generated_or_package_path,
+        is_non_implementation_path as _is_non_implementation_path,
+        AI_BATCH_LOGIC_PREFERRED_EXTS,
+    )
+
 logger = logging.getLogger(__name__)
 
 # Human-friendly labels for skill categories
@@ -98,46 +113,7 @@ AI_BATCH_PROGRESS_TERMINAL_TTL_SEC = max(
 )
 AI_BATCH_STATUS_MESSAGES_MAX = 300
 
-AI_BATCH_LOGIC_EXCLUDED_EXTS = {
-    ".md", ".markdown", ".txt", ".rst", ".log",
-    ".json", ".yml", ".yaml", ".toml", ".ini", ".cfg", ".conf",
-    ".css", ".scss", ".sass", ".less", ".xml", ".svg", ".lock",
-}
-AI_BATCH_LOGIC_PREFERRED_EXTS = {
-    ".py", ".ts", ".tsx", ".js", ".jsx", ".java", ".go", ".rs",
-    ".cs", ".cpp", ".c", ".h", ".hpp", ".kt", ".swift", ".rb", ".php",
-}
-AI_BATCH_LOGIC_EXCLUDED_BASENAMES = {
-    "package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock",
-    "tsconfig.json", "jsconfig.json", "next.config.mjs", "next.config.js",
-    "vite.config.ts", "vite.config.js", "docker-compose.yml", "docker-compose.yaml",
-    "dockerfile", "readme.md",
-}
-AI_BATCH_LOGIC_EXCLUDED_PATH_MARKERS = (
-    "/docs/", "/doc/", "/assets/", "/styles/", "/css/", "/migrations/",
-    "/scripts/", "/config/", "/settings/", "/.github/",
-)
-AI_BATCH_TEST_PATH_RE = re.compile(
-    r"(?:^|[\\/])(?:test|tests|__tests__|spec)(?:[\\/]|$)|(?:^|[._-])(test|spec)(?:[._-]|$)",
-    re.IGNORECASE,
-)
-AI_BATCH_GENERATED_OR_PACKAGE_PATH_MARKERS = {
-    ".next",
-    ".electron",
-    ".cache",
-    ".pnpm",
-    ".yarn",
-    ".turbo",
-    ".parcel-cache",
-    ".svelte-kit",
-    ".nuxt",
-    ".output",
-    ".vercel",
-    "node_modules",
-    "site-packages",
-    "dist-packages",
-    "vendor",
-}
+
 
 # Create router for project endpoints
 router = APIRouter(prefix="/api/projects", tags=["Projects"])
@@ -2235,6 +2211,7 @@ class AiAnalysisResult(BaseModel):
     project_scores: Optional[Dict[str, Any]] = None
     # Legacy fields kept for backward compat with already-cached results
     portfolio_overview: Optional[str] = None
+    markdown_report: Optional[str] = None
     project_insights: Optional[List[str]] = None
     key_achievements: Optional[List[str]] = None
     recommendations: Optional[List[str]] = None
@@ -2501,45 +2478,7 @@ def _build_relevant_files_for_batch(
     return relevant
 
 
-def _is_test_like_path(path_value: str) -> bool:
-    return bool(AI_BATCH_TEST_PATH_RE.search(path_value or ""))
 
-
-def _is_generated_or_package_path(path_value: str) -> bool:
-    normalized = str(path_value or "").replace("\\", "/").strip().lower().strip("/")
-    if not normalized:
-        return False
-
-    parts = [segment for segment in normalized.split("/") if segment]
-    if not parts:
-        return False
-
-    if any(segment in AI_BATCH_GENERATED_OR_PACKAGE_PATH_MARKERS for segment in parts):
-        return True
-
-    for segment in parts[:-1]:
-        if segment.startswith(".") and len(segment) > 1:
-            return True
-
-    return False
-
-
-def _is_non_implementation_path(path_value: str) -> bool:
-    normalized = "/" + str(path_value or "").replace("\\", "/").lower().lstrip("/")
-    basename = Path(normalized).name
-    ext = Path(basename).suffix.lower()
-
-    if basename in AI_BATCH_LOGIC_EXCLUDED_BASENAMES:
-        return True
-    if ext in AI_BATCH_LOGIC_EXCLUDED_EXTS:
-        return True
-    if any(marker in normalized for marker in AI_BATCH_LOGIC_EXCLUDED_PATH_MARKERS):
-        return True
-    if basename.endswith(".config.ts") or basename.endswith(".config.js"):
-        return True
-    if basename.endswith(".config.mjs") or basename.endswith(".config.cjs"):
-        return True
-    return False
 
 
 def _filter_non_test_paths(paths: List[Any]) -> List[str]:
@@ -3060,6 +2999,7 @@ async def run_project_ai_analysis(
                     project_scores=existing.get("project_scores"),
                     # legacy compat
                     portfolio_overview=existing.get("portfolio_overview"),
+                    markdown_report=existing.get("markdown_report"),
                     project_insights=existing.get("project_insights"),
                     key_achievements=existing.get("key_achievements"),
                     recommendations=existing.get("recommendations"),

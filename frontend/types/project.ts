@@ -257,7 +257,7 @@ export interface AiProjectScores {
 export interface ProjectAiAnalysis {
   overall_summary?: string | null;
   categories?: ProjectAiAnalysisCategory[] | null;
-  render_mode?: "cards" | "structured" | null;
+  render_mode?: "cards" | "structured" | "markdown_report" | null;
   key_files?: ProjectAiKeyFile[] | null;
   // Structured output fields
   overview?: AiOverview | null;
@@ -269,6 +269,7 @@ export interface ProjectAiAnalysis {
   project_scores?: AiProjectScores | null;
   // Legacy fields kept for backward compat with already-cached results
   portfolio_overview?: string | null;
+  markdown_report?: string | null;
   project_insights?: string[] | null;
   key_achievements?: string[] | null;
   recommendations?: string[] | null;
