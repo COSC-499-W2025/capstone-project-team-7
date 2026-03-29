@@ -90,6 +90,8 @@ except (ModuleNotFoundError, ImportError):
         is_non_implementation_path as _is_non_implementation_path,
         AI_BATCH_LOGIC_PREFERRED_EXTS,
     )
+
+try:
     from api.dependencies import AuthContext, get_auth_context
 except (ModuleNotFoundError, ImportError):  # pragma: no cover - test/import fallback
     from backend.src.api.dependencies import AuthContext, get_auth_context
