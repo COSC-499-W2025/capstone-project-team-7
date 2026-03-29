@@ -26,7 +26,25 @@
 - [Week 3](#week-3-september-15th---21st)
 
 ## Week 26 (March 16th - 29th)
+This week focused on cleaning up test reliability on the frontend, fixing a backend API gap, and doing a full pre-release hardening pass across the system. The work was shipped across a few PRs, mainly updates to the combined CI/frontend fixes branch, [PR #493](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/493), [PR #508](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/508), and [PR #509](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/509), along with some follow-up commits to get CI back to green.
 
+On the frontend side, I fixed a bunch of failing tests by updating `git-analysis-tab.test.tsx` to match the current branch graph behavior and digging into a large set of failures in `portfolio.test.tsx`. That ended up being caused by missing overview API mocks and some unstable interaction wiring, which made everything fail in a noisy way instead of pointing to one clear issue. After tightening the mocks and cleaning up the setup, the portfolio suite and full Vitest run both passed locally, and I pushed the fixes directly to the active PR branch to keep CI consistent.
+
+On the backend, I tracked down Issue #488, where removing a thumbnail was returning a `405 Method Not Allowed`. The frontend was already calling DELETE, but the backend route didn’t exist. I added `DELETE /api/projects/{project_id}/thumbnail` with the service logic and tests, and shipped that in PR #493. In parallel, I ran a full hardening pass and grouped everything into P0, P1, and P2 buckets. P0 covered auth, CORS, command execution safety, and cleaning up silent exceptions and debug logs. P1 focused more on API consistency, resume editor performance, and frontend type safety, with fixes pushed directly onto active PR branches and validated through CI.
+
+I also cleaned up repo state and workflow issues. I resolved merge conflicts for PR #495 in an isolated worktree and verified the result before pushing. Then I removed all extra worktrees to get back to a clean local setup. On top of that, I reviewed PRs #496 and #497 and left clear blocking comments with specific fixes.
+
+### Reflection
+
+**What went well:**  
+Once the root causes were clear, test stabilization was pretty straightforward and turned a noisy failing suite into something reliable. The thumbnail API fix was clean and low-risk, since it just filled a missing contract the frontend was already expecting. The hardening pass also helped structure a lot of scattered issues into clear priorities, and worktrees made it easier to isolate fixes without breaking other branches.
+
+**What didn’t go well:**  
+CI failures were hard to read at first, especially with React concurrency-style errors masking the actual problems. Missing mocks caused cascading failures that took longer to trace than expected. Local visibility into CI was also limited because of a bad `GITHUB_TOKEN` overriding auth, which made `gh` unreliable until that was fixed. Having multiple active PRs failing at once added some overhead in making sure fixes landed in the right place, and some issues only showed up in full GitHub Actions logs, not local runs.
+
+### Next Steps
+- Run a final end-to-end check after merges to make sure everything is stable.
+- Vote on the projects
 
 ## Week 24 (March 9th - 15th)
 This week focused on completing backend code quality improvements, hardening logout session handling, and refining desktop onboarding configuration for contribution identity. The work was delivered through two pull requests: [PR #396](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/396) for Issue #319 and [PR #399](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/399) for Issue #383. In addition to the core implementation work, the week included final validation passes, test coverage additions, and repository workflow improvements to ensure both PRs were cleanly scoped and verifiable.
