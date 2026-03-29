@@ -54,22 +54,34 @@ export function useJobMatch(): UseJobMatchReturn {
   }, [loadSavedJobs]);
 
   const saveJob = useCallback(async (job: JobListing) => {
-    const res = await jobs.saved.save(job);
-    if (res.ok) {
-      setSavedJobs((prev) => [res.data, ...prev]);
-      setSavedIds((prev) => new Set(prev).add(job.id));
+    try {
+      const res = await jobs.saved.save(job);
+      if (res.ok) {
+        setSavedJobs((prev) => [res.data, ...prev]);
+        setSavedIds((prev) => new Set(prev).add(job.id));
+      } else {
+        setError(res.error || "Failed to save job");
+      }
+    } catch {
+      setError("Network error while saving job");
     }
   }, []);
 
   const unsaveJob = useCallback(async (jobId: string) => {
-    const res = await jobs.saved.remove(jobId);
-    if (res.ok) {
-      setSavedJobs((prev) => prev.filter((j) => j.id !== jobId));
-      setSavedIds((prev) => {
-        const next = new Set(prev);
-        next.delete(jobId);
-        return next;
-      });
+    try {
+      const res = await jobs.saved.remove(jobId);
+      if (res.ok) {
+        setSavedJobs((prev) => prev.filter((j) => j.id !== jobId));
+        setSavedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(jobId);
+          return next;
+        });
+      } else {
+        setError(res.error || "Failed to remove saved job");
+      }
+    } catch {
+      setError("Network error while removing saved job");
     }
   }, []);
 
@@ -82,12 +94,16 @@ export function useJobMatch(): UseJobMatchReturn {
       try {
         const res = await jobs.match(search, profile, resumeId);
         if (!res.ok) {
+          setResults([]);
+          setTotal(0);
           setError(res.error || "Failed to search jobs");
           return;
         }
         setResults(res.data.jobs);
         setTotal(res.data.total);
       } catch (err) {
+        setResults([]);
+        setTotal(0);
         setError(err instanceof Error ? err.message : "Network error");
       } finally {
         setLoading(false);
@@ -102,11 +118,13 @@ export function useJobMatch(): UseJobMatchReturn {
       try {
         const res = await jobs.explain(job, profile);
         if (!res.ok) {
-          return res.error || "Could not generate explanation";
+          setError(res.error || "Could not generate explanation");
+          return "";
         }
         return res.data.explanation;
       } catch {
-        return "Failed to get explanation";
+        setError("Failed to get explanation");
+        return "";
       } finally {
         setExplaining(null);
       }

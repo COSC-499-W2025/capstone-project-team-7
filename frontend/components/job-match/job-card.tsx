@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ interface JobCardProps {
   isSaved?: boolean;
   onSave?: (job: JobListing) => void;
   onUnsave?: (jobId: string) => void;
+  hideScore?: boolean;
 }
 
 function scoreColour(score: number): string {
@@ -38,17 +39,22 @@ function scoreBg(score: number): string {
   return "bg-red-500/10 border-red-500/20";
 }
 
-export function JobCard({ scoredJob, profile, onExplain, explaining, isSaved, onSave, onUnsave }: JobCardProps) {
+export function JobCard({ scoredJob, profile, onExplain, explaining, isSaved, onSave, onUnsave, hideScore }: JobCardProps) {
   const { job, score, ai_score, match_reasons } = scoredJob;
   const [expanded, setExpanded] = useState(false);
   const [aiExplanation, setAiExplanation] = useState<string | null>(null);
 
+  // Reset explanation when profile changes (e.g. new search with different resume)
+  useEffect(() => {
+    setAiExplanation(null);
+  }, [profile]);
+
   const formatSalary = (min: number | null, max: number | null) => {
-    if (!min && !max) return null;
+    if (min == null && max == null) return null;
     const fmt = (n: number) =>
       n >= 1000 ? `$${(n / 1000).toFixed(0)}k` : `$${n}`;
-    if (min && max) return `${fmt(min)} – ${fmt(max)}`;
-    if (min) return `${fmt(min)}+`;
+    if (min != null && max != null) return `${fmt(min)} – ${fmt(max)}`;
+    if (min != null) return `${fmt(min)}+`;
     return `Up to ${fmt(max!)}`;
   };
 
@@ -57,7 +63,9 @@ export function JobCard({ scoredJob, profile, onExplain, explaining, isSaved, on
   const handleExplain = async () => {
     if (!profile || aiExplanation) return;
     const explanation = await onExplain(job, profile);
-    setAiExplanation(explanation);
+    if (explanation) {
+      setAiExplanation(explanation);
+    }
   };
 
   return (
@@ -96,7 +104,7 @@ export function JobCard({ scoredJob, profile, onExplain, explaining, isSaved, on
           </div>
 
           {/* Score rings */}
-          <div className="flex items-center gap-2">
+          {!hideScore && <div className="flex items-center gap-2">
             {ai_score != null && (
               <div
                 className={`flex flex-col items-center justify-center w-14 h-14 rounded-full border-2 ${scoreBg(ai_score)}`}
@@ -119,7 +127,7 @@ export function JobCard({ scoredJob, profile, onExplain, explaining, isSaved, on
                 {ai_score != null ? "keys" : "match"}
               </span>
             </div>
-          </div>
+          </div>}
         </div>
 
         {/* Match reasons */}

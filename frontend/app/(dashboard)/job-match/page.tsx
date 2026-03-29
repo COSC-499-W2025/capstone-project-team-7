@@ -103,6 +103,12 @@ export default function JobMatchPage() {
       {/* Saved / My Jobs tab */}
       {activeTab === "saved" && (
         <div className="space-y-4">
+          {error && (
+            <div className="flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+              <AlertCircle size={16} />
+              {error}
+            </div>
+          )}
           <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground">
             <Bookmark size={20} />
             My Saved Jobs
@@ -140,6 +146,7 @@ export default function JobMatchPage() {
                 explaining={false}
                 isSaved
                 onUnsave={handleUnsave}
+                hideScore
               />
             ))}
           </div>

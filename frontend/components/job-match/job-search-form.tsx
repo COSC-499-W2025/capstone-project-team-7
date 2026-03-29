@@ -27,11 +27,14 @@ export function JobSearchForm({ onSearch, loading }: JobSearchFormProps) {
   const [country, setCountry] = useState("ca");
   const [resumes, setResumes] = useState<UserResumeSummary[]>([]);
   const [selectedResumeId, setSelectedResumeId] = useState("");
+  const [resumeLoadError, setResumeLoadError] = useState(false);
 
   useEffect(() => {
     const token = getStoredToken();
     if (!token) return;
-    listUserResumes(token).then((resp) => setResumes(resp.items)).catch(() => {});
+    listUserResumes(token)
+      .then((resp) => setResumes(resp.items))
+      .catch(() => setResumeLoadError(true));
   }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -74,6 +77,9 @@ export function JobSearchForm({ onSearch, loading }: JobSearchFormProps) {
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-5">
           {/* Resume selector */}
+          {resumeLoadError && (
+            <p className="text-xs text-destructive">Could not load your resumes. AI scoring will be unavailable.</p>
+          )}
           {resumes.length > 0 && (
             <div className="space-y-1.5">
               <Label htmlFor="resume" className="flex items-center gap-1.5">
