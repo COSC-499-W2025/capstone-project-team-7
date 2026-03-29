@@ -48,8 +48,11 @@ export async function request<T>(
   const baseUrl = getApiBaseUrl();
   const url = `${baseUrl}${path}`;
 
+  // Auth endpoints should never send stale tokens or trigger retry logic
+  const isAuthEndpoint = path.startsWith("/api/auth/");
+
   // Automatically inject Authorization header if token exists
-  const tokenCandidates = getStoredTokenCandidates();
+  const tokenCandidates = isAuthEndpoint ? [] : getStoredTokenCandidates();
   const token = tokenCandidates[0] ?? null;
   const hasExplicitAuthorization = Boolean(
     (init?.headers as Record<string, string> | undefined)?.Authorization
@@ -87,6 +90,7 @@ export async function request<T>(
     const canRetryWithFallback =
       !result.ok &&
       result.status === 401 &&
+      !isAuthEndpoint &&
       !hasExplicitAuthorization &&
       tokenCandidates.length > 1;
 
@@ -109,9 +113,9 @@ export async function request<T>(
     const canRetryWithRefresh =
       !result.ok &&
       result.status === 401 &&
+      !isAuthEndpoint &&
       !hasExplicitAuthorization &&
-      path.startsWith("/api/") &&
-      path !== "/api/auth/refresh";
+      path.startsWith("/api/");
 
     if (canRetryWithRefresh) {
       const refreshedToken = await refreshAccessToken();
@@ -134,6 +138,14 @@ export async function request<T>(
 
     return result;
   } catch (error) {
+    // Network/CORS errors have no status code — clear stale tokens so they
+    // don't contaminate subsequent login attempts.
+    if (!isAuthEndpoint) {
+      clearStoredToken();
+      clearStoredRefreshToken();
+      localStorage.removeItem("user");
+      window.dispatchEvent(new CustomEvent("auth:signout", { detail: { expired: true } }));
+    }
     const message = error instanceof Error ? error.message : "Network error";
     return { ok: false as const, error: message };
   }
