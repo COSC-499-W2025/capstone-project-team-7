@@ -140,10 +140,13 @@ class PortfolioSettingsService:
         allowed = {
             "is_public", "share_token", "display_name", "bio",
             "show_heatmap", "show_skills_timeline", "show_top_projects",
-            "show_all_skills", "showcase_count",
+            "show_all_skills", "showcase_count", "deployed_url",
         }
+        # Fields that can be explicitly set to NULL
+        nullable = {"deployed_url"}
         payload: Dict[str, Any] = {
-            k: v for k, v in kwargs.items() if k in allowed and v is not None
+            k: v for k, v in kwargs.items()
+            if k in allowed and (v is not None or k in nullable)
         }
 
         if self._use_local_store:
