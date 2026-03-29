@@ -12,6 +12,7 @@ import {
   Search,
   Sparkles,
   LogOut,
+  Target,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/hooks/use-auth';
@@ -160,6 +161,11 @@ export const Sidebar: React.FC = () => {
               href="/resume-builder"
               icon={<FileEdit size={18} />}
               label="Resume Builder"
+            />
+            <NavItem
+              href="/job-match"
+              icon={<Target size={18} />}
+              label="Job Match"
             />
           </div>
           <SectionLabel>Utilities</SectionLabel>

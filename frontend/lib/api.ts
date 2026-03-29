@@ -321,3 +321,91 @@ export const secrets = {
       method: "POST",
     }),
 };
+
+// ── Job Match ────────────────────────────────────────────────────────
+
+export interface JobListing {
+  id: string;
+  title: string;
+  company: string;
+  location: string;
+  description: string;
+  salary_min: number | null;
+  salary_max: number | null;
+  url: string;
+  created: string;
+  contract_type: string;
+  category: string;
+}
+
+export interface ScoredJob {
+  job: JobListing;
+  score: number;
+  ai_score: number | null;
+  match_reasons: string[];
+}
+
+export interface JobMatchResponse {
+  jobs: ScoredJob[];
+  total: number;
+}
+
+export interface JobSearchPayload {
+  keywords: string;
+  location: string;
+  remote_only: boolean;
+  salary_min: number | null;
+  category: string;
+  results_per_page: number;
+  country: string;
+}
+
+export interface UserJobProfile {
+  skills: string[];
+  job_titles: string[];
+  experience_summary: string;
+  education: string;
+}
+
+export const jobs = {
+  search: (payload: JobSearchPayload): Promise<ApiResult<JobListing[]>> =>
+    request<JobListing[]>("/api/jobs/search", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  match: (
+    search: JobSearchPayload,
+    profile: UserJobProfile,
+    resumeId?: string,
+  ): Promise<ApiResult<JobMatchResponse>> =>
+    request<JobMatchResponse>("/api/jobs/match", {
+      method: "POST",
+      body: JSON.stringify({ search, profile, resume_id: resumeId ?? null }),
+    }),
+
+  explain: (
+    job: JobListing,
+    profile: UserJobProfile,
+  ): Promise<ApiResult<{ explanation: string }>> =>
+    request<{ explanation: string }>("/api/jobs/explain", {
+      method: "POST",
+      body: JSON.stringify({ job, profile }),
+    }),
+
+  saved: {
+    list: (): Promise<ApiResult<JobListing[]>> =>
+      request<JobListing[]>("/api/jobs/saved"),
+
+    save: (job: JobListing): Promise<ApiResult<JobListing>> =>
+      request<JobListing>("/api/jobs/saved", {
+        method: "POST",
+        body: JSON.stringify({ job }),
+      }),
+
+    remove: (jobId: string): Promise<ApiResult<{ ok: boolean }>> =>
+      request<{ ok: boolean }>(`/api/jobs/saved/${encodeURIComponent(jobId)}`, {
+        method: "DELETE",
+      }),
+  },
+};
