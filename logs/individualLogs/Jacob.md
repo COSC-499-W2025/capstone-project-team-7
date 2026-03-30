@@ -1,5 +1,111 @@
 
-# Jacob Damery
+# Jacob Damery  
+
+# Week 25–26: March 16 – March 29  
+
+This week I focused on establishing and refining the frontend UI system while also contributing to backend integrations and reviewing several major feature PRs across resume generation, skill analysis, contributor ranking, API fixes, and third-party integrations. My work followed a clear progression from building a shared UI foundation to polishing and finalizing consistency across the application.
+
+## Key Accomplishments  
+
+### UI Foundation & Component System [PR #485](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/485)
+
+I established the core UI foundation for the frontend refactor, consolidating large visual and structural changes into a single base branch to support future development.
+
+Key work included:
+
+- Refactored the dashboard shell, shared layouts, and sidebar structure to standardize page composition.
+- Introduced consistent UI primitives including cards, buttons, tabs, dialogs, loading states, and form controls.
+- Applied the new visual system across dashboard, authentication, portfolio, projects, resume builder, and public portfolio pages.
+- Consolidated previously merged changes into a clean base branch to improve reviewability and reduce merge conflicts.
+- Set up a scalable structure that allowed follow-up polish work to be developed and reviewed independently.
+
+---
+
+### Search & Settings UI Polish [PR #486](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/486)
+
+I implemented a focused follow-up PR to refine UI behavior and layout after the foundational system was in place.
+
+Key work included:
+
+- Refined search page layout and improved input behavior.
+- Improved settings page layout and loading states for better user feedback.
+- Applied targeted UI adjustments across shared components including form controls, scan progress, and skills timeline.
+- Updated development scripts to align with the updated frontend workflow.
+
+---
+
+### UI Consistency & System Cleanup (v2) [PR #495](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/495)
+
+I completed a broad consistency and maintainability pass across the UI system to resolve remaining issues after the refactor.
+
+Key work included:
+
+- Fixed invalid Tailwind sizing usage and replaced hardcoded styles with token-based equivalents.
+- Resolved spacing, alignment, and hover inconsistencies across dashboard pages.
+- Corrected multiple breakpoint and overflow issues affecting responsiveness.
+- Fixed dark/light mode inconsistencies across cards, rows, chips, dialogs, and states.
+- Cleaned up shared component usage to eliminate duplicate layout logic.
+- Fixed action bar, footer alignment, and card spacing issues caused by earlier overrides.
+- Ensured metric bars and loading states rendered correctly and consistently across views.
+
+---
+
+## Code Reviews  
+
+### Resume Backend Integration & PDF Export [PR #434](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/434)
+
+Reviewed a backend-focused PR adding resume item management, skill detection, and PDF export via LaTeX. The PR also introduced frontend integration for exporting resumes and importing project data. Verified API structure, data flow, and test coverage.
+
+---
+
+### Skill Analysis Final Enhancements [PR #438](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/438)
+
+Reviewed improvements to the skill analysis system including framework tier differentiation, new role profiles, and expanded architecture detection. The PR also improved scoring performance and added additional test coverage.
+
+---
+
+### Contributor Ranking & Auto Categorization [PR #444](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/444)
+
+Reviewed a feature introducing contributor ranking based on lines changed and a rule-based project categorization system. Verified aggregation logic, classification approach, and UI integration for displaying rankings and categories.
+
+---
+
+### Thumbnail DELETE API Fix [PR #493](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/493)
+
+Reviewed a bug fix addressing missing DELETE endpoint support for project thumbnails. Confirmed correct backend route implementation, storage cleanup, and test coverage for success and error cases.
+
+---
+
+### LinkedIn API Integration [PR #497](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/497)
+
+Reviewed integration of LinkedIn OAuth and direct posting functionality. The PR included token handling, Electron-compatible auth flow, refresh token logic, and UI updates for connecting and posting to LinkedIn.
+
+---
+
+### Project Upload Endpoint Fixes [PR #500](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/500)
+
+Reviewed fixes to incorrect API endpoints used during project re-scan and upload flows. Verified improved error messaging, correct endpoint usage, and additional safeguards including size checks and cleanup logic.
+
+---
+
+## Challenges & Learning  
+
+The UI foundation work required coordinating large-scale changes across many pages while keeping the application stable and functional. Splitting the work into a base PR followed by smaller polish and cleanup PRs was important to keep reviews manageable and reduce risk.
+
+One challenge was ensuring consistency across all UI states (loading, empty, error, dark/light modes) since small inconsistencies became noticeable once the system was unified. This required multiple passes and careful reuse of shared components.
+
+Through code reviews, I also gained a deeper understanding of backend systems including resume generation, OAuth flows, and project analysis pipelines. Reviewing large PRs required focusing on architecture, data flow, and edge cases rather than just surface-level changes.
+
+---
+
+## Impact  
+
+This week’s work establishes a consistent and scalable UI system across the application while resolving major usability and visual inconsistencies. The frontend is now significantly easier to maintain and extend.
+
+In addition, reviewing multiple backend and integration-focused PRs helped ensure reliability and quality as key features such as resume export, skill analysis, contributor ranking, and LinkedIn integration were finalized. Together, this contributes to a more polished and production-ready system heading into the final phase of the project.
+
+<img width="1073" height="629" alt="image" src="https://github.com/user-attachments/assets/0f46536e-3e96-4b49-9b35-1e05cf16439d" />
+
 
 # Week 24: March 9 – March 15
 
