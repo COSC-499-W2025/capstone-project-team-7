@@ -82,6 +82,9 @@ else:
         "Origin",
         "X-Requested-With",
         "Cache-Control",
+        "X-Contribution-User-Name",
+        "X-Contribution-User-Email",
+        "X-Contribution-User-Email-Aliases",
     ]
 
 app.add_middleware(

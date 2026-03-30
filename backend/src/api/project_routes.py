@@ -2115,11 +2115,19 @@ def _collect_files_for_ai(
 
     source_resolved = source_path.resolve()
 
-    for fpath in sorted(source_path.rglob("*")):
+    try:
+        all_files = sorted(source_path.rglob("*"))
+    except (OSError, FileNotFoundError):
+        # Windows MAX_PATH exceeded or broken symlinks (e.g. circular node_modules)
+        all_files = []
+    for fpath in all_files:
         if len(results) >= max_files or total_chars >= _AI_MAX_TOTAL_CHARS:
             break
 
-        if not fpath.is_file():
+        try:
+            if not fpath.is_file():
+                continue
+        except (OSError, FileNotFoundError):
             continue
 
         path_str = str(fpath.relative_to(source_path))
