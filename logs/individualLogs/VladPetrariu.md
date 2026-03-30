@@ -23,6 +23,9 @@ PRs Reviewed:
 - [PR #496](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/496) — Redesign learning resources: Reviewed the redesign of the Learning Resources tab in the Portfolio page, replacing the compact skill-grouped layout with individual resource cards grouped by importance level (Critical, Recommended, Nice to Have) with collapsible sections.
 - [PR #497](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/497) — LinkedIn API: Reviewed the addition of direct LinkedIn posting via the LinkedIn API with OAuth 2.0, encrypted token storage, polling-based connection detection for Electron, and enhanced share dialog with connect/post/disconnect flows.
 
+<img width="1090" height="642" alt="Screenshot 2026-03-30 at 12 00 08 AM" src="https://github.com/user-attachments/assets/85086993-95fd-41a4-b354-270843dc62fc" />
+
+
 # Week 24: March 9 - March 15
 
 PRs Merged:
