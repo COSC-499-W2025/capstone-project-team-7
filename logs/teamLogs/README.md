@@ -53,14 +53,53 @@ Finally, I reviewed Aaron’s **PR [#518 – “CORS fix”](https://github.com/
 
 Overall, most PRs were in good shape. The main issues were around missing guardrails (consent enforcement), state consistency on the frontend, and a few contract mismatches between backend and UI.
 
+**Om**:
+
+These two weeks I shipped nine features/enhancements, fixed three production bugs, and reviewed 20 teammate PRs - many across multiple review rounds with detailed security and correctness feedback.
+
+**Week 25 - Features & Enhancements:**
+
+[PR #458](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/458) added two major features. First, a **resource suggestions** system - a curated resource map (`resource_map.py`) covering 44 skills with learning resources at beginner/intermediate/advanced levels, a service that aggregates skill tiers across all user projects and recommends next-level resources, a `GET /api/portfolio/resource-suggestions?role=` endpoint with optional role-based filtering across 7 career paths, and a frontend `ResourceSuggestions` component with role selector and suggestion cards showing skill name, current/target tier badges, importance labels, and clickable resource pills. Second, **LinkedIn post sharing** - a template-based post builder for portfolio-level and single-project posts with top 3 projects by contribution score, key skills, commit metrics, language hashtags, and public portfolio URL; a `POST /api/portfolio/linkedin-post` endpoint; and a `LinkedInShareDialog` component with editable textarea, character count (3000 limit), copy-to-clipboard, and "Open LinkedIn" button. Wrote 45 tests across `test_resource_suggestions.py` (26 tests) and `test_linkedin_post.py` (19 tests).
+
+[PRs #436, #437, #438](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/438) added **skills analysis enhancements** - importance weights to skill gap analysis role profiles, ML/data science pattern detection, beginner/intermediate/advanced tier detection for 8 frameworks, ML Engineer and Security Engineer role profiles, and refactored framework tier detection with auto-derived mappings.
+
+[PR #444](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/444) added **contributor ranking** by lines changed and wired project category into scan_data storage and the project detail page.
+
+[PR #454](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/454) added a **CI/CD pipeline** with GitHub Actions for backend and frontend checks, decoupled static export from production builds, and added Railway deployment config.
+
+I also conducted a full system audit against all M1/M2/M3 requirements, identifying 6 gaps documented for the team ahead of the final presentation.
+
+**Week 26 - Features, Fixes & Hardening:**
+
+[PR #473](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/473) **rebranded the app** from "Lumen" to "DevFolio", implemented **Remember Me** login functionality (unchecked logins use `sessionStorage` instead of `localStorage`), and added a **logout button** to the sidebar.
+
+[PR #496](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/496) **redesigned the Learning Resources** tab - replaced the compact skill-grouped card layout with individual resource cards grouped by importance level (Critical, Recommended, Nice to Have) with collapsible sections, chevron animation, and `aria-expanded` for accessibility. Fixed null-importance resources not appearing in grouped view and added frontend component tests.
+
+[PR #497](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/497) added **LinkedIn direct posting via OAuth** - backend LinkedIn API service with OAuth 2.0 token exchange, encrypted token storage (reuses `user_secrets` table), and post creation; backend-handled OAuth callback for Electron compatibility; polling-based connection detection; enhanced share dialog with Connect/Post/Disconnect flows; auto-refresh of expired tokens; XSS-escaped callback HTML; and 2-minute polling timeout. 908 lines added.
+
+[PR #510](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/510) added **public portfolio deployment to Vercel** - static HTML generation mirroring the in-app Portfolio Overview layout, `POST`/`DELETE` deploy endpoints, `deployed_url` column migration, per-user deploy rate limiting (60s cooldown), avatar URL scheme validation, safe Vercel project naming with collision prevention, auto-undeploy on unpublish for privacy protection, and confirmation dialog on destructive remove. 1,158 lines added.
+
+[PR #519](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/519) fixed three production bugs: **CORS preflight failure** (custom `X-Contribution-*` headers missing from backend's CORS `allow_headers`), **resume editor crash** (auto-save `useEffect` referencing undefined variables after a refactor), and **Windows scan crash** (`pathlib.rglob("*")` exceeding MAX_PATH on circular symlinks).
+
+**PR Reviews (20 PRs across both weeks, multiple rounds):**
+
+*Week 25 (7 PRs):* Reviewed and approved Jacob's [#424](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/424) (portfolio UI redesign) and Samarth's [#423](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/423) (project rankings). Requested changes on Aaron's [#461](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/461) (missing generate modal, `get_profile` fetching all records, pagination regression) and [#462](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/462) (bundled scope, 4 sequential API calls, missing error handling - approved after 35 tests added and shared `template-options.ts`). Requested changes on Aaron's [#450](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/450) (logger hijack, disk leak, gutted encryption - approved after 6 commits), [#451](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/451) (raw fetch rewrite, removed types, 643-line monolithic component - approved after extraction), and Samarth's [#455](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/455) (consent returning 200 instead of 403/422, 837-line page, hardcoded exclusion lists - approved after TTL pruning and component extraction). Also approved Vlad's [#457](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/457) (branch diagram - requested changes on O(N) subprocess calls and single-letter function names, approved after batched queries and 5 new tests) and Aaron's [#452](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/452) (spec_routes refactor).
+
+*Week 26 (13 PRs):* Approved Joaquin's [#484](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/484) (CI/CD release workflows) and [#493](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/493) (DELETE thumbnail endpoint). Requested changes on Jacob's [#485](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/485) (missing CSS definitions, invalid Tailwind classes, hardcoded colors breaking design tokens - approved after fixes). Requested changes on Vlad's [#487](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/487) (operator precedence bug in JWT check, hardcoded colors, name-word heuristic false positives - approved after 3 rounds) and [#498](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/498) (chart aggregation counting entries instead of summing `evidence_count` - approved after fix). Approved Jacob's [#495](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/495) (UI v2). Requested changes on Vlad's [#500](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/500) across 3 rounds - route handler bypassing service layer via private method, `upload_from_path` accepting arbitrary filesystem paths, partial ZIP leak, symlink traversal, and sensitive directory exclusions - approved after 4 rounds. Requested changes on Joaquin's [#508](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/508) (`PYTEST_CURRENT_TEST` auth bypass, dead exception handler, missing CORS headers) and [#509](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/509) (same auth bypass, rate limiter behind proxy, deprecated `X-XSS-Protection`) - both approved after fixes. Approved Aaron's [#511](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/511) (resume editor improvements). Requested changes on Aaron's [#514](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/514) (endpoints bypassing consent gate, mock data fallback masking failures, sequential AI calls - approved after fix) and [#515](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/515) (stale results on failed search, stuck AI explanations, misleading "0" score ring - approved after fix). Approved Aaron's [#518](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/518) (CORS origin fix).
+
 ### What went well
-- Completing our app's features prior to our final demo
+- Shipped all planned features (portfolio deployment, LinkedIn OAuth, job match, security hardening, UI redesign) before the final demo
+- Thorough multi-round code reviews caught real security issues before they hit main — auth bypass via env var, arbitrary filesystem path reads, silent API failure masking, and CORS regressions
+- Public portfolio deployment to Vercel and LinkedIn direct posting give the app strong differentiators over other capstone projects
 
 ### Challenges
-- Time constraints
+- Several PRs required 3-4 review rounds due to security concerns or bundled scope — upfront design discussions would have saved time
+- CORS preflight regression from merging security hardening PRs that added strict headers but missed custom contribution headers
+- LinkedIn OAuth required multiple iterations to handle Electron's system browser constraint correctly
 
 ### Next steps
 - Project voting
+- Final documentation updates
 
 <p align="center">
   <img src="./charts/w26burnup.png" alt="Week 24 Burnup Chart width="400"/>
