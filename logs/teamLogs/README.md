@@ -1,6 +1,7 @@
 # Capstone Team 7 Logs
 
 ## Quick Navigation
+- [Week 25–26 (March 16th - 29th)](#week-25-26-march-16th---29th)
 - [Week 24 (March 9th - 15th](#week-24-march-9th---15th)
 - [Week 23 (March 2nd - 8th)](#week-23-march-2nd---8th)
 - [Week 20 - 22 (February 9th - March 1st)](#week-20---22-february-9th---march-1st)
