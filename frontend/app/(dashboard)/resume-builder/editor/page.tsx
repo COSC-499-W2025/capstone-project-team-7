@@ -190,12 +190,12 @@ function ResumeEditorPageInner() {
     if (!resumeId || !isDirty) return;
 
     const payload = {
-      name: debouncedResumeName,
-      template: debouncedTemplate,
-      latex_content: isLatexMode ? debouncedLatex : null,
+      name: debouncedDraft.resumeName,
+      template: debouncedDraft.template,
+      latex_content: isLatexMode ? debouncedDraft.latexContent : null,
       // Always persist structured_data so form-mode data is preserved
       // even when the user is editing in LaTeX mode.
-      structured_data: debouncedStructured,
+      structured_data: debouncedDraft.structuredData,
       is_latex_mode: isLatexMode,
     };
     const payloadKey = JSON.stringify(payload);
