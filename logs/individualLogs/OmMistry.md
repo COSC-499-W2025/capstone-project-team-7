@@ -1,13 +1,91 @@
 # Om Mistry (@OM200401)
 
+## Week 26 - March 23 - March 29
+
+This week I shipped four features/enhancements (app rebranding + auth UX, learning resources redesign, LinkedIn direct posting via OAuth, and public portfolio deployment to Vercel), fixed three production bugs (CORS preflight, resume editor crash, Windows scan crash), and reviewed 13 teammate PRs - many across multiple review rounds with detailed security and correctness feedback.
+
+**Core Implementation:**
+
+1. **App Rebranding & Auth UX Enhancements (PR #473):**
+   - Rebranded the app from "Lumen" to "DevFolio" - updated app name, page title, sidebar logo, and footer across the frontend
+   - Implemented "Remember Me" login functionality: unchecked logins store tokens in `sessionStorage` (cleared on browser close) instead of `localStorage` (persistent), defaults to checked for backwards compatibility
+   - Added logout button to the sidebar below Settings/Search, visible when authenticated, redirects to login page on click
+
+2. **Learning Resources Redesign (PR #496):**
+   - Replaced the compact skill-grouped card layout with individual resource cards grouped by importance level (Critical, Recommended, Nice to Have)
+   - Added collapsible sections with chevron animation and `aria-expanded` for accessibility when a role is selected, flat grid otherwise
+   - Each card shows type icon, level badge, title, reason text, skill name, importance badge, and "Open Link" button
+   - Updated all styling to match the project's design token system (split-callout header, LoadingState, proper empty/error states)
+   - Fixed null-importance resources not appearing in grouped view
+   - Added frontend component tests for resource suggestions
+
+3. **LinkedIn Direct Posting via OAuth (PR #497):**
+   - Built backend LinkedIn API service with OAuth 2.0 token exchange, encrypted token storage (reuses existing `user_secrets` table), and post creation
+   - Implemented backend-handled OAuth callback for Electron compatibility (system browser can't share auth state with Electron)
+   - Added polling-based connection detection so the Electron app picks up the OAuth result
+   - Built enhanced share dialog with "Connect LinkedIn" / "Post to LinkedIn" / "Disconnect" flows
+   - Auto-refresh of expired tokens via `refresh_token` grant
+   - XSS-escaped OAuth callback HTML, removed raw token from state, added post length validation
+   - Added 2-minute polling timeout and replaced invalid alert class with Tailwind
+   - Removed dead `linkedInCallback` function and `LinkedInCallbackRequest` type
+   - Fixed LinkedIn API version compatibility issues (updated to active API version)
+
+4. **Public Portfolio Deployment to Vercel (PR #510):**
+   - Built `portfolio_deploy_service.py` with static HTML generation mirroring the in-app Portfolio Overview layout - same grid structure, section panels, stat cards, heatmap, skills timeline, top projects, and skills library
+   - Added `POST /api/portfolio/deploy` and `DELETE /api/portfolio/deploy` endpoints for one-click deployment and removal
+   - Added `deployed_url` column to portfolio settings via Supabase migration
+   - Built frontend deploy/undeploy buttons with API client and response types
+   - Security hardening: per-user deploy rate limiting (60s cooldown), avatar URL scheme validation, safe Vercel project naming with collision prevention
+   - Auto-undeploy on unpublish (privacy protection) with confirmation dialog on destructive remove action
+   - Replaced Tailwind CDN with static CSS to eliminate external dependency
+   - Proper error propagation from Vercel API failures with parsed detail fields
+   - 1,158 lines added
+
+5. **Bug Fixes (PR #519):**
+   - Fixed CORS preflight failure - frontend sends custom `X-Contribution-User-Name`, `X-Contribution-User-Email`, and `X-Contribution-User-Email-Aliases` headers that were not in the backend's CORS `allow_headers` list, causing 400 on OPTIONS requests
+   - Fixed resume editor crash - auto-save `useEffect` referenced undefined variables (`debouncedResumeName`, `debouncedTemplate`) left over after a refactor to a bundled `debouncedDraft` object
+   - Fixed Windows scan crash - `pathlib.rglob("*")` on deeply nested circular symlinks exceeded Windows' MAX_PATH limit (260 chars), now gracefully catches `OSError`/`FileNotFoundError` and skips inaccessible paths
+
+**PR Reviews (13 PRs, multiple rounds):**
+- **PR #484** (joaquinalmora - CI/CD release workflows): Approved - clean workflow setup with runtime/test regression fixes.
+- **PR #485** (JacobDamery - UI foundation split): Requested changes on missing CSS class definitions (`.metric-bar`), invalid Tailwind `h-4.5`/`w-4.5` classes, hardcoded colors in `scan-dialog.tsx` breaking design token migration, `!important` overrides in globals.css, sidebar width duplication, and untyped `contributionMetrics` access. Re-reviewed - approved after fixes.
+- **PR #487** (VladPetrariu - Contribution metrics fixes): Requested changes on operator precedence bug in JWT error detection, hardcoded colors breaking design token migration, name-word heuristic false positives in commit share calculation, removed `!hasExplicitAuthorization` guard leaking refresh tokens, and dropdown `onClick` double-toggle. Re-reviewed twice - approved after 3 rounds.
+- **PR #493** (joaquinalmora - DELETE thumbnail endpoint): Approved - clean endpoint addition.
+- **PR #495** (JacobDamery - UI v2 update): Approved - consistent styling improvements.
+- **PR #498** (VladPetrariu - Skills progression graph): Requested changes on chart aggregation counting entries instead of summing `evidence_count`, unsafe typecast for `skill_progression` extraction, and missing type in `ProjectSkillsAnalysis` interface. Re-reviewed - approved after fixes.
+- **PR #500** (VladPetrariu - Upload to existing project): Requested changes across 3 review rounds - route handler bypassing service layer via private `_encrypt_scan_data` call, `upload_from_path` accepting arbitrary filesystem paths (security), partial ZIP leak on 413 error, symlink traversal risk, full ZIP read into memory for hashing, race condition on `scan_data` update, and sensitive directories not excluded during zipping. Approved after 4 rounds.
+- **PR #508** (joaquinalmora - Security hardening): Requested changes on `PYTEST_CURRENT_TEST` bypass skipping auth entirely (should use FastAPI `dependency_overrides`), dead `except CalledProcessError` handler, CORS headers missing `X-Requested-With`/`Cache-Control`, missing `HEAD` method for health checks, and silent `except: pass` in `consent.py`. Re-reviewed - approved after fixes.
+- **PR #509** (joaquinalmora - Security/editor stabilization): Requested changes on same `PYTEST_CURRENT_TEST` bypass, rate limiter using `get_remote_address` (ineffective behind reverse proxy), deprecated `X-XSS-Protection: 1; mode=block`, and `testserver` in default allowed hosts weakening trusted host check. Re-reviewed - approved after fixes.
+- **PR #511** (aaronbanerjee123 - Resume editor improvements): Approved - clean editor improvements.
+- **PR #514** (aaronbanerjee123 - Job Match backend): Requested changes on endpoints skipping external-services consent gate, JSearch client masking real API failures by falling back to mock data on any HTTP error, null `id` collision in saved jobs, and sequential AI calls per job in `/match` causing 20+ second response times (suggested `asyncio.gather`). Re-reviewed - approved after fixes.
+- **PR #515** (aaronbanerjee123 - Job Match frontend): Requested changes on stale results persisting when new search fails, AI explanations getting stuck on job cards across searches, saved jobs tab showing misleading "0" score ring, missing error feedback on save/unsave failures, and `formatSalary` treating 0 as falsy. Re-reviewed - approved after fixes.
+- **PR #518** (aaronbanerjee123 - CORS fix): Approved - straightforward CORS origin fix.
+
+**What Went Well:**
+- Public portfolio deployment to Vercel is a strong differentiator - users can now share a live URL of their portfolio with employers
+- LinkedIn direct posting replaces the manual copy/paste workflow, making the sharing feature significantly more polished
+- Thorough multi-round reviews on PRs #500, #508, #509, and #514 caught real security issues: arbitrary filesystem path reads, auth bypass via env var, and silent API failure masking
+- Shipped 4 features and 3 bug fixes while maintaining review throughput across 13 PRs
+
+**What Didn't Go Well:**
+- PR #500 required 4 review rounds due to security concerns with arbitrary filesystem path access and service layer bypasses - a design discussion upfront would have saved time
+- LinkedIn OAuth required multiple iterations to handle Electron's system browser constraint correctly
+- The CORS preflight bug (#519) was a regression from merging the security hardening PRs that added strict headers but missed the custom contribution headers
+
+**Next Steps:**
+- Final documentation updates
+- Prepare for end-of-term submission
+
+![Tasks Completed](./assets/Omistry_T2_Week12.png)
+
 ## Week 25 - March 16 - March 22
 
-This week I focused on three areas: building two new user-facing features (resource suggestions and LinkedIn post sharing), conducting a full requirements audit of the system against all three milestones ahead of Monday's final presentation, and performing thorough code reviews on 7 teammate PRs — several across multiple review rounds.
+This week I focused on three areas: building two new user-facing features (resource suggestions and LinkedIn post sharing), conducting a full requirements audit of the system against all three milestones ahead of Monday's final presentation, and performing thorough code reviews on 7 teammate PRs - several across multiple review rounds.
 
 **Core Implementation:**
 
 1. **Resource Suggestions Feature (PR #458):**
-   - Built a curated resource map (`resource_map.py`) covering 44 skills with learning resources at beginner/intermediate/advanced levels — articles, videos, courses, and docs
+   - Built a curated resource map (`resource_map.py`) covering 44 skills with learning resources at beginner/intermediate/advanced levels - articles, videos, courses, and docs
    - Created `resource_suggestions_service.py` that aggregates skill tiers across all user projects, identifies gaps, and recommends next-level resources
    - Added `GET /api/portfolio/resource-suggestions?role=` endpoint with optional role-based filtering across 7 career paths (Backend Developer, Frontend Developer, Full-Stack, Data Scientist, DevOps, ML Engineer, Security Engineer)
    - Built `ResourceSuggestions` component with role selector dropdown and suggestion cards showing skill name, current/target tier badges, importance labels, and clickable resource pills
@@ -20,7 +98,7 @@ This week I focused on three areas: building two new user-facing features (resou
    - Posts include top 3 projects by contribution score, key skills, commit metrics, language hashtags, and public portfolio URL
    - Added `POST /api/portfolio/linkedin-post` endpoint with `Literal`-typed Pydantic models
    - Built `LinkedInShareDialog` component with editable textarea, character count (3000 limit), copy-to-clipboard, and "Open LinkedIn" button
-   - Placed "Share on LinkedIn" button in the portfolio overview header alongside the existing Publish toggle — using the LinkedIn brand color for visibility
+   - Placed "Share on LinkedIn" button in the portfolio overview header alongside the existing Publish toggle - using the LinkedIn brand color for visibility
    - No OAuth required - clipboard-based approach
 
 3. **Skills Analysis Enhancements (PRs #436, #437, #438):**
@@ -44,24 +122,24 @@ This week I focused on three areas: building two new user-facing features (resou
 6. **Documentation & Testing:**
    - Updated `backend/src/api/README.md`, `docs/api-spec.yaml`, and `docs/feature-inventory.md` with new endpoints
    - Wrote 45 tests across `test_resource_suggestions.py` (26 tests) and `test_linkedin_post.py` (19 tests)
-   - Conducted full system audit against all M1/M2/M3 requirements — identified 6 gaps documented for the team
+   - Conducted full system audit against all M1/M2/M3 requirements - identified 6 gaps documented for the team
 
 **PR Reviews (7 PRs, multiple rounds):**
-- **PR #450** (aaronbanerjee123 - AI analysis endpoint): Requested changes on logger hijack, disk leak via `_permanent_dir`, removed skill types, gutted encryption, private LLM method access, and missing tests. Re-reviewed after fixes — approved after 6 commits addressed all items.
-- **PR #451** (aaronbanerjee123 - AI analysis frontend): Requested changes on `projects.ts` rewrite to raw fetch, removed frontend types, dead `/help` link, `/resumes` sidebar change, and 643-line monolithic component. Re-reviewed — approved after components extracted and API client reverted.
-- **PR #452** (aaronbanerjee123 - spec_routes refactor): Approved — identified dependency on PR #450 for `_collect_files_for_ai` import, dead code removal was a good catch.
-- **PR #455** (Samarth-G - AI batch analysis): Requested changes on consent returning 200 instead of 403/422, progress entries evaporating before frontend poll, 837-line page, hardcoded exclusion lists, and inconsistent message caps. Re-reviewed — approved after TTL pruning, component extraction, and constant unification.
-- **PR #457** (VladPetrariu - Git branch diagram): Requested changes on O(N) subprocess calls per branch, missing tests, and single-letter function names. Re-reviewed — approved after batched `for-each-ref` query, 5 new tests, and naming improvements.
+- **PR #450** (aaronbanerjee123 - AI analysis endpoint): Requested changes on logger hijack, disk leak via `_permanent_dir`, removed skill types, gutted encryption, private LLM method access, and missing tests. Re-reviewed after fixes - approved after 6 commits addressed all items.
+- **PR #451** (aaronbanerjee123 - AI analysis frontend): Requested changes on `projects.ts` rewrite to raw fetch, removed frontend types, dead `/help` link, `/resumes` sidebar change, and 643-line monolithic component. Re-reviewed - approved after components extracted and API client reverted.
+- **PR #452** (aaronbanerjee123 - spec_routes refactor): Approved - identified dependency on PR #450 for `_collect_files_for_ai` import, dead code removal was a good catch.
+- **PR #455** (Samarth-G - AI batch analysis): Requested changes on consent returning 200 instead of 403/422, progress entries evaporating before frontend poll, 837-line page, hardcoded exclusion lists, and inconsistent message caps. Re-reviewed - approved after TTL pruning, component extraction, and constant unification.
+- **PR #457** (VladPetrariu - Git branch diagram): Requested changes on O(N) subprocess calls per branch, missing tests, and single-letter function names. Re-reviewed - approved after batched `for-each-ref` query, 5 new tests, and naming improvements.
 - **PR #461** (aaronbanerjee123 - Resume profile CRUD): Requested changes on missing generate modal file, `get_profile` fetching all records, pagination regression, extra DB round-trip, and missing tests.
-- **PR #462** (aaronbanerjee123 - Generate resume from profile): Requested changes on bundled PR #461 code, 4 sequential API calls, missing error handling, and duplicated templates. Re-reviewed — approved after targeted DB queries, error handling, 35 tests, and shared `template-options.ts`.
+- **PR #462** (aaronbanerjee123 - Generate resume from profile): Requested changes on bundled PR #461 code, 4 sequential API calls, missing error handling, and duplicated templates. Re-reviewed - approved after targeted DB queries, error handling, 35 tests, and shared `template-options.ts`.
 
 **What Went Well:**
-- Resource suggestions feature differentiates our project from all other teams — no other capstone group has personalized learning recommendations
+- Resource suggestions feature differentiates our project from all other teams - no other capstone group has personalized learning recommendations
 - Thorough multi-round code reviews caught real issues: disk leaks, pagination regressions, race conditions, type regressions, and security concerns (encryption removal) before they hit main
 - Full milestone requirements audit gave the team a clear checklist of gaps to address before Monday
 
 **What Didn't Go Well:**
-- Several teammate PRs required 2-3 review rounds due to bundled scope (features + bug fixes + removals in one PR) — smaller focused PRs would have been faster to review and merge
+- Several teammate PRs required 2-3 review rounds due to bundled scope (features + bug fixes + removals in one PR) - smaller focused PRs would have been faster to review and merge
 - The requirements audit revealed documentation gaps (installation guide, test report, known bugs) that are harder to address last-minute
 
 **Next Steps:**
@@ -115,15 +193,15 @@ This week I shipped a three-part skills analysis enhancement (backend enrichment
    - Fixed email exposure vulnerability in public portfolio endpoint after code review feedback from JacobDamery
 
 6. **Profile Logout Fix (fix/profile-logout branch):**
-   - Fixed broken logout on the Profile page — was using an incomplete inline implementation that only cleared some tokens
+   - Fixed broken logout on the Profile page - was using an incomplete inline implementation that only cleared some tokens
    - Replaced with the `useAuth` hook's `logout()` which properly calls the backend, sets the logout flag, clears all token keys, and dispatches `auth:signout`
 
 7. **Peer Testing Preparation:**
-   - Created `docs/peer-testing-tasks.md` with a structured 6-task user evaluation flow covering account setup, scanning, project exploration, resume building, portfolio sharing, and wrap-up — timed for 15-minute sessions
+   - Created `docs/peer-testing-tasks.md` with a structured 6-task user evaluation flow covering account setup, scanning, project exploration, resume building, portfolio sharing, and wrap-up - timed for 15-minute sessions
 
 **PR Reviews (8 total):**
 - **PR #424** (JacobDamery - Portfolio UI Update): Approved with non-blocking suggestions on component size and CSS approach
-- **PR #423** (Samarth-G - Project Rankings): Approved — clean sort_mode implementation with DB constraint
+- **PR #423** (Samarth-G - Project Rankings): Approved - clean sort_mode implementation with DB constraint
 - **PR #415** (aaronbanerjee123 - Resume Frontend UI): Requested changes on deployment-breaking config and auto-save bugs, approved after fixes
 - **PR #414** (aaronbanerjee123 - Resume Frontend Types/API): Requested changes on `escapeLatex` corruption bug, approved after fixes
 - **PR #409** (aaronbanerjee123 - Resume API Routes): Approved after prior review feedback addressed
@@ -137,8 +215,8 @@ This week I shipped a three-part skills analysis enhancement (backend enrichment
 - Detailed PR reviews caught real bugs (LaTeX escaping, deployment config, auth gaps) before they hit main
 
 **What Didn't Go Well:**
-- The public portfolio endpoint initially exposed user emails — caught in review but should have been caught during development
-- Portfolio public mode PR grew large (984 additions) due to bundling auto-ranking with the sharing feature — could have been split into two PRs
+- The public portfolio endpoint initially exposed user emails - caught in review but should have been caught during development
+- Portfolio public mode PR grew large (984 additions) due to bundling auto-ranking with the sharing feature - could have been split into two PRs
 
 **Next Steps:**
 - Run peer testing session tomorrow (March 16) and log all identified issues as GitHub issues
@@ -148,6 +226,8 @@ This week I shipped a three-part skills analysis enhancement (backend enrichment
 Issues resolved: [#397 - Skills Analysis Enhancement](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/397)
 
 PRs: [#398 - Skills Backend Enrichment](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/398) (Merged), [#400 - Skills UI Enrichment](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/400) (Merged), [#401 - Rule Based Gap Analysis](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/401) (Merged), [#419 - Portfolio View Page](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/419) (Merged), [#421 - Portfolio Public Mode](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/421) (Merged)
+
+![Tasks Completed](./assets/Omistry_T2_Week10.png)
 
 ---
 
