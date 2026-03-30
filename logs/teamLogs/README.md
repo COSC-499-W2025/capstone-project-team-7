@@ -24,6 +24,34 @@
 
 ## Week 25-26 (March 16th - 29th)
 
+**Aaron**:
+These two weeks I shipped seven PRs spanning AI analysis, resume enhancements, and the full Job Match feature (backend + frontend), a CORS fix, and reviewed nine teammate PRs.
+
+**Week 25 — Features & Enhancements:**
+
+[PR #450 – "AI analysis endpoint"](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/450) added the backend `POST /projects/{project_id}/ai-analysis` endpoint that collects text files from a project, builds a categorized prompt, sends it to the LLM, and persists the structured JSON result into the project's `scan_data["ai_analysis"]`. Includes caching, path traversal protection, per-file and global character caps, and a two-tier file source strategy for Electron vs Docker environments.
+
+[PR #451 – "AI analysis page UI"](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/451) added the frontend AI Analysis page with a project selector, eligibility status panel (consent + API key checks), per-category result cards with contextual icons, a `useAiEligibility` hook, and TypeScript types for the analysis API. Updated the sidebar navigation.
+
+[PR #452 – "Clean up spec_routes.py"](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/452) refactored the scan background task — fixed variable naming, stored `project_source_path` instead of the ephemeral temp path, wrapped auto-categorization in try/except, and removed a duplicate error raise in the dedup endpoint.
+
+[PR #462 – "Resume profile CRUD and generate from profile"](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/462) added full resume profile CRUD (GET/PUT endpoints), a `ProfileForm` component with editable sections, and a `GenerateFromProfileModal` with a multi-step flow (select template → pick project scan items → generate resume with LaTeX). Added 9 tests. Addressed Om's review feedback by adding the generate modal, fixing `get_profile` to use targeted queries, and extracting shared template constants.
+
+**Week 26 — Features & Fixes:**
+
+[PR #511 – "Resume editor improvements"](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/511) improved resume editor responsiveness by wrapping handlers in `useCallback`, applying `React.memo` to child components, adding autosave deduplication via `lastSavedPayloadRef`, and fixing a `CommaSeparatedInput` sync bug. Pure performance improvement with no visual changes.
+
+[PR #514 – "Job Match backend API"](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/514) added the complete backend for Job Match: 6 endpoints (`/api/jobs/search`, `/match`, `/explain`, `/saved` CRUD) powered by JSearch (RapidAPI), dual scoring (keyword + AI resume), mock fallback for offline dev, and saved jobs persistence. After review feedback from Joaquin and Om, added consent gate enforcement, restricted mock fallback to missing API key only, fixed null job ID collisions, and parallelized AI scoring with `asyncio.gather`. 14 tests.
+
+[PR #515 – "Job Match frontend"](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/515) added the frontend Job Match UI: `useJobMatch` hook, `JobSearchForm` with keyword/location/salary/country fields and resume selector, `JobCard` with dual score rings and match reason badges, `JobResultsList` grid, and a main page with Search / My Jobs tabs. After review feedback, fixed stale results on failed searches, AI explanation caching across searches, save/unsave error handling, and `formatSalary` treating 0 as falsy. 1,843 lines added.
+
+[PR #518 – "CORS fix"](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/518) prevented auth tokens from being attached to auth endpoints, avoiding retry loops and token leakage.
+
+**PR Reviews (9 PRs across both weeks):**
+
+Reviewed and approved Om's [#458](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/458) (resource suggestions system + LinkedIn post sharing — 44-skill resource map, 7 career paths, template-based post builder with 3000-char limit). Reviewed and approved Om's [#454](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/454) (CI/CD pipeline with GitHub Actions and Railway deployment config). Reviewed and approved Om's [#443](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/443) (ZIP scan selection fix). Reviewed and approved Om's [#510](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/510) (public portfolio deployment to Vercel with static HTML generation, rate limiting, and auto-undeploy). Reviewed and approved Vlad's [#457](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/457) (git analysis overview tab with branch diagram). Reviewed and approved Samarth's [#455](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/455) (AI analysis with batching and consent checks). Reviewed and approved Samarth's [#513](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/513) (AI analysis upgrade). Reviewed and approved Joaquin's [#508](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/508) (P0 security hardening) and [#509](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/509) (P1 security hardening and editor/type stabilization).
+
+
 **Jacob**
 These weeks I worked on establishing and refining the frontend UI system while reviewing a set of PRs across resume features, skill analysis, contributor insights, API fixes, and external integrations. My focus was on UI consistency, system stability, and ensuring correctness across both frontend and backend workflows.
 
