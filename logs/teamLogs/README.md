@@ -24,6 +24,25 @@
 
 ## Week 25-26 (March 16th - 29th)
 
+**Jacob**
+These weeks I worked on establishing and refining the frontend UI system while reviewing a set of PRs across resume features, skill analysis, contributor insights, API fixes, and external integrations. My focus was on UI consistency, system stability, and ensuring correctness across both frontend and backend workflows.
+
+I implemented [PR #485 – "UI foundation"](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/485), [PR #486 – "Search and settings polish"](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/486), and [PR #495 – "UI v2 cleanup"](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/495). These changes established a shared design system and standardized layout structure across the application. The initial foundation introduced consistent UI primitives and layout patterns across dashboard, portfolio, project, and resume flows. Follow-up work in [#486](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/486) refined search and settings behavior and improved loading states. In [#495](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/495), I completed a full consistency pass, fixing spacing, responsiveness, and dark/light mode issues, and replacing hardcoded styles with token-based values. Overall, this significantly improved maintainability and visual consistency across the app.
+
+I reviewed Aaron's [PR #434 – "Resume backend integration and PDF export"](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/434). This introduced resume item management, skill detection, and LaTeX-based PDF export, along with frontend integration for importing project data. The API structure and data flow were solid, and test coverage was good.
+
+I reviewed Om's [PR #438 – "Skill analysis final enhancements"](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/438). This improved the skills pipeline with framework tiering, expanded architecture detection, and better scoring performance. The analysis is more meaningful and the frontend reflects the richer data well.
+
+I reviewed Om's [PR #444 – "Contributor ranking and categorization"](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/444). This added contributor ranking based on commit data and a rule-based system for categorizing projects. The aggregation logic and UI integration were clean, and the feature adds useful insight into project contributions.
+
+I reviewed [PR #493 – "Thumbnail DELETE API fix"](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/493). This resolved a missing backend endpoint and ensured proper storage cleanup. The fix was straightforward and included appropriate test coverage.
+
+I reviewed [PR #500 – "Project upload endpoint fixes"](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/500). This corrected incorrect API usage during re-scan and upload flows. The improved error handling and added safeguards such as file size validation help prevent failures and improve stability.
+
+I reviewed [PR #497 – "LinkedIn API integration"](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/497). This added OAuth authentication and direct posting functionality, including secure token handling, refresh logic, and an Electron-compatible flow. The integration was well structured and aligns with the rest of the system.
+
+Overall, most PRs were in good shape. The main focus this week was improving UI consistency and stabilizing core workflows, while ensuring backend integrations and new features were implemented correctly and aligned with existing system behavior.
+
 **Joaquin**: 
 These weeks I reviewed a set of PRs across skills analysis, portfolio, job match, hardening, and resume features, focusing on correctness, API consistency, UI behavior, and edge-case handling.
 
