@@ -1,4 +1,67 @@
 # Aaron Banerjee (@aaronbanerjee123)
+## Term 2 - Week 12 (March 23rd - March 29th)
+
+## perf: resume editor improvements (PR#511) [PR#511](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/511)
+
+Improved resume editor responsiveness by reducing unnecessary rerenders, stabilising callback references passed to child components, and deduplicating autosave network requests. Wrapped `handleLatexChange`, `updateStructuredData`, and `handleModeSwitch` in `useCallback` so child components receive stable function references and skip unnecessary rerenders. Applied `React.memo` to `LatexEditor`, `FormEditor`, `FormPreview`, `PreviewPlaceholder`, and `CommaSeparatedInput` so they only rerender when their props actually change. Added a `lastSavedPayloadRef` that tracks the JSON of the most recently saved payload and compares before firing an autosave, eliminating redundant network requests on mode switches and no-op edits. Fixed a `CommaSeparatedInput` sync bug by changing the parent-sync `useEffect` dependency from the array reference (`value`) to a derived string (`value.join(", ")`), preventing spurious state resets while the user is typing.
+
+### Challenges & Learning
+- Diagnosing the rerender cascade required React DevTools Profiler to pinpoint which child components were re-rendering unnecessarily on every keystroke due to unstable callback references.
+- The autosave deduplication required careful JSON comparison of payloads to avoid both missed saves (stale ref) and duplicate saves (reference equality vs. value equality).
+- The `CommaSeparatedInput` bug was subtle — React's `useEffect` dependency on an array reference triggered on every parent render even when the array contents hadn't changed, causing cursor position loss mid-type.
+
+### Impact
+- Typing in a single form field no longer triggers rerenders of the LaTeX editor and preview panel, significantly improving perceived responsiveness.
+- Mode switches (LaTeX ↔ Form) with no edits no longer fire redundant autosave PUT requests, reducing unnecessary network traffic.
+- Rapid edits across multiple fields still coalesce into a single debounced save after 1.5s, preserving data integrity without performance cost.
+
+### Issues Resolved
+- [#505](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/505)
+
+---
+
+## feat: add Job Match backend API with JSearch integration (PR#514) [PR#514](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/514)
+
+Added the complete backend for the Job Match feature: a JSearch-powered job search API with keyword scoring, AI resume-based scoring, saved jobs persistence, and AI match explanations. New endpoints include `POST /api/jobs/search` (raw job search via JSearch/RapidAPI), `POST /api/jobs/match` (search + keyword scoring + optional AI resume scoring), `POST /api/jobs/explain` (AI-generated match explanation for a single job), `GET /api/jobs/saved`, `POST /api/jobs/saved`, and `DELETE /api/jobs/saved/{job_id}`. JSearch aggregates from Indeed/LinkedIn/Glassdoor and returns direct apply links to real postings. Implemented dual scoring: keyword score (always) plus AI resume score (when `resume_id` is provided via LLMClient). Added a mock fallback with 5 realistic jobs when `RAPIDAPI_KEY` is absent so development works fully offline. Saved jobs use the existing `local_store.py` in-memory dict pattern. After review feedback from Joaquin and Om, added external-services consent gate enforcement, fixed the JSearch client to only use mock fallback when the API key is missing (not on HTTP errors), fixed null job ID collisions in saved jobs, and parallelized AI scoring calls with `asyncio.gather` to reduce latency. Wrote 14 tests covering all endpoints with mock data.
+
+### Challenges & Learning
+- Integrating with the RapidAPI JSearch endpoint required handling diverse response structures across different job boards (Indeed, LinkedIn, Glassdoor) and normalizing them into a consistent `ScoredJob` schema.
+- The review feedback highlighted that the mock fallback was too aggressive — falling back on any HTTP error masked real failures like bad credentials or rate limits. Restricting it to missing API key only was a key design correction.
+- Parallelizing AI scoring calls with `asyncio.gather` instead of sequential awaits was critical for acceptable latency — 10 jobs at ~2s per LLM call would have meant 20+ second response times sequentially.
+
+### Impact
+- Users can now search for jobs matching their skills and get keyword-based match scores, directly from the dashboard.
+- When a resume is selected, AI-powered scoring provides a second match dimension with detailed match reasons, helping users identify the most relevant opportunities.
+- The mock fallback enables full offline development without a RapidAPI key, keeping the dev workflow frictionless.
+
+### Issues Resolved
+- [#517](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/517)
+
+---
+
+## feat: Job Match frontend UI (PR#515) [PR#515](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/515)
+
+Added the complete frontend for the Job Match feature: search interface, resume-based AI scoring, job saving with a "My Jobs" tab, and sidebar navigation. Created `useJobMatch` hook managing search results, saved jobs state, save/unsave actions, and resume ID forwarding. Built a `JobSearchForm` component with keyword, location, salary, and country fields plus a resume selector dropdown for AI scoring. Implemented `JobCard` with dual score rings (AI + keyword), match reason badges, an AI Explain button, save/unsave bookmark, and external apply link. Added `JobResultsList` grid that threads save/unsave props to each card, and the main `page.tsx` with Search / My Jobs tab navigation, error handling, and empty states. Updated `api.ts` with `ai_score` field on `ScoredJob`, `resume_id` param on `jobs.match()`, and a `jobs.saved` namespace. Added Job Match nav link with Target icon to the sidebar. After review feedback from Joaquin and Om, fixed stale results persisting on failed searches by clearing results/total on error, fixed AI explanation caching by keying on both job ID and resume context, added try/catch to save/unsave actions, improved resume list fetch error feedback, and fixed `formatSalary` treating 0 as falsy.
+
+### Challenges & Learning
+- The stale-results bug was a subtle state management issue — on search failure, the hook set an error but never cleared previous results, so the page rendered an error banner alongside old job cards from the last successful search.
+- The AI explanation caching bug occurred because `JobResultsList` keyed cards only by `job.id`; if the same job appeared in a later search with a different resume, the existing card reused the old cached explanation. Solved by incorporating resume context into the cache key.
+- Designing the dual score ring visualization required careful UX consideration — the keyword score ring always renders while the AI score ring only appears when a resume is selected, avoiding misleading "0" scores.
+
+### Impact
+- Users now have a dedicated Job Match page accessible from the sidebar, making job discovery a first-class feature in the dashboard.
+- The dual scoring visualization (keyword + AI) provides at-a-glance relevance assessment, and match reason badges explain why each job scored the way it did.
+- The My Jobs tab with save/unsave bookmarks lets users curate a shortlist of opportunities across search sessions.
+
+### Issues Resolved
+- [#516](https://github.com/COSC-499-W2025/capstone-project-team-7/issues/516)
+
+---
+
+**PR's:**
+- https://github.com/COSC-499-W2025/capstone-project-team-7/pull/511
+- https://github.com/COSC-499-W2025/capstone-project-team-7/pull/514
+- https://github.com/COSC-499-W2025/capstone-project-team-7/pull/515
 
 ## Term 2 - Week 11 (March 16th - March 22nd)
 
