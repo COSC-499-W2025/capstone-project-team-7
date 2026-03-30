@@ -1,3 +1,28 @@
+# Week 25 & 26: March 16 - March 29
+
+PRs Merged:
+- [PR #444](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/444) — Feat/contributor ranking and auto categorization: Added lines of code tracking to git analysis by running a single git log --all --numstat pass to collect insertions and deletions per author. The frontend contributors table now shows Lines Added and Lines Deleted columns with a Commits/Lines Changed toggle that re-sorts and recalculates share percentages. Also implemented a rule-based project auto-categorizer (project_classifier.py) that classifies projects into one of 11 types (Web Application, API/Backend Service, Data Science/ML, CLI Tool, etc.) by scoring file names, extensions, directory structure, and language distribution against weighted rules.
+- [PR #446](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/446) — Fix: replace mock toast system with sonner and narrow bare except handlers: Replaced the mock notification system (frontend/lib/notifications.ts) with real user-facing toast notifications by wiring up sonner, which was already installed but unused. Users now see visible error/success messages instead of console-only logging. Also narrowed bare except handlers in code_parser.py and resume_routes.py to catch only specific exceptions (ValueError, TypeError, IOError), preventing accidental suppression of system-level exceptions.
+- [PR #457](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/457) — Feat/git analysis overview tab: Moved the Git Analysis tab from "Tools & Export" to "Overview & Analysis" and replaced the flat branch name list with an interactive SVG branch relationship diagram that visualizes how branches fork off and merge back into main. The backend's _analyze_branches function now detects each branch's merge status, merge date, and commit count. Branch names are colour-coded to match their graph line, with merged/open badges and metadata shown alongside. Also changed the default contributor ranking to sort by lines changed rather than commit count, and reformatted the timeframe display for readability.
+- [PR #487](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/487) — Fix/contribution metrics and others: Fixed several bugs across the frontend and backend. The Contributions tab now shows top 6 contributors and computes "Your Share" by matching the logged-in user's email against git contributors. Moved the Code Analysis tab from "Content Analysis" to "Overview & Analysis". Fixed a JWT expired error on startup by making the frontend trigger token refresh on 401 responses and having the backend return 401 instead of 500 for JWT errors. Fixed the resume card dropdown menu not opening by resolving a click handler conflict in the shared DropdownMenu component.
+- [PR #498](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/498) — Feat/skills progression graph: Added an interactive skills progression graph to the Skills & Progress tab. The graph shows the frequency of each detected skill over time, with a selectable list of all skills found in the project. The Y-axis value represents the evidence count — the number of code patterns, commits, or files demonstrating that skill in each month — sourced from the backend's SkillsExtractor via git history and code analysis.
+- [PR #500](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/500) — Fix/re-scan and error message: Fixed broken API endpoints when uploading a newer version of a project to an existing project in DevFolio. Replaced the incorrect endpoints with the correct ones and improved error messaging. The append logic now handles three cases: duplicate files are skipped (SHA-256 hash comparison), changed files are updated, and new files are added. Added three layers of protection: a 500MB free disk space pre-check, a 500MB ZIP size cap during creation, and automatic ZIP cleanup after merge.
+
+PRs Reviewed:
+- [PR #430](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/430) — Implement readFile IPC channel and profile avatar fix: Reviewed the addition of an Electron IPC file-read bridge to fix profile avatar uploads in the desktop app, converting local image paths into uploadable File objects.
+- [PR #432](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/432) — Tiered Proficiency Scoring: Reviewed the replacement of flat evidence-count-based proficiency scoring with a complexity-tier-based model where each detected pattern is assigned a beginner, intermediate, or advanced tier. Includes 8 new tests.
+- [PR #441](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/441) — Fix: harden dev_up dependency integrity checks: Reviewed fixes for desktop startup failures by replacing directory-only install checks with dependency integrity validation in dev_up_desktop.sh. Also includes README cleanup and removal of deprecated CLI/TUI tests.
+- [PR #443](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/443) — Fix/zip scan selection: Reviewed fixes for ZIP file selection on Windows and added multi-project detection support. Electron's scan dialog now uses separate dialogs for Folder and ZIP selection, and the backend uses ProjectDetector to run analysis per sub-project in parallel.
+- [PR #447](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/447) — Platform UI Refactor (closed): Reviewed a UI refactor of the Projects experience for cleaner visual hierarchy, including redesigned project list page, refactored detail modal, standardized loading indicators, and shared section patterns.
+- [PR #450](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/450) — AI analysis endpoint and persist results to DB: Reviewed the new POST /projects/{project_id}/ai-analysis backend endpoint that collects text files, builds a categorized prompt, sends it to the LLM, and saves the structured result into the project's scan_data.
+- [PR #451](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/451) — AI analysis page UI and frontend API calls: Reviewed the AI Analysis frontend page allowing users to trigger AI analysis and view structured results rendered as a markdown report, including sidebar navigation, TypeScript types, and API client functions.
+- [PR #452](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/452) — Refactor: clean up spec_routes.py: Reviewed cleanup of scan background task logic, variable naming inconsistencies, and removal of a redundant helper function in spec_routes.py.
+- [PR #462](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/462) — Generate resume from profile: Reviewed the addition of full resume profile CRUD and a "Generate from Profile" modal, enabling users to save persistent profile data (contact, education, experience, skills, awards) and generate new resumes pre-filled from that profile. Includes backend endpoints, frontend tabbed layout, and 9 new tests.
+- [PR #485](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/485) — UI foundation and components: Reviewed the foundational UI refactor covering dashboard shell, shared layouts, sidebar structure, and refreshed UI primitives (cards, buttons, tabs, dialogs, loading states, form controls) applied across dashboard, auth, portfolio, project, resumes, and public portfolio pages.
+- [PR #486](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/486) — Search and settings polish: Reviewed follow-up polish on top of the UI foundation branch, refining search page layout, settings-page loading states, and small supporting UI adjustments to skills timeline, scan progress, and shared styling.
+- [PR #496](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/496) — Redesign learning resources: Reviewed the redesign of the Learning Resources tab in the Portfolio page, replacing the compact skill-grouped layout with individual resource cards grouped by importance level (Critical, Recommended, Nice to Have) with collapsible sections.
+- [PR #497](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/497) — LinkedIn API: Reviewed the addition of direct LinkedIn posting via the LinkedIn API with OAuth 2.0, encrypted token storage, polling-based connection detection for Electron, and enhanced share dialog with connect/post/disconnect flows.
+
 # Week 24: March 9 - March 15
 
 PRs Merged:
@@ -6,11 +31,11 @@ PRs Merged:
 PRs Reviewed:
 - [PR #419](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/419) — Portfolio View Page: Reviewed the addition of a portfolio dashboard with visualizations (activity heatmap, skills timeline, top 3 project showcase) and consolidation with existing CRUD into a single tabbed page with Overview, Portfolio Items, and Project Timeline tabs. All data sourced from existing API endpoints with no backend changes.
 
-<img width="1087" height="639" alt="Screenshot 2026-03-15 at 11 51 26 PM" src="https://github.com/user-attachments/assets/8e7e9646-3f1d-425e-b2a8-61934489cca3" />
+<img width="1087" height="639" alt="Screenshot 2026-03-15 at 11 51 26 PM" src="https://github.com/user-attachments/assets/8e7e9646-3f1d-425e-b2a8-61934489cca3" />
 
 # Week 23: March 2 - March 8
 
-PRs Merged:                                                                                                                                                                                   
+PRs Merged:
 - [PR #387](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/387) — Move user scoped env settings to settings page: Merged a feature that adds persistent API key storage via a new user_secrets table with AES-GCM encryption. Includes new /api/settings/secrets endpoints (GET, PUT, DELETE, POST verify), automatic DB fallback for hydrating LLM clients, and an "External Services" card in the Settings UI. Includes 10 backend and 7 frontend tests.
 - [PR #386](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/386) — Removed useless scanned results tab: Merged a UI cleanup that removed the non-functional "Scanned results" tab from the interface. Verified visually that removal was clean with no regressions.
 
@@ -22,14 +47,14 @@ covering loading/error/empty states, debounced search, filter controls, reset, a
 - [PR #389](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/389) — Feature/encryption status: Reviewed the addition of encryption status reporting — a new GET /api/encryption/status endpoint, Settings UI
 status indicators (ready/misconfigured with guidance), a help page for encryption setup, and backend + frontend tests.
 
-<img width="1089" height="643" alt="Screenshot 2026-03-08 at 10 37 45 PM" src="https://github.com/user-attachments/assets/e5020bb2-1fb4-421e-ba79-ae73192de14f" />
+<img width="1089" height="643" alt="Screenshot 2026-03-08 at 10 37 45 PM" src="https://github.com/user-attachments/assets/e5020bb2-1fb4-421e-ba79-ae73192de14f" />
 
 # Week 20 & 21 & 22: February 9 - March 1
 
-  Contributions:                                                                                                                                                                                                                                            
+  Contributions:
   [PR #329](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/329) — Git Analysis Tab (+263/−76, merged Feb 17)
-  - Implemented the Git Analysis tab on the project analysis page, displaying git contribution metrics including commit counts, contributor        
-  breakdowns with percentages, monthly commit timelines, top files, languages, and branch information.                       
+  - Implemented the Git Analysis tab on the project analysis page, displaying git contribution metrics including commit counts, contributor
+  breakdowns with percentages, monthly commit timelines, top files, languages, and branch information.
   - Added automated tests for the new tab and resolved merge conflicts with main.
   - Addressed reviewer-requested changes in a follow-up commit.
 
@@ -52,33 +77,33 @@ status indicators (ready/misconfigured with guidance), a help page for encryptio
   - [PR #353](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/353) — Add GET /api/skills endpoint: Reviewed new backend API endpoint for skills.
   - [PR #366](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/366) — Feature/portfolio: Reviewed portfolio feature implementation.
 
-<img width="1087" height="638" alt="Screenshot 2026-03-01 at 8 48 45 PM" src="https://github.com/user-attachments/assets/1698a108-52c6-44f5-8f84-1f2280f9adc6" />
+<img width="1087" height="638" alt="Screenshot 2026-03-01 at 8 48 45 PM" src="https://github.com/user-attachments/assets/1698a108-52c6-44f5-8f84-1f2280f9adc6" />
 
 # Week 18 & 19: January 26 - February 8
- Code Contributions                                                                                       
-  - https://github.com/COSC-499-W2025/capstone-project-team-7/pull/285 — Built the Project Analysis     
+ Code Contributions
+  - https://github.com/COSC-499-W2025/capstone-project-team-7/pull/285 — Built the Project Analysis
   wireframe page with a scrollable tab bar, sidebar navigation, and back-link routing. Wrote 27
   automated tests. Closes #271.
-  - https://github.com/COSC-499-W2025/capstone-project-team-7/pull/265 — Implemented the user Profile   
-  page with editable fields (name, avatar, education, career, GitHub/Drive URLs), password change with  
-  current-password verification, dirty-state detection, and logout. Wrote 16 automated tests. Closes    
+  - https://github.com/COSC-499-W2025/capstone-project-team-7/pull/265 — Implemented the user Profile
+  page with editable fields (name, avatar, education, career, GitHub/Drive URLs), password change with
+  current-password verification, dirty-state detection, and logout. Wrote 16 automated tests. Closes
   #256.
 
   Code Reviews
   - https://github.com/COSC-499-W2025/capstone-project-team-7/pull/288 — Document Analysis Tab.
   Approved; noted mock data will need future API integration.
-  - https://github.com/COSC-499-W2025/capstone-project-team-7/pull/286 — Run New Scan. Approved; agreed 
-  with requested fixes for polling memory leaks and race conditions, suggested exponential backoff for  
+  - https://github.com/COSC-499-W2025/capstone-project-team-7/pull/286 — Run New Scan. Approved; agreed
+  with requested fixes for polling memory leaks and race conditions, suggested exponential backoff for
   long scans.
-  - https://github.com/COSC-499-W2025/capstone-project-team-7/pull/266 — Settings Page. Approved with   
+  - https://github.com/COSC-499-W2025/capstone-project-team-7/pull/266 — Settings Page. Approved with
   detailed feedback: flagged duplicated request helpers, a hardcoded preload fallback map, and incorrect
    isDev logic. Recommended moving token storage to Electron safeStorage before production.
-  - https://github.com/COSC-499-W2025/capstone-project-team-7/pull/264 — Sidebar Navigation. Approved;  
+  - https://github.com/COSC-499-W2025/capstone-project-team-7/pull/264 — Sidebar Navigation. Approved;
   clean minimal setup with good placeholders.
-  - https://github.com/COSC-499-W2025/capstone-project-team-7/pull/260 — Pro Contrast Global Styles.    
-  Requested changes: destructive buttons need red color distinction, and typography rules should be     
+  - https://github.com/COSC-499-W2025/capstone-project-team-7/pull/260 — Pro Contrast Global Styles.
+  Requested changes: destructive buttons need red color distinction, and typography rules should be
   scoped to a wrapper class to avoid shadcn conflicts.
-  - https://github.com/COSC-499-W2025/capstone-project-team-7/pull/258 — Electron Auth. Approved;       
+  - https://github.com/COSC-499-W2025/capstone-project-team-7/pull/258 — Electron Auth. Approved;
   well-structured auth infrastructure with password strength indicator and theme switching.
   - https://github.com/COSC-499-W2025/capstone-project-team-7/pull/255 — API Contract Tests. Approved.
 
@@ -96,7 +121,7 @@ Achieved comprehensive test coverage with 13 tests for the new endpoints, ensuri
 Conducted peer code reviews for five PRs: [PR #252](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/252) (Config/Profiles API TUI integration), [PR #250](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/250) (Resume Items CRUD), [PR #249](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/249) (Save Project Bugfix), [PR #245](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/245) (Cross Entity Search), and [PR #243](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/243) (Override API Endpoints), providing feedback and approving changes to maintain code quality and team velocity.
 Contributed to team progress by validating API integration patterns, TUI wiring, and test coverage across multiple teammate PRs, ensuring consistent implementation approaches as we continue our backend-driven migration.
 
-<img width="1081" height="634" alt="Screenshot 2026-01-25 at 7 08 01 PM" src="https://github.com/user-attachments/assets/1cad6bb0-7db8-4138-9782-b0b8f6f759a8" />
+<img width="1081" height="634" alt="Screenshot 2026-01-25 at 7 08 01 PM" src="https://github.com/user-attachments/assets/1cad6bb0-7db8-4138-9782-b0b8f6f759a8" />
 
 
 # Week 16: January 12 - January 18
@@ -109,7 +134,7 @@ Key achievements:
 - Conducted peer code reviews for [PR #233](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/233) and [PR #234](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/234), providing actionable feedback and approving changes to maintain code quality and forward progress.
 - Contributed to team velocity and stability by reviewing, validating, and approving teammate PRs alongside feature development work.
 
-<img width="1082" height="642" alt="Screenshot 2026-01-18 at 2 42 46 PM" src="https://github.com/user-attachments/assets/399898a6-4c0b-469b-888a-33a711bd185d" />
+<img width="1082" height="642" alt="Screenshot 2026-01-18 at 2 42 46 PM" src="https://github.com/user-attachments/assets/399898a6-4c0b-469b-888a-33a711bd185d" />
 
 # Week 15: December 4 - December 11
 This week I implemented PR ([212](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/212)) the one‑shot scan API in the main backend, delivering authenticated POST /api/scans and GET /api/scans/{scan_id} endpoints with background execution, progress polling, and result payloads. The implementation integrates auth via get_auth_context, enforces per‑user scan isolation, and validates input early to protect the system.
@@ -133,26 +158,26 @@ This week I implemented PR ([212](https://github.com/COSC-499-W2025/capstone-pro
 
 In addition to these changes, i reviewed PR's ([214](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/214), ([213](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/213)), and ([209](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/209)).
 
-<img width="1089" height="640" alt="Screenshot 2026-01-11 at 4 57 25 PM" src="https://github.com/user-attachments/assets/b0638a30-07b7-444b-b421-8a1b2281dd87" />
+<img width="1089" height="640" alt="Screenshot 2026-01-11 at 4 57 25 PM" src="https://github.com/user-attachments/assets/b0638a30-07b7-444b-b421-8a1b2281dd87" />
 
 # Week 14: December 1 - December 7
 This week I completed a targeted UI bug fix and contributed to our demo recording. I opened **PR [#186](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/186)**, which resolved a visual issue in the settings and user-preferences menu where text labels and toggle switches were partially hidden, preventing proper user interaction. I also reviewed **PR [#190](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/190)** from Aaron, providing feedback on his UI refresh that improves overall usability and consistency across the interface.
 
 Beyond development work, I recorded several segments of our demo video, specifically the parts shown in the attached screenshot, highlighting how our system identifies programming languages, extracts contribution metrics, and summarizes project information.
 
-<img width="1081" height="636" alt="Screenshot 2025-12-07 at 7 32 43 PM" src="https://github.com/user-attachments/assets/be50d76f-4573-4a8a-961c-a0db6215a9d3" />
+<img width="1081" height="636" alt="Screenshot 2025-12-07 at 7 32 43 PM" src="https://github.com/user-attachments/assets/be50d76f-4573-4a8a-961c-a0db6215a9d3" />
 
 # Week 13: November 24 - November 30
-This week I implemented a sign up feature into our TUI **[*155](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/169). Previously, when testing we would have to manually create a user within Supabase then use that information to log into the account within the TUI. After adding a sign up feature within our TUI that sends the user infromtation to be stored in Supabase, testing and account creation can be fully done within the TUI while running the program. The sign up feature also has account creation restriction such as requiring the user to enter a real email into the username section as oppossed to a random name and requiring the password to be a certain number of digits to ensure that the account is secure. Along with this implementation I also added tests to verify that the account creation works accross different cases and is properly hooked up to Supabase. 
+This week I implemented a sign up feature into our TUI **[*155](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/169). Previously, when testing we would have to manually create a user within Supabase then use that information to log into the account within the TUI. After adding a sign up feature within our TUI that sends the user infromtation to be stored in Supabase, testing and account creation can be fully done within the TUI while running the program. The sign up feature also has account creation restriction such as requiring the user to enter a real email into the username section as oppossed to a random name and requiring the password to be a certain number of digits to ensure that the account is secure. Along with this implementation I also added tests to verify that the account creation works accross different cases and is properly hooked up to Supabase.
 
 On top of implementing the sign up feature, I helped set up a meeting with my group to discuss about the upcoming presentation and to decide what each group member will be talking about.
 
-<img width="1081" height="640" alt="Screenshot 2025-11-30 at 4 40 18 PM" src="https://github.com/user-attachments/assets/586e443e-29bc-4adf-aa19-ff2829d602f8" />
+<img width="1081" height="640" alt="Screenshot 2025-11-30 at 4 40 18 PM" src="https://github.com/user-attachments/assets/586e443e-29bc-4adf-aa19-ff2829d602f8" />
 
 # Week 12: November 17 - November 23
 This week I focused on containerizing the backend to make the system fully reproducible **[*133](https://github.com/COSC-499-W2025/capstone-project-team-7/pull/154). I created the Dockerfile and docker-compose service, resolved macOS specific Docker issues, and ensured the Textual TUI runs cleanly inside a container. I also optimized the Docker image size by using the python:3.12-slim base image and disabling pip caching, which reduced unnecessary layer bloat. After testing the full flow (docker compose run --rm cli), I updated the documentation so the team can run the CLI with a single command.
 
-<img width="1086" height="637" alt="Screenshot 2025-11-23 at 9 28 54 PM" src="https://github.com/user-attachments/assets/3820a0b4-a594-40dc-b079-48bf4f94cd78" />
+<img width="1086" height="637" alt="Screenshot 2025-11-23 at 9 28 54 PM" src="https://github.com/user-attachments/assets/3820a0b4-a594-40dc-b079-48bf4f94cd78" />
 
 # Week 10: November 3 - November 9
 
@@ -160,9 +185,9 @@ This week I focused on improving our Git analysis module by adding a classificat
 
 I updated the JSON output generated by the parser so each scan now includes a project_type field, providing clearer insights into team versus solo work across repositories. After implementation, I verified the feature through both unit tests in test_git_repo.py and manual CLI runs using real repositories to ensure correct detection and output formatting.
 
-This update adds meaningful context to our overall portfolio analysis pipeline, helping differentiate personal projects from group efforts during scans. 
+This update adds meaningful context to our overall portfolio analysis pipeline, helping differentiate personal projects from group efforts during scans.
 
-<img width="1088" height="644" alt="Screenshot 2025-11-09 at 9 42 46 PM" src="https://github.com/user-attachments/assets/45532628-1d7e-4268-a17f-22e590458308" />
+<img width="1088" height="644" alt="Screenshot 2025-11-09 at 9 42 46 PM" src="https://github.com/user-attachments/assets/45532628-1d7e-4268-a17f-22e590458308" />
 
 # Week 9: October 27 - November 2
 
@@ -176,7 +201,7 @@ In parallel, I contributed to the CLI workflow integration, introducing a new co
 
 Next week, I plan to extend the parser to support pull request metrics, branch-level comparisons, and commit frequency analytics to enhance repository insights and team contribution tracking.
 
-<img width="1099" height="643" alt="Screenshot 2025-11-02 at 11 30 39 PM" src="https://github.com/user-attachments/assets/341a9b5f-03d6-481e-adab-6a3e49b05167" />
+<img width="1099" height="643" alt="Screenshot 2025-11-02 at 11 30 39 PM" src="https://github.com/user-attachments/assets/341a9b5f-03d6-481e-adab-6a3e49b05167" />
 
 # Week 8: October 20 - October 26
 
@@ -184,7 +209,7 @@ This week I focused on integrating Supabase authentication and consent managemen
 
 To complement this, I created a new SQL migration script, 04_consent_policies.sql, defining the necessary row-level security (RLS) policies and permission logic for storing and retrieving user consent records in Supabase. These policies ensure that only authenticated users can access or modify their own consent data while maintaining strict data isolation between accounts.
 
-I also migrated the project’s Supabase database from the previous organization to a new dedicated workspace to improve environment management, security, and team access. This migration was completed through a new pull request that successfully closed issue #91, ensuring the database configuration and authentication settings were fully functional in the new environment.
+I also migrated the project's Supabase database from the previous organization to a new dedicated workspace to improve environment management, security, and team access. This migration was completed through a new pull request that successfully closed issue #91, ensuring the database configuration and authentication settings were fully functional in the new environment.
 
 I integrated the authentication flow with the Consent Validation Module, enabling verified users to record and query consent data directly from the terminal. This involved implementing structured JSON outputs, token validation methods, and secure environment-based configuration for API credentials. I also refined how consent records are linked to authenticated user profiles in the database to ensure consistent cross-module data handling.
 
@@ -192,7 +217,7 @@ For testing, I ran multiple end-to-end authentication and consent workflows—ve
 
 Finally, I reviewed and approved PR #94, which introduced the local PDF parsing and summarization modules. I validated the documentation and code quality to ensure alignment with our privacy-first backend architecture.
 
-<img width="1078" height="632" alt="Screenshot 2025-10-26 at 6 43 19 PM" src="https://github.com/user-attachments/assets/1be119eb-6457-4f09-88e3-8716f2600e58" />
+<img width="1078" height="632" alt="Screenshot 2025-10-26 at 6 43 19 PM" src="https://github.com/user-attachments/assets/1be119eb-6457-4f09-88e3-8716f2600e58" />
 
 # Week 7: October 13 - October 19
 
@@ -200,13 +225,13 @@ This week I focused on setting up the full Supabase backend for our project. I c
 
 Additionally, I managed the Git workflow for integrating these changes — opening and revising pull requests, handling a mistaken merge, and restoring the correct branch through reverts and reflog recovery. This experience helped me strengthen my understanding of Git branch management and backend database security configuration.
 
-<img width="1092" height="640" alt="Screenshot 2025-10-19 at 9 43 33 PM" src="https://github.com/user-attachments/assets/779fca52-5862-4e15-bcdb-4c10cb6ab9c3" />
+<img width="1092" height="640" alt="Screenshot 2025-10-19 at 9 43 33 PM" src="https://github.com/user-attachments/assets/779fca52-5862-4e15-bcdb-4c10cb6ab9c3" />
 
 # Week 6: October 6 - October 12
 
 After reviewing the milestone 1 requirements, I was focused on developing the proof of concept for the user consent and upload gate component of our system. I designed and docuented a process that would make sure that users procide explicit consent before any data is uploaded or analyzed. The POC I worked on this week includes a blueprint for the consent interface, validation logic, and integration details using supabase for authentication and database storage. I make a full technical design, database schema, row-level security policies and storage layout for ulpoaded files. I defined validation rules and relevant output responses. Next week I plan to start implementing the POC with Supabase and demonstrate a working consent flow.
 
-<img width="1076" height="627" alt="Screenshot 2025-10-12 at 12 45 00 PM" src="https://github.com/user-attachments/assets/260fa110-4171-4b58-95d7-f53c7e897b89" />
+<img width="1076" height="627" alt="Screenshot 2025-10-12 at 12 45 00 PM" src="https://github.com/user-attachments/assets/260fa110-4171-4b58-95d7-f53c7e897b89" />
 
 # Week 5: September 29 - October 5
 
@@ -218,6 +243,6 @@ This week I worked on the proposed solution for the project proposal.
 
 # Week 3: September 15 - 21
 
-This week I worked on seeting up the project foundation which included creating functional and non functional requirements. 
+This week I worked on seeting up the project foundation which included creating functional and non functional requirements.
 
 <img width="1078" height="632" alt="image" src="https://github.com/user-attachments/assets/88c48709-0fc5-419c-afec-3e03aaaedf08" />
