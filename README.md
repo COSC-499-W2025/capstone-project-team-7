@@ -1,6 +1,6 @@
-# Portfolio Analysis (Team 7)
+# DevFlow (Team 7)
 
-Portfolio Analysis is an Electron-first app for scanning project archives, analyzing code and portfolio evidence, and generating portfolio and resume-ready outputs. The stack is FastAPI + Next.js + Electron + Supabase.
+DevFlow is an Electron-first app for scanning project archives, analyzing code and portfolio evidence, and generating portfolio and resume-ready outputs. The stack is FastAPI + Next.js + Electron + Supabase.
 
 ## Quick start
 
