@@ -45,8 +45,6 @@ win:
     - target: nsis
       arch:
         - x64
-  # Skip signing for capstone project
-  sign: false
 
 # NSIS installer options for Windows
 nsis:
