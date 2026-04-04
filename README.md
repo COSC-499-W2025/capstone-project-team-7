@@ -51,8 +51,6 @@ A typical evaluation flow is:
 4. Review the generated analysis and saved project data
 5. Use portfolio- and resume-related outputs from the interface
 
-For a more detailed walkthrough, see [User Task List](docs/user-tasks.md).
-
 ## Repo structure
 
 - `frontend/` — Next.js UI
