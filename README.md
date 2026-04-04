@@ -65,12 +65,11 @@ A typical evaluation flow is:
 - [System Architecture](docs/systemArchitecture.md)
 - [Data Flow Diagrams](docs/dfd.md)
 - [Feature Inventory](docs/feature-inventory.md)
-- [User Task List](docs/user-tasks.md)
 - [Frontend Notes](frontend/README.md)
 - [Electron Notes](electron/README.md)
 - [Supabase Schema](supabase/SCHEMA.md)
 
-## Evaluator notes
+## Notes
 
 - The recommended way to run the project is `./scripts/dev_up_desktop.sh`.
 - Backend API docs are available at `http://localhost:8000/docs` after startup.
