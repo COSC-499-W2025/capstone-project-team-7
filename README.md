@@ -49,7 +49,7 @@ A typical evaluation flow is:
 2. Sign up or log in
 3. Run a portfolio scan on a project folder or zip archive
 4. Review the generated analysis and saved project data
-5. Use portfolio- and resume-related outputs from the interface
+5. Use portfolio and resume-related outputs from the interface
 
 ## Repo structure
 
