@@ -36,7 +36,8 @@ const resolveRendererUrl = () => {
     return "http://localhost:3000";
   }
 
-  const filePath = path.join(__dirname, "..", "frontend", "out", "index.html");
+  // In packaged builds, the static export lives in resources/renderer/
+  const filePath = path.join(process.resourcesPath, "renderer", "index.html");
   return url.pathToFileURL(filePath).toString();
 };
 
