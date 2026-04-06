@@ -71,8 +71,8 @@ jobs:
         working-directory: frontend
         run: npm run build
         env:
-          # Production API URL - users will need to run backend separately
-          NEXT_PUBLIC_API_BASE_URL: "http://localhost:8000"
+          # Uses RAILWAY_BACKEND_URL secret if set, otherwise falls back to localhost
+          NEXT_PUBLIC_API_BASE_URL: ${{ secrets.RAILWAY_BACKEND_URL || 'http://localhost:8000' }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
 
