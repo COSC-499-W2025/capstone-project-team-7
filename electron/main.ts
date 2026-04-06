@@ -53,14 +53,20 @@ const createWindow = () => {
       if (process.platform === "win32" && requestPath.startsWith("/")) {
         requestPath = requestPath.slice(1);
       }
+      // Normalize slashes so forward-slash URL paths match backslash OS paths
+      requestPath = path.normalize(requestPath);
       // If the path is already inside the renderer dir, serve it directly
       if (requestPath.startsWith(rendererDir)) {
         callback({ path: requestPath });
         return;
       }
-      // Otherwise, map it into the renderer directory
-      // e.g. /auth/login -> renderer/auth/login.html or renderer/auth/login/index.html
-      let resolved = path.join(rendererDir, requestPath);
+      // Strip drive letter to get the relative path (e.g. C:\_next\foo.js → _next\foo.js)
+      let relativePath = requestPath;
+      if (process.platform === "win32" && /^[A-Za-z]:\\/.test(relativePath)) {
+        relativePath = relativePath.slice(3);
+      }
+      // Map into the renderer directory
+      const resolved = path.join(rendererDir, relativePath);
       if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
         callback({ path: resolved });
       } else if (fs.existsSync(resolved + ".html")) {

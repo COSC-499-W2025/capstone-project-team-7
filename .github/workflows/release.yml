@@ -71,7 +71,6 @@ jobs:
         working-directory: frontend
         run: npm run build
         env:
-          ELECTRON_BUILD: "true"
           # Uses RAILWAY_BACKEND_URL secret if set, otherwise falls back to localhost
           NEXT_PUBLIC_API_BASE_URL: ${{ secrets.RAILWAY_BACKEND_URL || 'http://localhost:8000' }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
