@@ -1,6 +1,7 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, protocol, shell } from "electron";
 import path from "node:path";
 import url from "node:url";
+import fs from "node:fs";
 import { promises as fsPromises } from "node:fs";
 import { IPC_CHANNELS } from "./ipc/channels";
 
@@ -42,6 +43,37 @@ const resolveRendererUrl = () => {
 };
 
 const createWindow = () => {
+  // In packaged builds, intercept file:// requests so that absolute paths
+  // (e.g. /auth/login, /_next/static/...) resolve inside resources/renderer/
+  if (!isDev) {
+    const rendererDir = path.join(process.resourcesPath, "renderer");
+    protocol.interceptFileProtocol("file", (request, callback) => {
+      let requestPath = decodeURIComponent(new URL(request.url).pathname);
+      // On Windows, strip the leading slash from /C:/... paths
+      if (process.platform === "win32" && requestPath.startsWith("/")) {
+        requestPath = requestPath.slice(1);
+      }
+      // If the path is already inside the renderer dir, serve it directly
+      if (requestPath.startsWith(rendererDir)) {
+        callback({ path: requestPath });
+        return;
+      }
+      // Otherwise, map it into the renderer directory
+      // e.g. /auth/login -> renderer/auth/login.html or renderer/auth/login/index.html
+      let resolved = path.join(rendererDir, requestPath);
+      if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
+        callback({ path: resolved });
+      } else if (fs.existsSync(resolved + ".html")) {
+        callback({ path: resolved + ".html" });
+      } else if (fs.existsSync(path.join(resolved, "index.html"))) {
+        callback({ path: path.join(resolved, "index.html") });
+      } else {
+        // Fallback to index.html for SPA client-side routing
+        callback({ path: path.join(rendererDir, "index.html") });
+      }
+    });
+  }
+
   const mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -56,15 +88,10 @@ const createWindow = () => {
 
   const startUrl = resolveRendererUrl();
   console.log("Loading URL:", startUrl);
-  
-  if (startUrl.startsWith("http")) {
-    mainWindow.loadURL(startUrl);
-  } else {
-    mainWindow.loadURL(startUrl);
-  }
+  mainWindow.loadURL(startUrl);
 
-  // Open DevTools in development
-  if (isDev && shouldOpenDevTools) {
+  // Open DevTools in development or when explicitly requested
+  if (shouldOpenDevTools) {
     mainWindow.webContents.openDevTools();
   }
 
