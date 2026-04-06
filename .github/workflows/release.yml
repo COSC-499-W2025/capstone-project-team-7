@@ -197,20 +197,21 @@ jobs:
           body: |
             ## Portfolio Analysis Desktop App
 
-            The release is marked as **pre-release** for `main` branch builds and **stable** for `v*` tag builds.
-
             ### Downloads
             - **macOS**: `.dmg` (Intel & Apple Silicon) or `.zip`
             - **Windows**: `.exe` installer
             - **Linux**: `.AppImage` or `.deb`
 
-            ### Requirements
-            - The backend must be running separately at `http://localhost:8000`
-            - See the [README](https://github.com/${{ github.repository }}#quick-start) for backend setup instructions
+            ### Getting started
+            1. Download the installer for your platform above
+            2. Install and launch the app
+            3. Sign up or log in — the app connects to the hosted backend automatically
 
-            ### Notes
-            - These builds are **unsigned**. You may see security warnings on first launch.
-              - **macOS**: Right-click → Open, then click "Open" in the dialog
-              - **Windows**: Click "More info" → "Run anyway"
+            You can also use the [web app](https://capstone-team07.vercel.app) directly in your browser.
+
+            ### First-launch security warnings
+            These builds are **unsigned**. You may see security warnings on first launch:
+            - **macOS**: Right-click → Open, then click "Open" in the dialog
+            - **Windows**: Click "More info" → "Run anyway"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
